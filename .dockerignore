@@ -1,0 +1,75 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Documentation builds
+docs/_build/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Output and temporary files
+output/*.png
+output/*.xlsx
+output/*.xml
+*.log
+*.tmp
+
+# Keep example files but exclude large outputs
+output/*
+!output/README.md
+
+# Docker files (no need to copy into image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Development files
+*.md
+!README.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+
+# Test files (optional - comment out if you want tests in container)
+# tests/
+# test*.py
+
+# Backup files
+*.bak
+*.backup
+*~

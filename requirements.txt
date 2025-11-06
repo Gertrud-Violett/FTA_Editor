@@ -1,0 +1,29 @@
+# FTA Editor Python Dependencies
+
+# Core Python packages (most are built-in, listed for reference)
+# - tkinter: GUI framework (built-in with Python, installed via system package python3-tk)
+# - json: JSON handling (built-in)
+# - xml.etree.ElementTree: XML handling (built-in)
+# - re: Regular expressions (built-in)
+# - subprocess: Process management (built-in)
+# - sys: System-specific parameters (built-in)
+# - tempfile: Temporary file operations (built-in)
+# - os: Operating system interface (built-in)
+# - pathlib: Object-oriented filesystem paths (built-in)
+# - argparse: Command-line argument parsing (built-in)
+# - shutil: High-level file operations (built-in)
+
+# Third-party packages that need to be installed
+# Excel export functionality
+openpyxl>=3.1.0
+
+# Image processing for diagram preview and rendering
+# Required for loading and displaying PNG diagrams in the GUI
+Pillow>=10.0.0
+
+# Testing (optional)
+pytest>=7.0.0
+
+# Note: Graphviz is a system package (not a Python package)
+# It must be installed separately via apt, brew, or downloaded from graphviz.org
+# The Dockerfile handles this with: apt-get install graphviz

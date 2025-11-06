@@ -1,0 +1,34 @@
+version: '3.8'
+
+# FTA/ETA Editor - Version 2.2.1
+# Updated: 2025-11-01
+# Includes: Fixed AND gate probability calculation, improved diagram display
+
+services:
+  fta-editor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fta-editor:2.2.1
+    container_name: fta_editor_app
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount data directory for input files
+      - ./data:/app/data
+      # Mount output directory for exports (create if not exists)
+      - ./output:/app/output
+      # X11 socket for GUI display (Linux/Mac only)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    network_mode: host
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  # Alternative web-based service (future enhancement)
+  # fta-web:
+  #   build: .
+  #   ports:
+  #     - "8080:8080"
+  #   command: ["python", "src/web_server.py"]
