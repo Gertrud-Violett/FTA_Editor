@@ -22,8 +22,8 @@ def node_label(node):
     cp = node.get("calculatedProbability")
     gate = node.get("logicGate", "")
     
-    p_str = f"{p:.3f}" if p is not None else "N/A"
-    cp_str = f"{cp:.3f}" if cp is not None else "N/A"
+    p_str = f"{p:.1E}" if p is not None else "N/A"
+    cp_str = f"{cp:.1E}" if cp is not None else "N/A"
     
     # Show gate type with probabilities, all on same line
     gate_str = f"Gate: {gate} | " if gate else ""
