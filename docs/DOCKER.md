@@ -2,42 +2,66 @@
 
 Run FTA/ETA Editor in Docker containers for easy deployment and isolation.
 
-**Current Version**: 2.2.2  
-**Last Updated**: November 6, 2025
+**Current Version**: 1.4.1  
+**Last Updated**: November 21, 2025
 
-## What's New in v2.2.2
+## What's New in v1.4.1
 
-- **UI Improvements**: Probabilities display side by side, improved text visibility
-- **New Features**: Hide zero probability nodes, "New Analysis" button
-- **Fixed**: Graph UI bug preserving FTA tree and graph view order
+- **Web Application**: Flask-based browser interface with interactive editing
+- **Zoom & Pan**: Mouse wheel zoom and drag-to-pan for diagram viewing
+- **Resizable Panels**: Draggable borders for fault tree and node details
+- **Dual Interface**: Choose between desktop GUI or web application
+- **Multi-User Support**: Session-based isolation in web interface
+- **Cloud Deployment**: Ready for Render.com and other cloud platforms
 
 ## Quick Start
+
+### Desktop GUI Application
 
 ```bash
 # Clone the repository
 git clone https://github.com/Gertrud-Violett/FTA_Editor.git
 cd FTA_Editor
 
-# Build and run with Docker Compose
-docker-compose up
+# Build and run GUI with Docker Compose
+docker-compose up fta-editor
 
 # Or build manually
-docker build -t fta-editor:2.2.2 .
-docker run -it --rm fta-editor:2.2.2
+docker build -t fta-editor:1.4.1 .
+docker run -it --rm fta-editor:1.4.1
+```
+
+### Web Application
+
+```bash
+# Clone the repository
+git clone https://github.com/Gertrud-Violett/FTA_Editor.git
+cd FTA_Editor
+
+# Build and run web app with Docker Compose
+docker-compose up fta-web
+
+# Access at http://localhost:5000
+
+# Or run both services
+docker-compose up
 ```
 
 ## Docker Compose (Recommended)
 
 ### File: `docker-compose.yml`
 
+The compose file includes two services:
+
 ```yaml
 version: '3.8'
 
 services:
+  # Desktop GUI Application
   fta-editor:
     build: .
-    image: fta-editor:latest
-    container_name: fta_editor_app
+    image: fta-editor:1.4.1
+    container_name: fta_editor_gui
     environment:
       - DISPLAY=${DISPLAY}
     volumes:
@@ -47,37 +71,85 @@ services:
     network_mode: host
     stdin_open: true
     tty: true
+
+  # Web Application Service
+  fta-web:
+    build: .
+    image: fta-editor:1.4.1
+    container_name: fta_editor_web
+    environment:
+      - PORT=5000
+      - SECRET_KEY=${SECRET_KEY}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "web_app.app:app"]
 ```
 
 ### Usage
 
+**Desktop GUI:**
 ```bash
-# Start application
-docker-compose up
+# Start GUI application (requires X11)
+docker-compose up fta-editor
 
 # Run in background
-docker-compose up -d
+docker-compose up -d fta-editor
+```
+
+**Web Application:**
+```bash
+# Start web application
+docker-compose up fta-web
+
+# Run in background
+docker-compose up -d fta-web
+
+# Access at http://localhost:5000
+```
+
+**Both Services:**
+```bash
+# Run both GUI and web
+docker-compose up
+
+# Stop all
+docker-compose down
 
 # View logs
 docker-compose logs -f
-
-# Stop
-docker-compose down
 ```
 
 ## Dockerfile
 
 ### Base Image
 
-Uses `python:3.9-slim` for small footprint.
+Uses `python:3.11-slim` for small footprint and modern Python features.
 
 ### Key Features
 
-- Installs Python dependencies
-- Installs Graphviz for diagram visualization
-- Sets up X11 for GUI display
-- Configures non-root user
-- Mounts data and output volumes
+- **Python 3.11**: Latest stable Python version
+- **Graphviz**: System package for diagram visualization
+- **X11 Support**: For GUI display (desktop mode)
+- **Web Server**: Gunicorn for production web serving
+- **Multi-Service**: Supports both GUI and web interfaces
+- **Non-root User**: Security-hardened with user `appuser`
+- **Volume Mounts**: For data, output, and session persistence
+
+### Services Included
+
+1. **Desktop GUI** (`CMD python src/FTA_Editor_UI.py`)
+   - Traditional tkinter interface
+   - Requires X11 forwarding
+   - Full-featured editing
+
+2. **Web Application** (via gunicorn)
+   - Browser-based interface
+   - No X11 required
+   - Multi-user sessions
+   - REST API access
 
 ### Build Arguments
 
@@ -160,11 +232,25 @@ Mount for custom config:
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DISPLAY` | `:0` | X11 display |
-| `FTA_MODE` | `FTA` | Default mode |
-| `LOG_LEVEL` | `INFO` | Logging level |
+| Variable | Default | Description | Used By |
+|----------|---------|-------------|---------|
+| `DISPLAY` | `:0` | X11 display | GUI only |
+| `PORT` | `5000` | Web server port | Web only |
+| `SECRET_KEY` | (generated) | Flask session key | Web only |
+| `PYTHONUNBUFFERED` | `1` | Python output buffering | Both |
+| `LOG_LEVEL` | `INFO` | Logging level | Both |
+
+### Web Application Environment
+
+Set these when running the web service:
+
+```bash
+docker run -p 5000:5000 \
+  -e SECRET_KEY=your-secret-key \
+  -e PORT=5000 \
+  fta-editor:1.4.1 \
+  gunicorn --bind 0.0.0.0:5000 web_app.app:app
+```
 
 ## Production Deployment
 

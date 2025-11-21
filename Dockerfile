@@ -1,9 +1,9 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 LABEL maintainer="FTA/ETA Editor"
-LABEL description="Fault Tree and Event Tree Analysis Editor"
-LABEL version="2.2.2"
-LABEL updated="2025-11-06"
+LABEL description="Fault Tree and Event Tree Analysis Editor with Web Interface"
+LABEL version="1.4.1"
+LABEL updated="2025-11-21"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -23,12 +23,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY src/ ./src/
+COPY web_app/ ./web_app/
 COPY data/ ./data/
 COPY tests/ ./tests/
 COPY docs/ ./docs/
 
-# Create output directory
-RUN mkdir -p /app/output
+# Create output directory and session directory
+RUN mkdir -p /app/output /tmp/fta_editor_sessions
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && \

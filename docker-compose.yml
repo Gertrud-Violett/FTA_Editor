@@ -1,16 +1,17 @@
 version: '3.8'
 
-# FTA/ETA Editor - Version 2.2.1
-# Updated: 2025-11-01
-# Includes: Fixed AND gate probability calculation, improved diagram display
+# FTA/ETA Editor - Version 1.4.1
+# Updated: 2025-11-21
+# Includes: Web application interface, GUI application, resizable panels, zoom/pan
 
 services:
+  # Desktop GUI Application
   fta-editor:
     build:
       context: .
       dockerfile: Dockerfile
-    image: fta-editor:2.2.1
-    container_name: fta_editor_app
+    image: fta-editor:1.4.1
+    container_name: fta_editor_gui
     environment:
       - DISPLAY=${DISPLAY:-:0}
       - PYTHONUNBUFFERED=1
@@ -26,9 +27,21 @@ services:
     tty: true
     restart: unless-stopped
 
-  # Alternative web-based service (future enhancement)
-  # fta-web:
-  #   build: .
-  #   ports:
-  #     - "8080:8080"
-  #   command: ["python", "src/web_server.py"]
+  # Web Application Service
+  fta-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fta-editor:1.4.1
+    container_name: fta_editor_web
+    environment:
+      - PORT=5000
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "web_app.app:app"]
+    restart: unless-stopped
