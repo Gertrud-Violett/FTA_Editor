@@ -18,7 +18,13 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 
 ## Quick Start
 
-### Installation
+### Web Application (Online)
+
+**Try it live**: [https://fta-editor.onrender.com](https://fta-editor.onrender.com)
+
+*Note: First load may take 30-60 seconds as the server wakes up from sleep mode.*
+
+### Local Installation
 
 **Option 1: Direct Python**
 ```bash
@@ -26,7 +32,14 @@ pip install -r requirements.txt
 python src/FTA_Editor_UI.py
 ```
 
-**Option 2: Docker**
+**Option 2: Web Application (Local)**
+```bash
+pip install -r requirements.txt
+python web_app/app.py
+# Open browser to http://localhost:5000
+```
+
+**Option 3: Docker**
 ```bash
 docker-compose up
 ```
@@ -39,7 +52,18 @@ docker-compose up
 
 ## Usage
 
+### Web Application
+Access the web interface at http://localhost:5000 (when running locally) or the deployed URL.
+
+Features:
+- Interactive tree editing
+- Live diagram preview with zoom/pan
+- Resizable panels
+- Export to JSON, XML, Excel
+- Import existing analyses
+
 ### GUI Application
+
 ```bash
 python src/FTA_Editor_UI.py
 ```
@@ -96,10 +120,12 @@ python -m pytest tests/
 
 ## Documentation
 
+- [Render.com Deployment](RENDER_DEPLOYMENT.md) - Free online hosting
 - [User Guide](docs/USER_GUIDE.md) - Complete manual
 - [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
 - [API Reference](docs/API_REFERENCE.md) - Programming interface
 - [Docker Guide](docs/DOCKER.md) - Container deployment
+- [Full Deployment Guide](DEPLOYMENT.md) - All deployment options
 
 ## License
 

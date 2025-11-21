@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTA Editor - Web Application</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="metadata-section">
+                <label>Mode:</label>
+                <select id="mode-select">
+                    <option value="FTA">FTA</option>
+                    <option value="ETA">ETA</option>
+                </select>
+                
+                <label>Title:</label>
+                <input type="text" id="title-input" placeholder="Analysis Title" />
+                
+                <label>Date:</label>
+                <input type="date" id="date-input" />
+                
+                <label>
+                    <input type="checkbox" id="hide-zero-checkbox" />
+                    Hide Zero P_calc
+                </label>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Left Panel: Tree View -->
+            <div class="panel tree-panel resizable-panel">
+                <div class="panel-header">
+                    <h2 id="tree-label">Fault Tree</h2>
+                </div>
+                <div class="panel-content">
+                    <div id="tree-container"></div>
+                </div>
+                <div class="resize-handle resize-handle-right"></div>
+            </div>
+
+            <!-- Right Panel: Diagram Preview -->
+            <div class="panel diagram-panel">
+                <div class="panel-header">
+                    <h2>Live Diagram Preview</h2>
+                    <div class="diagram-controls">
+                        <button id="zoom-in-btn" class="icon-btn" title="Zoom In">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button id="zoom-out-btn" class="icon-btn" title="Zoom Out">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <button id="zoom-reset-btn" class="icon-btn" title="Reset Zoom">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button id="refresh-diagram-btn" class="icon-btn" title="Refresh Diagram">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-content diagram-panel-content">
+                    <div id="diagram-container">
+                        <div id="diagram-viewport">
+                            <img id="diagram-image" alt="Diagram will appear here" draggable="false" />
+                        </div>
+                        <div id="diagram-loading" class="loading">Rendering diagram...</div>
+                        <div id="diagram-error" class="error"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Panel: Node Details -->
+        <div class="details-panel resizable-panel">
+            <div class="resize-handle resize-handle-top"></div>
+            <div class="panel-header">
+                <h2>Node Details</h2>
+            </div>
+            <div class="panel-content">
+                <div id="details-content">Select a node to view details</div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="button-bar">
+            <button class="btn btn-new" onclick="newAnalysis()">
+                <i class="fas fa-file"></i> New Analysis
+            </button>
+            <button class="btn btn-add" onclick="showAddNodeDialog()">
+                <i class="fas fa-plus"></i> Add Node
+            </button>
+            <button class="btn btn-edit" onclick="showEditNodeDialog()">
+                <i class="fas fa-edit"></i> Edit Node
+            </button>
+            <button class="btn btn-delete" onclick="deleteNode()">
+                <i class="fas fa-trash"></i> Delete Node
+            </button>
+            <button class="btn btn-load" onclick="loadJSON()">
+                <i class="fas fa-folder-open"></i> Load JSON
+            </button>
+            <button class="btn btn-save" onclick="saveJSON()">
+                <i class="fas fa-save"></i> Save JSON
+            </button>
+            <button class="btn btn-export-xml" onclick="exportXML()">
+                <i class="fas fa-file-code"></i> Export XML
+            </button>
+            <button class="btn btn-export-excel" onclick="exportExcel()">
+                <i class="fas fa-file-excel"></i> Export Excel
+            </button>
+            <button class="btn btn-render" onclick="renderHighQuality()">
+                <i class="fas fa-image"></i> Render HQ
+            </button>
+        </div>
+    </div>
+
+    <!-- Node Dialog Modal -->
+    <div id="node-dialog" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="dialog-title">Add Node</h2>
+                <span class="close" onclick="closeNodeDialog()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="node-form">
+                    <div class="form-group">
+                        <label>Name:</label>
+                        <input type="text" id="node-name" required />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Type:</label>
+                        <input type="text" id="node-type" value="Event" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Probability:</label>
+                        <input type="number" id="node-probability" min="0" max="1" step="0.01" value="1.0" required />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Logic Gate:</label>
+                        <select id="node-logic-gate">
+                            <option value="OR">OR</option>
+                            <option value="AND">AND</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Notes:</label>
+                        <textarea id="node-notes" rows="4"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Links:</label>
+                        <div class="links-section">
+                            <input type="text" id="link-search" placeholder="Search nodes..." />
+                            <select id="available-nodes" size="5" multiple></select>
+                            
+                            <div class="link-buttons">
+                                <button type="button" onclick="addANDLink()">Add AND Link</button>
+                                <button type="button" onclick="addORLink()">Add OR Link</button>
+                            </div>
+                            
+                            <div class="current-links">
+                                <h4>AND Links:</h4>
+                                <ul id="and-links-list"></ul>
+                                
+                                <h4>OR Links:</h4>
+                                <ul id="or-links-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="saveNodeDialog()">OK</button>
+                <button class="btn btn-secondary" onclick="closeNodeDialog()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="file-input" accept=".json" style="display: none;" onchange="handleFileLoad(event)" />
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

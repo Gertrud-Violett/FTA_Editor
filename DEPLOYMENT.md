@@ -34,7 +34,165 @@ This guide covers deployment options for the FTA/ETA Editor application, includi
 
 ## Deployment Options
 
-### Option 1: Local Python Installation
+### Option 1: Render.com (Web Application - Free Hosting)
+
+**Best for**: Production web application, public access, zero-cost hosting
+
+#### Overview
+Render.com provides free hosting for web applications with automatic deployments from GitHub. The FTA Editor web application can be deployed with just a few clicks.
+
+#### Prerequisites
+- GitHub account with FTA_Editor repository
+- Render.com account (free tier available)
+- Repository pushed to GitHub
+
+#### Deployment Steps
+
+**Step 1: Prepare Repository**
+
+The repository already includes `render.yaml` for automatic configuration. Ensure these files are present:
+- `render.yaml` - Render configuration
+- `requirements.txt` - Python dependencies (includes Flask, gunicorn)
+- `web_app/app.py` - Web application entry point
+
+**Step 2: Create Render Account**
+
+1. Go to [render.com](https://render.com)
+2. Sign up with GitHub account
+3. Authorize Render to access your repositories
+
+**Step 3: Deploy Application**
+
+**Method A: Automatic (Using Blueprint)**
+1. Go to [Render Dashboard](https://dashboard.render.com)
+2. Click "New +" → "Blueprint"
+3. Connect your GitHub repository: `Gertrud-Violett/FTA_Editor`
+4. Render will detect `render.yaml` and configure automatically
+5. Click "Apply" to deploy
+
+**Method B: Manual Setup**
+1. Go to [Render Dashboard](https://dashboard.render.com)
+2. Click "New +" → "Web Service"
+3. Connect your GitHub repository
+4. Configure:
+   - **Name**: `fta-editor`
+   - **Region**: Oregon (US West) or closest to your location
+   - **Branch**: `main`
+   - **Runtime**: Python 3
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 web_app.app:app`
+5. Add Environment Variables:
+   - `PYTHON_VERSION`: `3.11.0`
+   - `SECRET_KEY`: (Click "Generate" for secure random key)
+6. Select "Free" plan
+7. Click "Create Web Service"
+
+**Step 4: Install System Dependencies**
+
+Render automatically installs Graphviz via the build command in `render.yaml`. If using manual setup, add to Build Command:
+```bash
+pip install -r requirements.txt && apt-get update && apt-get install -y graphviz
+```
+
+**Step 5: Access Application**
+
+Once deployed (takes 5-10 minutes first time):
+- Your app will be at: `https://fta-editor.onrender.com` (or your custom name)
+- First access may take 30-60 seconds (free tier apps sleep after 15 min inactivity)
+
+#### Configuration Options
+
+**Environment Variables** (optional):
+- `SECRET_KEY`: Flask secret key (auto-generated recommended)
+- `PORT`: Automatically set by Render (default: 5000)
+- `PYTHON_VERSION`: Python version to use (default: 3.11.0)
+
+**Custom Domain** (optional, requires paid plan):
+1. Go to Service Settings → Custom Domains
+2. Add your domain and configure DNS
+
+**Auto-Deploy**:
+- Enabled by default
+- Every push to `main` branch triggers new deployment
+- View build logs in Render dashboard
+
+#### Free Tier Limitations
+
+- **Sleep after inactivity**: App sleeps after 15 minutes with no requests
+  - First request after sleep takes ~30 seconds to wake up
+  - Subsequent requests are instant
+- **750 hours/month**: Free for hobby use
+- **No custom domain**: Requires paid plan
+- **Shared resources**: May be slower during peak times
+
+#### Production Considerations
+
+**For Production Use** (Paid Plans):
+- Upgrade to Starter plan ($7/month) for:
+  - No sleep/always-on
+  - Custom domains
+  - Better performance
+  - More build minutes
+
+**Monitoring**:
+- View logs in Render Dashboard → Logs tab
+- Set up health checks (automatically configured in `render.yaml`)
+
+**Scaling**:
+- Increase workers in start command for more traffic
+- Upgrade plan for better resources
+
+#### Troubleshooting
+
+**Build Fails:**
+- Check build logs in Render dashboard
+- Verify `requirements.txt` is correct
+- Ensure Graphviz installation is in build command
+
+**App Won't Start:**
+- Check runtime logs
+- Verify start command: `gunicorn web_app.app:app`
+- Ensure Flask app variable is named `app`
+
+**Diagram Generation Fails:**
+- Verify Graphviz is installed during build
+- Check `apt-get install -y graphviz` is in build command
+
+**Session Issues:**
+- Free tier may lose sessions during sleep
+- Upgrade to paid plan for persistent sessions
+
+#### Updating the Application
+
+**Automatic Updates:**
+```bash
+git add .
+git commit -m "Update application"
+git push origin main
+# Render automatically deploys
+```
+
+**Manual Redeploy:**
+1. Go to Render Dashboard
+2. Select your service
+3. Click "Manual Deploy" → "Deploy latest commit"
+
+**Rollback:**
+1. Go to Render Dashboard → Events
+2. Find previous successful deploy
+3. Click "Rollback to this version"
+
+#### Cost Comparison
+
+| Feature | Free Tier | Starter ($7/mo) |
+|---------|-----------|-----------------|
+| Always-on | No (sleeps) | Yes |
+| Build minutes | 500/mo | 500/mo |
+| Bandwidth | 100 GB/mo | 100 GB/mo |
+| Custom domains | No | Yes |
+| SSL | Yes | Yes |
+
+### Option 2: Local Python Installation
 
 **Best for**: Development, single-user installations, testing
 
@@ -67,7 +225,7 @@ python src/FTA_Editor_UI.py
 - System-specific dependencies
 - Manual dependency management
 
-### Option 2: Docker Deployment
+### Option 3: Docker Deployment
 
 **Best for**: Production, multi-user environments, isolated deployments
 
@@ -155,7 +313,7 @@ docker-compose up
 - X11 configuration for GUI
 - Slightly larger disk footprint
 
-### Option 3: Docker Hub Distribution
+### Option 4: Docker Hub Distribution
 
 **Best for**: Quick deployment without building
 

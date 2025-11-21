@@ -3,7 +3,40 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v1.4.1.html).
+
+## [1.4.1] - 2025-11-21
+
+### Added
+- **Web Application**: Flask-based web interface for browser-based FTA/ETA editing
+  - Interactive tree editing with live diagram preview
+  - Zoom and pan functionality for diagram viewing (mouse wheel + click-drag)
+  - Resizable panels (fault tree and node details) with drag handles
+  - Real-time diagram rendering without page refresh
+  - Session-based multi-user support
+  - Export/import functionality (JSON, XML, Excel)
+  - Node CRUD operations via REST API
+  - Responsive UI with Font Awesome icons
+- **Render.com Deployment Support**: Free cloud hosting configuration
+  - `render.yaml` for automatic deployment
+  - Gunicorn production server setup
+  - Environment-based configuration
+  - Auto-deploy from GitHub integration
+- **Deployment Documentation**: Complete guides for cloud hosting
+  - `RENDER_DEPLOYMENT.md`: Quick-start guide for Render.com
+  - Enhanced `DEPLOYMENT.md` with Render.com as Option 1
+  - Cost comparison and scaling information
+
+### Changed
+- **Session Management**: Dedicated session directory to prevent conflicts with system temp files
+  - Fixed OSError warnings from cachelib accessing incompatible temp files
+  - Isolated Flask sessions in dedicated directory
+- **Security**: Environment-based SECRET_KEY for production deployment
+- **Requirements**: Added Flask, Flask-Session, and gunicorn dependencies
+
+### Fixed
+- **Cache File Warnings**: Eliminated OSError warnings from Arduino IDE and other temp files
+- **Production Configuration**: Disabled debug mode and dynamic port binding for cloud deployment
 
 ## [1.3.1] - 2025-11-06
 
@@ -99,7 +132,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release Notes
 
-### Version 2.2.0 - ETA Mode and Enhanced Features
+### Version 2.0.0 - Web Application and Cloud Deployment
+
+This major release introduces a browser-based web application alongside the existing desktop GUI, plus free cloud hosting support.
+
+**Key Highlights**:
+- Full-featured web interface accessible from any browser
+- Interactive diagram viewing with zoom/pan controls
+- Resizable UI panels for customized workspace
+- One-click deployment to Render.com (free tier)
+- Multi-user session support
+- REST API for programmatic access
+- No installation required for web version
+
+**Web Application Features**:
+- Interactive tree editing with real-time updates
+- Live diagram preview with mouse wheel zoom and drag-to-pan
+- Resizable fault tree and node details panels
+- Export to JSON, XML, and Excel formats
+- Import existing FTA/ETA analyses
+- Session-based data isolation for multiple users
+
+**Deployment Options**:
+- **Web (Render.com)**: Free cloud hosting with auto-deploy from GitHub
+- **Local Web**: Run Flask app locally at http://localhost:5000
+- **Desktop GUI**: Traditional tkinter application (unchanged)
+- **Docker**: Containerized deployment for both GUI and web app
+
+**Quick Start (Web)**:
+```bash
+pip install -r requirements.txt
+python web_app/app.py
+# Open http://localhost:5000 in browser
+```
+
+**Deploy to Render.com**:
+```bash
+git push origin main
+# Connect repository at render.com
+# Auto-deploys with render.yaml configuration
+```
+
+**Technical Improvements**:
+- Fixed session cache conflicts with system temp files
+- Environment-based configuration for production
+- Gunicorn production server integration
+- Dedicated session directory to prevent cache errors
+
+**Migration Note**:
+- Desktop GUI remains unchanged and fully functional
+- Web application is an additional interface option
+- All existing JSON files work with both interfaces
+- No breaking changes to existing workflows
+
+See [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md) for cloud hosting guide.
+
+### Version 1.3.1 - UI Improvements and Bug Fixes
 
 This major release adds Event Tree Analysis (ETA) capability alongside the existing Fault Tree Analysis (FTA), making the tool suitable for both reliability analysis and accident sequence modeling.
 
