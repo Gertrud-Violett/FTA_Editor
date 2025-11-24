@@ -4,6 +4,7 @@ let selectedNodeId = null;
 let allNodes = [];
 let currentLinks = [];
 let editingNodeId = null;
+let expandedNodes = new Set(); // Track expanded/collapsed state
 
 // Zoom and pan state
 let zoomLevel = 1.0;
@@ -218,31 +219,74 @@ function renderTree() {
     container.innerHTML = '';
     
     if (currentTree) {
-        renderNode(currentTree, container, 0);
+        // Initialize root as expanded
+        if (!expandedNodes.has('root')) {
+            expandedNodes.add('root');
+        }
+        renderNode(currentTree, container, 0, null);
     }
 }
 
-function renderNode(node, container, level) {
+function renderNode(node, container, level, parentId) {
     const div = document.createElement('div');
-    div.className = `tree-node level${Math.min(level, 3)}`;
-    div.dataset.nodeId = node.id;
+    const nodeId = node.id;
+    
+    // Calculate color class (cycles through 4 colors)
+    const colorLevel = level % 4;
+    div.className = `tree-node level${colorLevel}`;
+    div.dataset.nodeId = nodeId;
+    div.dataset.level = level;
+    
+    // Set indent based on level (20px per level)
+    const indent = level * 20 + 10;
+    div.style.paddingLeft = `${indent}px`;
+    
+    // Check if parent is collapsed
+    if (parentId && !expandedNodes.has(parentId)) {
+        div.classList.add('collapsed');
+    }
+    
+    // Create expand/collapse button if node has children
+    const hasChildren = node.children && node.children.length > 0;
+    const toggleBtn = document.createElement('span');
+    toggleBtn.className = 'tree-toggle';
+    
+    if (hasChildren) {
+        const isExpanded = expandedNodes.has(nodeId);
+        toggleBtn.textContent = isExpanded ? '−' : '+';
+        toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            toggleNodeExpansion(nodeId);
+        };
+    } else {
+        toggleBtn.classList.add('empty');
+    }
+    
+    div.appendChild(toggleBtn);
+    
+    // Create content span
+    const contentSpan = document.createElement('span');
+    contentSpan.className = 'tree-node-content';
     
     // Add probability markers
     const prob = node.probability;
     if (prob === 0.0) {
         div.classList.add('zero-prob');
-        div.innerHTML = '<span class="node-mark">✖</span>';
-    } else if (prob === 1.0 && (!node.children || node.children.length === 0)) {
+        contentSpan.innerHTML = '<span class="node-mark">✖</span>';
+    } else if (prob === 1.0 && !hasChildren) {
         div.classList.add('full-prob');
     }
     
-    div.innerHTML += node.name || node.id;
+    contentSpan.innerHTML += node.name || node.id;
+    div.appendChild(contentSpan);
     
+    // Click to select
     div.addEventListener('click', (e) => {
         e.stopPropagation();
         selectNode(node.id);
     });
     
+    // Highlight if selected
     if (node.id === selectedNodeId) {
         div.classList.add('selected');
     }
@@ -250,9 +294,44 @@ function renderNode(node, container, level) {
     container.appendChild(div);
     
     // Render children
-    if (node.children) {
-        node.children.forEach(child => renderNode(child, container, level + 1));
+    if (hasChildren) {
+        node.children.forEach(child => renderNode(child, container, level + 1, nodeId));
     }
+}
+
+function toggleNodeExpansion(nodeId) {
+    if (expandedNodes.has(nodeId)) {
+        // Collapse: remove this node and all descendants from expanded set
+        expandedNodes.delete(nodeId);
+        collapseAllDescendants(nodeId);
+    } else {
+        expandedNodes.add(nodeId);
+    }
+    renderTree();
+}
+
+function collapseAllDescendants(nodeId) {
+    // Find the node in the tree and collapse all its descendants
+    const node = findNodeById(currentTree, nodeId);
+    if (node && node.children) {
+        node.children.forEach(child => {
+            expandedNodes.delete(child.id);
+            collapseAllDescendants(child.id);
+        });
+    }
+}
+
+function findNodeById(node, targetId) {
+    if (node.id === targetId) {
+        return node;
+    }
+    if (node.children) {
+        for (const child of node.children) {
+            const found = findNodeById(child, targetId);
+            if (found) return found;
+        }
+    }
+    return null;
 }
 
 // Select node

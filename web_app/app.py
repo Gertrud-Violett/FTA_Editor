@@ -48,9 +48,30 @@ def get_core():
     
     return sessions[session_id]
 
+def cleanup_old_renders():
+    """Cleanup old render files to prevent disk space issues"""
+    try:
+        renders_dir = Path(tempfile.gettempdir()) / 'fta_editor_renders'
+        if renders_dir.exists():
+            import time
+            current_time = time.time()
+            for session_dir in renders_dir.iterdir():
+                if session_dir.is_dir():
+                    # Remove files older than 1 hour
+                    for file in session_dir.iterdir():
+                        if file.is_file() and (current_time - file.stat().st_mtime) > 3600:
+                            file.unlink()
+                    # Remove empty directories
+                    if not list(session_dir.iterdir()):
+                        session_dir.rmdir()
+    except Exception as e:
+        logging.warning(f"Failed to cleanup old renders: {e}")
+
 @app.route('/')
 def index():
     """Render main page"""
+    # Cleanup old renders periodically
+    cleanup_old_renders()
     return render_template('index.html')
 
 @app.route('/api/tree', methods=['GET'])
@@ -168,17 +189,21 @@ def render_diagram():
     viewer_path = Path(__file__).parent.parent / "src" / "json_viewer.py"
     
     try:
-        # Create temporary files
-        tmp_json = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8')
-        export_data = core.prepare_export_data()
-        json.dump(export_data, tmp_json, indent=2, ensure_ascii=False)
-        tmp_json.close()
+        # Create session-specific temporary directory
+        session_id = session.get('session_id', 'default')
+        session_temp_dir = Path(tempfile.gettempdir()) / 'fta_editor_renders' / session_id
+        session_temp_dir.mkdir(parents=True, exist_ok=True)
         
-        tmp_png = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-        tmp_png.close()
+        # Create temporary files in session directory
+        tmp_json = session_temp_dir / f'diagram_{uuid.uuid4().hex}.json'
+        tmp_png = session_temp_dir / f'diagram_{uuid.uuid4().hex}.png'
+        
+        export_data = core.prepare_export_data()
+        with open(tmp_json, 'w', encoding='utf-8') as f:
+            json.dump(export_data, f, indent=2, ensure_ascii=False)
         
         # Build command
-        cmd = [sys.executable, str(viewer_path), '-i', tmp_json.name, '-o', tmp_png.name]
+        cmd = [sys.executable, str(viewer_path), '-i', str(tmp_json), '-o', str(tmp_png)]
         if hide_zero:
             cmd.append('--hide-zero')
         if high_quality:
@@ -189,6 +214,9 @@ def render_diagram():
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         
         if proc.returncode != 0:
+            # Cleanup on error
+            if tmp_json.exists():
+                tmp_json.unlink()
             return jsonify({
                 'success': False,
                 'error': f'Render failed: {proc.stderr}'
@@ -196,12 +224,14 @@ def render_diagram():
         
         # Read and encode image
         import base64
-        with open(tmp_png.name, 'rb') as f:
+        with open(tmp_png, 'rb') as f:
             img_data = base64.b64encode(f.read()).decode('utf-8')
         
-        # Cleanup
-        os.unlink(tmp_json.name)
-        os.unlink(tmp_png.name)
+        # Cleanup temporary files
+        if tmp_json.exists():
+            tmp_json.unlink()
+        if tmp_png.exists():
+            tmp_png.unlink()
         
         return jsonify({
             'success': True,

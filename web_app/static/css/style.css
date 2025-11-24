@@ -91,6 +91,7 @@ body {
 /* Tree View */
 #tree-container {
     font-family: monospace;
+    line-height: 1.6;
 }
 
 .tree-node {
@@ -98,21 +99,25 @@ body {
     margin: 2px 0;
     cursor: pointer;
     user-select: none;
+    position: relative;
+    display: flex;
+    align-items: center;
 }
 
 .tree-node:hover {
-    background: #f0f0f0;
+    opacity: 0.8;
 }
 
 .tree-node.selected {
-    background: #cce5ff;
+    outline: 2px solid #007bff;
     font-weight: bold;
 }
 
-.tree-node.level0 { padding-left: 10px; background: #d0f0e0; }
-.tree-node.level1 { padding-left: 30px; background: #ffe4b5; }
-.tree-node.level2 { padding-left: 50px; background: #e6e6fa; }
-.tree-node.level3 { padding-left: 70px; background: #c8d6e5; }
+/* Tree level colors - matching tkinter version */
+.tree-node.level0 { background: #d0f0e0; }
+.tree-node.level1 { background: #ffe4b5; }
+.tree-node.level2 { background: #e6e6fa; }
+.tree-node.level3 { background: #c8d6e5; }
 
 .tree-node.full-prob { color: red; font-weight: bold; }
 .tree-node.zero-prob { color: blue; }
@@ -121,6 +126,40 @@ body {
     color: red;
     font-weight: bold;
     margin-right: 5px;
+}
+
+/* Expand/collapse button */
+.tree-toggle {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    line-height: 14px;
+    text-align: center;
+    margin-right: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    border: 1px solid #666;
+    background: white;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.tree-toggle:hover {
+    background: #e0e0e0;
+}
+
+.tree-toggle.empty {
+    visibility: hidden;
+}
+
+.tree-node-content {
+    flex: 1;
+}
+
+/* Hidden children */
+.tree-node.collapsed {
+    display: none;
 }
 
 /* Diagram */
@@ -252,6 +291,9 @@ body {
     background: #f0f0f0;
     border-top: 2px solid #ccc;
     flex-wrap: wrap;
+    z-index: 100;
+    position: relative;
+    min-height: 50px;
 }
 
 .btn {
