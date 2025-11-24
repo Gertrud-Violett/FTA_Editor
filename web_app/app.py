@@ -30,23 +30,38 @@ session_dir = Path(tempfile.gettempdir()) / 'fta_editor_sessions'
 session_dir.mkdir(exist_ok=True)
 app.config['SESSION_FILE_DIR'] = str(session_dir)
 app.config['SESSION_FILE_THRESHOLD'] = 100  # Maximum number of session files
+app.config['SESSION_PERMANENT'] = True  # Make session persistent
 
 Session(app)
 
-# Store FTACore instances per session
-sessions = {}
-
 def get_core():
     """Get or create FTACore instance for current session"""
-    session_id = session.get('session_id')
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        session['session_id'] = session_id
+    # Initialize session_id if needed
+    if 'session_id' not in session:
+        session['session_id'] = str(uuid.uuid4())
     
-    if session_id not in sessions:
-        sessions[session_id] = FTACore()
+    # Create new core instance
+    core = FTACore()
     
-    return sessions[session_id]
+    # Restore state from session if it exists
+    if 'fta_data' in session:
+        core.fta_data = session['fta_data']
+    if 'title' in session:
+        core.title = session['title']
+    if 'date' in session:
+        core.date = session['date']
+    if 'mode' in session:
+        core.mode = session['mode']
+    
+    return core
+
+def save_core(core):
+    """Save FTACore state to session"""
+    session['fta_data'] = core.fta_data
+    session['title'] = core.title
+    session['date'] = core.date
+    session['mode'] = core.mode
+    session.modified = True  # Ensure session is saved
 
 def cleanup_old_renders():
     """Cleanup old render files to prevent disk space issues"""
@@ -102,6 +117,7 @@ def update_metadata():
     if data.get('mode'):
         core.recalculate_probabilities()
     
+    save_core(core)
     return jsonify({'success': True})
 
 @app.route('/api/node', methods=['POST'])
@@ -125,6 +141,7 @@ def add_node():
     core.add_node_to_data(parent_id, node_data)
     core.recalculate_probabilities()
     
+    save_core(core)
     return jsonify({'success': True, 'tree': core.get_data()})
 
 @app.route('/api/node/<node_id>', methods=['PUT'])
@@ -145,6 +162,7 @@ def update_node(node_id):
     core.update_node(node_id, update_data)
     core.recalculate_probabilities()
     
+    save_core(core)
     return jsonify({'success': True, 'tree': core.get_data()})
 
 @app.route('/api/node/<node_id>', methods=['DELETE'])
@@ -158,6 +176,7 @@ def delete_node(node_id):
     core.delete_node_from_data(node_id)
     core.recalculate_probabilities()
     
+    save_core(core)
     return jsonify({'success': True, 'tree': core.get_data()})
 
 @app.route('/api/node/<node_id>', methods=['GET'])
@@ -322,6 +341,7 @@ def import_json():
         if not success:
             return jsonify({'success': False, 'error': error}), 400
         
+        save_core(core)
         return jsonify({
             'success': True,
             'tree': core.get_data(),
@@ -338,11 +358,14 @@ def import_json():
 @app.route('/api/new', methods=['POST'])
 def new_analysis():
     """Create a new analysis"""
-    session_id = session.get('session_id')
-    if session_id and session_id in sessions:
-        sessions[session_id] = FTACore()
+    # Clear session data to create fresh analysis
+    session.pop('fta_data', None)
+    session.pop('title', None)
+    session.pop('date', None)
+    session.pop('mode', None)
     
     core = get_core()
+    save_core(core)
     
     return jsonify({
         'success': True,
