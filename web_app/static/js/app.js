@@ -207,7 +207,7 @@ async function loadTree() {
             data.metadata.mode === 'ETA' ? 'Event Tree' : 'Fault Tree';
         
         renderTree();
-        refreshDiagram();
+        await refreshDiagram(); // Wait for diagram refresh
     } catch (error) {
         console.error('Failed to load tree:', error);
     }
@@ -405,19 +405,32 @@ async function refreshDiagram() {
     
     try {
         const hideZero = document.getElementById('hide-zero-checkbox').checked;
+        console.log('Refreshing diagram...'); // Debug log
         const response = await apiCall('/api/render', 'POST', {
             hide_zero: hideZero,
             high_quality: false
         });
         
         if (response.success) {
-            img.src = response.image;
-            img.classList.add('loaded');
+            // Force image reload by adding timestamp
+            const timestamp = new Date().getTime();
+            img.src = response.image + '?t=' + timestamp;
+            img.onload = () => {
+                img.classList.add('loaded');
+                console.log('Diagram loaded successfully'); // Debug log
+            };
+            img.onerror = () => {
+                console.error('Failed to load diagram image');
+                error.textContent = 'Failed to load diagram image';
+                error.classList.add('show');
+            };
             resetZoom(); // Reset zoom when new diagram loads
         } else {
+            console.error('Render API error:', response.error);
             throw new Error(response.error);
         }
     } catch (err) {
+        console.error('Diagram refresh error:', err);
         error.textContent = 'Failed to render diagram: ' + err.message;
         error.classList.add('show');
     } finally {
@@ -529,8 +542,8 @@ async function saveNodeDialog() {
             if (response.success) {
                 currentTree = response.tree;
                 renderTree();
-                refreshDiagram();
                 closeNodeDialog();
+                await refreshDiagram(); // Wait for diagram refresh
             }
         } else {
             // Add new node
@@ -541,11 +554,12 @@ async function saveNodeDialog() {
             if (response.success) {
                 currentTree = response.tree;
                 renderTree();
-                refreshDiagram();
                 closeNodeDialog();
+                await refreshDiagram(); // Wait for diagram refresh
             }
         }
     } catch (error) {
+        console.error('Save node error:', error);
         alert('Failed to save node: ' + error.message);
     }
 }
@@ -566,10 +580,11 @@ async function deleteNode() {
             currentTree = response.tree;
             selectedNodeId = null;
             renderTree();
-            refreshDiagram();
             document.getElementById('details-content').textContent = 'Select a node to view details';
+            await refreshDiagram(); // Wait for diagram refresh
         }
     } catch (error) {
+        console.error('Delete node error:', error);
         alert('Failed to delete node: ' + error.message);
     }
 }
