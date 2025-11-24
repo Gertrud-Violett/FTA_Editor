@@ -412,9 +412,8 @@ async function refreshDiagram() {
         });
         
         if (response.success) {
-            // Force image reload by adding timestamp
-            const timestamp = new Date().getTime();
-            img.src = response.image + '?t=' + timestamp;
+            // Set the image source directly (it's already a data URI)
+            img.src = response.image;
             img.onload = () => {
                 img.classList.add('loaded');
                 console.log('Diagram loaded successfully'); // Debug log
