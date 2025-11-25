@@ -1,7 +1,7 @@
 # FTA/ETA Editor Deployment Guide
 
-Version: 2.2.1  
-Last Updated: November 1, 2025
+Version: 1.4.2  
+Last Updated: November 25, 2025
 
 ## Overview
 
@@ -12,14 +12,14 @@ This guide covers deployment options for the FTA/ETA Editor application, includi
 ### System Requirements
 
 - **Operating System**: Windows, Linux, or macOS
-- **Python**: 3.8 or higher
+- **Python**: 3.14 or higher
 - **Graphviz**: Required for diagram generation
 - **Memory**: 512 MB RAM minimum, 1 GB recommended
 - **Disk Space**: 100 MB minimum
 
 ### Software Dependencies
 
-1. **Python 3.8+**
+1. **Python 3.14+**
    - Download from [python.org](https://www.python.org/downloads/)
    - Ensure pip is installed
 
@@ -82,7 +82,7 @@ The repository already includes `render.yaml` for automatic configuration. Ensur
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 web_app.app:app`
 5. Add Environment Variables:
-   - `PYTHON_VERSION`: `3.11.0`
+   - `PYTHON_VERSION`: `3.14.0`
    - `SECRET_KEY`: (Click "Generate" for secure random key)
 6. Select "Free" plan
 7. Click "Create Web Service"
@@ -105,7 +105,7 @@ Once deployed (takes 5-10 minutes first time):
 **Environment Variables** (optional):
 - `SECRET_KEY`: Flask secret key (auto-generated recommended)
 - `PORT`: Automatically set by Render (default: 5000)
-- `PYTHON_VERSION`: Python version to use (default: 3.11.0)
+- `PYTHON_VERSION`: Python version to use (default: 3.14.0)
 
 **Custom Domain** (optional, requires paid plan):
 1. Go to Service Settings → Custom Domains

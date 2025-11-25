@@ -2,17 +2,18 @@
 
 Run FTA/ETA Editor in Docker containers for easy deployment and isolation.
 
-**Current Version**: 1.4.1  
-**Last Updated**: November 21, 2025
+**Current Version**: 1.4.2  
+**Last Updated**: November 25, 2025
 
-## What's New in v1.4.1
+## What's New in v1.4.2
 
+- **Session Persistence**: Fixed state consistency issues on Render.com with filesystem sessions
+- **Japanese Font Support**: Embedded Noto Sans CJK JP font for proper Japanese/Chinese/Korean character rendering
 - **Web Application**: Flask-based browser interface with interactive editing
 - **Zoom & Pan**: Mouse wheel zoom and drag-to-pan for diagram viewing
 - **Resizable Panels**: Draggable borders for fault tree and node details
 - **Dual Interface**: Choose between desktop GUI or web application
 - **Multi-User Support**: Session-based isolation in web interface
-- **Cloud Deployment**: Ready for Render.com and other cloud platforms
 
 ## Quick Start
 
@@ -27,8 +28,8 @@ cd FTA_Editor
 docker-compose up fta-editor
 
 # Or build manually
-docker build -t fta-editor:1.4.1 .
-docker run -it --rm fta-editor:1.4.1
+docker build -t fta-editor:1.4.2 .
+docker run -it --rm fta-editor:1.4.2
 ```
 
 ### Web Application
@@ -60,7 +61,7 @@ services:
   # Desktop GUI Application
   fta-editor:
     build: .
-    image: fta-editor:1.4.1
+    image: fta-editor:1.4.2
     container_name: fta_editor_gui
     environment:
       - DISPLAY=${DISPLAY}
@@ -75,7 +76,7 @@ services:
   # Web Application Service
   fta-web:
     build: .
-    image: fta-editor:1.4.1
+    image: fta-editor:1.4.2
     container_name: fta_editor_web
     environment:
       - PORT=5000
@@ -248,7 +249,7 @@ Set these when running the web service:
 docker run -p 5000:5000 \
   -e SECRET_KEY=your-secret-key \
   -e PORT=5000 \
-  fta-editor:1.4.1 \
+  fta-editor:1.4.2 \
   gunicorn --bind 0.0.0.0:5000 web_app.app:app
 ```
 

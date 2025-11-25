@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL maintainer="FTA/ETA Editor"
 LABEL description="Fault Tree and Event Tree Analysis Editor with Web Interface"

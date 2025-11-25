@@ -2,11 +2,11 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 2.2.2 (Updated: November 6, 2025)
+**Version**: 1.4.2 (Updated: November 25, 2025)
 
 ## 1. Install
 
-**Prerequisites:** Python 3.8+ and [Graphviz](https://graphviz.org/download/)
+**Prerequisites:** Python 3.14+ and [Graphviz](https://graphviz.org/download/)
 
 ```bash
 # Clone and install
@@ -44,16 +44,17 @@ python src/FTA_Editor_UI.py
 docker-compose up
 
 # Or build specific version
-docker build -t fta-editor:2.2.2 .
-docker run -it --rm fta-editor:2.2.2
+docker build -t fta-editor:1.4.2 .
+docker run -it --rm fta-editor:1.4.2
 ```
 
-## What's New in v2.2.2
+## What's New in v1.4.2
 
-- ✅ UI improvements: Probabilities display side by side for space efficiency
-- ✅ New features: Hide zero probability nodes, "New Analysis" button
-- ✅ Fixed: Graph UI bug preserving FTA tree and graph view order
-- ✅ Enhanced: Improved node visibility and diagram resolution
+- ✅ Session Persistence: Fixed state consistency issues with filesystem sessions for Render.com deployment
+- ✅ Japanese Font Support: Embedded Noto Sans CJK JP for proper Japanese/Chinese/Korean character rendering
+- ✅ Web Application: Browser-based interface with zoom/pan and resizable panels
+- ✅ Diagram Auto-Refresh: Fixed automatic diagram updates in web interface
+- ✅ Multi-User: Reliable session management across Gunicorn worker processes
 
 ## Need Help?
 

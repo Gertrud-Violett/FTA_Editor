@@ -3,14 +3,17 @@
 A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor with advanced probability calculations, visual tree editing, and export capabilities.
 
 [![License: MIT](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.3.1-green.svg)](CHANGELOG.md)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Version](https://img.shields.io/badge/version-1.4.2-green.svg)](CHANGELOG.md)
 
 ## Features
 
 - **Interactive Tree Editor** with live diagram preview
 - **Dual Analysis Modes**: FTA (bottom-up) and ETA (top-down)  
-- **Accurate Probability Calculations** with AND/OR logic gates (corrected in v2.2.1)
+- **Accurate Probability Calculations** with AND/OR logic gates
+- **Web Application**: Browser-based interface with zoom/pan and resizable panels
+- **Session Persistence**: Reliable state management for multi-user environments
+- **International Support**: Japanese/Chinese/Korean fonts (Noto Sans CJK)
 - **Visual Diagram Generation** with Graphviz - logic gates displayed in nodes
 - **Multiple Export Formats** (JSON, XML, Excel with hierarchical structure)
 - **Zero-Probability Node Highlighting** for quick issue identification
@@ -46,7 +49,7 @@ docker-compose up
 
 ### Requirements
 
-- Python 3.8+
+- Python 3.14+
 - Graphviz (install from [graphviz.org](https://graphviz.org/download/))
 - See `requirements.txt` for Python packages
 

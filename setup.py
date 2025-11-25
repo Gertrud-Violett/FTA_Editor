@@ -15,7 +15,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="fta-eta-editor",
-    version="2.2.2",
+    version="1.4.2",
     author="makkiblog.com",
     author_email="",
     description="Fault Tree and Event Tree Analysis Editor with advanced probability calculations",
@@ -32,13 +32,10 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.14",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.14",
     install_requires=requirements,
     extras_require={
         "dev": [
