@@ -113,8 +113,8 @@ def build_dot(nodes, edges):
         'digraph G {',
         '  rankdir=LR;',
         '  graph [nodesep=0.12, ranksep=0.5, margin=0.05, overlap=false];',  # Remove splines=true to allow per-edge override
-        '  node [shape=none, fontname="timesnewroman"];',
-        '  edge [fontname="timesnewroman", arrowsize=0.6];'
+        '  node [shape=none, fontname="Noto Sans CJK JP"];',
+        '  edge [fontname="Noto Sans CJK JP", arrowsize=0.6];'
     ]
 
     # Build parent-child relationships (only for structural edges, not links)
@@ -303,7 +303,7 @@ def main():
     dot_lines.insert(1, f'  labelloc="t";')
     dot_lines.insert(2, f'  label="{title}\\nDate: {date}";')
     dot_lines.insert(3, f'  fontsize=14;')
-    dot_lines.insert(4, f'  fontname="timesnewroman";')
+    dot_lines.insert(4, f'  fontname="Noto Sans CJK JP";')
     dot_text = '\n'.join(dot_lines)
 
     dot_path = Path(args.dot)

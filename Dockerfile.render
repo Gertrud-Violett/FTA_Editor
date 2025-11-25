@@ -2,13 +2,13 @@ FROM python:3.11-slim
 
 LABEL maintainer="FTA/ETA Editor"
 LABEL description="FTA/ETA Editor Web Application for Render.com"
-LABEL version="1.4.1"
+LABEL version="1.4.2"
 
-# Install system dependencies including Graphviz
+# Install system dependencies including Graphviz and Japanese fonts
 # Combine commands to minimize layers and ensure cleanup
 RUN set -ex && \
     apt-get update && \
-    apt-get install -y --no-install-recommends graphviz && \
+    apt-get install -y --no-install-recommends graphviz fonts-noto-cjk && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 

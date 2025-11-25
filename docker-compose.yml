@@ -1,8 +1,8 @@
 version: '3.8'
 
-# FTA/ETA Editor - Version 1.4.1
-# Updated: 2025-11-21
-# Includes: Web application interface, GUI application, resizable panels, zoom/pan
+# FTA/ETA Editor - Version 1.4.2
+# Updated: 2025-11-25
+# Includes: Web application interface, GUI application, resizable panels, zoom/pan, Japanese font support
 
 services:
   # Desktop GUI Application
@@ -10,7 +10,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: fta-editor:1.4.1
+    image: fta-editor:1.4.2
     container_name: fta_editor_gui
     environment:
       - DISPLAY=${DISPLAY:-:0}
@@ -32,7 +32,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: fta-editor:1.4.1
+    image: fta-editor:1.4.2
     container_name: fta_editor_web
     environment:
       - PORT=5000

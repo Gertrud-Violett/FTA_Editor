@@ -2,12 +2,13 @@ FROM python:3.11-slim
 
 LABEL maintainer="FTA/ETA Editor"
 LABEL description="Fault Tree and Event Tree Analysis Editor with Web Interface"
-LABEL version="1.4.1"
-LABEL updated="2025-11-21"
+LABEL version="1.4.2"
+LABEL updated="2025-11-25"
 
-# Install system dependencies
+# Install system dependencies including Japanese fonts
 RUN apt-get update && apt-get install -y \
     graphviz \
+    fonts-noto-cjk \
     python3-tk \
     x11-apps \
     && rm -rf /var/lib/apt/lists/*

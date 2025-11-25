@@ -3,11 +3,38 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v1.4.1.html).
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.4.2] - 2025-11-25
+
+### Added
+
+- **Japanese Font Support**: Embedded Noto Sans CJK JP font for proper Japanese character rendering
+  - Installed `fonts-noto-cjk` package in Docker containers
+  - Updated Graphviz font settings to use "Noto Sans CJK JP"
+  - Supports Japanese, Chinese, and Korean characters in node names and labels
+
+### Fixed
+
+- **Session State Persistence**: Fixed node replacement and deletion issues on Render.com
+  - Replaced in-memory session dictionary with Flask filesystem session storage
+  - Added `save_core()` function to persist state after every modification
+  - Fixed state consistency across Gunicorn worker processes
+  - Resolved issues where nodes were incorrectly replaced or deleted during editing
+- **Diagram Auto-Refresh**: Fixed automatic diagram updates in web interface
+  - Removed incompatible timestamp query parameter from base64 data URIs
+  - Added proper error logging for diagram loading failures
+  - Made async refresh calls properly awaited in all tree mutation operations
+
+### Changed
+
+- **Docker Configuration**: Updated all Docker files to version 1.4.2
+- **Font System**: Changed from Times New Roman to Noto Sans CJK JP for international character support
 
 ## [1.4.1] - 2025-11-21
 
 ### Added
+
 - **Web Application**: Flask-based web interface for browser-based FTA/ETA editing
   - Interactive tree editing with live diagram preview
   - Zoom and pan functionality for diagram viewing (mouse wheel + click-drag)
