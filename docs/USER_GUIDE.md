@@ -1,6 +1,6 @@
 # FTA/ETA Editor - User Guide
 
-**Version**: 1.5.0 | **Updated**: December 16, 2025
+**Version**: 1.5.1 | **Updated**: December 16, 2025
 
 Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor with AI Assistant.
 
@@ -35,7 +35,7 @@ When you first launch the application, you'll see:
 1. **Top Bar** - Mode selector, Title, and Date fields
 2. **Tree View** - Left panel showing your analysis tree
 3. **Diagram Preview** - Center panel with live visualization
-4. **AI Assistant** - Right panel for AI-powered analysis (new in v1.5)
+4. **AI Assistant** - Right panel for AI-powered analysis
 5. **Node Details** - Bottom panel showing selected node information
 6. **Action Buttons** - Bottom toolbar for all operations
 
@@ -153,8 +153,8 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 ### Features
 
 **Quick Actions**:
-- **Analyze FTA**: Get a comprehensive analysis of your current tree
-- **Suggest Root Causes**: AI proposes additional failure modes or causes
+- **Analyze FTA**: Posts analysis and suggestions to chat only (no changes applied).
+- **Update FTA**: AI generates a complete updated JSON, validates it, and replaces the current tree. Existing nodes are preserved; only additions are applied. Detailed error logs are shown if the AI output is invalid.
 - **Clear Chat**: Reset conversation history
 
 **Free Chat**:
@@ -163,15 +163,10 @@ Type any question in the input box and press Enter. Examples:
 - "Can you review the probabilities in this tree?"
 - "What are common causes of pump failures?"
 
-### Change Confirmation
+### Applying Changes
 
-When the AI suggests modifications to your FTA:
-1. A confirmation dialog appears listing all proposed changes
-2. Review each change (add/edit/delete nodes)
-3. Select which changes to apply
-4. Click "Apply Selected" to make changes
-
-Changes are never applied automatically - you always have control.
+- Use **Analyze FTA** for a safe review-only mode.
+- Use **Update FTA** to apply all additions at once: the AI returns a full JSON which is verified before replacing your current tree. If the JSON is invalid, the update is rejected and the problematic section is shown in the chat and console.
 
 ### Status Indicator
 

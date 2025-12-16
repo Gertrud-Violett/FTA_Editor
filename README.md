@@ -4,7 +4,7 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 
 [![License: MIT](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.5.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.5.1-green.svg)](CHANGELOG.md)
 
 ## Features
 
@@ -42,112 +42,25 @@ python src/FTA_Editor_UI.py
 
 ## AI Assistant Setup
 
-The FTA Editor includes an integrated AI assistant that can analyze your fault trees, suggest improvements, and help identify missing root causes. The AI uses OpenAI-compatible APIs (OpenAI, Azure OpenAI, GitHub Copilot, or other compatible endpoints).
+The FTA Editor includes an integrated AI assistant supporting OpenAI, Anthropic Claude, and Google Gemini.
 
-### Step 1: Obtain an API Key
+**Quick Setup:**
+1. Get API key from your provider:
+   - Google Gemini: https://aistudio.google.com/apikey (free tier available)
+   - OpenAI: https://platform.openai.com/api-keys
+   - Anthropic Claude: https://console.anthropic.com/api-keys
 
-Choose one of the following options:
+2. Open FTA Editor → Click AI Settings (⚙)
 
-#### Option A: GitHub Copilot / GitHub Models (Recommended)
+3. Select provider, paste API key, click "Test & Save"
 
-If you have a **GitHub Copilot subscription**, you can use GitHub Models API at no extra cost!
+Your credentials are stored locally at `~/.fta_editor/ai_credentials.json` (never in repository or cloud).
 
-**Requirements**:
-- Active GitHub Copilot subscription ($10-19/month)
-- GitHub Personal Access Token
+For detailed setup instructions, see [docs/QUICK_AI_SETUP.md](docs/QUICK_AI_SETUP.md) and [docs/MULTI_PROVIDER_SETUP.md](docs/MULTI_PROVIDER_SETUP.md).
 
-**Quick Setup**:
-1. Go to [github.com/settings/tokens](https://github.com/settings/tokens)
-2. Click **"Generate new token (classic)"**
-3. Set scopes: ✅ `read:user`
-4. Copy the token (starts with `ghp_...`)
-5. Use in FTA Editor:
-   - **API Endpoint**: `https://models.github.ai`
-   - **API Key**: Your Personal Access Token
-   - **Model**: `gpt-4o` or `gpt-4o-mini`
-
-📖 **Detailed guide**: [GitHub Copilot Setup](docs/GITHUB_COPILOT_SETUP.md)
-
----
-
-#### Option B: OpenAI API (Pay-as-you-go)
-1. Go to [OpenAI Platform](https://platform.openai.com/)
-2. Sign up or log in to your account
-3. Navigate to **API Keys** in your account settings
-4. Click **Create new secret key**
-5. Copy and save the key securely (it won't be shown again)
-6. **Add credits or enable billing** to use the API:
-   - Go to **Settings** → **Billing** → **Add payment method**
-   - Add at least $5-10 in credits to get started
-   - GPT-4o costs: ~$0.005 per 1K tokens (very affordable for FTA analysis)
-
-**Cost Estimation for FTA Editor**:
-- Quick FTA analysis: ~1,000-2,000 tokens ≈ $0.01-0.02
-- Root cause suggestions: ~800-1,500 tokens ≈ $0.005-0.015
-- Monthly usage (heavy): ~$2-5
-- Pay-as-you-go, no subscription required
-
----
-
-#### Option C: Azure OpenAI
-1. Create an Azure OpenAI resource in [Azure Portal](https://portal.azure.com/)
-2. Deploy a model (e.g., gpt-4o, gpt-4-turbo)
-3. Get your endpoint URL and API key from the resource
-4. For enterprises already using Azure
-
----
-
-#### Option D: Other OpenAI-Compatible APIs
-Any API that follows the OpenAI API format can be used:
-- Local LLM servers (Ollama, LLaMA.cpp, etc.)
-- Other cloud providers
-- Custom/private AI servers
-
-### Step 2: Configure in FTA Editor
-
-1. Launch the FTA Editor: `python src/FTA_Editor_UI.py`
-2. Look for the **AI Assistant** panel on the right side
-3. Click the **⚙ (Settings)** button
-4. Enter your credentials:
-   - **API Key**: Your API key/token from Step 1
-   - **API Endpoint**: 
-     - **GitHub Models**: `https://models.github.ai`
-     - **OpenAI**: `https://api.openai.com/v1` (default)
-     - **Azure**: `https://your-resource.openai.azure.com/openai/deployments/your-deployment`
-     - **Other**: Your provider's endpoint URL
-   - **Model**: Select from dropdown or enter custom model name
-     - `gpt-4o` (recommended, fastest)
-     - `gpt-4o-mini` (faster, lower cost)
-     - `gpt-4-turbo`
-     - `gpt-3.5-turbo`
-5. Click **Test & Save** to verify the connection
-
-### Step 3: Credential Storage
-
-Your API credentials are stored **locally on your computer** at:
-
-| Operating System | Location |
-|-----------------|----------|
-| Windows | `C:\Users\<username>\.fta_editor\ai_credentials.json` |
-| macOS | `/Users/<username>/.fta_editor/ai_credentials.json` |
-| Linux | `/home/<username>/.fta_editor/ai_credentials.json` |
-
-**Security Notes:**
-- Credentials are **never** stored in the repository
-- Credentials are **never** uploaded or transmitted except to the configured API endpoint
-- You can delete credentials anytime via the Settings dialog or by deleting the file
-- The `.fta_editor` folder is in your home directory, outside any git repository
-
-### Using the AI Assistant
-
-Once configured, you can:
-
-1. **Quick Analysis**: Click "Analyze FTA" to get an overview and suggestions
-2. **Root Cause Suggestions**: Select a node and click "Suggest Root Causes"
-3. **Free Chat**: Type any question in the input box and press Enter
-4. **Apply Suggestions**: When AI proposes changes, a confirmation dialog appears where you can review and selectively apply them
-
-**Example prompts:**
+### Quick Actions
+- **Analyze FTA**: Posts an assessment and suggestions to chat; does not modify your tree.
+- **Update FTA**: AI generates a complete JSON update, verified for structure and safety, then replaces the current FTA. Existing nodes are preserved; only additions are applied. Detailed error logs are shown if the AI output is invalid.
 - "What root causes might be missing from this failure mode?"
 - "Can you review the probabilities in this tree?"
 - "Suggest additional failure modes for the selected node"

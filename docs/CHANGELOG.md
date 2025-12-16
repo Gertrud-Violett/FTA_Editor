@@ -31,15 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**:
   - `docs/QUICK_AI_SETUP.md`: 5-minute quick start guide
   - `docs/MULTI_PROVIDER_SETUP.md`: Detailed setup and troubleshooting
-  - Updated README/Quick Start with new "Analyze FTA" and "Update FTA" flows
-
-- **Full-JSON Update Flow**:
-  - New "Update FTA" button generates a complete JSON from the AI and replaces the in-memory tree after validation
-  - Validator rejects malformed outputs and reports the exact failing section/node
-  - Detailed error logging for invalid JSON (snippet printed to chat and stderr)
-
-- **UI**:
-  - Arbitrary tree depth coloring; nested additions render correctly
 
 ### Changed
 
@@ -50,7 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AIAgentHandler**: Refactored to use provider abstraction
   - Provider-agnostic message sending
   - `configure()` accepts provider parameter
-  - Added `generate_full_fta_update()` and `verify_updated_fta_json()`
 
 - **requirements.txt**: Added support for all AI providers
   - Added: `anthropic>=0.7.0`
@@ -58,7 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Kept: `openai>=1.0.0`
 
 - **README.md**: Updated AI Assistant documentation with provider setup instructions
-  - Added Quick Actions description (Analyze vs Update)
 
 ---
 

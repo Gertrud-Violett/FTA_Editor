@@ -8,6 +8,7 @@ This module contains the UI components for the FTA Editor:
 - Diagram preview
 - Node editing dialogs
 - AI Agent chat interface
+- Multi-provider AI support (OpenAI, Claude, Gemini)
 """
 
 import tkinter as tk
@@ -19,9 +20,11 @@ import tempfile
 from pathlib import Path
 import json
 import threading
+import re
 
 from FTA_Editor_core import FTACore, sanitize_name
 from AI_agent_handler import AIAgentHandler, AICredentialManager, test_connection, AIProposedChange
+from ai_providers import AIProviderFactory
 
 
 class FTAEditorUI:
@@ -172,8 +175,10 @@ class FTAEditorUI:
         self.fta_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.fta_tree.bind("<<TreeviewSelect>>", self.show_selected_details)
         
-        # Configure visual tags
-        for i, color in enumerate(["#d0f0e0", "#ffe4b5", "#e6e6fa", "#c8d6e5"]):
+        # Configure visual tags - support arbitrary depths
+        colors = ["#d0f0e0", "#ffe4b5", "#e6e6fa", "#c8d6e5", "#f5f5dc", "#e0ffff", "#ffe4e1", "#f0f8ff"]
+        for i in range(20):  # Support up to 20 levels
+            color = colors[i % len(colors)]
             self.fta_tree.tag_configure(f"level{i}", background=color)
         
         base_font = tkfont.nametofont("TkDefaultFont")
@@ -287,8 +292,8 @@ class FTAEditorUI:
         
         tk.Button(quick_actions_frame, text="Analyze FTA", 
                  command=self._ai_quick_analysis, bg="#d4edda").pack(side=tk.LEFT, padx=2)
-        tk.Button(quick_actions_frame, text="Suggest Root Causes", 
-                 command=self._ai_suggest_root_causes, bg="#d4edda").pack(side=tk.LEFT, padx=2)
+        tk.Button(quick_actions_frame, text="Update FTA", 
+                 command=self._ai_update_fta, bg="#d4edda").pack(side=tk.LEFT, padx=2)
         tk.Button(quick_actions_frame, text="Clear Chat", 
                  command=self._clear_chat, bg="#f8d7da").pack(side=tk.RIGHT, padx=2)
         
@@ -321,7 +326,7 @@ class FTAEditorUI:
         dialog.title("AI Settings")
         dialog.transient(self.root)
         dialog.grab_set()
-        dialog.geometry("500x350")
+        dialog.geometry("550x480")
         
         tk.Label(dialog, text="AI API Configuration", font=("Arial", 12, "bold")).pack(pady=10)
         
@@ -329,8 +334,16 @@ class FTAEditorUI:
         cred_manager = AICredentialManager()
         existing_creds, _ = cred_manager.load_credentials()
         
+        # Provider selection
+        tk.Label(dialog, text="AI Provider:").pack(anchor="w", padx=20, pady=(10, 0))
+        all_providers = AIProviderFactory.get_all_providers()
+        provider_names = list(all_providers.keys())
+        provider_combo = ttk.Combobox(dialog, values=provider_names, width=57, state="readonly")
+        provider_combo.pack(padx=20, pady=2)
+        provider_combo.set(existing_creds.get("provider", "OpenAI") if existing_creds else "OpenAI")
+        
         # API Key
-        tk.Label(dialog, text="API Key:").pack(anchor="w", padx=20)
+        tk.Label(dialog, text="API Key:").pack(anchor="w", padx=20, pady=(10, 0))
         api_key_entry = tk.Entry(dialog, width=60, show="*")
         api_key_entry.pack(padx=20, pady=2)
         if existing_creds:
@@ -347,39 +360,131 @@ class FTAEditorUI:
         tk.Label(dialog, text="API Endpoint:").pack(anchor="w", padx=20, pady=(10, 0))
         endpoint_entry = tk.Entry(dialog, width=60)
         endpoint_entry.pack(padx=20, pady=2)
-        endpoint_entry.insert(0, existing_creds.get("api_endpoint", "https://api.github.com") if existing_creds else "https://api.github.com")
         
-        # Model
-        tk.Label(dialog, text="Model:").pack(anchor="w", padx=20, pady=(10, 0))
-        model_combo = ttk.Combobox(dialog, values=["gpt-4o", "gpt-5 mini", "gpt-4.1", "Grok Code Fast 1"], width=57)
-        model_combo.pack(padx=20, pady=2)
-        model_combo.set(existing_creds.get("model", "gpt-4o") if existing_creds else "gpt-4o")
-        
-        # Status label
+        # Status label - MUST be defined before functions that use it
         status_label = tk.Label(dialog, text="", font=("Arial", 9))
         status_label.pack(pady=10)
         
+        # Model dropdown with refresh button
+        model_frame = tk.Frame(dialog)
+        model_frame.pack(padx=20, pady=2, fill="x")
+        model_combo = ttk.Combobox(model_frame, width=50)
+        model_combo.pack(side="left", fill="x", expand=True)
+        
+        def refresh_models():
+            """Fetch available models for the selected provider"""
+            selected_provider = provider_combo.get()
+            api_key = api_key_entry.get().strip()
+            
+            if not selected_provider:
+                status_label.config(text="Please select a provider first", fg="red")
+                return
+            
+            if not api_key:
+                status_label.config(text="Please enter an API key first", fg="red")
+                return
+            
+            provider = all_providers.get(selected_provider)
+            if not provider:
+                status_label.config(text="Provider not found", fg="red")
+                return
+            
+            status_label.config(text="Fetching available models...", fg="blue")
+            dialog.update()
+            
+            endpoint = endpoint_entry.get().strip()
+            available_models, fetch_error = provider.get_available_models(api_key, endpoint)
+            
+            if fetch_error:
+                status_label.config(text=f"Note: {fetch_error}", fg="orange")
+            else:
+                status_label.config(text="Models loaded successfully", fg="green")
+            
+            model_combo['values'] = available_models
+            if available_models:
+                model_combo.set(available_models[0])
+        
+        refresh_btn = tk.Button(model_frame, text="↻", command=refresh_models, width=3)
+        refresh_btn.pack(side="right", padx=(5, 0))
+        
+        tk.Label(dialog, text="Model:").pack(anchor="w", padx=20, pady=(10, 0))
+        
+        # Function to update endpoint and models when provider changes
+        def update_provider_options(*args):
+            selected_provider = provider_combo.get()
+            provider = all_providers.get(selected_provider)
+            if provider:
+                endpoint_entry.delete(0, tk.END)
+                endpoint_entry.insert(0, provider.get_default_endpoint())
+                
+                api_key = api_key_entry.get().strip()
+                endpoint = provider.get_default_endpoint()
+                
+                # Try to fetch available models dynamically
+                if api_key:
+                    status_label.config(text="Fetching available models...", fg="blue")
+                    dialog.update()
+                    
+                    available_models, fetch_error = provider.get_available_models(api_key, endpoint)
+                    
+                    if fetch_error:
+                        status_label.config(text=f"Using default models: {fetch_error}", fg="orange")
+                    else:
+                        status_label.config(text="", fg="black")
+                    
+                    model_combo['values'] = available_models
+                    if available_models:
+                        model_combo.set(available_models[0])
+                else:
+                    # No API key yet, use defaults
+                    model_options = provider.get_default_models()
+                    model_combo['values'] = model_options
+                    if model_options:
+                        model_combo.set(model_options[0])
+        
+        # Set initial values and bind change event
+        provider_combo.bind('<<ComboboxSelected>>', update_provider_options)
+        update_provider_options()
+        
+        # Set existing values if available
+        if existing_creds:
+            endpoint_entry.insert(0, existing_creds.get("api_endpoint", ""))
+            model_combo.set(existing_creds.get("model", ""))
+        
         def test_and_save():
+            provider_name = provider_combo.get().strip()
             api_key = api_key_entry.get().strip()
             endpoint = endpoint_entry.get().strip()
             model = model_combo.get().strip()
+            
+            if not provider_name:
+                status_label.config(text="Please select an AI provider", fg="red")
+                return
             
             if not api_key:
                 status_label.config(text="Please enter an API key", fg="red")
                 return
             
+            if not endpoint:
+                status_label.config(text="Please enter an API endpoint", fg="red")
+                return
+            
+            if not model:
+                status_label.config(text="Please select a model", fg="red")
+                return
+            
             status_label.config(text="Testing connection...", fg="blue")
             dialog.update()
             
-            success, message = test_connection(api_key, endpoint, model)
+            success, message = test_connection(api_key, endpoint, model, provider_name)
             
             if success:
                 # Save credentials
-                save_success, save_error = self.ai_agent.configure(api_key, endpoint, model)
+                save_success, save_error = self.ai_agent.configure(api_key, endpoint, model, provider_name)
                 if save_success:
                     status_label.config(text="✓ Configuration saved successfully!", fg="green")
                     self._update_ai_status()
-                    self._add_chat_message("system", "AI configured successfully! You can now ask questions about your FTA.")
+                    self._add_chat_message("system", f"✓ {provider_name} AI configured successfully! You can now ask questions about your FTA.")
                     dialog.after(1500, dialog.destroy)
                 else:
                     status_label.config(text=f"Save failed: {save_error}", fg="red")
@@ -604,24 +709,29 @@ class FTAEditorUI:
             if change.change_type == "add":
                 # Add a new node
                 parent_id = change.target_id or "root"
+
+                # Respect the AI-provided ID so grandchildren can target it
+                new_id = change.data.get("id") or f"{parent_id}_new"
+                if self.fta_tree.exists(new_id):
+                    self._add_chat_message("error", f"Node ID '{new_id}' already exists; skipping add.")
+                    return False
+                if not self.fta_tree.exists(parent_id):
+                    self._add_chat_message("error", f"Parent '{parent_id}' not found in tree; skipping add.")
+                    return False
                 
-                # Generate unique ID
-                existing_children = list(self.fta_tree.get_children(parent_id))
-                max_index = -1
-                for child_id in existing_children:
-                    if child_id.startswith(f"{parent_id}_"):
-                        try:
-                            index = int(child_id.split("_")[-1])
-                            max_index = max(max_index, index)
-                        except ValueError:
-                            continue
-                new_id = f"{parent_id}_{max_index + 1}"
+                # Use parent probability as default if AI doesn't specify one
+                default_prob = self._get_parent_probability(parent_id)
+                node_prob = change.data.get("probability")
+                if node_prob is None:
+                    node_prob = default_prob
+                else:
+                    node_prob = float(node_prob)
                 
                 new_node = {
                     "id": new_id,
                     "name": sanitize_name(change.data.get("name", "New Node")),
                     "type": change.data.get("type", "Event"),
-                    "probability": float(change.data.get("probability", 1.0)),
+                    "probability": node_prob,
                     "logicGate": change.data.get("logicGate", "OR"),
                     "notes": change.data.get("notes", change.description),
                     "links": [],
@@ -631,7 +741,7 @@ class FTAEditorUI:
                 self.core.add_node_to_data(parent_id, new_node)
                 
                 depth = self._get_depth(parent_id)
-                tag = f"level{min(depth+1, 3)}"
+                tag = f"level{depth+1}"  # Support arbitrary depths
                 self.fta_tree.insert(parent_id, 'end', iid=new_id, 
                                     text=new_node["name"], tags=(tag,))
                 return True
@@ -671,7 +781,7 @@ class FTAEditorUI:
         return False
     
     def _ai_quick_analysis(self):
-        """Run quick AI analysis of current FTA"""
+        """Run quick AI analysis of current FTA - analysis only, no popup"""
         if not self.ai_agent.is_configured():
             self._add_chat_message("error", "AI not configured. Click the ⚙ button to set up your API key.")
             return
@@ -690,7 +800,8 @@ class FTAEditorUI:
                     self.core.mode,
                     self.core.title
                 )
-                self.root.after(0, lambda: self._handle_ai_response(response, changes))
+                # For quick analysis, show response text only (no popup)
+                self.root.after(0, lambda: self._add_chat_message("assistant", response))
             except Exception as e:
                 self.root.after(0, lambda: self._add_chat_message("error", str(e)))
             finally:
@@ -700,8 +811,8 @@ class FTAEditorUI:
         thread.daemon = True
         thread.start()
     
-    def _ai_suggest_root_causes(self):
-        """Get AI suggestions for root causes"""
+    def _ai_update_fta(self):
+        """Update FTA with AI suggestions by replacing the entire JSON (after validation)."""
         if not self.ai_agent.is_configured():
             self._add_chat_message("error", "AI not configured. Click the ⚙ button to set up your API key.")
             return
@@ -718,22 +829,88 @@ class FTAEditorUI:
             node_name = node.get("name", node_id) if node else node_id
         
         if node_id:
-            self._add_chat_message("user", f"Suggest root causes for: {node_name}")
+            self._add_chat_message("user", f"Update FTA with suggestions for: {node_name}")
         else:
-            self._add_chat_message("user", "Suggest additional root causes for this FTA.")
+            self._add_chat_message("user", "Update FTA with your suggestions. Ensure the original json structure is preserved.")
         
         self.ai_processing = True
-        self._add_chat_message("system", "Generating suggestions...")
+        self._add_chat_message("system", "Generating full updated JSON...")
         
+        def _find_node_in_dict(root_node: dict, nid: str):
+            if not isinstance(root_node, dict):
+                return None
+            if root_node.get("id") == nid:
+                return root_node
+            for child in root_node.get("children", []) or []:
+                res = _find_node_in_dict(child, nid)
+                if res is not None:
+                    return res
+            return None
+
         def process():
             try:
-                response, changes = self.ai_agent.suggest_root_causes(
-                    self.core.get_data(),
-                    node_id,
-                    self.core.mode,
-                    self.core.title
+                assistant_text, updated = self.ai_agent.generate_full_fta_update(
+                    self.core.get_data(), self.core.mode, self.core.title
                 )
-                self.root.after(0, lambda: self._handle_ai_response(response, changes))
+                def finalize():
+                    # Show assistant rationale
+                    self._add_chat_message("assistant", assistant_text)
+                    if updated is None:
+                        # Provide detailed parse error context
+                        excerpt = assistant_text.strip().replace("\n", " ")[:500]
+                        err_msg = "AI did not return valid JSON. No changes applied."
+                        self._add_chat_message("error", err_msg)
+                        self._add_chat_message("system", f"First 500 chars of AI output: {excerpt}")
+                        print("AI JSON Parse Error - output excerpt:\n" + excerpt, file=sys.stderr)
+                        return
+                    ok, err = self.ai_agent.verify_updated_fta_json(updated)
+                    if not ok:
+                        # Try to extract node id from error to show failing section
+                        nid = None
+                        m = re.search(r"node\s+([A-Za-z0-9_]+)", err or "")
+                        if m:
+                            nid = m.group(1)
+                        section_snippet = None
+                        if nid:
+                            failing = _find_node_in_dict(updated, nid)
+                            if failing is not None:
+                                try:
+                                    section_snippet = json.dumps(failing, indent=2)
+                                except Exception:
+                                    section_snippet = str(failing)
+                        # Root-level diagnostics if missing root fields
+                        if not section_snippet and isinstance(updated, dict):
+                            try:
+                                keys = list(updated.keys())
+                                section_snippet = "Top-level keys: " + ", ".join(keys)
+                            except Exception:
+                                section_snippet = None
+
+                        self._add_chat_message("error", f"Rejected updated JSON: {err}")
+                        if section_snippet:
+                            self._add_chat_message("system", f"Problematic section:\n{section_snippet[:1500]}")
+                            print("AI JSON Validation Error: " + err + "\nProblematic section:\n" + section_snippet, file=sys.stderr)
+                        else:
+                            print("AI JSON Validation Error: " + (err or "unknown"), file=sys.stderr)
+                        return
+                    # Apply full replacement safely
+                    self.core.set_data(updated)
+                    # Rebuild entire tree view
+                    for child_id in list(self.fta_tree.get_children('root')):
+                        self.fta_tree.delete(child_id)
+                    for child in updated.get('children', []):
+                        tag = f"level1"
+                        cid = child.get('id')
+                        cname = sanitize_name(child.get('name', cid))
+                        self.fta_tree.insert('root', 'end', iid=cid, text=cname, tags=(tag,))
+                        self._rebuild_subtree(cid, child)
+                    # Refresh visuals
+                    self.core.recalculate_probabilities()
+                    self._apply_zero_marks()
+                    self.update_preview()
+                    self._mark_as_changed()
+                    self._add_chat_message("system", "FTA updated from AI-generated JSON.")
+                self.root.after(0, finalize)
             except Exception as e:
                 self.root.after(0, lambda: self._add_chat_message("error", str(e)))
             finally:
@@ -742,6 +919,38 @@ class FTAEditorUI:
         thread = threading.Thread(target=process)
         thread.daemon = True
         thread.start()
+    
+    def _apply_all_changes(self, response: str, changes: list):
+        """Apply all suggested changes automatically without showing a popup"""
+        # Add AI response to chat
+        self._add_chat_message("assistant", response)
+        
+        if not changes:
+            self._add_chat_message("system", "No changes suggested.")
+            return
+        
+        # Apply all changes
+        applied = 0
+        failed = 0
+        for change in changes:
+            if self._apply_change(change):
+                applied += 1
+            else:
+                failed += 1
+        
+        # Refresh tree and preview after all changes
+        if applied > 0:
+            self.core.recalculate_probabilities()
+            self._refresh_tree('root', self.core.get_data().get("children", []))
+            self._apply_zero_marks()
+            self.update_preview()
+            self._mark_as_changed()
+        
+        # Report results
+        msg = f"Applied {applied} change(s) to the FTA"
+        if failed > 0:
+            msg += f" ({failed} failed)"
+        self._add_chat_message("system", msg + ".")
     
     def _clear_chat(self):
         """Clear chat history"""
@@ -1290,7 +1499,7 @@ class FTAEditorUI:
                 # Rebuild from data
                 for i, child in enumerate(parent_node.get("children", [])):
                     depth = self._get_depth(parent_id)
-                    tag = f"level{min(depth+1, 3)}"
+                    tag = f"level{depth+1}"  # Support arbitrary depths
                     child_id = child.get("id")
                     child_name = sanitize_name(child.get("name", child_id))
                     self.fta_tree.insert(parent_id, 'end', iid=child_id, text=child_name, tags=(tag,))
@@ -1305,7 +1514,7 @@ class FTAEditorUI:
         """Recursively rebuild subtree from data"""
         for child in parent_node.get("children", []):
             depth = self._get_depth(parent_id)
-            tag = f"level{min(depth+1, 3)}"
+            tag = f"level{depth+1}"  # Support arbitrary depths
             child_id = child.get("id")
             child_name = sanitize_name(child.get("name", child_id))
             self.fta_tree.insert(parent_id, 'end', iid=child_id, text=child_name, tags=(tag,))
@@ -1408,6 +1617,15 @@ class FTAEditorUI:
             node_id = self.fta_tree.parent(node_id)
             depth += 1
         return depth
+    
+    def _get_parent_probability(self, parent_id: str) -> float:
+        """Get the parent node's probability for use as default for new children"""
+        if parent_id == 'root':
+            return 0.5  # Default for root's children
+        parent = self.core.find_node_by_id(parent_id)
+        if parent:
+            return float(parent.get('probability', 0.5))
+        return 0.5
     
     # ========== File Operations ==========
     

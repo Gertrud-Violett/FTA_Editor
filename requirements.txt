@@ -24,8 +24,10 @@ openpyxl>=3.1.0
 Pillow>=10.0.0
 
 # AI Agent functionality
-# For OpenAI/GitHub Copilot API integration
+# Supports multiple AI platforms: OpenAI, Anthropic Claude, Google Gemini
 openai>=1.0.0
+anthropic>=0.7.0
+google-generativeai>=0.3.0
 
 # Testing (optional)
 pytest>=7.0.0

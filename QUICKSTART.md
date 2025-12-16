@@ -2,7 +2,7 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 1.5.0 (Updated: December 16, 2025)
+**Version**: 1.5.1 (Updated: December 16, 2025)
 
 ## 1. Install
 
@@ -37,6 +37,10 @@ python src/FTA_Editor_UI.py
 5. **View diagram**: Logic gates displayed inside node boxes
 6. **Export**: Save as JSON/Excel/XML or render diagram
 
+### AI Quick Actions (optional)
+- **Analyze FTA**: Reads the current tree and posts analysis/suggestions to chat only (no changes applied).
+- **Update FTA**: Generates a complete, validated JSON from the AI and replaces the entire FTA in one step. Existing nodes are preserved; only additions are applied.
+
 ## AI Assistant Setup (Optional)
 
 The AI assistant can analyze your FTA and suggest improvements.
@@ -50,13 +54,12 @@ Your API key is stored locally at `~/.fta_editor/ai_credentials.json`, never in 
 
 See [README.md](README.md#ai-assistant-setup) for detailed setup instructions.
 
-## What's New in v1.5.0
+## What's New in v1.5.1
 
-- ✅ **AI Assistant**: Integrated chat interface for FTA analysis
-- ✅ **Smart Suggestions**: AI can propose new nodes and modifications
-- ✅ **Change Confirmation**: Review and approve AI suggestions before applying
-- ✅ **Secure Storage**: API credentials stored locally, outside repository
-- ✅ **OpenAI Compatible**: Works with OpenAI, Azure OpenAI, and compatible APIs
+- ✅ **Update FTA button**: AI returns a complete JSON which is validated and then applied, enabling deep (multi-level) additions in one shot.
+- ✅ **Robust JSON validation**: Invalid outputs are rejected with precise error logs and the problematic section highlighted.
+- ✅ **Deeper trees**: UI supports arbitrary nesting depth with adaptive coloring.
+- ✅ **Multi-provider AI**: OpenAI, Claude, and Gemini supported with dynamic model lists.
 
 ## Keyboard Shortcuts
 
