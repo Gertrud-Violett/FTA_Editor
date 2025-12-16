@@ -1,4 +1,5 @@
 # FTA Editor Python Dependencies
+# Version 1.5.0 - Desktop Application with AI Agent Support
 
 # Core Python packages (most are built-in, listed for reference)
 # - tkinter: GUI framework (built-in with Python, installed via system package python3-tk)
@@ -12,6 +13,7 @@
 # - pathlib: Object-oriented filesystem paths (built-in)
 # - argparse: Command-line argument parsing (built-in)
 # - shutil: High-level file operations (built-in)
+# - threading: Thread-based parallelism (built-in)
 
 # Third-party packages that need to be installed
 # Excel export functionality
@@ -21,11 +23,9 @@ openpyxl>=3.1.0
 # Required for loading and displaying PNG diagrams in the GUI
 Pillow>=10.0.0
 
-# Web application dependencies
-Flask>=3.0.0
-Flask-Session>=0.5.0
-gunicorn>=21.2.0
-requests>=2.31.0
+# AI Agent functionality
+# For OpenAI/GitHub Copilot API integration
+openai>=1.0.0
 
 # Testing (optional)
 pytest>=7.0.0

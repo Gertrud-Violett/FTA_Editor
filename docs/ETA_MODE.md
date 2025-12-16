@@ -1,8 +1,10 @@
 # ETA (Event Tree Analysis) Mode Documentation
 
+**Version**: 1.5.0 | **Updated**: December 16, 2025
+
 ## Overview
 
-The FTA Editor now supports both **FTA (Fault Tree Analysis)** and **ETA (Event Tree Analysis)** modes.
+The FTA Editor supports both **FTA (Fault Tree Analysis)** and **ETA (Event Tree Analysis)** modes, with AI-powered analysis assistance in both modes.
 
 ## Mode Differences
 

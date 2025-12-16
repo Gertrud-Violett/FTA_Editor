@@ -1,12 +1,15 @@
 # FTA/ETA Editor - User Guide
 
-Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor.
+**Version**: 1.5.0 | **Updated**: December 16, 2025
+
+Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor with AI Assistant.
 
 ## Table of Contents
 
 - [Getting Started](#getting-started)
 - [Understanding FTA vs ETA](#understanding-fta-vs-eta)
 - [User Interface](#user-interface)
+- [AI Assistant](#ai-assistant)
 - [Working with Nodes](#working-with-nodes)
 - [Probability Calculations](#probability-calculations)
 - [Export Options](#export-options)
@@ -31,9 +34,10 @@ python src/FTA_Editor_UI.py
 When you first launch the application, you'll see:
 1. **Top Bar** - Mode selector, Title, and Date fields
 2. **Tree View** - Left panel showing your analysis tree
-3. **Diagram Preview** - Right panel with live visualization
-4. **Node Details** - Bottom panel showing selected node information
-5. **Action Buttons** - Bottom toolbar for all operations
+3. **Diagram Preview** - Center panel with live visualization
+4. **AI Assistant** - Right panel for AI-powered analysis (new in v1.5)
+5. **Node Details** - Bottom panel showing selected node information
+6. **Action Buttons** - Bottom toolbar for all operations
 
 ## Understanding FTA vs ETA
 
@@ -130,6 +134,49 @@ Shows selected node information:
 - Logic Gate (AND/OR)
 - Notes
 - Links to other nodes
+
+## AI Assistant
+
+The AI Assistant provides intelligent analysis and suggestions for your fault trees using OpenAI-compatible APIs.
+
+### Setup
+
+1. Click the **⚙ (Settings)** button in the AI Assistant panel
+2. Enter your API credentials:
+   - **API Key**: Your OpenAI or compatible API key
+   - **API Endpoint**: `https://api.openai.com/v1` (default) or your custom endpoint
+   - **Model**: Select gpt-4o, gpt-4o-mini, or other models
+3. Click **Test & Save** to verify and store credentials
+
+> **Security**: Credentials are stored locally at `~/.fta_editor/ai_credentials.json`, never in the repository.
+
+### Features
+
+**Quick Actions**:
+- **Analyze FTA**: Get a comprehensive analysis of your current tree
+- **Suggest Root Causes**: AI proposes additional failure modes or causes
+- **Clear Chat**: Reset conversation history
+
+**Free Chat**:
+Type any question in the input box and press Enter. Examples:
+- "What root causes might be missing from this failure mode?"
+- "Can you review the probabilities in this tree?"
+- "What are common causes of pump failures?"
+
+### Change Confirmation
+
+When the AI suggests modifications to your FTA:
+1. A confirmation dialog appears listing all proposed changes
+2. Review each change (add/edit/delete nodes)
+3. Select which changes to apply
+4. Click "Apply Selected" to make changes
+
+Changes are never applied automatically - you always have control.
+
+### Status Indicator
+
+- **● (Green)**: AI is configured and ready
+- **○ (Gray)**: AI not configured - click ⚙ to set up
 
 ## Working with Nodes
 
@@ -312,6 +359,18 @@ A: Ensure openpyxl is installed: `pip install openpyxl`
 
 **Q: Legacy JSON files don't load properly**
 A: Old format is supported, but defaults to FTA mode. Set mode manually after loading.
+
+**Q: AI Assistant shows "not configured"**
+A: Click the ⚙ button in the AI panel to enter your API credentials.
+
+**Q: AI connection test fails**
+A: Verify your API key is valid and has available credits. Check internet connection.
+
+**Q: AI responses are slow**
+A: Consider using a faster model like `gpt-4o-mini`. Check your API rate limits.
+
+**Q: AI suggestions don't apply correctly**
+A: Ensure you've reviewed and selected the changes in the confirmation dialog.
 
 ## Best Practices
 

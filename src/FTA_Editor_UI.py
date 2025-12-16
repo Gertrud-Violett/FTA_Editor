@@ -7,6 +7,7 @@ This module contains the UI components for the FTA Editor:
 - Tree visualization
 - Diagram preview
 - Node editing dialogs
+- AI Agent chat interface
 """
 
 import tkinter as tk
@@ -17,8 +18,10 @@ import sys
 import tempfile
 from pathlib import Path
 import json
+import threading
 
 from FTA_Editor_core import FTACore, sanitize_name
+from AI_agent_handler import AIAgentHandler, AICredentialManager, test_connection, AIProposedChange
 
 
 class FTAEditorUI:
@@ -31,6 +34,10 @@ class FTAEditorUI:
         
         # Initialize core logic
         self.core = FTACore()
+        
+        # Initialize AI agent
+        self.ai_agent = AIAgentHandler()
+        self.ai_processing = False  # Track if AI is processing
         
         # UI state
         self.preview_image = None
@@ -56,8 +63,16 @@ class FTAEditorUI:
         # Build top bar with metadata fields
         self._build_top_bar()
         
+        # Main horizontal paned window (left: tree+diagram+details, right: AI chat)
+        main_horizontal_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        main_horizontal_paned.pack(fill=tk.BOTH, expand=True)
+        
+        # Left section container
+        left_container = tk.Frame(main_horizontal_paned)
+        main_horizontal_paned.add(left_container, stretch="always", minsize=600)
+        
         # Main vertical paned window (top: tree+diagram, bottom: details+buttons)
-        main_vertical_paned = tk.PanedWindow(self.root, orient=tk.VERTICAL)
+        main_vertical_paned = tk.PanedWindow(left_container, orient=tk.VERTICAL)
         main_vertical_paned.pack(fill=tk.BOTH, expand=True)
         
         # Top section: horizontal paned (tree | diagram)
@@ -72,6 +87,9 @@ class FTAEditorUI:
         
         # Build bottom panel (details)
         self._build_details_panel(main_vertical_paned)
+        
+        # Build AI chat panel (right side)
+        self._build_ai_chat_panel(main_horizontal_paned)
         
         # Build button bar
         self._build_button_bar()
@@ -218,6 +236,521 @@ class FTAEditorUI:
         self.details_text = tk.Text(self.details_frame, height=8, width=80)
         self.details_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
     
+    def _build_ai_chat_panel(self, parent):
+        """Build the AI chat panel on the right side"""
+        chat_frame = tk.Frame(parent, relief=tk.SUNKEN, borderwidth=2)
+        parent.add(chat_frame, minsize=300, stretch="never")
+        
+        # Title and settings
+        title_frame = tk.Frame(chat_frame, bg="#e6f3ff")
+        title_frame.pack(fill=tk.X, padx=2, pady=2)
+        
+        tk.Label(title_frame, text="AI Assistant", font=("Arial", 12, "bold"), 
+                bg="#e6f3ff").pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Settings button
+        settings_btn = tk.Button(title_frame, text="⚙", font=("Arial", 10),
+                                command=self._show_ai_settings, width=3)
+        settings_btn.pack(side=tk.RIGHT, padx=5, pady=2)
+        
+        # Status indicator
+        self.ai_status_label = tk.Label(title_frame, text="●", font=("Arial", 10),
+                                        fg="gray", bg="#e6f3ff")
+        self.ai_status_label.pack(side=tk.RIGHT, padx=2)
+        self._update_ai_status()
+        
+        # Chat history display
+        chat_history_frame = tk.Frame(chat_frame)
+        chat_history_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Scrollbar for chat history
+        chat_scroll = tk.Scrollbar(chat_history_frame)
+        chat_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.chat_display = tk.Text(chat_history_frame, wrap=tk.WORD, 
+                                    state=tk.DISABLED, bg="#fafafa",
+                                    yscrollcommand=chat_scroll.set)
+        self.chat_display.pack(fill=tk.BOTH, expand=True)
+        chat_scroll.config(command=self.chat_display.yview)
+        
+        # Configure text tags for styling
+        self.chat_display.tag_configure("user", foreground="#0066cc", font=("Arial", 10, "bold"))
+        self.chat_display.tag_configure("assistant", foreground="#006600", font=("Arial", 10))
+        self.chat_display.tag_configure("system", foreground="#666666", font=("Arial", 9, "italic"))
+        self.chat_display.tag_configure("error", foreground="#cc0000", font=("Arial", 10))
+        self.chat_display.tag_configure("suggestion", foreground="#996600", 
+                                        font=("Arial", 10, "bold"), background="#fff3cd")
+        
+        # Quick action buttons
+        quick_actions_frame = tk.Frame(chat_frame)
+        quick_actions_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        tk.Button(quick_actions_frame, text="Analyze FTA", 
+                 command=self._ai_quick_analysis, bg="#d4edda").pack(side=tk.LEFT, padx=2)
+        tk.Button(quick_actions_frame, text="Suggest Root Causes", 
+                 command=self._ai_suggest_root_causes, bg="#d4edda").pack(side=tk.LEFT, padx=2)
+        tk.Button(quick_actions_frame, text="Clear Chat", 
+                 command=self._clear_chat, bg="#f8d7da").pack(side=tk.RIGHT, padx=2)
+        
+        # Message input area
+        input_frame = tk.Frame(chat_frame)
+        input_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.chat_input = tk.Text(input_frame, height=3, wrap=tk.WORD)
+        self.chat_input.pack(fill=tk.X, side=tk.LEFT, expand=True, padx=(0, 5))
+        self.chat_input.bind("<Return>", self._on_chat_enter)
+        self.chat_input.bind("<Shift-Return>", lambda e: None)  # Allow Shift+Enter for newline
+        
+        send_btn = tk.Button(input_frame, text="Send", command=self._send_chat_message,
+                            bg="#007bff", fg="white", width=8)
+        send_btn.pack(side=tk.RIGHT)
+        
+        # Add welcome message
+        self._add_chat_message("system", "Welcome to AI Assistant! Configure your API key in Settings (⚙) to get started. You can ask questions about your FTA or request suggestions.")
+    
+    def _update_ai_status(self):
+        """Update the AI status indicator"""
+        if self.ai_agent.is_configured():
+            self.ai_status_label.config(fg="green", text="●")
+        else:
+            self.ai_status_label.config(fg="gray", text="○")
+    
+    def _show_ai_settings(self):
+        """Show AI settings dialog"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("AI Settings")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.geometry("500x350")
+        
+        tk.Label(dialog, text="AI API Configuration", font=("Arial", 12, "bold")).pack(pady=10)
+        
+        # Load existing credentials if available
+        cred_manager = AICredentialManager()
+        existing_creds, _ = cred_manager.load_credentials()
+        
+        # API Key
+        tk.Label(dialog, text="API Key:").pack(anchor="w", padx=20)
+        api_key_entry = tk.Entry(dialog, width=60, show="*")
+        api_key_entry.pack(padx=20, pady=2)
+        if existing_creds:
+            api_key_entry.insert(0, existing_creds.get("api_key", ""))
+        
+        # Show/Hide API key checkbox
+        show_key_var = tk.BooleanVar(value=False)
+        def toggle_show_key():
+            api_key_entry.config(show="" if show_key_var.get() else "*")
+        tk.Checkbutton(dialog, text="Show API Key", variable=show_key_var, 
+                      command=toggle_show_key).pack(anchor="w", padx=20)
+        
+        # API Endpoint
+        tk.Label(dialog, text="API Endpoint:").pack(anchor="w", padx=20, pady=(10, 0))
+        endpoint_entry = tk.Entry(dialog, width=60)
+        endpoint_entry.pack(padx=20, pady=2)
+        endpoint_entry.insert(0, existing_creds.get("api_endpoint", "https://api.github.com") if existing_creds else "https://api.github.com")
+        
+        # Model
+        tk.Label(dialog, text="Model:").pack(anchor="w", padx=20, pady=(10, 0))
+        model_combo = ttk.Combobox(dialog, values=["gpt-4o", "gpt-5 mini", "gpt-4.1", "Grok Code Fast 1"], width=57)
+        model_combo.pack(padx=20, pady=2)
+        model_combo.set(existing_creds.get("model", "gpt-4o") if existing_creds else "gpt-4o")
+        
+        # Status label
+        status_label = tk.Label(dialog, text="", font=("Arial", 9))
+        status_label.pack(pady=10)
+        
+        def test_and_save():
+            api_key = api_key_entry.get().strip()
+            endpoint = endpoint_entry.get().strip()
+            model = model_combo.get().strip()
+            
+            if not api_key:
+                status_label.config(text="Please enter an API key", fg="red")
+                return
+            
+            status_label.config(text="Testing connection...", fg="blue")
+            dialog.update()
+            
+            success, message = test_connection(api_key, endpoint, model)
+            
+            if success:
+                # Save credentials
+                save_success, save_error = self.ai_agent.configure(api_key, endpoint, model)
+                if save_success:
+                    status_label.config(text="✓ Configuration saved successfully!", fg="green")
+                    self._update_ai_status()
+                    self._add_chat_message("system", "AI configured successfully! You can now ask questions about your FTA.")
+                    dialog.after(1500, dialog.destroy)
+                else:
+                    status_label.config(text=f"Save failed: {save_error}", fg="red")
+            else:
+                status_label.config(text=f"✗ {message}", fg="red")
+        
+        def clear_credentials():
+            success, error = cred_manager.delete_credentials()
+            if success:
+                api_key_entry.delete(0, tk.END)
+                status_label.config(text="Credentials cleared", fg="blue")
+                self._update_ai_status()
+            else:
+                status_label.config(text=f"Error: {error}", fg="red")
+        
+        # Buttons
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=20)
+        
+        tk.Button(btn_frame, text="Test & Save", command=test_and_save, 
+                 bg="#28a745", fg="white", width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Clear", command=clear_credentials,
+                 bg="#dc3545", fg="white", width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=dialog.destroy,
+                 width=15).pack(side=tk.LEFT, padx=5)
+        
+        # Info text
+        info_text = ("Note: Your API key is stored locally on your computer in:\n"
+                    f"{cred_manager.CREDENTIALS_FILE}\n"
+                    "It is never uploaded or shared.")
+        tk.Label(dialog, text=info_text, font=("Arial", 8), fg="gray").pack(pady=5)
+    
+    def _add_chat_message(self, role: str, message: str):
+        """Add a message to the chat display"""
+        self.chat_display.config(state=tk.NORMAL)
+        
+        # Add timestamp and role prefix
+        if role == "user":
+            prefix = "\n🧑 You:\n"
+            tag = "user"
+        elif role == "assistant":
+            prefix = "\n🤖 AI:\n"
+            tag = "assistant"
+        elif role == "error":
+            prefix = "\n❌ Error:\n"
+            tag = "error"
+        else:
+            prefix = "\nℹ️ "
+            tag = "system"
+        
+        self.chat_display.insert(tk.END, prefix, tag)
+        self.chat_display.insert(tk.END, message + "\n", tag)
+        
+        self.chat_display.config(state=tk.DISABLED)
+        self.chat_display.see(tk.END)
+    
+    def _on_chat_enter(self, event):
+        """Handle Enter key in chat input"""
+        if not event.state & 0x1:  # Not Shift+Enter
+            self._send_chat_message()
+            return "break"
+        return None
+    
+    def _send_chat_message(self):
+        """Send a chat message to the AI"""
+        if self.ai_processing:
+            return
+        
+        message = self.chat_input.get("1.0", tk.END).strip()
+        if not message:
+            return
+        
+        if not self.ai_agent.is_configured():
+            self._add_chat_message("error", "AI not configured. Click the ⚙ button to set up your API key.")
+            return
+        
+        # Clear input
+        self.chat_input.delete("1.0", tk.END)
+        
+        # Add user message to display
+        self._add_chat_message("user", message)
+        
+        # Update FTA context
+        self.ai_agent.set_fta_context(
+            self.core.get_data(),
+            self.core.mode,
+            self.core.title
+        )
+        
+        # Process in thread to avoid blocking UI
+        self.ai_processing = True
+        self._add_chat_message("system", "Thinking...")
+        
+        def process():
+            try:
+                response, changes = self.ai_agent.send_message(message)
+                self.root.after(0, lambda: self._handle_ai_response(response, changes))
+            except Exception as e:
+                self.root.after(0, lambda: self._add_chat_message("error", str(e)))
+            finally:
+                self.ai_processing = False
+        
+        thread = threading.Thread(target=process)
+        thread.daemon = True
+        thread.start()
+    
+    def _handle_ai_response(self, response: str, changes: list):
+        """Handle AI response in main thread"""
+        # Remove "Thinking..." message
+        self.chat_display.config(state=tk.NORMAL)
+        
+        # Find and remove the last "Thinking..." line
+        content = self.chat_display.get("1.0", tk.END)
+        lines = content.split("\n")
+        new_lines = []
+        skip_next = False
+        for i, line in enumerate(lines):
+            if "Thinking..." in line:
+                # Skip this line and the ℹ️ prefix before it
+                if new_lines and new_lines[-1].strip() == "ℹ️":
+                    new_lines.pop()
+                continue
+            new_lines.append(line)
+        
+        self.chat_display.delete("1.0", tk.END)
+        self.chat_display.insert("1.0", "\n".join(new_lines))
+        self.chat_display.config(state=tk.DISABLED)
+        
+        # Add AI response
+        self._add_chat_message("assistant", response)
+        
+        # If there are proposed changes, show confirmation dialog
+        if changes:
+            self._show_change_proposals(changes)
+    
+    def _show_change_proposals(self, changes: list):
+        """Show dialog for proposed FTA changes"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("AI Suggested Changes")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.geometry("600x400")
+        
+        tk.Label(dialog, text="The AI has suggested the following changes:", 
+                font=("Arial", 11, "bold")).pack(pady=10)
+        
+        # List of changes
+        changes_frame = tk.Frame(dialog)
+        changes_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        scroll = tk.Scrollbar(changes_frame)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        changes_list = tk.Listbox(changes_frame, height=10, yscrollcommand=scroll.set,
+                                  selectmode=tk.MULTIPLE)
+        changes_list.pack(fill=tk.BOTH, expand=True)
+        scroll.config(command=changes_list.yview)
+        
+        for i, change in enumerate(changes):
+            change_text = f"[{change.change_type.upper()}] {change.description[:80]}"
+            if change.target_id:
+                change_text += f" (Target: {change.target_id})"
+            changes_list.insert(tk.END, change_text)
+            changes_list.selection_set(i)  # Select all by default
+        
+        # Details text
+        tk.Label(dialog, text="Change Details:", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+        details_text = tk.Text(dialog, height=6, wrap=tk.WORD)
+        details_text.pack(fill=tk.X, padx=10, pady=5)
+        
+        def show_details(event):
+            selection = changes_list.curselection()
+            if selection:
+                idx = selection[0]
+                change = changes[idx]
+                details_text.delete("1.0", tk.END)
+                details_text.insert("1.0", f"Type: {change.change_type}\n")
+                details_text.insert(tk.END, f"Target: {change.target_id}\n")
+                details_text.insert(tk.END, f"Description: {change.description}\n")
+                if change.data:
+                    details_text.insert(tk.END, f"Data: {json.dumps(change.data, indent=2)}")
+        
+        changes_list.bind("<<ListboxSelect>>", show_details)
+        
+        def apply_selected():
+            selected = changes_list.curselection()
+            if not selected:
+                messagebox.showinfo("No Selection", "Please select changes to apply.")
+                return
+            
+            applied = 0
+            for idx in selected:
+                change = changes[idx]
+                if self._apply_change(change):
+                    applied += 1
+            
+            if applied > 0:
+                self.core.recalculate_probabilities()
+                self._refresh_tree('root', self.core.get_data().get("children", []))
+                self._apply_zero_marks()
+                self.update_preview()
+                self._mark_as_changed()
+                self._add_chat_message("system", f"Applied {applied} change(s) to the FTA.")
+            
+            dialog.destroy()
+        
+        # Buttons
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        
+        tk.Button(btn_frame, text="Apply Selected", command=apply_selected,
+                 bg="#28a745", fg="white", width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=dialog.destroy,
+                 width=15).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(dialog, text="⚠️ Please review changes carefully before applying.", 
+                font=("Arial", 9), fg="orange").pack(pady=5)
+    
+    def _apply_change(self, change: 'AIProposedChange') -> bool:
+        """Apply a single proposed change to the FTA"""
+        try:
+            if change.change_type == "add":
+                # Add a new node
+                parent_id = change.target_id or "root"
+                
+                # Generate unique ID
+                existing_children = list(self.fta_tree.get_children(parent_id))
+                max_index = -1
+                for child_id in existing_children:
+                    if child_id.startswith(f"{parent_id}_"):
+                        try:
+                            index = int(child_id.split("_")[-1])
+                            max_index = max(max_index, index)
+                        except ValueError:
+                            continue
+                new_id = f"{parent_id}_{max_index + 1}"
+                
+                new_node = {
+                    "id": new_id,
+                    "name": sanitize_name(change.data.get("name", "New Node")),
+                    "type": change.data.get("type", "Event"),
+                    "probability": float(change.data.get("probability", 1.0)),
+                    "logicGate": change.data.get("logicGate", "OR"),
+                    "notes": change.data.get("notes", change.description),
+                    "links": [],
+                    "children": []
+                }
+                
+                self.core.add_node_to_data(parent_id, new_node)
+                
+                depth = self._get_depth(parent_id)
+                tag = f"level{min(depth+1, 3)}"
+                self.fta_tree.insert(parent_id, 'end', iid=new_id, 
+                                    text=new_node["name"], tags=(tag,))
+                return True
+                
+            elif change.change_type == "edit":
+                # Edit existing node
+                node = self.core.find_node_by_id(change.target_id)
+                if node:
+                    updates = {}
+                    if "name" in change.data:
+                        updates["name"] = sanitize_name(change.data["name"])
+                    if "probability" in change.data:
+                        updates["probability"] = float(change.data["probability"])
+                    if "type" in change.data:
+                        updates["type"] = change.data["type"]
+                    if "logicGate" in change.data:
+                        updates["logicGate"] = change.data["logicGate"]
+                    if "notes" in change.data:
+                        updates["notes"] = change.data["notes"]
+                    
+                    if updates:
+                        self.core.update_node(change.target_id, updates)
+                        if "name" in updates:
+                            self.fta_tree.item(change.target_id, text=updates["name"])
+                        return True
+                        
+            elif change.change_type == "delete":
+                # Delete node
+                if change.target_id and change.target_id != "root":
+                    self.fta_tree.delete(change.target_id)
+                    self.core.delete_node_from_data(change.target_id)
+                    return True
+                    
+        except Exception as e:
+            self._add_chat_message("error", f"Failed to apply change: {e}")
+        
+        return False
+    
+    def _ai_quick_analysis(self):
+        """Run quick AI analysis of current FTA"""
+        if not self.ai_agent.is_configured():
+            self._add_chat_message("error", "AI not configured. Click the ⚙ button to set up your API key.")
+            return
+        
+        if self.ai_processing:
+            return
+        
+        self._add_chat_message("user", "Analyze this FTA and provide suggestions.")
+        self.ai_processing = True
+        self._add_chat_message("system", "Analyzing FTA...")
+        
+        def process():
+            try:
+                response, changes = self.ai_agent.get_quick_analysis(
+                    self.core.get_data(),
+                    self.core.mode,
+                    self.core.title
+                )
+                self.root.after(0, lambda: self._handle_ai_response(response, changes))
+            except Exception as e:
+                self.root.after(0, lambda: self._add_chat_message("error", str(e)))
+            finally:
+                self.ai_processing = False
+        
+        thread = threading.Thread(target=process)
+        thread.daemon = True
+        thread.start()
+    
+    def _ai_suggest_root_causes(self):
+        """Get AI suggestions for root causes"""
+        if not self.ai_agent.is_configured():
+            self._add_chat_message("error", "AI not configured. Click the ⚙ button to set up your API key.")
+            return
+        
+        if self.ai_processing:
+            return
+        
+        # Check if a node is selected
+        selected = self.fta_tree.selection()
+        node_id = selected[0] if selected else None
+        node_name = ""
+        if node_id:
+            node = self.core.find_node_by_id(node_id)
+            node_name = node.get("name", node_id) if node else node_id
+        
+        if node_id:
+            self._add_chat_message("user", f"Suggest root causes for: {node_name}")
+        else:
+            self._add_chat_message("user", "Suggest additional root causes for this FTA.")
+        
+        self.ai_processing = True
+        self._add_chat_message("system", "Generating suggestions...")
+        
+        def process():
+            try:
+                response, changes = self.ai_agent.suggest_root_causes(
+                    self.core.get_data(),
+                    node_id,
+                    self.core.mode,
+                    self.core.title
+                )
+                self.root.after(0, lambda: self._handle_ai_response(response, changes))
+            except Exception as e:
+                self.root.after(0, lambda: self._add_chat_message("error", str(e)))
+            finally:
+                self.ai_processing = False
+        
+        thread = threading.Thread(target=process)
+        thread.daemon = True
+        thread.start()
+    
+    def _clear_chat(self):
+        """Clear chat history"""
+        self.chat_display.config(state=tk.NORMAL)
+        self.chat_display.delete("1.0", tk.END)
+        self.chat_display.config(state=tk.DISABLED)
+        self.ai_agent.clear_conversation()
+        self._add_chat_message("system", "Chat cleared. Start a new conversation!")
+
     def _build_button_bar(self):
         """Build the button bar at the bottom"""
         button_frame = tk.Frame(self.root)

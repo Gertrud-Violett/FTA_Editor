@@ -1,25 +1,26 @@
 # FTA/ETA Editor Deployment Guide
 
-Version: 1.4.2  
-Last Updated: November 25, 2025
+Version: 1.5.0  
+Last Updated: December 16, 2025
 
 ## Overview
 
-This guide covers deployment options for the FTA/ETA Editor application, including local installation, Docker deployment, and production considerations.
+This guide covers installation and deployment of the FTA/ETA Editor desktop application with AI assistant integration.
 
 ## Prerequisites
 
 ### System Requirements
 
 - **Operating System**: Windows, Linux, or macOS
-- **Python**: 3.14 or higher
+- **Python**: 3.10 or higher
 - **Graphviz**: Required for diagram generation
 - **Memory**: 512 MB RAM minimum, 1 GB recommended
 - **Disk Space**: 100 MB minimum
+- **Internet**: Required for AI assistant features (optional)
 
 ### Software Dependencies
 
-1. **Python 3.14+**
+1. **Python 3.10+**
    - Download from [python.org](https://www.python.org/downloads/)
    - Ensure pip is installed
 
@@ -30,7 +31,7 @@ This guide covers deployment options for the FTA/ETA Editor application, includi
 
 3. **Python Packages**
    - See `requirements.txt` for full list
-   - Main dependencies: openpyxl, Pillow
+   - Main dependencies: openpyxl, Pillow, openai
 
 ## Deployment Options
 

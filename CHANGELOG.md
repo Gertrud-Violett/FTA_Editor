@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-12-16
+
+### Added
+
+- **AI Assistant Integration**: Integrated chat interface for AI-powered FTA analysis
+  - Chat panel in main UI with message history
+  - Quick action buttons: "Analyze FTA", "Suggest Root Causes", "Clear Chat"
+  - Threaded API calls for responsive UI during AI processing
+  - Color-coded messages (user/AI/system/error)
+
+- **AI Agent Handler** (`src/AI_agent_handler.py`): New module for AI functionality
+  - `AICredentialManager`: Secure local storage of API credentials
+  - `FTAStructureAnalyzer`: Converts FTA data to AI-readable format
+  - `AIProposedChange`: Data class for structured change proposals
+  - `AIAgentHandler`: Main handler for OpenAI API interactions
+  - System prompt optimized for FTA/ETA analysis
+
+- **Change Confirmation Workflow**: User approval required for AI modifications
+  - Confirmation dialog shows all proposed changes
+  - Selectable list of changes to apply
+  - Detailed view of change data (type, target, description)
+  - Warning message before applying changes
+
+- **Secure Credential Storage**: API keys stored outside repository
+  - Credentials saved at `~/.fta_editor/ai_credentials.json`
+  - Never uploaded or committed to version control
+  - Settings dialog with show/hide API key toggle
+  - Connection test before saving credentials
+
+- **AI Settings Dialog**: Configure AI credentials in-app
+  - API Key input with show/hide toggle
+  - Customizable API endpoint (OpenAI, Azure, or compatible)
+  - Model selection dropdown (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo)
+  - Test connection functionality
+  - Clear credentials option
+
+### Changed
+
+- **UI Layout**: Added AI chat panel on right side of main window
+  - Main content area now uses horizontal paned window
+  - Chat panel is resizable and collapsible
+  - Status indicator shows AI configuration state (●/○)
+
+- **Dependencies**: Updated `requirements.txt`
+  - Added `openai>=1.0.0` for AI API integration
+  - Removed web application dependencies (Flask, gunicorn, etc.)
+  - This version focuses on desktop application only
+
+### Removed
+
+- **Web Application**: Removed Flask-based web interface
+  - `web_app/` directory no longer supported in this branch
+  - Removed Flask, Flask-Session, gunicorn, requests dependencies
+  - Docker deployment configurations removed
+  - Render.com deployment no longer supported
+
+### Migration Notes
+
+- Existing FTA JSON files are fully compatible
+- No changes to core FTA/ETA functionality
+- AI features are optional - application works without API configuration
+- Web application users should use v1.4.x branch
+
 ## [1.4.2] - 2025-11-25
 
 ### Added

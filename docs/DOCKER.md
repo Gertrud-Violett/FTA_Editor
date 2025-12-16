@@ -2,18 +2,18 @@
 
 Run FTA/ETA Editor in Docker containers for easy deployment and isolation.
 
-**Current Version**: 1.4.2  
-**Last Updated**: November 25, 2025
+**Current Version**: 1.5.0  
+**Last Updated**: December 16, 2025
 
-## What's New in v1.4.2
+> **Note**: Version 1.5.0 focuses on the desktop application with AI assistant. Docker support is available for the GUI application only. Web application deployment is available in v1.4.x branch.
 
-- **Session Persistence**: Fixed state consistency issues on Render.com with filesystem sessions
-- **Japanese Font Support**: Embedded Noto Sans CJK JP font for proper Japanese/Chinese/Korean character rendering
-- **Web Application**: Flask-based browser interface with interactive editing
-- **Zoom & Pan**: Mouse wheel zoom and drag-to-pan for diagram viewing
-- **Resizable Panels**: Draggable borders for fault tree and node details
-- **Dual Interface**: Choose between desktop GUI or web application
-- **Multi-User Support**: Session-based isolation in web interface
+## What's New in v1.5.0
+
+- **AI Assistant**: Integrated chat interface for FTA analysis and suggestions
+- **Smart Suggestions**: AI can propose new nodes and modifications
+- **Change Confirmation**: Review and approve AI suggestions before applying
+- **Secure Credentials**: API keys stored locally, never in repository
+- **OpenAI Compatible**: Works with OpenAI, Azure OpenAI, and compatible APIs
 
 ## Quick Start
 
