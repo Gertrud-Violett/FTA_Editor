@@ -274,12 +274,129 @@ class GeminiProvider(AIProvider):
             return None, f"Gemini error: {str(e)}"
 
 
+class MicrosoftCopilotProvider(AIProvider):
+    """Microsoft Copilot API provider (Azure OpenAI)"""
+    
+    @staticmethod
+    def get_provider_name() -> str:
+        return "Microsoft Copilot"
+    
+    def get_default_endpoint(self) -> str:
+        # User needs to provide their Azure OpenAI endpoint
+        return "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT"
+    
+    def get_default_models(self) -> List[str]:
+        return ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-35-turbo"]
+    
+    def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
+        """Fetch available deployments from Azure OpenAI"""
+        try:
+            from openai import AzureOpenAI
+            
+            # Extract resource name and deployment from endpoint
+            # Format: https://{resource}.openai.azure.com/openai/deployments/{deployment}
+            if "/deployments/" in endpoint:
+                base_url = endpoint.rsplit("/deployments/", 1)[0]
+                deployment = endpoint.rsplit("/deployments/", 1)[1].split("/")[0]
+            else:
+                base_url = endpoint
+                deployment = "gpt-4o"
+            
+            # Try to list available models (if API supports it)
+            # Otherwise return default models
+            return self.get_default_models(), "Using default models (Azure doesn't provide model list API)"
+        except ImportError:
+            return self.get_default_models(), "OpenAI package not installed"
+        except Exception as e:
+            return self.get_default_models(), f"Could not fetch models: {str(e)}"
+    
+    def test_connection(self, api_key: str, endpoint: str, model: str) -> Tuple[bool, str]:
+        """Test Microsoft Copilot (Azure OpenAI) connection"""
+        try:
+            from openai import AzureOpenAI
+            
+            # Parse endpoint to extract base URL and deployment
+            # Expected format: https://{resource}.openai.azure.com/openai/deployments/{deployment}
+            if "/deployments/" in endpoint:
+                base_url = endpoint.rsplit("/deployments/", 1)[0]
+                deployment = endpoint.rsplit("/deployments/", 1)[1].rstrip("/").split("/")[0]
+                if not deployment:
+                    deployment = model
+            else:
+                base_url = endpoint
+                deployment = model
+            
+            # Azure OpenAI uses api_version
+            client = AzureOpenAI(
+                api_key=api_key,
+                azure_endpoint=base_url,
+                api_version="2024-08-01-preview"
+            )
+            
+            response = client.chat.completions.create(
+                model=deployment,
+                messages=[{"role": "user", "content": "Hello, this is a test."}],
+                max_tokens=10
+            )
+            return True, "Microsoft Copilot (Azure OpenAI) connection successful!"
+        except ImportError:
+            return False, "OpenAI package not installed. Run: pip install openai>=1.0.0"
+        except Exception as e:
+            error_msg = str(e)
+            # Provide helpful error messages
+            if "deployment" in error_msg.lower():
+                return False, f"Deployment error: Check your deployment name in the endpoint URL. Error: {error_msg}"
+            elif "auth" in error_msg.lower() or "401" in error_msg:
+                return False, f"Authentication failed: Check your API key. Error: {error_msg}"
+            elif "404" in error_msg:
+                return False, f"Endpoint not found: Verify your Azure resource URL. Error: {error_msg}"
+            else:
+                return False, f"Microsoft Copilot connection failed: {error_msg}"
+    
+    def send_message(self, api_key: str, endpoint: str, model: str,
+                    messages: List[Dict[str, str]],
+                    max_tokens: int = 2000) -> Tuple[Optional[str], Optional[str]]:
+        """Send message via Microsoft Copilot (Azure OpenAI) API"""
+        try:
+            from openai import AzureOpenAI
+            
+            # Parse endpoint to extract base URL and deployment
+            if "/deployments/" in endpoint:
+                base_url = endpoint.rsplit("/deployments/", 1)[0]
+                deployment = endpoint.rsplit("/deployments/", 1)[1].rstrip("/").split("/")[0]
+                if not deployment:
+                    deployment = model
+            else:
+                base_url = endpoint
+                deployment = model
+            
+            client = AzureOpenAI(
+                api_key=api_key,
+                azure_endpoint=base_url,
+                api_version="2024-08-01-preview"
+            )
+            
+            response = client.chat.completions.create(
+                model=deployment,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.7
+            )
+            return response.choices[0].message.content, None
+        except ImportError:
+            return None, "OpenAI package not installed. Run: pip install openai>=1.0.0"
+        except Exception as e:
+            return None, f"Microsoft Copilot error: {str(e)}"
+
+
 class AIProviderFactory:
     """Factory for creating AI provider instances"""
     
     _providers = {
         "openai": OpenAIProvider(),
         "github": OpenAIProvider(),  # GitHub Copilot uses OpenAI compatible API
+        "microsoft": MicrosoftCopilotProvider(),
+        "azure": MicrosoftCopilotProvider(),  # Alias for Microsoft Copilot
         "claude": AnthropicProvider(),
         "anthropic": AnthropicProvider(),
         "gemini": GeminiProvider(),
@@ -291,6 +408,10 @@ class AIProviderFactory:
         "openai": "openai",
         "github copilot": "github",
         "github": "github",
+        "microsoft copilot": "microsoft",
+        "microsoft": "microsoft",
+        "azure openai": "azure",
+        "azure": "azure",
         "anthropic claude": "claude",
         "claude": "claude",
         "google gemini": "gemini",

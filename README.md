@@ -42,17 +42,18 @@ python src/FTA_Editor_UI.py
 
 ## AI Assistant Setup
 
-The FTA Editor includes an integrated AI assistant supporting OpenAI, Anthropic Claude, and Google Gemini.
+The FTA Editor includes an integrated AI assistant supporting multiple providers: **OpenAI**, **Microsoft Copilot**, **Anthropic Claude**, and **Google Gemini**.
 
 **Quick Setup:**
 1. Get API key from your provider:
-   - Google Gemini: https://aistudio.google.com/apikey (free tier available)
-   - OpenAI: https://platform.openai.com/api-keys
-   - Anthropic Claude: https://console.anthropic.com/api-keys
+   - **Google Gemini**: https://aistudio.google.com/apikey (free tier available)
+   - **OpenAI**: https://platform.openai.com/api-keys
+   - **Microsoft Copilot**: https://portal.azure.com (Azure OpenAI service)
+   - **Anthropic Claude**: https://console.anthropic.com/api-keys
 
 2. Open FTA Editor → Click AI Settings (⚙)
 
-3. Select provider, paste API key, click "Test & Save"
+3. Select provider, paste API key, configure endpoint, click "Test & Save"
 
 Your credentials are stored locally at `~/.fta_editor/ai_credentials.json` (never in repository or cloud).
 
@@ -137,7 +138,10 @@ python -m pytest tests/
 
 - [Quick Start Guide](QUICKSTART.md) - Get running in 3 steps
 - [User Guide](docs/USER_GUIDE.md) - Complete manual
-- [GitHub Copilot Setup](docs/GITHUB_COPILOT_SETUP.md) - Detailed Copilot configuration
+- **AI Provider Setup Guides:**
+  - [Microsoft Copilot Setup](docs/MICROSOFT_COPILOT_SETUP.md) - Azure OpenAI configuration
+  - [GitHub Copilot Setup](docs/GITHUB_COPILOT_SETUP.md) - GitHub Models configuration
+  - [Multi-Provider Setup](docs/MULTI_PROVIDER_SETUP.md) - OpenAI, Claude, Gemini
 - [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
 - [API Reference](docs/API_REFERENCE.md) - Programming interface
 
