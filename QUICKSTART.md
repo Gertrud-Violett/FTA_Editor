@@ -2,11 +2,11 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 1.4.2 (Updated: November 25, 2025)
+**Version**: 1.5.1 (Updated: December 16, 2025)
 
 ## 1. Install
 
-**Prerequisites:** Python 3.14+ and [Graphviz](https://graphviz.org/download/)
+**Prerequisites:** Python 3.10+ and [Graphviz](https://graphviz.org/download/)
 
 ```bash
 # Clone and install
@@ -37,28 +37,44 @@ python src/FTA_Editor_UI.py
 5. **View diagram**: Logic gates displayed inside node boxes
 6. **Export**: Save as JSON/Excel/XML or render diagram
 
-## Docker Option
+### AI Quick Actions (optional)
+- **Analyze FTA**: Reads the current tree and posts analysis/suggestions to chat only (no changes applied).
+- **Update FTA**: Generates a complete, validated JSON from the AI and replaces the entire FTA in one step. Existing nodes are preserved; only additions are applied.
 
-```bash
-# Quick start with Docker
-docker-compose up
+## AI Assistant Setup (Optional)
 
-# Or build specific version
-docker build -t fta-editor:1.4.2 .
-docker run -it --rm fta-editor:1.4.2
-```
+The AI assistant can analyze your FTA and suggest improvements.
 
-## What's New in v1.4.2
+1. **Get an API key** from [OpenAI Platform](https://platform.openai.com/)
+2. **Click ⚙ (Settings)** in the AI Assistant panel
+3. **Enter your API key** and click "Test & Save"
+4. **Start chatting!** Ask questions or use quick actions
 
-- ✅ Session Persistence: Fixed state consistency issues with filesystem sessions for Render.com deployment
-- ✅ Japanese Font Support: Embedded Noto Sans CJK JP for proper Japanese/Chinese/Korean character rendering
-- ✅ Web Application: Browser-based interface with zoom/pan and resizable panels
-- ✅ Diagram Auto-Refresh: Fixed automatic diagram updates in web interface
-- ✅ Multi-User: Reliable session management across Gunicorn worker processes
+Your API key is stored locally at `~/.fta_editor/ai_credentials.json`, never in the repository.
+
+See [README.md](README.md#ai-assistant-setup) for detailed setup instructions.
+
+## What's New in v1.5.1
+
+- ✅ **Update FTA button**: AI returns a complete JSON which is validated and then applied, enabling deep (multi-level) additions in one shot.
+- ✅ **Robust JSON validation**: Invalid outputs are rejected with precise error logs and the problematic section highlighted.
+- ✅ **Deeper trees**: UI supports arbitrary nesting depth with adaptive coloring.
+- ✅ **Multi-provider AI**: OpenAI, Claude, and Gemini supported with dynamic model lists.
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+N` | New analysis |
+| `Ctrl+A` | Add node |
+| `Ctrl+E` | Edit node |
+| `Ctrl+D` | Delete node |
+| `Ctrl+S` | Save |
+| `Ctrl+R` | Render diagram |
 
 ## Need Help?
 
 - Load example: `data/examples/sampleFTA.json`
 - Documentation: `docs/USER_GUIDE.md`
-- Deployment guide: `DEPLOYMENT.md`
+- AI Setup: See [README.md](README.md#ai-assistant-setup)
 - Test installation: `python -m pytest tests/`

@@ -14,6 +14,8 @@ def run_tests():
         "test_probability_calculation.py",
         "test_eta_mode.py",
         "test_excel_export.py",
+        "test_validator.py",
+        "test_update_flow_mock.py",
     ]
     
     print("=" * 70)

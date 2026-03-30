@@ -15,7 +15,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="fta-eta-editor",
-    version="1.4.2",
+    version="1.5.1",
     author="makkiblog.com",
     author_email="",
     description="Fault Tree and Event Tree Analysis Editor with advanced probability calculations",

@@ -1,69 +1,73 @@
 # FTA/ETA Editor
 
-A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor with advanced probability calculations, visual tree editing, and export capabilities.
+A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor with advanced probability calculations, visual tree editing, AI-powered analysis assistant, and export capabilities.
 
 [![License: MIT](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
-[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.4.2-green.svg)](CHANGELOG.md)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Version](https://img.shields.io/badge/version-1.5.1-green.svg)](CHANGELOG.md)
 
 ## Features
 
 - **Interactive Tree Editor** with live diagram preview
 - **Dual Analysis Modes**: FTA (bottom-up) and ETA (top-down)  
+- **AI-Powered Assistant**: Integrated chat interface for FTA analysis and suggestions
 - **Accurate Probability Calculations** with AND/OR logic gates
-- **Web Application**: Browser-based interface with zoom/pan and resizable panels
-- **Session Persistence**: Reliable state management for multi-user environments
 - **International Support**: Japanese/Chinese/Korean fonts (Noto Sans CJK)
 - **Visual Diagram Generation** with Graphviz - logic gates displayed in nodes
 - **Multiple Export Formats** (JSON, XML, Excel with hierarchical structure)
 - **Zero-Probability Node Highlighting** for quick issue identification
-- **Docker Support** for easy deployment and cross-platform compatibility
+- **Secure Credential Storage**: API keys stored locally, never in repository
 
 ## Quick Start
 
-### Web Application (Online)
+### Installation
 
-**Try it live**: [https://fta-editor.onrender.com](https://fta-editor.onrender.com)
-
-*Note: First load may take 30-60 seconds as the server wakes up from sleep mode.*
-
-### Local Installation
-
-**Option 1: Direct Python**
 ```bash
+# Clone repository
+git clone https://github.com/Gertrud-Violett/FTA_Editor.git
+cd FTA_Editor
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Run the application
 python src/FTA_Editor_UI.py
-```
-
-**Option 2: Web Application (Local)**
-```bash
-pip install -r requirements.txt
-python web_app/app.py
-# Open browser to http://localhost:5000
-```
-
-**Option 3: Docker**
-```bash
-docker-compose up
 ```
 
 ### Requirements
 
-- Python 3.14+
+- Python 3.10+
 - Graphviz (install from [graphviz.org](https://graphviz.org/download/))
 - See `requirements.txt` for Python packages
 
+## AI Assistant Setup
+
+The FTA Editor includes an integrated AI assistant supporting multiple providers: **OpenAI**, **Microsoft Copilot**, **Anthropic Claude**, and **Google Gemini**.
+
+**Quick Setup:**
+1. Get API key from your provider:
+   - **Google Gemini**: https://aistudio.google.com/apikey (free tier available)
+   - **OpenAI**: https://platform.openai.com/api-keys
+   - **Microsoft Copilot**: https://portal.azure.com (Azure OpenAI service)
+   - **Anthropic Claude**: https://console.anthropic.com/api-keys
+
+2. Open FTA Editor → Click AI Settings (⚙)
+
+3. Select provider, paste API key, configure endpoint, click "Test & Save"
+
+Your credentials are stored locally at `~/.fta_editor/ai_credentials.json` (never in repository or cloud).
+
+For detailed setup instructions, see [docs/QUICK_AI_SETUP.md](docs/QUICK_AI_SETUP.md) and [docs/MULTI_PROVIDER_SETUP.md](docs/MULTI_PROVIDER_SETUP.md).
+
+### Quick Actions
+- **Analyze FTA**: Posts an assessment and suggestions to chat; does not modify your tree.
+- **Update FTA**: AI generates a complete JSON update, verified for structure and safety, then replaces the current FTA. Existing nodes are preserved; only additions are applied. Detailed error logs are shown if the AI output is invalid.
+- "What root causes might be missing from this failure mode?"
+- "Can you review the probabilities in this tree?"
+- "Suggest additional failure modes for the selected node"
+- "What are common causes of pump failures I should consider?"
+
 ## Usage
-
-### Web Application
-Access the web interface at http://localhost:5000 (when running locally) or the deployed URL.
-
-Features:
-- Interactive tree editing
-- Live diagram preview with zoom/pan
-- Resizable panels
-- Export to JSON, XML, Excel
-- Import existing analyses
 
 ### GUI Application
 
@@ -71,7 +75,16 @@ Features:
 python src/FTA_Editor_UI.py
 ```
 
+**Keyboard Shortcuts:**
+- `Ctrl+N`: New analysis
+- `Ctrl+A`: Add node
+- `Ctrl+E`: Edit node
+- `Ctrl+D`: Delete node
+- `Ctrl+S`: Save
+- `Ctrl+R`: Render diagram
+
 ### Programmatic API
+
 ```python
 from src.FTA_Editor_core import FTACore
 
@@ -87,18 +100,18 @@ core.export_to_excel("output.xlsx")
 ```
 FTA_Editor/
 ├── src/                          # Source code
-│   ├── FTA_Editor_UI.py         # GUI application
+│   ├── FTA_Editor_UI.py         # GUI application with AI chat
 │   ├── FTA_Editor_core.py       # Core business logic
+│   ├── AI_agent_handler.py      # AI agent and API handling
 │   └── json_viewer.py           # Diagram renderer
 ├── tests/                        # Test suite
 ├── data/examples/               # Sample data
 ├── docs/                        # Documentation
-├── requirements.txt             # Python dependencies
-├── Dockerfile                   # Container image
-└── docker-compose.yml          # Container orchestration
+└── requirements.txt             # Python dependencies
 ```
 
 ## Testing
+
 ```bash
 python -m pytest tests/
 ```
@@ -123,16 +136,46 @@ python -m pytest tests/
 
 ## Documentation
 
-- [Render.com Deployment](RENDER_DEPLOYMENT.md) - Free online hosting
+- [Quick Start Guide](QUICKSTART.md) - Get running in 3 steps
 - [User Guide](docs/USER_GUIDE.md) - Complete manual
+- **AI Provider Setup Guides:**
+  - [Microsoft Copilot Setup](docs/MICROSOFT_COPILOT_SETUP.md) - Azure OpenAI configuration
+  - [GitHub Copilot Setup](docs/GITHUB_COPILOT_SETUP.md) - GitHub Models configuration
+  - [Multi-Provider Setup](docs/MULTI_PROVIDER_SETUP.md) - OpenAI, Claude, Gemini
 - [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
 - [API Reference](docs/API_REFERENCE.md) - Programming interface
-- [Docker Guide](docs/DOCKER.md) - Container deployment
-- [Full Deployment Guide](DEPLOYMENT.md) - All deployment options
+
+## Troubleshooting
+
+### AI Assistant Issues
+
+**"AI not configured" error:**
+- Click the ⚙ button and enter your API credentials
+
+**"Connection failed" during test:**
+- Verify your API key is correct and active
+- Check your internet connection
+- Ensure the API endpoint URL is correct
+- For Azure, verify your deployment name is correct
+
+**Slow responses:**
+- Consider using `gpt-4o-mini` for faster responses
+- Check your API rate limits
+
+### General Issues
+
+**Graphviz not found:**
+- Install Graphviz from [graphviz.org](https://graphviz.org/download/)
+- Add Graphviz to your system PATH
+- Restart the application
+
+**Diagram not displaying:**
+- Ensure Pillow is installed: `pip install Pillow`
+- Verify Graphviz installation
 
 ## License
 
-MIT License - Copyright (c) makkiblog.com
+BSD-2 License - Copyright (c) makkiblog.com
 
 ## Support
 
