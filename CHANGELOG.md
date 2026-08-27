@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [中文版] - 2026-08-27（国内模型版本更新与文档完善）
+
+### Changed
+- 更新国内 AI 服务商默认模型至各厂商最新版本（src/ai_providers.py）：
+  - **DeepSeek**：`deepseek-chat` / `deepseek-reasoner` → `deepseek-v4-flash` / `deepseek-v4-pro`（旧名已于 2026-07-24 停用）
+  - **通义千问**：`qwen-max` / `qwen-plus` / `qwen-turbo` → `qwen3.8-max` / `qwen3.8-flash` / `qwen3.7-plus`
+  - **智谱清言**：`glm-4-plus` / `glm-4-air` / `glm-4-flash` → `glm-5.3` / `glm-5.3-flash` / `glm-4.7-flash`
+  - **Kimi**：`moonshot-v1-8k` / `-32k` / `-128k` → `kimi-k3` / `kimi-k2.6`（`moonshot-v1` 已于 2026-08-31 全平台下线）
+  - **Ollama 本地**：`qwen2.5` / `llama3.1` → `qwen3:8b` / `llama3.3:70b` / `qwen2.5`
+- 适配 Kimi K3/K2.x 新模型族：其 `temperature` 为平台固定值、传参会报错，调用时自动省略该参数
+
+### Changed (文档)
+- README.md：首段补充面向国内用户的新功能说明；AI 配置段按「国内直连 / 国际」重新组织，新增国内服务商端点与开通地址对照表
+
 ## [中文版] - 2026-08-27
 
 ### Added

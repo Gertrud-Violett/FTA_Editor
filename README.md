@@ -1,21 +1,22 @@
 # FTA/ETA Editor 中文版
 
-FTA/ETA 事故树编辑器（中文版）：一款功能完整的故障树分析（FTA）与事件树分析（ETA）桌面软件，支持概率计算、可视化树编辑、AI 分析助手与多种格式导出。
-本仓库为 [Gertrud-Violett/FTA_Editor](https://github.com/Gertrud-Violett/FTA_Editor) 的简体中文汉化版本，在原版基础上将界面与交互文本全面中文化，并附 Windows 一键启动脚本，方便中文用户直接下载使用。
+FTA/ETA 事故树编辑器（中文版）：一款功能完整的故障树分析（FTA）与事件树分析（ETA）桌面软件，支持概率计算、可视化树编辑、AI 分析助手与多种格式导出。除界面汉化外，本版特别适配国内用户：内置 **DeepSeek、通义千问、智谱清言、Kimi** 等国内大模型与 **Ollama 本地**模型，无需科学上网即可直连使用 AI 分析助手。
+
+本仓库为 [Gertrud-Violett/FTA_Editor](https://github.com/Gertrud-Violett/FTA_Editor) 的简体中文汉化版本，在原版基础上将界面与交互文本全面中文化，并新增 Windows 一键启动脚本与面向国内用户的 AI 服务商支持，方便中文用户直接下载使用。
 
 ## 相对原版的改进
 
 本版本在原作者 [Gertrud-Violett/FTA_Editor](https://github.com/Gertrud-Violett/FTA_Editor) 的基础上，主要做了以下几点增强：
 
 1. **全面简体中文化**：界面、菜单、按钮、提示与 AI 助手对话文案全部中文化，并新增 `启动FTA编辑器.bat` Windows 一键启动脚本，方便中文用户直接下载使用。
-2. **扩展 AI 服务商支持**：在原有 OpenAI / Anthropic Claude / Google Gemini / Microsoft Copilot 之外，新增 5 家国内 / 本地服务商（均走 OpenAI 兼容接口、复用现有 `openai` SDK，无需新增任何依赖）：
-   - **DeepSeek**：`deepseek-chat` / `deepseek-reasoner`
-   - **通义千问**（阿里云 DashScope）：`qwen-max` / `qwen-plus` / `qwen-turbo`
-   - **智谱清言**（GLM）：`glm-4-plus` / `glm-4-air` / `glm-4-flash`
-   - **Kimi**（月之暗面）：`moonshot-v1-8k` / `moonshot-v1-32k` / `moonshot-v1-128k`
-   - **Ollama 本地**（免密钥）：`qwen2.5` / `llama3.1`
+2. **扩展 AI 服务商支持**：在原有 OpenAI / Anthropic Claude / Google Gemini / Microsoft Copilot 之外，新增 5 家国内 / 本地服务商（均走 OpenAI 兼容接口、复用现有 `openai` SDK，无需新增任何依赖，模型版本已随各厂商官网更新）：
+   - **DeepSeek**：`deepseek-v4-flash` / `deepseek-v4-pro`
+   - **通义千问**（阿里云 DashScope）：`qwen3.8-max` / `qwen3.8-flash` / `qwen3.7-plus`
+   - **智谱清言**（GLM）：`glm-5.3` / `glm-5.3-flash` / `glm-4.7-flash`
+   - **Kimi**（月之暗面）：`kimi-k3` / `kimi-k2.6`
+   - **Ollama 本地**（免密钥）：`qwen3:8b` / `llama3.3:70b` / `qwen2.5`
 
-> 以上均为「界面汉化 + 功能扩展」，未改动原版核心的 FTA / ETA 故障树与事件树算法及逻辑，遵循 BSD-2-Clause 协议。
+> 以上均为「界面汉化 + 功能扩展」，未改动原版核心的 FTA / ETA 故障树与事件树算法及逻辑，遵循 BSD-2-Clause 协议。国内模型经 OpenAI 兼容接口调用，Kimi 新模型族的 `temperature` 已由程序自动适配处理。
 
 ## 功能特性
 
@@ -62,16 +63,34 @@ python src/FTA_Editor_UI.py
 
 ## AI 助手配置（可选）
 
-内置 AI 助手支持多家服务商：**OpenAI**、**Microsoft Copilot**、**Anthropic Claude**、**Google Gemini**，以及国内服务商 **DeepSeek**、**通义千问**、**智谱清言**、**Kimi**、**Ollama 本地**。
+内置 AI 助手支持多家服务商，**为国内用户优先适配的国内直连服务商**（无需科学上网）：**DeepSeek**、**通义千问**、**智谱清言**、**Kimi**，另有 **Ollama 本地**模型免密钥使用；同时保留国际服务商（OpenAI、Anthropic Claude、Google Gemini、Microsoft Copilot）。
 
-**快速配置：**
-1. 获取 API 密钥：
-   - **Google Gemini**：https://aistudio.google.com/apikey（提供免费额度）
-   - **OpenAI**：https://platform.openai.com/api-keys
-   - **Microsoft Copilot**：https://portal.azure.com（Azure OpenAI 服务）
-   - **Anthropic Claude**：https://console.anthropic.com/api-keys
+### 国内用户推荐（免翻墙直连，价格友好）
+
+| 服务商 | 默认端点 | 默认模型 | 开通地址 |
+|--------|----------|----------|----------|
+| **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-v4-flash` / `deepseek-v4-pro` | https://platform.deepseek.com |
+| **通义千问** | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen3.8-max` / `qwen3.8-flash` / `qwen3.7-plus` | https://dashscope.console.aliyun.com |
+| **智谱清言** | `https://open.bigmodel.cn/api/paas/v4` | `glm-5.3` / `glm-5.3-flash` / `glm-4.7-flash` | https://open.bigmodel.cn |
+| **Kimi** | `https://api.moonshot.cn/v1` | `kimi-k3` / `kimi-k2.6` | https://platform.moonshot.cn |
+| **Ollama 本地** | `http://localhost:11434/v1` | `qwen3:8b` / `llama3.3:70b` / `qwen2.5` | 本机部署，免密钥 |
+
+> 提示：Kimi 的 K3 / K2.x 系列模型 `temperature` 为平台固定值，程序已对此自动适配（调用这些模型时不发送 `temperature` 参数）。Ollama 本地需先在电脑安装 Ollama 并 `ollama pull` 相应模型，如 `ollama pull qwen3:8b`。
+
+### 国际服务商
+
+| 服务商 | 获取 API 密钥 |
+|--------|--------------|
+| **OpenAI** | https://platform.openai.com/api-keys |
+| **Google Gemini** | https://aistudio.google.com/apikey（提供免费额度） |
+| **Anthropic Claude** | https://console.anthropic.com/api-keys |
+| **Microsoft Copilot**（Azure OpenAI）| https://portal.azure.com |
+
+### 快速配置（任选一家服务商）
+
+1. 按上表获取对应 API 密钥（Ollama 本地无需密钥）
 2. 打开 FTA Editor → 点击 AI 设置（⚙）
-3. 选择服务商、粘贴 API 密钥、配置端点，点击"测试并保存"
+3. 选择服务商、粘贴 API 密钥（本地模型可留空）、按上表确认端点与模型，点击"测试并保存"
 
 凭据保存在本地 `~/.fta_editor/ai_credentials.json`（不会上传到仓库或云端）。
 
@@ -174,7 +193,7 @@ python -m pytest tests/
 - 使用 Azure 时确认部署名称正确
 
 **响应缓慢：**
-- 可改用 `gpt-4o-mini` 等更快模型
+- 可改用更快模型，如国际 `gpt-4o-mini`、国内 `qwen3.8-flash` 或 `glm-4.7-flash`
 - 检查 API 调用限额
 
 ### 一般问题
@@ -193,7 +212,7 @@ python -m pytest tests/
 本项目基于 **BSD-2-Clause** 协议开源，版权归原作者 makkiblog.com 所有。
 
 - 原仓库：[Gertrud-Violett/FTA_Editor](https://github.com/Gertrud-Violett/FTA_Editor)
-- 本中文版在原版基础上仅进行界面与文档的简体中文化，未改动核心算法与功能逻辑
+- 本中文版在原版基础上进行界面与文档的简体中文化，并新增国内 / 本地 AI 服务商支持，未改动核心算法与功能逻辑
 - 使用、修改、再分发请遵守 [LICENSE](LICENSE) 中的条款
 
 ## 支持

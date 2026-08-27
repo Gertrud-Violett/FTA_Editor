@@ -399,6 +399,8 @@ class OpenAICompatibleProvider(AIProvider):
     provider_display_name = "OpenAI Compatible"
     default_endpoint = "https://api.openai.com/v1"
     default_models = ["gpt-4o"]
+    # 部分新模型族（如 Kimi K3/K2.x）的 temperature 为固定值，传入会报错，置 False 以跳过该参数
+    support_temperature = True
 
     @classmethod
     def get_provider_name(cls) -> str:
@@ -445,12 +447,10 @@ class OpenAICompatibleProvider(AIProvider):
         try:
             from openai import OpenAI
             client = OpenAI(api_key=api_key, base_url=endpoint)
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7
-            )
+            kwargs = dict(model=model, messages=messages, max_tokens=max_tokens)
+            if self.support_temperature:
+                kwargs["temperature"] = 0.7
+            response = client.chat.completions.create(**kwargs)
             return response.choices[0].message.content, None
         except ImportError:
             return None, "OpenAI package not installed. Run: pip install openai"
@@ -462,35 +462,36 @@ class DeepSeekProvider(OpenAICompatibleProvider):
     """深度求索 DeepSeek（OpenAI 兼容接口）"""
     provider_display_name = "DeepSeek"
     default_endpoint = "https://api.deepseek.com/v1"
-    default_models = ["deepseek-chat", "deepseek-reasoner"]
+    default_models = ["deepseek-v4-flash", "deepseek-v4-pro"]
 
 
 class QwenProvider(OpenAICompatibleProvider):
     """阿里云通义千问 / DashScope（OpenAI 兼容接口）"""
     provider_display_name = "通义千问"
     default_endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    default_models = ["qwen-max", "qwen-plus", "qwen-turbo"]
+    default_models = ["qwen3.8-max", "qwen3.8-flash", "qwen3.7-plus"]
 
 
 class ZhipuProvider(OpenAICompatibleProvider):
     """智谱 AI GLM 系列（OpenAI 兼容接口）"""
     provider_display_name = "智谱清言"
     default_endpoint = "https://open.bigmodel.cn/api/paas/v4"
-    default_models = ["glm-4-plus", "glm-4-air", "glm-4-flash"]
+    default_models = ["glm-5.3", "glm-5.3-flash", "glm-4.7-flash"]
 
 
 class MoonshotProvider(OpenAICompatibleProvider):
-    """月之暗面 Kimi（OpenAI 兼容接口）"""
+    """月之暗面 Kimi（OpenAI 兼容接口）。Kimi K3/K2.x 新模型族的 temperature 为固定值，不支持传参。"""
     provider_display_name = "Kimi 月之暗面"
     default_endpoint = "https://api.moonshot.cn/v1"
-    default_models = ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]
+    default_models = ["kimi-k3", "kimi-k2.6"]
+    support_temperature = False
 
 
 class OllamaProvider(OpenAICompatibleProvider):
     """Ollama 本地大模型（免密钥，OpenAI 兼容接口）"""
     provider_display_name = "Ollama 本地"
     default_endpoint = "http://localhost:11434/v1"
-    default_models = ["qwen2.5", "llama3.1"]
+    default_models = ["qwen3:8b", "llama3.3:70b", "qwen2.5"]
 
 
 class AIProviderFactory:
