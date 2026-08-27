@@ -1,14 +1,27 @@
 # FTA/ETA Editor 中文版
 
 FTA/ETA 事故树编辑器（中文版）：一款功能完整的故障树分析（FTA）与事件树分析（ETA）桌面软件，支持概率计算、可视化树编辑、AI 分析助手与多种格式导出。
-
 本仓库为 [Gertrud-Violett/FTA_Editor](https://github.com/Gertrud-Violett/FTA_Editor) 的简体中文汉化版本，在原版基础上将界面与交互文本全面中文化，并附 Windows 一键启动脚本，方便中文用户直接下载使用。
+
+## 相对原版的改进
+
+本版本在原作者 [Gertrud-Violett/FTA_Editor](https://github.com/Gertrud-Violett/FTA_Editor) 的基础上，主要做了以下几点增强：
+
+1. **全面简体中文化**：界面、菜单、按钮、提示与 AI 助手对话文案全部中文化，并新增 `启动FTA编辑器.bat` Windows 一键启动脚本，方便中文用户直接下载使用。
+2. **扩展 AI 服务商支持**：在原有 OpenAI / Anthropic Claude / Google Gemini / Microsoft Copilot 之外，新增 5 家国内 / 本地服务商（均走 OpenAI 兼容接口、复用现有 `openai` SDK，无需新增任何依赖）：
+   - **DeepSeek**：`deepseek-chat` / `deepseek-reasoner`
+   - **通义千问**（阿里云 DashScope）：`qwen-max` / `qwen-plus` / `qwen-turbo`
+   - **智谱清言**（GLM）：`glm-4-plus` / `glm-4-air` / `glm-4-flash`
+   - **Kimi**（月之暗面）：`moonshot-v1-8k` / `moonshot-v1-32k` / `moonshot-v1-128k`
+   - **Ollama 本地**（免密钥）：`qwen2.5` / `llama3.1`
+
+> 以上均为「界面汉化 + 功能扩展」，未改动原版核心的 FTA / ETA 故障树与事件树算法及逻辑，遵循 BSD-2-Clause 协议。
+
+## 功能特性
 
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-1.5.1-green.svg)](CHANGELOG.md)
-
-## 功能特性
 
 - **交互式树编辑器**：实时图形预览，所见即所得
 - **双分析模式**：FTA（自下而上的故障树分析）与 ETA（自上而下的事件树分析）
@@ -49,7 +62,7 @@ python src/FTA_Editor_UI.py
 
 ## AI 助手配置（可选）
 
-内置 AI 助手支持多家服务商：**OpenAI**、**Microsoft Copilot**、**Anthropic Claude**、**Google Gemini**。
+内置 AI 助手支持多家服务商：**OpenAI**、**Microsoft Copilot**、**Anthropic Claude**、**Google Gemini**，以及国内服务商 **DeepSeek**、**通义千问**、**智谱清言**、**Kimi**、**Ollama 本地**。
 
 **快速配置：**
 1. 获取 API 密钥：
