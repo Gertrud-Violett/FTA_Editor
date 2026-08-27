@@ -389,6 +389,110 @@ class MicrosoftCopilotProvider(AIProvider):
             return None, f"Microsoft Copilot error: {str(e)}"
 
 
+class OpenAICompatibleProvider(AIProvider):
+    """通用 OpenAI 兼容接口服务商基类（国内大模型普遍采用此协议）。
+
+    子类只需覆盖 provider_display_name / default_endpoint / default_models 三个类属性，
+    即可复用 OpenAI SDK 完成连接测试、模型拉取与多轮对话。
+    """
+
+    provider_display_name = "OpenAI Compatible"
+    default_endpoint = "https://api.openai.com/v1"
+    default_models = ["gpt-4o"]
+
+    @classmethod
+    def get_provider_name(cls) -> str:
+        return cls.provider_display_name
+
+    def get_default_endpoint(self) -> str:
+        return self.default_endpoint
+
+    def get_default_models(self) -> List[str]:
+        return list(self.default_models)
+
+    def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
+        """Fetch available models via OpenAI-compatible /models endpoint."""
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=endpoint)
+            models = client.models.list()
+            return sorted(m.id for m in models.data), None
+        except ImportError:
+            return self.get_default_models(), "OpenAI package not installed"
+        except Exception as e:
+            return self.get_default_models(), f"Could not fetch models: {str(e)}"
+
+    def test_connection(self, api_key: str, endpoint: str, model: str) -> Tuple[bool, str]:
+        """Test connection against an OpenAI-compatible endpoint."""
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=endpoint)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "你好"}],
+                max_tokens=10
+            )
+            return True, f"{self.provider_display_name} connection successful!"
+        except ImportError:
+            return False, "OpenAI package not installed. Run: pip install openai"
+        except Exception as e:
+            return False, f"{self.provider_display_name} connection failed: {str(e)}"
+
+    def send_message(self, api_key: str, endpoint: str, model: str,
+                    messages: List[Dict[str, str]],
+                    max_tokens: int = 2000) -> Tuple[Optional[str], Optional[str]]:
+        """Send message to an OpenAI-compatible provider."""
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=endpoint)
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.7
+            )
+            return response.choices[0].message.content, None
+        except ImportError:
+            return None, "OpenAI package not installed. Run: pip install openai"
+        except Exception as e:
+            return None, f"{self.provider_display_name} error: {str(e)}"
+
+
+class DeepSeekProvider(OpenAICompatibleProvider):
+    """深度求索 DeepSeek（OpenAI 兼容接口）"""
+    provider_display_name = "DeepSeek"
+    default_endpoint = "https://api.deepseek.com/v1"
+    default_models = ["deepseek-chat", "deepseek-reasoner"]
+
+
+class QwenProvider(OpenAICompatibleProvider):
+    """阿里云通义千问 / DashScope（OpenAI 兼容接口）"""
+    provider_display_name = "通义千问"
+    default_endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    default_models = ["qwen-max", "qwen-plus", "qwen-turbo"]
+
+
+class ZhipuProvider(OpenAICompatibleProvider):
+    """智谱 AI GLM 系列（OpenAI 兼容接口）"""
+    provider_display_name = "智谱清言"
+    default_endpoint = "https://open.bigmodel.cn/api/paas/v4"
+    default_models = ["glm-4-plus", "glm-4-air", "glm-4-flash"]
+
+
+class MoonshotProvider(OpenAICompatibleProvider):
+    """月之暗面 Kimi（OpenAI 兼容接口）"""
+    provider_display_name = "Kimi 月之暗面"
+    default_endpoint = "https://api.moonshot.cn/v1"
+    default_models = ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]
+
+
+class OllamaProvider(OpenAICompatibleProvider):
+    """Ollama 本地大模型（免密钥，OpenAI 兼容接口）"""
+    provider_display_name = "Ollama 本地"
+    default_endpoint = "http://localhost:11434/v1"
+    default_models = ["qwen2.5", "llama3.1"]
+
+
 class AIProviderFactory:
     """Factory for creating AI provider instances"""
     
@@ -401,6 +505,14 @@ class AIProviderFactory:
         "anthropic": AnthropicProvider(),
         "gemini": GeminiProvider(),
         "google": GeminiProvider(),
+        "deepseek": DeepSeekProvider(),
+        "qwen": QwenProvider(),
+        "dashscope": QwenProvider(),  # 通义千问 / 阿里云 DashScope
+        "zhipu": ZhipuProvider(),
+        "glm": ZhipuProvider(),       # 智谱 GLM
+        "moonshot": MoonshotProvider(),
+        "kimi": MoonshotProvider(),   # 月之暗面 Kimi
+        "ollama": OllamaProvider(),   # 本地部署
     }
     
     # Map full provider display names to internal keys
@@ -416,6 +528,21 @@ class AIProviderFactory:
         "claude": "claude",
         "google gemini": "gemini",
         "gemini": "gemini",
+        "deepseek": "deepseek",
+        "通义千问": "qwen",
+        "qwen": "qwen",
+        "dashscope": "qwen",
+        "aliyun": "qwen",
+        "智谱清言": "zhipu",
+        "zhipu": "zhipu",
+        "glm": "zhipu",
+        "chatglm": "zhipu",
+        "bigmodel": "zhipu",
+        "kimi 月之暗面": "moonshot",
+        "kimi": "moonshot",
+        "moonshot": "moonshot",
+        "ollama 本地": "ollama",
+        "ollama": "ollama",
     }
     
     @staticmethod
