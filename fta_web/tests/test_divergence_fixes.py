@@ -331,3 +331,72 @@ def test_d5_probability_engine_unchanged_for_and_or():
     assert core.get_data()["calculatedProbability"] == pytest.approx(
         1 - (1 - 0.2) * (1 - 0.3)
     )
+
+
+# ---------------------------------------------------------------------------
+# D7 -- move cycle-check asked the question backwards
+#
+# At baseline, _would_create_circular_reference delegated to
+# _is_descendant_of(core, node_id, potential_parent_id) -- "is the node already
+# inside the target's subtree" -- which is the inverse of the guard a move needs.
+# It rejected every legal move and permitted every corrupting one.
+# ---------------------------------------------------------------------------
+
+
+def _lineage():
+    """root > parent > child > grandchild, for exercising move legality."""
+
+    def n(nid, kids=()):
+        return {
+            "id": nid, "name": nid, "type": "Event", "probability": 0.5,
+            "logicGate": "OR", "notes": "", "links": [], "children": list(kids),
+        }
+
+    core = FTACore()
+    core.set_data(n("root", [n("parent", [n("child", [n("grandchild")])])]))
+    return core
+
+
+@pytest.mark.parametrize(
+    "node_id,new_parent_id",
+    [
+        ("grandchild", "root"),    # legal promotion, two levels up
+        ("child", "parent"),       # reorder under the current parent
+        ("grandchild", "parent"),  # legal promotion, one level up
+    ],
+)
+def test_d7_legal_moves_are_allowed(node_id, new_parent_id):
+    handler = AIAgentHandler()
+    assert handler._would_create_circular_reference(
+        _lineage(), node_id, new_parent_id
+    ) is False
+
+
+@pytest.mark.parametrize(
+    "node_id,new_parent_id",
+    [
+        ("parent", "child"),        # into its own child
+        ("parent", "grandchild"),   # into its own grandchild
+        ("root", "parent"),         # root into its own subtree
+        ("child", "child"),         # into itself
+    ],
+)
+def test_d7_cycle_creating_moves_are_rejected(node_id, new_parent_id):
+    handler = AIAgentHandler()
+    assert handler._would_create_circular_reference(
+        _lineage(), node_id, new_parent_id
+    ) is True
+
+
+def test_d7_returns_a_real_bool_not_a_node_dict():
+    """Baseline returned `find(...) and is_descendant(...)`, leaking a node dict."""
+    result = AIAgentHandler()._would_create_circular_reference(
+        _lineage(), "grandchild", "root"
+    )
+    assert isinstance(result, bool)
+
+
+def test_d7_unknown_node_does_not_raise():
+    assert AIAgentHandler()._would_create_circular_reference(
+        _lineage(), "no_such_node", "root"
+    ) is False

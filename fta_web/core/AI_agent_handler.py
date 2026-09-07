@@ -823,13 +823,20 @@ Example of a valid node for DATA field:
         except Exception as e:
             return False, f"Error applying change: {str(e)}"
     
-    def _would_create_circular_reference(self, core: 'FTACore', node_id: str, 
+    def _would_create_circular_reference(self, core: 'FTACore', node_id: str,
                                         potential_parent_id: str) -> bool:
         """Check if moving would create circular reference"""
+        # Divergence D7: the argument order here was inverted at baseline. It asked
+        # "is node_id already inside potential_parent_id's subtree", which rejects every
+        # legal move (a reorder under the same parent, promoting a grandchild) while
+        # permitting the only move that actually corrupts the tree -- dropping a node
+        # inside its own subtree. A cycle is created when the NEW PARENT is a descendant
+        # of the node being moved, so that is what must be asked.
         if potential_parent_id == node_id:
             return True
-        return core._find_node_by_id_recursive(core.fta_data, node_id) and \
-               self._is_descendant_of(core, node_id, potential_parent_id)
+        if core.find_node_by_id(node_id) is None:
+            return False
+        return self._is_descendant_of(core, potential_parent_id, node_id)
     
     def _is_descendant_of(self, core: 'FTACore', node_id: str, 
                          potential_ancestor_id: str) -> bool:

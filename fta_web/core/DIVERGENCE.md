@@ -10,7 +10,7 @@ vendored module and its `src/` counterpart must be traceable to an entry below. 
 hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
-Applied divergences: **D1**, **D5**.
+Applied divergences: **D1**, **D5**, **D7**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -80,6 +80,45 @@ that previously relied on the silent OR fallback will now surface an error — w
 point of the fix. `AND` and `OR` are unaffected. Because the two silent-skip sites
 (`_parse_proposed_changes`, `apply_change_to_fta`) already used `continue`, a `NOT` there is
 now dropped rather than applied.
+
+**Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D7 — Move cycle-check asked the question backwards
+
+**Defect:** `AIAgentHandler._would_create_circular_reference()` (baseline
+`src/AI_agent_handler.py` lines 827-833) delegated to
+`_is_descendant_of(core, node_id, potential_parent_id)`, which asks *"is the node being
+moved already inside the target parent's subtree?"* That is the inverse of the question a
+move guard has to ask. A cycle is created when the **new parent is a descendant of the
+node being moved**, not the other way round.
+
+Verified against the unmodified baseline — wrong in every case tested:
+
+| Move | Should be | Baseline said |
+|------|-----------|---------------|
+| grandchild → root (legal promotion) | allow | **reject** |
+| child → its current parent (reorder) | allow | **reject** |
+| parent → its own child | **reject** | allow |
+| parent → its own grandchild | **reject** | allow |
+
+So it rejected every legal move and permitted every genuinely corrupting one. The
+permitted case is the damaging half: `apply_change_to_fta`'s move branch detaches the node
+via `_remove_node_from_parent` and then appends it to a parent that lives inside the
+subtree just detached, producing a self-referential structure orphaned from the tree.
+
+**Fix:** Swapped the argument order to `_is_descendant_of(core, potential_parent_id,
+node_id)`. Also replaced the `core._find_node_by_id_recursive(...) and ...` expression
+with an explicit `find_node_by_id(...) is None` guard, so the function returns a real
+`bool` rather than leaking a node dict as a truthy value, and uses the public finder
+instead of the private one.
+
+**Behavior change:** Only reachable through `apply_change_to_fta`'s `move` branch, which
+nothing calls today — `fta_web` implements its own `tree_ops.move_node` with the correct
+direction, and the desktop app never wired this path up. Fixed now rather than in P4
+because it is verified, the fork owns the file, and a latent tree-corrupting bug should
+not wait four phases on someone remembering it.
 
 **Files:** `fta_web/core/AI_agent_handler.py`
 
