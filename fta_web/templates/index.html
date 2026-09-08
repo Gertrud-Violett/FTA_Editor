@@ -72,6 +72,8 @@
       <span data-i18n="bar.hideZero">Hide Zero</span>
     </label>
 
+    <div class="topbar__group" id="capabilities-host"></div>
+
     <div class="topbar__group topbar__group--end">
       <button type="button" class="btn btn--icon btn--ghost" id="btn-undo"
               data-i18n-aria="action.undo" aria-label="Undo (Ctrl+Z)"
@@ -128,16 +130,7 @@
         <span class="panel__spacer"></span>
         <span class="panel__meta" id="diagram-meta"></span>
       </div>
-      <div class="panel__body" id="diagram-root">
-        <div class="placeholder">
-          <span class="placeholder__glyph" aria-hidden="true">&#9634;</span>
-          <span class="placeholder__badge" data-i18n="phase.p2">Coming in P2</span>
-          <p class="placeholder__title" data-i18n="panel.diagram">Live Diagram Preview</p>
-          <p class="placeholder__note" data-i18n="placeholder.diagram">
-            The rendered fault tree will appear here once the diagram phase lands.
-          </p>
-        </div>
-      </div>
+      <div class="panel__body panel__body--flush" id="diagram-root"></div>
     </section>
 
     <div class="splitter splitter--v" data-splitter="ai" role="separator"

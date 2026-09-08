@@ -599,6 +599,8 @@ async function loadPanels() {
     ['tree', './tree.js'],
     ['details', './details.js'],
     ['dialogs', './dialogs.js'],
+    ['diagram', './diagram.js'],
+    ['capabilities', './capabilities.js'],
   ];
   await Promise.all(
     specs.map(async ([name, spec]) => {
@@ -610,6 +612,7 @@ async function loadPanels() {
         // action needs it, so do not shout about it here.
         if (name === 'tree') renderModuleFallback($('#tree-root'), t('panel.tree'), err);
         if (name === 'details') renderModuleFallback($('#details-root'), t('panel.details'), err);
+        if (name === 'diagram') renderModuleFallback($('#diagram-root'), t('panel.diagram'), err);
         // eslint-disable-next-line no-console
         console.error('[fta] could not load ' + spec, err);
       }
@@ -618,6 +621,8 @@ async function loadPanels() {
 
   callInit(modules.tree, ['initTree', 'init', 'default'], $('#tree-root'), t('panel.tree'));
   callInit(modules.details, ['initDetails', 'init', 'default'], $('#details-root'), t('panel.details'));
+  callInit(modules.diagram, ['initDiagram', 'init', 'default'], $('#diagram-root'), t('panel.diagram'));
+  callInit(modules.capabilities, ['initCapabilities', 'init', 'default'], $('#capabilities-host'), 'capabilities', true);
   if (modules.dialogs) {
     callInit(modules.dialogs, ['initDialogs', 'init'], document.body, 'dialogs', true);
   }

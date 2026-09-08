@@ -5,7 +5,7 @@ Wires together four things and nothing else:
 
   * the security layer (security.init_app) -- see security.py for the threat
     model; this module only decides *when* it is installed,
-  * the tree blueprint,
+  * the API blueprints (tree, rendering),
   * one uniform JSON error envelope for every failure path, including the
     ones Flask would normally answer with an HTML page,
   * the single-worker guard.
@@ -14,6 +14,7 @@ The app is deliberately stateless at module level: everything lives on the
 Flask instance returned by create_app, so tests can build as many isolated
 apps as they like.
 """
+import importlib
 import logging
 import os
 import sys
@@ -259,25 +260,35 @@ def create_app(
     return app
 
 
+#: (module, blueprint attribute, what it serves). Each is delivered by its own
+#: phase, so each is optional in the same way -- see _register_blueprints.
+_BLUEPRINTS = (
+    ("routes.tree", "tree_bp", "the tree API"),
+    ("routes.render", "render_bp", "the rendering API"),
+)
+
+
 def _register_blueprints(app: Flask) -> None:
     """Attach the API blueprints.
 
-    ``routes/tree.py`` is delivered by a sibling phase. If it is not present
-    yet the app still starts -- the security layer, the error envelope and the
-    page bootstrap are independently useful and testable -- but the tree API is
-    absent and that is said out loud rather than papered over with a stub.
-    Only the specific "routes.tree is missing" case is tolerated; a genuine
-    import error inside the blueprint still propagates.
+    Each blueprint is delivered by a sibling phase. If one is not present yet
+    the app still starts -- the security layer, the error envelope and the page
+    bootstrap are independently useful and testable -- but that API is absent
+    and that is said out loud rather than papered over with a stub. Only the
+    specific "routes.<x> is missing" case is tolerated; a genuine import error
+    inside a blueprint still propagates.
     """
-    try:
-        from routes.tree import tree_bp
-    except ModuleNotFoundError as exc:
-        if (exc.name or "").split(".")[0] != "routes":
-            raise
-        log.warning(
-            "routes.tree not found: the tree API is not registered. "
-            "Expected at %s.",
-            Path(_FTA_WEB_DIR) / "routes" / "tree.py",
-        )
-        return
-    app.register_blueprint(tree_bp)
+    for module_name, attribute, description in _BLUEPRINTS:
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            if (exc.name or "").split(".")[0] != "routes":
+                raise
+            log.warning(
+                "%s not found: %s is not registered. Expected at %s.",
+                module_name,
+                description,
+                Path(_FTA_WEB_DIR) / Path(*module_name.split(".")).with_suffix(".py"),
+            )
+            continue
+        app.register_blueprint(getattr(module, attribute))

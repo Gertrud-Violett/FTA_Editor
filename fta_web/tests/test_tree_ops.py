@@ -559,6 +559,10 @@ class TestAppState:
             "currentPath",
             "nativeDot",
             "aiConfigured",
+            # Additive in P2: the same facts, grouped, plus excelExport. The
+            # two flat keys above stay for the frontend that shipped against
+            # them. Contents are asserted in test_api_render.py.
+            "capabilities",
             "canUndo",
             "canRedo",
             "language",

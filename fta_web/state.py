@@ -26,6 +26,7 @@ objects and therefore two distinct singletons.
 from __future__ import annotations
 
 import copy
+import importlib.util
 import shutil
 import threading
 from collections import deque
@@ -58,6 +59,33 @@ def _probe_native_dot() -> Optional[str]:
     return _native_dot_cache  # type: ignore[return-value]
 
 
+_EXCEL_UNPROBED = object()
+_excel_export_cache: Any = _EXCEL_UNPROBED
+
+
+def _probe_excel_export() -> bool:
+    """Whether ``openpyxl`` is importable, so .xlsx export can be offered.
+
+    ``find_spec`` rather than ``import openpyxl``: the answer is needed on
+    every ``/api/state`` call, and openpyxl is a heavy import (it pulls in the
+    whole workbook writer) that a user who never exports to Excel should not
+    pay for at all. Probed once per process for the same reason ``dot`` is --
+    the answer cannot change without restarting the interpreter, since even a
+    freshly pip-installed package would need a new import path scan.
+
+    ``find_spec`` raises for a broken installation (ValueError, or an
+    ImportError from a failing parent package), which is reported as "not
+    available" -- the honest answer, and better than a 500 on /api/state.
+    """
+    global _excel_export_cache
+    if _excel_export_cache is _EXCEL_UNPROBED:
+        try:
+            _excel_export_cache = importlib.util.find_spec("openpyxl") is not None
+        except (ImportError, ValueError):
+            _excel_export_cache = False
+    return bool(_excel_export_cache)
+
+
 def _ai_configured() -> bool:
     """Whether AI credentials are on disk.
 
@@ -80,6 +108,7 @@ class AppState:
         self.current_path: Optional[Path] = None
         self.dirty: bool = False
         self.native_dot: Optional[str] = _probe_native_dot()
+        self.excel_export: bool = _probe_excel_export()
         self.language: str = config.DEFAULT_LANGUAGE
         self.fs_root: Path = Path(config.DEFAULT_FS_ROOT)
         self._undo: Deque[Dict[str, Any]] = deque(maxlen=config.UNDO_DEPTH)
@@ -175,15 +204,35 @@ class AppState:
 
         The tree is deep-copied so the caller can serialize it without holding
         the lock while another request mutates the live structure.
+
+        ``capabilities`` is the single place the frontend looks to find out
+        what this installation can actually do, so that a missing optional
+        dependency shows up as a disabled, explained control rather than as a
+        button that fails when pressed. Nothing here is a promise about a
+        specific request: ``nativeDot`` is a startup probe, and the render
+        endpoints re-probe and report the renderer they really used.
+
+        ``nativeDot`` and ``aiConfigured`` are also still emitted at the top
+        level, unchanged, because the frontend shipped against them;
+        ``capabilities`` is purely additive and carries the same values.
         """
         with self.lock:
+            native_dot = bool(self.native_dot)
+            # One call, two consumers: _ai_configured() touches the disk (and
+            # mkdir's ~/.fta_editor) so it must not run twice per request.
+            ai_configured = _ai_configured()
             return {
                 "tree": copy.deepcopy(self.core.get_data()),
                 "metadata": self.core.get_metadata(),
                 "dirty": self.dirty,
                 "currentPath": str(self.current_path) if self.current_path else None,
-                "nativeDot": bool(self.native_dot),
-                "aiConfigured": _ai_configured(),
+                "nativeDot": native_dot,
+                "aiConfigured": ai_configured,
+                "capabilities": {
+                    "nativeDot": native_dot,
+                    "excelExport": bool(self.excel_export),
+                    "aiConfigured": ai_configured,
+                },
                 "canUndo": self.can_undo,
                 "canRedo": self.can_redo,
                 "language": self.language,
