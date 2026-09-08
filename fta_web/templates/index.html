@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>FTA Editor</title>
+
+  <!-- Empty data: URI. It suppresses the browser's automatic /favicon.ico
+       request without pulling in an asset; this app ships fully offline. -->
+  <link rel="icon" href="data:,">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+
+  <script>
+    /* Paint the saved theme before first paint, so a dark-theme user never
+       sees a white flash. main.js owns the toggle; this only replays the
+       stored choice. Kept inline and tiny on purpose: a separate file would
+       be a second round trip and the flash would be back. */
+    (function () {
+      try {
+        var pref = localStorage.getItem('fta.theme');
+        if (pref === 'dark' || pref === 'light') {
+          document.documentElement.setAttribute('data-theme', pref);
+        }
+        var hide = localStorage.getItem('fta.hideZero');
+        document.documentElement.setAttribute('data-hide-zero', hide === '1' ? '1' : '0');
+        var lang = localStorage.getItem('fta.language');
+        if (lang === 'ja' || lang === 'en') document.documentElement.lang = lang;
+      } catch (e) { /* private mode: fall through to the defaults */ }
+    })();
+  </script>
+</head>
+
+<body>
+  <a class="skip-link" href="#tree-root" data-i18n="a11y.skip">Skip to the fault tree</a>
+
+  <!-- ==================================================================== -->
+  <!-- Top bar: document metadata, view options, session chrome             -->
+  <!-- ==================================================================== -->
+  <header class="topbar" role="banner">
+    <div class="topbar__group">
+      <label class="topbar__label" for="mode-select" data-i18n="bar.mode">Mode</label>
+      <select id="mode-select" data-i18n-title="bar.modeTitle"
+              title="Switching mode recalculates every probability">
+        <option value="FTA">FTA</option>
+        <option value="ETA">ETA</option>
+      </select>
+    </div>
+
+    <div class="topbar__group topbar__group--grow">
+      <label class="topbar__label" for="title-input" data-i18n="bar.title">Title</label>
+      <input id="title-input" type="text" autocomplete="off" spellcheck="false"
+             data-i18n-placeholder="bar.titlePlaceholder" placeholder="Untitled Analysis">
+    </div>
+
+    <div class="topbar__group">
+      <label class="topbar__label" for="date-input" data-i18n="bar.date">Date</label>
+      <!-- Deliberately a text field, not <input type="date">: the backend
+           stores `date` as a free string and files written by the desktop
+           editor may hold a non-ISO value that a date picker would silently
+           blank on the next save. -->
+      <input id="date-input" type="text" autocomplete="off" spellcheck="false"
+             inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9/.\-]*">
+    </div>
+
+    <label class="checkbox" for="hide-zero"
+           data-i18n-title="bar.hideZeroTitle"
+           title="Hide nodes whose calculated probability is zero">
+      <input id="hide-zero" type="checkbox">
+      <span data-i18n="bar.hideZero">Hide Zero</span>
+    </label>
+
+    <div class="topbar__group topbar__group--end">
+      <button type="button" class="btn btn--icon btn--ghost" id="btn-undo"
+              data-i18n-aria="action.undo" aria-label="Undo (Ctrl+Z)"
+              data-i18n-title="action.undo" title="Undo (Ctrl+Z)">
+        <span aria-hidden="true">&#8630;</span>
+      </button>
+      <button type="button" class="btn btn--icon btn--ghost" id="btn-redo"
+              data-i18n-aria="action.redo" aria-label="Redo (Ctrl+Y)"
+              data-i18n-title="action.redo" title="Redo (Ctrl+Y)">
+        <span aria-hidden="true">&#8631;</span>
+      </button>
+
+      <span class="sep" aria-hidden="true"></span>
+
+      <button type="button" class="btn btn--ghost" id="btn-lang"
+              data-i18n-aria="action.language" aria-label="Switch language">
+        <span aria-hidden="true">&#127760;</span><span id="lang-code">EN</span>
+      </button>
+      <button type="button" class="btn btn--icon btn--ghost" id="btn-theme"
+              data-i18n-aria="action.theme" aria-label="Switch theme">
+        <span aria-hidden="true" id="theme-glyph">&#9680;</span>
+      </button>
+
+      <span class="dirty" id="dirty" data-dirty="false" aria-live="polite">
+        <span class="dirty__dot" aria-hidden="true">&#9679;</span>
+        <span id="dirty-text" data-i18n="status.saved">Saved</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- ==================================================================== -->
+  <!-- Workspace: tree | diagram | AI, with node details beneath the first  -->
+  <!-- two. Splitters are real focusable separators, resizable with arrows. -->
+  <!-- ==================================================================== -->
+  <main class="workspace" id="workspace">
+
+    <section class="panel" id="tree-panel" aria-labelledby="tree-panel-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="tree-panel-title" data-i18n="panel.tree">Fault Tree</h2>
+        <span class="panel__spacer"></span>
+        <span class="panel__meta" id="tree-count"></span>
+      </div>
+      <div class="panel__body panel__body--flush" id="tree-root" tabindex="-1"></div>
+    </section>
+
+    <div class="splitter splitter--v" data-splitter="tree" role="separator"
+         aria-orientation="vertical" tabindex="0"
+         data-i18n-aria="a11y.splitTree"
+         aria-label="Resize the fault tree panel"></div>
+
+    <section class="panel" id="diagram-panel" aria-labelledby="diagram-panel-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="diagram-panel-title" data-i18n="panel.diagram">Live Diagram Preview</h2>
+        <span class="panel__spacer"></span>
+        <span class="panel__meta" id="diagram-meta"></span>
+      </div>
+      <div class="panel__body" id="diagram-root">
+        <div class="placeholder">
+          <span class="placeholder__glyph" aria-hidden="true">&#9634;</span>
+          <span class="placeholder__badge" data-i18n="phase.p2">Coming in P2</span>
+          <p class="placeholder__title" data-i18n="panel.diagram">Live Diagram Preview</p>
+          <p class="placeholder__note" data-i18n="placeholder.diagram">
+            The rendered fault tree will appear here once the diagram phase lands.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="splitter splitter--v" data-splitter="ai" role="separator"
+         aria-orientation="vertical" tabindex="0"
+         data-i18n-aria="a11y.splitAi"
+         aria-label="Resize the AI assistant panel"></div>
+
+    <div class="splitter splitter--h" data-splitter="details" role="separator"
+         aria-orientation="horizontal" tabindex="0"
+         data-i18n-aria="a11y.splitDetails"
+         aria-label="Resize the node details panel"></div>
+
+    <section class="panel" id="details-panel" aria-labelledby="details-panel-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="details-panel-title" data-i18n="panel.details">Node Details</h2>
+        <span class="panel__spacer"></span>
+        <span class="panel__meta" id="details-meta"></span>
+      </div>
+      <div class="panel__body" id="details-root" tabindex="-1"></div>
+    </section>
+
+    <section class="panel" id="ai-panel" aria-labelledby="ai-panel-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="ai-panel-title" data-i18n="panel.ai">AI Assistant</h2>
+        <span class="status-dot" id="ai-status" data-on="false" aria-hidden="true">&#9679;</span>
+        <span class="panel__spacer"></span>
+        <button type="button" class="btn btn--icon btn--ghost" id="btn-ai-settings"
+                aria-disabled="true" data-phase="P4"
+                data-i18n-aria="action.aiSettings" aria-label="AI settings"
+                data-i18n-title="phase.p4" title="Coming in P4">
+          <span aria-hidden="true">&#9881;</span>
+        </button>
+      </div>
+      <div class="panel__body" id="ai-root">
+        <div class="placeholder">
+          <span class="placeholder__glyph" aria-hidden="true">&#9788;</span>
+          <span class="placeholder__badge" data-i18n="phase.p4">Coming in P4</span>
+          <p class="placeholder__title" data-i18n="panel.ai">AI Assistant</p>
+          <p class="placeholder__note" data-i18n="placeholder.ai">
+            Chat, "Analyze FTA" and "Update FTA" arrive with the assistant phase.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================================================================== -->
+  <!-- Action bar. Buttons whose phase has not landed carry                  -->
+  <!-- aria-disabled + data-phase: still focusable, still explain themselves.-->
+  <!-- ==================================================================== -->
+  <footer class="actionbar" role="toolbar" aria-label="Document actions">
+    <button type="button" class="btn btn--primary" data-action="new"
+            data-i18n="btn.new" data-i18n-title="tip.new"
+            title="New analysis (Ctrl+N)">New</button>
+    <button type="button" class="btn" data-action="add"
+            data-i18n="btn.add" data-i18n-title="tip.add"
+            title="Add a child node (Ctrl+A)">Add</button>
+    <button type="button" class="btn" data-action="edit"
+            data-i18n="btn.edit" data-i18n-title="tip.edit"
+            title="Edit the selected node (Ctrl+E)">Edit</button>
+    <button type="button" class="btn btn--danger" data-action="delete"
+            data-i18n="btn.delete" data-i18n-title="tip.delete"
+            title="Delete the selected node (Ctrl+D)">Delete</button>
+
+    <span class="sep" aria-hidden="true"></span>
+
+    <button type="button" class="btn" data-action="load" aria-disabled="true" data-phase="P3"
+            data-i18n="btn.load" data-i18n-title="phase.p3" title="Coming in P3">Load</button>
+    <button type="button" class="btn" data-action="save" aria-disabled="true" data-phase="P3"
+            data-i18n="btn.save" data-i18n-title="phase.p3" title="Coming in P3">Save</button>
+    <button type="button" class="btn" data-action="xml" aria-disabled="true" data-phase="P3"
+            data-i18n="btn.xml" data-i18n-title="phase.p3" title="Coming in P3">XML</button>
+    <button type="button" class="btn" data-action="excel" aria-disabled="true" data-phase="P3"
+            data-i18n="btn.excel" data-i18n-title="phase.p3" title="Coming in P3">Excel</button>
+    <button type="button" class="btn" data-action="render" aria-disabled="true" data-phase="P2"
+            data-i18n="btn.render" data-i18n-title="phase.p2" title="Coming in P2">Render</button>
+
+    <div class="statusline">
+      <span class="statusline__path" id="statusline-path"></span>
+      <span class="statusline__msg" id="statusline-msg" role="status" aria-live="polite"></span>
+    </div>
+  </footer>
+
+  <!-- Toasts. aria-live so an error is announced, not just drawn. -->
+  <div class="toasts" id="toasts" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+  <!-- Blocking screen for a tab with no session, or a boot that failed. -->
+  <div class="overlay" id="blocking-overlay" hidden role="alertdialog"
+       aria-modal="true" aria-labelledby="overlay-title" aria-describedby="overlay-body">
+    <div class="overlay__card">
+      <div class="overlay__glyph" aria-hidden="true">&#128274;</div>
+      <h1 class="overlay__title" id="overlay-title" data-i18n="session.title">
+        This tab has no session
+      </h1>
+      <div class="overlay__body" id="overlay-body">
+        <p data-i18n="session.body">
+          The editor hands each tab a one-time session key in the address it was
+          launched with, and that key lives only in this tab. A tab opened by
+          hand, restored by the browser, or left over from an earlier run has no
+          key, so the server will refuse everything it asks for.
+        </p>
+        <p data-i18n="session.hint">
+          Close this tab and open the address the launcher printed in your
+          terminal. If the server is no longer running, start it again:
+        </p>
+        <code class="overlay__cmd">python3 fta_web/run.py</code>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
