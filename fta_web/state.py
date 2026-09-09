@@ -63,6 +63,61 @@ _EXCEL_UNPROBED = object()
 _excel_export_cache: Any = _EXCEL_UNPROBED
 
 
+_PROVIDER_SDKS = {
+    "OpenAI": "openai",
+    "Anthropic Claude": "anthropic",
+    "Google Gemini": "google.generativeai",
+}
+
+_provider_sdk_cache: Any = None
+
+
+def _probe_provider_sdks() -> Dict[str, bool]:
+    """Which AI provider SDKs are importable in *this* process.
+
+    Configuring a key is not enough to use a provider -- its client library has
+    to be present too, and the two fail very differently. A missing key is the
+    expected first-run state and the UI invites the user to fix it. A missing
+    SDK is a dead end the user often cannot fix at all: in a PyInstaller build
+    the provider layer's own advice ("Run: pip install openai") is impossible to
+    follow, because there is no pip and no writable site-packages. Whether a
+    provider ships is decided on the build machine, so the app has to be able to
+    say which ones actually made it in.
+
+    This one **really imports**, unlike the ``dot`` and openpyxl probes which
+    use ``find_spec``. ``find_spec`` answers "is there something on the path
+    called this", which is not the same question. In a PyInstaller build of
+    ``google.generativeai`` -- a PEP 420 namespace package -- ``find_spec``
+    reports it present while the import itself raises, so a find_spec-based
+    probe told the UI the provider was available and the user then hit
+    "package not installed" on Test & Save. A capability indicator that lies is
+    worse than no indicator: it is the one thing the user checks before
+    believing a failure is their fault.
+
+    The cost is paid once per process and only on first access, not at startup,
+    so a user who never opens the AI panel never imports grpc.
+    """
+    global _provider_sdk_cache
+    if _provider_sdk_cache is not None:
+        return _provider_sdk_cache
+
+    available: Dict[str, bool] = {}
+    for provider, module in _PROVIDER_SDKS.items():
+        try:
+            importlib.import_module(module)
+            available[provider] = True
+        except BaseException:
+            # Deliberately broad. A half-present SDK can fail with almost
+            # anything on import -- ImportError, AttributeError from a version
+            # mismatch, or a bare SystemExit from a misbehaving C extension --
+            # and every one of them means the same thing to the user: this
+            # provider will not work. Reporting "unavailable" is the honest
+            # answer and keeps /api/state from returning a 500.
+            available[provider] = False
+    _provider_sdk_cache = available
+    return available
+
+
 def _probe_excel_export() -> bool:
     """Whether ``openpyxl`` is importable, so .xlsx export can be offered.
 
@@ -232,6 +287,14 @@ class AppState:
                     "nativeDot": native_dot,
                     "excelExport": bool(self.excel_export),
                     "aiConfigured": ai_configured,
+                    # Which provider client libraries are actually present. A
+                    # missing key is fixable from the UI; a missing SDK often is
+                    # not (see _probe_provider_sdks), so the two are reported
+                    # separately rather than collapsed into one flag.
+                    # Computed on first access, not in __init__: it really
+                    # imports the SDKs (see _probe_provider_sdks) and a user who
+                    # never opens the AI panel should not pay for grpc.
+                    "aiProviders": dict(_probe_provider_sdks()),
                 },
                 "canUndo": self.can_undo,
                 "canRedo": self.can_redo,

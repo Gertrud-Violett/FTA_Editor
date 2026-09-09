@@ -603,13 +603,52 @@ class TestRenderEndpoint:
 
 
 class TestCapabilities:
-    def test_state_reports_all_three_capabilities_as_booleans(self, client):
+    def test_state_reports_the_capability_flags_as_booleans(self, client):
         body = client.get("/api/state").get_json()
 
         capabilities = body["capabilities"]
-        assert set(capabilities) == {"nativeDot", "excelExport", "aiConfigured"}
-        for name, value in capabilities.items():
+        assert set(capabilities) == {
+            "nativeDot",
+            "excelExport",
+            "aiConfigured",
+            "aiProviders",
+        }
+        for name in ("nativeDot", "excelExport", "aiConfigured"):
+            assert isinstance(capabilities[name], bool), "%s is %r" % (
+                name,
+                capabilities[name],
+            )
+
+    def test_ai_providers_reports_one_boolean_per_supported_provider(self, client):
+        """Whether each provider's client library is importable.
+
+        Separate from ``aiConfigured``: a missing key is the expected first-run
+        state and the UI can invite the user to fix it, while a missing SDK is
+        often unfixable -- in a frozen build there is no pip and no writable
+        site-packages, so the provider layer's own "Run: pip install openai"
+        advice cannot be followed. Which providers ship is decided on the build
+        machine, so the app has to be able to report it.
+        """
+        providers = client.get("/api/state").get_json()["capabilities"]["aiProviders"]
+
+        assert set(providers) == {"OpenAI", "Anthropic Claude", "Google Gemini"}
+        for name, value in providers.items():
             assert isinstance(value, bool), "%s is %r" % (name, value)
+
+    def test_ai_providers_matches_what_actually_imports(self, client):
+        import importlib.util
+
+        providers = client.get("/api/state").get_json()["capabilities"]["aiProviders"]
+        for name, module in (
+            ("OpenAI", "openai"),
+            ("Anthropic Claude", "anthropic"),
+            ("Google Gemini", "google.generativeai"),
+        ):
+            try:
+                present = importlib.util.find_spec(module) is not None
+            except (ImportError, ValueError):
+                present = False
+            assert providers[name] is present, name
 
     def test_the_legacy_top_level_keys_are_unchanged(self, client):
         body = client.get("/api/state").get_json()

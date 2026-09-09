@@ -70,8 +70,22 @@
  * Both AI modules translate through window.ftaShell.t, so every string they
  * show is a key in the STRINGS table below.
  *
+ * THE TREE'S EDITING SURFACE (P5)
+ * -------------------------------
+ * Drag-to-reparent, inline rename, multi-select and the search filter all live
+ * in tree.js. The shell's part is three lines of wiring:
+ *
+ *   * Ctrl+F dispatches a cancelable `fta:find`; tree.js claims it and focuses
+ *     its search box. Unclaimed, the browser's own Find opens as usual.
+ *   * actionDelete() dispatches `fta:action` BEFORE its single-selection
+ *     guards, so a multi-selection can claim the Delete key, Ctrl+D and the
+ *     Delete button without this file knowing anything about that selection.
+ *   * every string tree.js paints is a key in the STRINGS table below.
+ *
  * OTHER WINDOW EVENTS THE SHELL HANDLES
  * -------------------------------------
+ *   fta:find (cancelable)         -> dispatched by the shell on Ctrl+F; the
+ *                                    tree panel claims it
  *   fta:ai-settings (cancelable)  -> open the AI setup dialog
  *   fta:error  {message, code?}   -> red toast + status line
  *   fta:toast  {message, kind?}   -> toast ('info' | 'ok' | 'warn' | 'error')
@@ -442,6 +456,40 @@ const STRINGS = {
     'ai.diag.raw': 'The raw response',
     'ai.diag.section': 'The part that failed verification',
     'ai.diag.keys': 'Top-level keys',
+
+    // --- P5: the tree panel's editing surface (tree.js). Every string it
+    // paints is here, including the ones inside its own chrome -- the search
+    // box, the hint line, each refused move. A literal in that module would be
+    // invisible to the language switch, and a key with no entry here renders
+    // on screen as "tree.something", which is the failure this table exists to
+    // make impossible.
+    'tree.ariaLabel': 'Fault tree',
+    'tree.empty': 'No analysis loaded.',
+    'tree.zeroAria': ', zero probability',
+    'tree.zeroTitle': 'Zero probability',
+    'tree.searchLabel': 'Search the fault tree',
+    'tree.searchPlaceholder': 'Search names or ids (Ctrl+F)',
+    'tree.searchClear': 'Clear the search',
+    'tree.searchMatches': '{n} of {total} match',
+    'tree.searchNone': 'Nothing matches "{q}"',
+    'tree.hint':
+      'F2 or double-click a name renames it. Ctrl+Shift+arrows move the focused '
+      + 'node. Ctrl+click and Shift+click select several.',
+    'tree.renameLabel': 'New name for "{name}"',
+    'tree.renameEmpty': 'A node name cannot be empty, so the change was not saved.',
+    'tree.renamed': 'Renamed to "{name}".',
+    'tree.moved': 'Moved "{name}" under "{parent}".',
+    'tree.reordered': 'Moved "{name}" within "{parent}".',
+    'tree.moveInvalid': 'A node cannot be moved into itself or one of its own children.',
+    'tree.moveRootRefused': 'The root node cannot be moved.',
+    'tree.moveNoRoom': 'It is already at the end of its list of siblings.',
+    'tree.moveNoIndent': 'There is no sibling above it to move it under.',
+    'tree.moveNoOutdent': 'It already sits directly under the root node.',
+    'tree.selected': '{n} nodes selected',
+    'tree.confirmDeleteMany': 'Delete these {n} nodes and everything beneath them?',
+    'tree.deletedMany': 'Deleted {n} nodes. Undo steps back one node at a time.',
+    'tree.deletePartial': 'Deleted {done} of {total} nodes; the rest were left in place.',
+    'tree.rootKept': 'The root node cannot be deleted, so nothing was removed.',
   },
 
   ja: {
@@ -1183,6 +1231,11 @@ async function actionEdit() {
 
 async function actionDelete() {
   const nodeId = store.selectedId;
+  // Dispatched before the single-selection guards below, not after them: a
+  // panel with its own selection model (tree.js multi-select) has to get first
+  // refusal, and a multi-selection whose lead happens to be the root is still
+  // a legal delete of everything else in it. tree.js filters the root out.
+  if (dispatchAction('delete', { nodeId })) return;
   if (!nodeId) {
     toast(t('msg.selectFirst'), 'warn');
     return;
@@ -1191,7 +1244,6 @@ async function actionDelete() {
     toast(t('msg.rootProtected'), 'warn', 'ROOT_PROTECTED');
     return;
   }
-  if (dispatchAction('delete', { nodeId })) return;
 
   const fn = dialogFn('delete');
   if (fn) {
@@ -1830,6 +1882,18 @@ function onKeyDown(event) {
     event.preventDefault();
     if (event.shiftKey) actionSaveAs();
     else actionSave();
+    return;
+  }
+
+  // Ctrl+F focuses the tree's search box, which lives in tree.js. It is asked
+  // rather than told: preventDefault is applied only if that panel answers, so
+  // if the tree module failed to load the browser's own Find still opens
+  // instead of the key doing nothing at all. Also checked before the text-entry
+  // guard, so it works with the caret in the Title box.
+  if (ctrl && !event.altKey && !event.shiftKey && key === 'f') {
+    const find = new CustomEvent('fta:find', { cancelable: true });
+    window.dispatchEvent(find);
+    if (find.defaultPrevented) event.preventDefault();
     return;
   }
 

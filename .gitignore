@@ -8,7 +8,14 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
+# NOTE: /build/ is tracked SOURCE, not output -- it holds fta_editor.spec and
+# README.md. Only PyInstaller's two output trees inside it are ignored (the
+# build command directs them there with --distpath/--workpath), plus the
+# directories setuptools would create there if anyone ran `setup.py build`.
+/build/dist/
+/build/build/
+/build/lib/
+/build/bdist.*/
 develop-eggs/
 dist/
 downloads/
@@ -29,7 +36,10 @@ MANIFEST
 
 # PyInstaller
 *.manifest
+# Generated .spec files are throwaway; build/fta_editor.spec is hand-written,
+# reviewed and shipped, so it is the one exception.
 *.spec
+!/build/fta_editor.spec
 
 # Installer logs
 pip-log.txt

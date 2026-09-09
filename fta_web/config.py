@@ -10,18 +10,36 @@ does ``from ai_providers import AIProviderFactory`` at module level, so
 ``fta_web.core.*`` package imports would break on that line. Keeping the vendored
 files importable exactly as they were at baseline is what lets them stay
 byte-identical to ``src/`` -- see fta_web/core/DIVERGENCE.md.
+
+Paths come from ``runtime_paths`` rather than from ``__file__`` so that a frozen
+build resolves them against ``sys._MEIPASS`` instead of against a path inside
+the archive. The names and their meanings are unchanged in a source checkout.
 """
 import sys
 from pathlib import Path
 
-# fta_web/config.py -> parents[0]=fta_web, [1]=repo root
-FTA_WEB_DIR = Path(__file__).resolve().parent
-REPO_ROOT = FTA_WEB_DIR.parent
+try:  # normal package import: ``import fta_web.config``
+    from . import runtime_paths
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import runtime_paths  # type: ignore[no-redef]
+
+# Source: the fta_web/ directory. Frozen: sys._MEIPASS, into which
+# build/fta_editor.spec unpacks core/, examples/, static/ and templates/ under
+# exactly these names.
+FTA_WEB_DIR = runtime_paths.resource_root()
+#: The checkout root, or -- frozen -- the directory holding the executable.
+#: Diagnostics only; never join bundled data onto it.
+REPO_ROOT = runtime_paths.app_root()
 CORE_DIR = FTA_WEB_DIR / "core"
 EXAMPLES_DIR = FTA_WEB_DIR / "examples"
 STATIC_DIR = FTA_WEB_DIR / "static"
 TEMPLATES_DIR = FTA_WEB_DIR / "templates"
 
+# Frozen builds also compile the four vendored modules into the archive (see
+# the hiddenimports in build/fta_editor.spec), so the bare names resolve even
+# if this insert finds nothing. Kept unconditional: the shipped core/ directory
+# is the source of truth an auditor can hash against BASELINE.json, and the two
+# paths must not be allowed to diverge.
 if str(CORE_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_DIR))
 

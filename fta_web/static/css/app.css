@@ -666,13 +666,20 @@ body.is-resizing--h, body.is-resizing--h * { cursor: row-resize !important; }
   box-shadow: inset 2px 0 0 var(--accent);
 }
 .tree-node.is-zero,
-.tree-row.is-zero { color: var(--text-faint); font-style: italic; }
+/* tree.js emits .fta-tree-row; .tree-row was a P1 placeholder name that the
+   P5 rewrite replaced. Both are matched so neither selector silently stops
+   applying again -- this mismatch meant the "Hide Zero" toggle had no visible
+   effect on the tree panel at all, while still filtering the diagram, which
+   read as the toggle being half-broken rather than mis-selectored. */
+.tree-row.is-zero,
+.fta-tree-row.is-zero { color: var(--text-faint); font-style: italic; }
 .is-dangling { color: var(--warn); }
 
 /* "Hide Zero P_calc" is pure CSS: the shell flips the attribute, so it works
    whatever markup tree.js emits, as long as zero rows carry .is-zero. */
 html[data-hide-zero="1"] .tree-node.is-zero,
-html[data-hide-zero="1"] .tree-row.is-zero { display: none; }
+html[data-hide-zero="1"] .tree-row.is-zero,
+html[data-hide-zero="1"] .fta-tree-row.is-zero { display: none; }
 
 /* ---- action bar ---------------------------------------------------------- */
 

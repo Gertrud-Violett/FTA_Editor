@@ -10,6 +10,9 @@ Launcher for the FTA Editor web UI.
 This is the only supported entry point. It mints the per-launch session token,
 hands it to the browser in the bootstrap URL, and starts a single-process
 server bound to loopback. See security.py for why each of those matters.
+
+It is also the entry script of the frozen build (build/fta_editor.spec), where
+the same flags are spelled ``./fta_editor --port 8765``.
 """
 import argparse
 import socket
@@ -21,7 +24,16 @@ from pathlib import Path
 
 # Make the bare-name imports below work regardless of how this file was
 # invoked (``python3 fta_web/run.py``, an absolute path, or a symlink).
-_FTA_WEB_DIR = str(Path(__file__).resolve().parent)
+#
+# Frozen, ``__file__`` points inside the PyInstaller archive rather than at a
+# directory holding sibling modules, so the sys.path entry has to be
+# ``sys._MEIPASS``. This one check is open-coded because it runs *before*
+# runtime_paths is importable in a source checkout; every other frozen/source
+# path decision in the app goes through runtime_paths.py.
+if getattr(sys, "frozen", False):
+    _FTA_WEB_DIR = str(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)).resolve())
+else:
+    _FTA_WEB_DIR = str(Path(__file__).resolve().parent)
 if _FTA_WEB_DIR not in sys.path:
     sys.path.insert(0, _FTA_WEB_DIR)
 
@@ -94,7 +106,13 @@ def _resolve_root(raw: str) -> Path:
 
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="fta_web/run.py",
+        # Frozen, "python3 fta_web/run.py" is not a command the user can type;
+        # --help has to name the executable they actually launched.
+        prog=(
+            Path(sys.executable).name
+            if getattr(sys, "frozen", False)
+            else "fta_web/run.py"
+        ),
         description="Run the FTA Editor web UI on localhost.",
     )
     parser.add_argument(
