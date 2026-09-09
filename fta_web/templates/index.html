@@ -158,22 +158,15 @@
         <span class="status-dot" id="ai-status" data-on="false" aria-hidden="true">&#9679;</span>
         <span class="panel__spacer"></span>
         <button type="button" class="btn btn--icon btn--ghost" id="btn-ai-settings"
-                aria-disabled="true" data-phase="P4"
                 data-i18n-aria="action.aiSettings" aria-label="AI settings"
-                data-i18n-title="phase.p4" title="Coming in P4">
+                data-i18n-title="action.aiSettings" title="AI settings">
           <span aria-hidden="true">&#9881;</span>
         </button>
       </div>
-      <div class="panel__body" id="ai-root">
-        <div class="placeholder">
-          <span class="placeholder__glyph" aria-hidden="true">&#9788;</span>
-          <span class="placeholder__badge" data-i18n="phase.p4">Coming in P4</span>
-          <p class="placeholder__title" data-i18n="panel.ai">AI Assistant</p>
-          <p class="placeholder__note" data-i18n="placeholder.ai">
-            Chat, "Analyze FTA" and "Update FTA" arrive with the assistant phase.
-          </p>
-        </div>
-      </div>
+      <!-- chat.js fills this. It is left empty rather than seeded with markup
+           so that every string in the panel comes from the shell's catalog;
+           a literal here would be invisible to the language switch. -->
+      <div class="panel__body panel__body--flush" id="ai-root"></div>
     </section>
   </main>
 

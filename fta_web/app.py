@@ -5,7 +5,7 @@ Wires together four things and nothing else:
 
   * the security layer (security.init_app) -- see security.py for the threat
     model; this module only decides *when* it is installed,
-  * the API blueprints (tree, rendering),
+  * the API blueprints (tree, rendering, files, AI),
   * one uniform JSON error envelope for every failure path, including the
     ones Flask would normally answer with an HTML page,
   * the single-worker guard.
@@ -266,6 +266,7 @@ _BLUEPRINTS = (
     ("routes.tree", "tree_bp", "the tree API"),
     ("routes.render", "render_bp", "the rendering API"),
     ("routes.files", "files_bp", "the file and export API"),
+    ("routes.ai", "ai_bp", "the AI assistant API"),
 )
 
 

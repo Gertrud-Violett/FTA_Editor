@@ -401,6 +401,247 @@ body.is-resizing--h, body.is-resizing--h * { cursor: row-resize !important; }
 .status-dot { font-size: 11px; line-height: 1; color: var(--text-faint); }
 .status-dot[data-on="true"] { color: var(--ok); }
 
+/* ---- AI assistant panel (chat.js) ---------------------------------------
+   The panel is a column: an invitation when nothing is set up, the message
+   log (the only part that scrolls), a busy line, the quick actions, and the
+   composer. Everything is built by chat.js; only the looks live here.        */
+
+#ai-root { overflow: hidden; }
+
+.chat {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+}
+
+/* Not configured is an invitation, never a warning: accent tones, not amber.
+   The same reasoning as the AI row in capabilities.js -- an assistant nobody
+   has set up yet is the expected default, not a fault. */
+.chat__invite {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.chat__invite[hidden] { display: none; }
+.chat-invite__title { font-size: var(--fs-lg); font-weight: 600; }
+.chat-invite__body,
+.chat-invite__free { font-size: var(--fs-sm); color: var(--text-dim); }
+.chat-invite__btn { align-self: flex-start; }
+
+.chat__log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+}
+.chat-msg__role {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.chat-msg__body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.chat-msg--user { background: var(--accent-soft); }
+.chat-msg--user .chat-msg__role { color: var(--accent); }
+.chat-msg--assistant { background: var(--surface-2); border-color: var(--border); }
+.chat-msg--system { padding: 0 8px; color: var(--text-dim); font-size: var(--fs-xs); }
+.chat-msg--error {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.chat-msg--error .chat-msg__role { color: var(--danger); }
+
+/* A rejected AI update explains itself with a long excerpt. It has to be
+   readable without pushing the conversation off the screen, so it collapses
+   and scrolls inside itself. */
+.chat-block {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.chat-block__summary {
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.chat-block__pre {
+  margin: 0;
+  padding: 8px;
+  max-height: 16em;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.chat-changes[data-retired="true"] { opacity: .65; border-left-color: var(--border); }
+.chat-changes__title { font-size: var(--fs-sm); font-weight: 700; }
+.chat-changes__hint,
+.chat-changes__status,
+.chat-changes__target { font-size: var(--fs-xs); color: var(--text-dim); }
+.chat-changes__list { display: flex; flex-direction: column; gap: var(--s-2); }
+.chat-changes__item { display: flex; flex-direction: column; gap: 2px; }
+.chat-changes__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.chat-changes__box { flex: 0 0 auto; margin-top: 2px; }
+.chat-changes__text { overflow-wrap: anywhere; }
+.chat-changes__target,
+.chat-block--inline { margin-left: 21px; }
+.chat-changes__foot { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+.chat__busy {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.chat__busy[hidden] { display: none; }
+.chat__spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: chat-spin .8s linear infinite;
+}
+@keyframes chat-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .chat__spinner { animation: none; }
+}
+.chat[data-busy="true"] .chat__log { opacity: .8; }
+
+.chat__actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.chat__action--end { margin-left: auto; }
+
+.chat__composer { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--s-1); }
+.chat__input { width: 100%; min-height: 3.6em; }
+.chat__send { align-self: flex-end; }
+
+/* ---- AI setup dialog (aisettings.js) -------------------------------------
+   The frame (.fta-modal / .fta-modal-overlay) comes from dialogs.js; these
+   rules are only the inside of the dialog.                                   */
+
+.aiset { width: min(34rem, 100%); }
+.aiset-body { gap: var(--s-3); }
+.aiset-form { display: flex; flex-direction: column; gap: var(--s-3); }
+.aiset-form[hidden] { display: none; }
+.aiset-intro,
+.aiset-loading { font-size: var(--fs-sm); color: var(--text-dim); }
+.aiset-block { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+
+/* Provider first: a card each, with the console link in plain sight so the
+   question "where do I get a key?" is answered before it is asked. */
+.aiset-providers { display: flex; flex-direction: column; gap: var(--s-2); }
+.aiset-provider {
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.aiset-provider[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.aiset-provider__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+.aiset-provider__hint,
+.aiset-provider__where {
+  margin-top: 2px;
+  padding-left: 23px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.aiset-provider__link { color: var(--accent); overflow-wrap: anywhere; }
+
+.aiset-key,
+.aiset-model { display: flex; align-items: center; gap: var(--s-2); }
+.aiset-key__input,
+.aiset-model__input { flex: 1 1 auto; min-width: 0; }
+/* input[type=password] is not in the shared control rule above, so it is
+   restated here rather than widening a global selector from this section. */
+.aiset-key__input {
+  min-height: var(--ctl-h);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+}
+.aiset-key__toggle,
+.aiset-model__refresh { flex: 0 0 auto; }
+
+.aiset-note { font-size: var(--fs-xs); color: var(--text-dim); overflow-wrap: anywhere; }
+.aiset-note[hidden] { display: none; }
+.aiset-note[data-kind="warn"] { color: var(--warn); }
+.aiset-note[data-kind="ok"] { color: var(--ok); }
+
+.aiset-advanced { border-top: 1px solid var(--border); padding-top: var(--s-2); }
+.aiset-advanced__summary { cursor: pointer; font-size: var(--fs-sm); color: var(--text-dim); }
+.aiset-advanced .aiset-block { margin-top: var(--s-2); }
+.aiset-endpoint__input { width: 100%; font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+.aiset-status { min-height: 1.2em; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.aiset-status[data-kind="idle"],
+.aiset-status[data-kind="info"],
+.aiset-status[data-kind="busy"] { color: var(--text-dim); }
+.aiset-status[data-kind="ok"] { color: var(--ok); font-weight: 600; }
+.aiset-status[data-kind="error"] { color: var(--danger); font-weight: 600; }
+
+.aiset-foot { align-items: center; }
+.aiset-clear { margin-right: auto; }
+.aiset-clear[hidden] { display: none; }
+.aiset[data-busy="true"] { cursor: progress; }
+
 /* ---- generic tree / details styling the sibling modules inherit ---------- */
 
 .panel__body ul,

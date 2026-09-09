@@ -62,8 +62,17 @@
  * visible and focusable and says what is missing and how to install it --
  * disappearing would leave the user believing the build never had the feature.
  *
+ * THE AI PANEL (P4)
+ * -----------------
+ * chat.js fills #ai-root and aisettings.js owns the setup dialog. The shell
+ * only wires the gear in the panel head, and answers chat.js's cancelable
+ * `fta:ai-settings` event by opening that dialog -- see actionAiSettings().
+ * Both AI modules translate through window.ftaShell.t, so every string they
+ * show is a key in the STRINGS table below.
+ *
  * OTHER WINDOW EVENTS THE SHELL HANDLES
  * -------------------------------------
+ *   fta:ai-settings (cancelable)  -> open the AI setup dialog
  *   fta:error  {message, code?}   -> red toast + status line
  *   fta:toast  {message, kind?}   -> toast ('info' | 'ok' | 'warn' | 'error')
  *   fta:escape (cancelable)       -> dispatched by the shell on Escape; a modal
@@ -301,6 +310,138 @@ const STRINGS = {
     'diagram.nothingToExport': 'Nothing to export yet.',
     'diagram.pngFailed': 'Could not rasterise the diagram to PNG.',
     'diagram.nativeFellBack': 'System Graphviz unavailable; exported from the browser renderer instead.',
+
+    // --- P4: the AI assistant panel (chat.js) and its setup dialog
+    // (aisettings.js). Every string those two modules show is here, including
+    // the ones inside their markup: a literal in a module is invisible to the
+    // Japanese phase, and a missing key renders as "ai.something" on screen.
+    'ai.settings.title': 'Set up the AI assistant',
+    'ai.settings.intro':
+      'Choose a provider, paste its API key, then press Test & Save. The key is '
+      + 'tried against the provider before anything is stored, and it is kept on '
+      + 'this machine.',
+    'ai.settings.loading': 'Loading the provider list...',
+    'ai.field.provider': 'Provider',
+    'ai.field.key': 'API key',
+    'ai.field.model': 'Model',
+    'ai.field.endpoint': 'API endpoint',
+    'ai.field.advanced': 'Advanced',
+    'ai.provider.openai': 'OpenAI',
+    'ai.provider.anthropic': 'Anthropic Claude',
+    'ai.provider.google': 'Google Gemini',
+    'ai.hint.openai': 'Paid account, billed per request.',
+    'ai.hint.anthropic': 'Paid account, billed per request.',
+    'ai.hint.google': 'Has a free tier, so it is the quickest way to try the assistant.',
+    'ai.key.where': 'Get a key at',
+    'ai.key.placeholder': 'Paste the API key',
+    'ai.key.show': 'Show',
+    'ai.key.hide': 'Hide',
+    'ai.key.saved':
+      'A key is already stored ({preview}). It cannot be read back, so leave this '
+      + 'blank to keep it and only fill it in to replace it.',
+    'ai.key.savedNoPreview':
+      'A key is already stored. It cannot be read back, so leave this blank to keep '
+      + 'it and only fill it in to replace it.',
+    'ai.key.savedOther': 'The stored key belongs to {provider}. Saving here replaces it.',
+    'ai.model.placeholder': 'Model name',
+    'ai.model.hint': 'Pick one of the suggestions, or type any model name.',
+    'ai.model.needKey':
+      'These are the built-in default names. Save a key to load the live list -- '
+      + 'and any model name can be typed here at any time.',
+    'ai.model.live': 'Loaded from the provider.',
+    'ai.model.loading': 'Loading the model list...',
+    'ai.model.fallback': 'Built-in defaults, not the live list: {warning}',
+    'ai.model.fallbackPlain': 'Built-in defaults, not the live list.',
+    'ai.model.failed': 'The model list could not be loaded: {error}',
+    'ai.model.refresh': 'Reload',
+    'ai.model.refreshTitle': 'Ask the provider which models the key can use',
+    'ai.model.unset': 'no model',
+    'ai.btn.testSave': 'Test & Save',
+    'ai.btn.cancel': 'Cancel',
+    'ai.btn.clear': 'Clear',
+    'ai.status.testing': 'Testing the connection to {provider}...',
+    'ai.status.saved': 'Connected. The assistant is ready.',
+    'ai.status.clearing': 'Removing the stored credentials...',
+    'ai.status.cleared': 'The stored AI credentials were removed.',
+    'ai.current': 'Currently set up: {provider}, {model}.',
+    'ai.confirm.clear':
+      'Remove the stored API key and provider settings? Every other feature is unaffected.',
+    'ai.confirm.clearTitle': 'Clear AI credentials',
+    'ai.err.provider': 'Choose a provider first.',
+    'ai.err.key': 'Paste the API key.',
+    'ai.err.keyAgain':
+      'A stored key cannot be read back, so changing these settings means pasting '
+      + 'the key again. Cancel to leave the current setup untouched.',
+    'ai.err.endpoint':
+      'The endpoint is empty. Choose the provider again to restore its default address.',
+    'ai.err.model': 'Choose or type a model name.',
+    'ai.err.providers': 'The provider list could not be loaded: {error}',
+    'ai.err.noProviders': 'The server offered no AI providers, so there is nothing to set up.',
+    'ai.err.noSettings': 'The AI settings dialog could not be loaded, so setup cannot run.',
+    'ai.endpoint.hint':
+      'Filled in from the provider. Change it only for a proxy or a compatible gateway.',
+
+    'ai.invite.title': 'Set up the AI assistant',
+    'ai.invite.body':
+      'The assistant is optional -- every other feature works without it. Add a '
+      + 'provider and an API key, and you can ask questions about this fault tree, '
+      + 'request an analysis, or have changes proposed for you to review.',
+    'ai.invite.free': 'Google Gemini has a free tier, which is the quickest way to try it.',
+    'ai.invite.button': 'Set up AI',
+
+    'ai.chat.log': 'Conversation with the AI assistant',
+    'ai.chat.input': 'Message to the AI assistant',
+    'ai.chat.placeholder': 'Ask about this fault tree. Enter sends, Shift+Enter adds a line.',
+    'ai.chat.send': 'Send',
+    'ai.chat.sendTitle': 'Send the message (Enter)',
+    'ai.chat.analyze': 'Analyze FTA',
+    'ai.chat.analyzeTitle': 'Ask for a review of this fault tree. Nothing is changed.',
+    'ai.chat.update': 'Update FTA',
+    'ai.chat.updateTitle':
+      'Ask for an updated fault tree. It is verified before it replaces this one.',
+    'ai.chat.clear': 'Clear Chat',
+    'ai.chat.clearTitle': 'Forget this conversation, here and on the server.',
+
+    'ai.role.user': 'You',
+    'ai.role.assistant': 'Assistant',
+    'ai.role.system': 'Editor',
+    'ai.role.error': 'Error',
+
+    'ai.msg.welcome':
+      'Ask anything about this fault tree. "Analyze FTA" reviews it without '
+      + 'changing anything; "Update FTA" proposes a full replacement, which is '
+      + 'verified before it is applied.',
+    'ai.msg.notConfigured':
+      'No provider is set up yet, so there is nothing to send. "Set up AI" adds one.',
+    'ai.msg.busy': 'The assistant is still working on the previous request.',
+    'ai.msg.empty': 'Type a message first.',
+    'ai.msg.emptyReply': 'The assistant replied with nothing.',
+    'ai.msg.thinking': 'Waiting for the assistant...',
+    'ai.msg.analyzing': 'Analyzing the fault tree...',
+    'ai.msg.analyzePrompt': 'Analyze this FTA and provide suggestions.',
+    'ai.msg.updating': 'Generating an updated fault tree...',
+    'ai.msg.updatePrompt':
+      'Update this FTA with your suggestions, preserving the original JSON structure.',
+    'ai.msg.updated': 'The fault tree was replaced with the verified version.',
+    'ai.msg.clearing': 'Clearing the conversation...',
+
+    'ai.changes.title': 'Suggested changes',
+    'ai.changes.hint': 'All of them are ticked. Untick anything you do not want, then apply.',
+    'ai.changes.apply': 'Apply selected',
+    'ai.changes.dismiss': 'Dismiss',
+    'ai.changes.details': 'Change data',
+    'ai.changes.target': 'Target: {id}',
+    'ai.changes.untitled': 'Change {n}',
+    'ai.changes.none': 'Nothing is ticked, so there is nothing to apply.',
+    'ai.changes.applying': 'Applying the selected changes...',
+    'ai.changes.applied': 'Applied {n} of {total} suggested changes.',
+    'ai.changes.dismissed': 'These suggestions were dismissed.',
+    'ai.changes.superseded': 'These suggestions were replaced by a newer set.',
+
+    'ai.diag.excerpt': 'The first 500 characters of the AI output',
+    'ai.diag.raw': 'The raw response',
+    'ai.diag.section': 'The part that failed verification',
+    'ai.diag.keys': 'Top-level keys',
   },
 
   ja: {
@@ -741,7 +882,7 @@ function onSessionInvalid() {
 // sibling modules
 // ---------------------------------------------------------------------------
 
-const modules = { tree: null, details: null, dialogs: null, filedialog: null };
+const modules = { tree: null, details: null, dialogs: null, filedialog: null, aisettings: null };
 
 function renderModuleFallback(host, name, err) {
   if (!host) return;
@@ -773,6 +914,8 @@ async function loadPanels() {
     ['filedialog', './filedialog.js'],
     ['diagram', './diagram.js'],
     ['capabilities', './capabilities.js'],
+    ['chat', './chat.js'],
+    ['aisettings', './aisettings.js'],
   ];
   await Promise.all(
     specs.map(async ([name, spec]) => {
@@ -785,6 +928,7 @@ async function loadPanels() {
         if (name === 'tree') renderModuleFallback($('#tree-root'), t('panel.tree'), err);
         if (name === 'details') renderModuleFallback($('#details-root'), t('panel.details'), err);
         if (name === 'diagram') renderModuleFallback($('#diagram-root'), t('panel.diagram'), err);
+        if (name === 'chat') renderModuleFallback($('#ai-root'), t('panel.ai'), err);
         // eslint-disable-next-line no-console
         console.error('[fta] could not load ' + spec, err);
       }
@@ -795,6 +939,9 @@ async function loadPanels() {
   callInit(modules.details, ['initDetails', 'init', 'default'], $('#details-root'), t('panel.details'));
   callInit(modules.diagram, ['initDiagram', 'init', 'default'], $('#diagram-root'), t('panel.diagram'));
   callInit(modules.capabilities, ['initCapabilities', 'init', 'default'], $('#capabilities-host'), 'capabilities', true);
+  callInit(modules.chat, ['initChat', 'init', 'default'], $('#ai-root'), t('panel.ai'));
+  // aisettings.js has no panel of its own; like dialogs.js and filedialog.js
+  // its absence shows up when the gear is pressed, so nothing is said here.
   if (modules.dialogs) {
     callInit(modules.dialogs, ['initDialogs', 'init'], document.body, 'dialogs', true);
   }
@@ -1446,6 +1593,34 @@ async function actionRenderImage() {
 }
 
 // ---------------------------------------------------------------------------
+// the AI assistant
+//
+// The gear in the AI panel head and the "Set up AI" button inside chat.js open
+// the same dialog. chat.js asks for it with a cancelable `fta:ai-settings`
+// event rather than importing aisettings.js, so a broken settings module costs
+// one visible message instead of taking the whole chat panel down with it --
+// the same reason the panels themselves are loaded with dynamic import().
+//
+// Nothing is done with the result here: saving or clearing re-reads /api/state
+// from inside the dialog, and the store notifies the panel, the status dot and
+// the capability chip together.
+// ---------------------------------------------------------------------------
+
+async function actionAiSettings() {
+  const module = modules.aisettings;
+  const open = module && (module.openAiSettings || module.default);
+  if (typeof open !== 'function') {
+    toast(t('ai.err.noSettings'), 'error', 'NO_AI_SETTINGS');
+    return;
+  }
+  try {
+    await open();
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // capability gating (spec 6.8)
 // ---------------------------------------------------------------------------
 
@@ -1535,7 +1710,7 @@ function wireActionBar() {
   }
   $('#btn-ai-settings').addEventListener('click', (event) => {
     event.preventDefault();
-    explainUnbuilt($('#btn-ai-settings'));
+    actionAiSettings();
   });
   $('#btn-undo').addEventListener('click', () => actionHistory('undo'));
   $('#btn-redo').addEventListener('click', () => actionHistory('redo'));
@@ -1727,6 +1902,12 @@ async function boot() {
   window.addEventListener('fta:toast', (event) => {
     const detail = (event && event.detail) || {};
     toast(detail.message || '', detail.kind || 'info', detail.code || null);
+  });
+  window.addEventListener('fta:ai-settings', (event) => {
+    // preventDefault is how the asker (chat.js) learns the shell has this; an
+    // unclaimed event means the dialog module never loaded.
+    if (event.cancelable) event.preventDefault();
+    actionAiSettings();
   });
   window.addEventListener('beforeunload', (event) => {
     if (store.state && store.state.dirty) {

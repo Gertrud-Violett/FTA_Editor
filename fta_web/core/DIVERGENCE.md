@@ -10,7 +10,7 @@ vendored module and its `src/` counterpart must be traceable to an entry below. 
 hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
-Applied divergences: **D1**, **D5**, **D7**, **D8**.
+Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -164,6 +164,43 @@ misleading message. Nothing that loaded before stops loading — the legacy repa
 reachable, just no longer applied to files that never needed it.
 
 **Files:** `fta_web/core/FTA_Editor_core.py`
+
+---
+
+## D9 — Anthropic fallback model list had aged out
+
+**Defect:** `AnthropicProvider.get_default_models()` (baseline
+`src/ai_providers.py` line 125) returned the Claude 3 family:
+`claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, `claude-3-sonnet-20240229`,
+`claude-3-haiku-20240307`.
+
+This list is the **fallback** used when the live model fetch fails — offline, behind a
+proxy, or with a key that cannot list models. That is precisely when a stale entry does
+the most damage: the user cannot discover the real model names, accepts the pre-selected
+first item, and gets an API error with no obvious cause. A wrong default in the
+*degraded* path is worse than a wrong default in the healthy one.
+
+**Fix:** Refreshed to the current family, most-capable first since the settings dialog
+pre-selects the leading entry:
+
+```
+claude-opus-5, claude-sonnet-5, claude-haiku-4-5, claude-opus-4-8, claude-sonnet-4-6
+```
+
+Structural mitigation alongside the data change: the settings dialog's model field is an
+**editable** combo rather than a closed dropdown, and the live fetch is always preferred
+over this list. A model released after this list was written can be typed in, so the
+fallback ageing again degrades gracefully instead of blocking the user.
+
+The OpenAI and Gemini lists are deliberately **not** touched — no equally authoritative
+source was available for them, and their leading entries are not known to be retired.
+Editability covers them too.
+
+**Behavior change:** The Anthropic model dropdown offers current models when the live
+fetch is unavailable. No API call shape changed; `AnthropicProvider.send_message` and
+`test_connection` are untouched.
+
+**Files:** `fta_web/core/ai_providers.py`
 
 ---
 

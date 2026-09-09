@@ -122,7 +122,24 @@ class AnthropicProvider(AIProvider):
         return "https://api.anthropic.com"
     
     def get_default_models(self) -> List[str]:
-        return ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"]
+        # Divergence D9: refreshed from the Claude 3 family, which had aged out.
+        #
+        # This list is only the *fallback* shown when the live model fetch fails
+        # -- offline, behind a proxy, or with a key that cannot list models. That
+        # is exactly when a wrong entry hurts most: the user cannot discover the
+        # real names, picks the pre-selected first item, and gets an API error
+        # with no obvious cause. The first entry is the one the settings dialog
+        # pre-selects, so it leads.
+        #
+        # The model field is editable, so a name released after this list was
+        # written can always be typed in. Prefer the live fetch over this.
+        return [
+            "claude-opus-5",
+            "claude-sonnet-5",
+            "claude-haiku-4-5",
+            "claude-opus-4-8",
+            "claude-sonnet-4-6",
+        ]
     
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available models from Anthropic API"""
