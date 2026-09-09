@@ -88,18 +88,31 @@ export function initDiagram(container) {
   stage.appendChild(canvas);
 
   const zoomLabel = el('span', { class: 'diagram__zoom' }, '100%');
-  const btn = (label, title, onClick) =>
-    el('button', { type: 'button', class: 'diagram__btn', title, 'aria-label': title, onclick: onClick }, label);
+  const btn = (label, key, fallback, onClick) => {
+    const b = el('button', { type: 'button', class: 'diagram__btn', onclick: onClick }, label);
+    b.dataset.i18nTitle = key;      // so retitleToolbar() and a language switch can find it
+    b._fallback = fallback;
+    return b;
+  };
 
   const toolbar = el('div', { class: 'diagram__toolbar' }, [
-    btn('−', t('diagram.zoomOut', 'Zoom out'), () => zoomBy(1 / ZOOM_STEP)),
+    btn('−', 'diagram.zoomOut', 'Zoom out', () => zoomBy(1 / ZOOM_STEP)),
     zoomLabel,
-    btn('+', t('diagram.zoomIn', 'Zoom in'), () => zoomBy(ZOOM_STEP)),
-    btn('⤢', t('diagram.fit', 'Fit to window'), () => fit()),
+    btn('+', 'diagram.zoomIn', 'Zoom in', () => zoomBy(ZOOM_STEP)),
+    btn('⤢', 'diagram.fit', 'Fit to window', () => fit()),
     el('span', { class: 'diagram__spacer' }),
-    btn('SVG', t('diagram.exportSvg', 'Export as SVG'), () => exportSvg()),
-    btn('PNG', t('diagram.exportPng', 'Export as PNG'), () => exportPng()),
+    btn('SVG', 'diagram.exportSvg', 'Export as SVG', () => exportSvg()),
+    btn('PNG', 'diagram.exportPng', 'Export as PNG', () => exportPng()),
   ]);
+
+  function retitleToolbar() {
+    for (const b of toolbar.querySelectorAll('button[data-i18n-title]')) {
+      const label = t(b.dataset.i18nTitle, b._fallback);
+      b.title = label;
+      b.setAttribute('aria-label', label);
+    }
+  }
+  retitleToolbar();
 
   container.appendChild(toolbar);
   container.appendChild(stage);
@@ -347,6 +360,13 @@ export function initDiagram(container) {
   const unsubscribe = store.subscribe(() => { markSelection(); schedule(); });
   const onHideZero = () => schedule();
   window.addEventListener('fta:hide-zero', onHideZero);
+  // The toolbar buttons carry glyphs, not words, so a sighted user sees nothing
+  // stale on a language switch -- but the title/aria-label do change, and a
+  // screen-reader user switching mid-session would otherwise hear the old
+  // language. Re-render on the next diagram update picks up the meta line for
+  // free; the toolbar needs this.
+  const onLanguage = () => { retitleToolbar(); schedule(); };
+  window.addEventListener('fta:language', onLanguage);
 
   applyTransform();
   schedule();
@@ -357,6 +377,7 @@ export function initDiagram(container) {
       destroyed = true;
       if (timer) clearTimeout(timer);
       window.removeEventListener('fta:hide-zero', onHideZero);
+      window.removeEventListener('fta:language', onLanguage);
       if (typeof unsubscribe === 'function') unsubscribe();
       clear(container);
     },
