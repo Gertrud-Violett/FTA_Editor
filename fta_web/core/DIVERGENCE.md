@@ -10,7 +10,7 @@ vendored module and its `src/` counterpart must be traceable to an entry below. 
 hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
-Applied divergences: **D1**, **D5**, **D7**.
+Applied divergences: **D1**, **D5**, **D7**, **D8**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -121,6 +121,49 @@ because it is verified, the fork owns the file, and a latent tree-corrupting bug
 not wait four phases on someone remembering it.
 
 **Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D8 — Minified JSON was mangled, then blamed on the file's encoding
+
+**Defect:** `FTACore.load_from_json` (baseline `src/FTA_Editor_core.py` lines 289-301)
+applied a double-wrap repair *unconditionally*, before attempting to parse:
+
+```python
+if content.startswith("{{"): content = "{" + content[2:]
+if content.endswith("}}"):  content = content[:-1]
+loaded_data = json.loads(content)
+```
+
+The `endswith("}}")` test matches **every minified analysis** — the tree's closing brace
+immediately followed by the document's. Stripping one brace turned a perfectly valid file
+into invalid JSON. Worse, the resulting `JSONDecodeError` was caught by the
+encoding-retry loop, so the user was told:
+
+> Failed to read file with common encodings
+
+which names the wrong cause entirely. The file was fine and the encoding was fine; the
+loader broke it. Files this editor writes use `indent=2` and never end in `}}`, so the bug
+only bit documents minified by another tool — exactly the interchange case a file format
+exists to support.
+
+**Fix:** Parse the document as written first; fall back to the repair only when that
+fails. Verified across five shapes — app-written `indent=2`, minified, legacy
+double-wrapped, legacy bare minified tree, and genuinely malformed:
+
+| Input | Before | After |
+|---|---|---|
+| `indent=2` (app-written) | loads | loads |
+| minified | **fails** | loads |
+| legacy double-wrapped | loads | loads |
+| legacy bare tree, minified | **fails** | loads |
+| genuinely malformed | rejected | rejected |
+
+**Behavior change:** Minified documents now open instead of being rejected with a
+misleading message. Nothing that loaded before stops loading — the legacy repair is still
+reachable, just no longer applied to files that never needed it.
+
+**Files:** `fta_web/core/FTA_Editor_core.py`
 
 ---
 

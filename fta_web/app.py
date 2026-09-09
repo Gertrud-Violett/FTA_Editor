@@ -265,6 +265,7 @@ def create_app(
 _BLUEPRINTS = (
     ("routes.tree", "tree_bp", "the tree API"),
     ("routes.render", "render_bp", "the rendering API"),
+    ("routes.files", "files_bp", "the file and export API"),
 )
 
 

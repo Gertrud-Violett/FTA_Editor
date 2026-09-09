@@ -607,3 +607,26 @@ html[data-hide-zero="1"] .tree-row.is-zero { display: none; }
   min-height: 0;
   overflow: hidden;
 }
+
+/* P3: a button switched off by a missing optional dependency rather than by an
+   unbuilt phase (Excel without openpyxl, Render without a system Graphviz).
+
+   It keeps the dimmed-but-focusable treatment every aria-disabled button has,
+   so it cannot be mistaken for a live control -- and it keeps its badge, which
+   would otherwise be blanked by the `:not([data-phase])` rule above. The badge
+   only draws the eye; the explanation and the remedy are in the button's title
+   and in the message its click raises. Hiding the button instead would read as
+   "this build never had Excel export", which is the misunderstanding spec 6.8
+   exists to prevent. This rule must stay after that `:not([data-phase])` rule:
+   they have equal specificity, so source order decides. */
+.btn[aria-disabled="true"][data-capability]::after {
+  content: "!";
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* The action bar carries eleven buttons at P3 and wraps on a narrow window; the
+   status line then needs its own row rather than a 30ch sliver at the end. */
+@media (max-width: 1100px) {
+  .actionbar .statusline { flex-basis: 100%; margin-left: 0; }
+}

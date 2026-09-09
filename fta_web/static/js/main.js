@@ -44,6 +44,24 @@
  *   * "edit" has no dialog because details.js edits in place, so the shell
  *     focuses the details panel and says where to type.
  *
+ * FILES AND EXPORTS (P3)
+ * ----------------------
+ * Load / Save / Save As go through filedialog.js, which returns a *server*
+ * path; the server reads and writes it, exactly as the desktop editor does.
+ * Save falls through to Save As on 409 NO_CURRENT_PATH, which is what Ctrl+S
+ * means on a document that has never been saved.
+ *
+ * The three /api/export/* endpoints are GETs that return a file, and they are
+ * inside the token-guarded /api/* prefix. A plain <a href> or window.open
+ * cannot carry the X-FTA-Token header (a navigation carries no custom headers)
+ * and would come back 403, so downloads are fetched with the header and handed
+ * to the browser as a blob URL instead. See downloadExport().
+ *
+ * Two buttons are gated on /api/state's `capabilities` rather than on a phase
+ * flag: Excel (openpyxl) and Render (a native Graphviz). A gated button stays
+ * visible and focusable and says what is missing and how to install it --
+ * disappearing would leave the user believing the build never had the feature.
+ *
  * OTHER WINDOW EVENTS THE SHELL HANDLES
  * -------------------------------------
  *   fta:error  {message, code?}   -> red toast + status line
@@ -60,8 +78,11 @@ import {
   api,
   ApiError,
   bootstrapToken,
+  clearToken,
+  getToken,
   hasToken,
   SESSION_INVALID_EVENT,
+  TOKEN_HEADER,
 } from './api.js';
 import { store } from './store.js';
 
@@ -135,6 +156,8 @@ const STRINGS = {
     'btn.delete': 'Delete',
     'btn.load': 'Load',
     'btn.save': 'Save',
+    'btn.saveAs': 'Save As',
+    'btn.json': 'JSON',
     'btn.xml': 'XML',
     'btn.excel': 'Excel',
     'btn.render': 'Render',
@@ -142,6 +165,13 @@ const STRINGS = {
     'tip.add': 'Add a child node (Ctrl+A)',
     'tip.edit': 'Edit the selected node (Ctrl+E)',
     'tip.delete': 'Delete the selected node (Ctrl+D)',
+    'tip.load': 'Open a saved analysis from disk',
+    'tip.save': 'Save to the current file (Ctrl+S)',
+    'tip.saveAs': 'Save to another file (Ctrl+Shift+S)',
+    'tip.json': 'Download a copy as JSON',
+    'tip.xml': 'Download a copy as XML',
+    'tip.excel': 'Download a copy as an Excel workbook',
+    'tip.render': 'Download the diagram as a PNG image',
 
     'status.saved': 'Saved',
     'status.unsaved': 'Unsaved changes',
@@ -167,9 +197,52 @@ const STRINGS = {
     'msg.notAvailable': '"{label}" is not built yet - it arrives in {phase}.',
     'msg.moduleFailed': 'The {module} panel failed to load: {error}',
     'msg.noDialog': 'The node dialog module is unavailable, so this action cannot run.',
+    'msg.noFileDialog':
+      'The file browser module is unavailable, so files cannot be opened or saved.',
+    'msg.opened': 'Opened {path}',
+    'msg.savedTo': 'Saved to {path}',
+    'msg.downloading': 'Preparing {name}...',
+    'msg.downloaded': 'Downloaded {name}',
+    'msg.excelUnavailable':
+      'Excel export is off because the openpyxl package is not installed. '
+      + 'Run "pip install openpyxl" and restart the editor to turn it back on.',
+    'msg.renderUnavailable':
+      'PNG export needs a system Graphviz, which was not found. Install Graphviz '
+      + "(graphviz.org) and restart the editor; until then the diagram panel's "
+      + 'PNG button renders in the browser instead.',
 
     'confirm.delete': 'Delete "{name}" and everything beneath it?',
     'confirm.discard': 'Discard the unsaved changes and start a new analysis?',
+    'confirm.discardOpen': 'Discard the unsaved changes and open another file?',
+
+    'file.openTitle': 'Open Analysis',
+    'file.saveTitle': 'Save Analysis As',
+    'file.up': 'Up one level',
+    'file.parent': 'Parent folder',
+    'file.location': 'Files in this folder',
+    'file.name': 'File name',
+    'file.open': 'Open',
+    'file.save': 'Save',
+    'file.cancel': 'Cancel',
+    'file.loading': 'Reading the folder...',
+    'file.filter': 'Showing folders and {ext} files.',
+    'file.empty': 'This folder holds no {ext} files.',
+    'file.emptyAll': 'This folder is empty.',
+    'file.truncated':
+      'This folder holds too many entries to list; some are not shown. '
+      + 'Open a more specific folder to see the rest.',
+    'file.kindFolder': 'folder',
+    'file.kindFile': 'file',
+    'file.errList': 'That folder could not be read.',
+    'file.errPickFile': 'Select a file first.',
+    'file.errNameRequired': 'Type a file name.',
+    'file.errNameSeparator':
+      'A file name cannot contain a folder path. Browse to the folder instead.',
+    'file.errExtension': 'This dialog saves {ext} files. Change the extension, or leave it off.',
+    'file.errIsFolder': '"{name}" is a folder here. Choose another name.',
+    'file.confirmOverwrite': '"{name}" already exists in this folder. Replace it?',
+    'file.overwriteTitle': 'Replace file',
+    'file.overwrite': 'Replace',
 
     'session.title': 'This tab has no session',
     'session.body':
@@ -182,6 +255,52 @@ const STRINGS = {
       'If the server is no longer running, start it again:',
     'boot.title': 'The editor could not start',
     'boot.body': 'The first request to the local server failed.',
+
+    // --- P2/P3: capability disclosure (capabilities.js) and the diagram panel.
+    // These live in the catalog rather than as inline literals so the deferred
+    // Japanese phase is a data change, not a hunt through the modules.
+    'cap.button': 'Feature availability',
+    'cap.buttonHint': 'click for details',
+    'cap.title': 'Feature availability',
+    'cap.foot': 'Restart the editor after installing anything, so it can be detected.',
+    'cap.unknown': 'Not known yet.',
+    'cap.chip.ok': 'All features available',
+    'cap.chip.graphviz': 'Diagram quality limited',
+    'cap.chip.excel': 'Excel export unavailable',
+    'cap.chip.several': '{n} features limited',
+    'cap.chip.ai': 'Set up AI',
+    'cap.chip.unknown': 'Checking availability',
+    'cap.state.ok': 'Available',
+    'cap.state.off': 'Unavailable',
+    'cap.state.ready': 'Ready',
+    'cap.state.optional': 'Optional',
+    'cap.state.unknown': 'Unknown',
+    'cap.dot.name': 'Diagram rendering',
+    'cap.dot.okState': 'System Graphviz',
+    'cap.dot.badState': 'Browser renderer',
+    'cap.dot.ok': 'Diagrams are drawn by the Graphviz installed on this machine, with exact font metrics and native high-resolution PNG export.',
+    'cap.dot.bad': 'Diagrams are drawn in the browser. Labels in Japanese, Chinese and Korean are sized from estimated metrics rather than the real font, so their boxes may sit a little loose or tight, and PNG export is rasterised here rather than natively at 300 dpi. Everything else is identical.',
+    'cap.dot.fix': 'Install Graphviz from graphviz.org and restart; the editor will use it automatically.',
+    'cap.excel.name': 'Excel export',
+    'cap.excel.ok': 'Analyses can be exported as .xlsx.',
+    'cap.excel.bad': 'Excel export is unavailable because the openpyxl package is not installed. JSON and XML export are unaffected.',
+    'cap.excel.fix': 'Install openpyxl, then restart the editor:',
+    'cap.excel.cmd': 'pip install openpyxl',
+    'cap.ai.name': 'AI assistant',
+    'cap.ai.ok': 'A provider is configured. Chat, Analyze and Update are available.',
+    'cap.ai.bad': 'No provider is configured yet, so chat and the AI actions are off. This is optional -- every other feature works without it.',
+    'cap.ai.fix': 'Add a provider and API key in AI settings.',
+    'diagram.zoomIn': 'Zoom in',
+    'diagram.zoomOut': 'Zoom out',
+    'diagram.fit': 'Fit to window',
+    'diagram.exportSvg': 'Export as SVG',
+    'diagram.exportPng': 'Export as PNG',
+    'diagram.rendererNative': 'Rendered by system Graphviz',
+    'diagram.rendererWasm': 'Rendered in-browser (Graphviz WASM)',
+    'diagram.error': 'Could not render the diagram: ',
+    'diagram.nothingToExport': 'Nothing to export yet.',
+    'diagram.pngFailed': 'Could not rasterise the diagram to PNG.',
+    'diagram.nativeFellBack': 'System Graphviz unavailable; exported from the browser renderer instead.',
   },
 
   ja: {
@@ -221,6 +340,8 @@ const STRINGS = {
     'btn.delete': '削除',
     'btn.load': '読込',
     'btn.save': '保存',
+    'btn.saveAs': '名前を付けて保存',
+    'btn.json': 'JSON',
     'btn.xml': 'XML',
     'btn.excel': 'Excel',
     'btn.render': '画像',
@@ -228,6 +349,13 @@ const STRINGS = {
     'tip.add': '子ノードを追加 (Ctrl+A)',
     'tip.edit': '選択中のノードを編集 (Ctrl+E)',
     'tip.delete': '選択中のノードを削除 (Ctrl+D)',
+    'tip.load': '保存済みの解析を開く',
+    'tip.save': '現在のファイルに保存 (Ctrl+S)',
+    'tip.saveAs': '別のファイルに保存 (Ctrl+Shift+S)',
+    'tip.json': 'JSON形式でダウンロード',
+    'tip.xml': 'XML形式でダウンロード',
+    'tip.excel': 'Excelブックとしてダウンロード',
+    'tip.render': '図をPNG画像としてダウンロード',
 
     'status.saved': '保存済み',
     'status.unsaved': '未保存の変更',
@@ -253,9 +381,52 @@ const STRINGS = {
     'msg.notAvailable': '「{label}」は未実装です（{phase}）。',
     'msg.moduleFailed': '{module} パネルの読み込みに失敗しました: {error}',
     'msg.noDialog': 'ダイアログモジュールが利用できないため実行できません。',
+    'msg.noFileDialog':
+      'ファイルブラウザモジュールが利用できないため、ファイルを開く・保存する操作は実行できません。',
+    'msg.opened': '{path} を開きました',
+    'msg.savedTo': '{path} に保存しました',
+    'msg.downloading': '{name} を準備しています...',
+    'msg.downloaded': '{name} をダウンロードしました',
+    'msg.excelUnavailable':
+      'openpyxl パッケージが見つからないため Excel 出力は無効です。'
+      + '「pip install openpyxl」を実行してエディタを再起動すると有効になります。',
+    'msg.renderUnavailable':
+      'PNG 出力にはシステムの Graphviz が必要ですが、見つかりませんでした。'
+      + 'Graphviz (graphviz.org) をインストールしてエディタを再起動してください。'
+      + 'それまでは図パネルの PNG ボタンがブラウザ内で書き出します。',
 
     'confirm.delete': '「{name}」と配下のノードを削除しますか？',
     'confirm.discard': '未保存の変更を破棄して新規作成しますか？',
+    'confirm.discardOpen': '未保存の変更を破棄して別のファイルを開きますか？',
+
+    'file.openTitle': '解析を開く',
+    'file.saveTitle': '名前を付けて保存',
+    'file.up': '上の階層へ',
+    'file.parent': '親フォルダー',
+    'file.location': 'このフォルダー内のファイル',
+    'file.name': 'ファイル名',
+    'file.open': '開く',
+    'file.save': '保存',
+    'file.cancel': 'キャンセル',
+    'file.loading': 'フォルダーを読み込んでいます...',
+    'file.filter': 'フォルダーと {ext} ファイルを表示しています。',
+    'file.empty': 'このフォルダーに {ext} ファイルはありません。',
+    'file.emptyAll': 'このフォルダーは空です。',
+    'file.truncated':
+      'このフォルダーには項目が多すぎるため、一部は表示されていません。'
+      + 'より下の階層のフォルダーを開いてください。',
+    'file.kindFolder': 'フォルダー',
+    'file.kindFile': 'ファイル',
+    'file.errList': 'そのフォルダーを読み取れませんでした。',
+    'file.errPickFile': '先にファイルを選択してください。',
+    'file.errNameRequired': 'ファイル名を入力してください。',
+    'file.errNameSeparator':
+      'ファイル名にフォルダーのパスは含められません。フォルダーを移動してください。',
+    'file.errExtension': 'このダイアログで保存できるのは {ext} ファイルです。拡張子を変更するか省略してください。',
+    'file.errIsFolder': '「{name}」はこの場所にあるフォルダーです。別の名前を指定してください。',
+    'file.confirmOverwrite': '「{name}」は既にこのフォルダーにあります。置き換えますか？',
+    'file.overwriteTitle': 'ファイルを置き換える',
+    'file.overwrite': '置き換える',
 
     'session.title': 'このタブにはセッションがありません',
     'session.body':
@@ -570,7 +741,7 @@ function onSessionInvalid() {
 // sibling modules
 // ---------------------------------------------------------------------------
 
-const modules = { tree: null, details: null, dialogs: null };
+const modules = { tree: null, details: null, dialogs: null, filedialog: null };
 
 function renderModuleFallback(host, name, err) {
   if (!host) return;
@@ -599,6 +770,7 @@ async function loadPanels() {
     ['tree', './tree.js'],
     ['details', './details.js'],
     ['dialogs', './dialogs.js'],
+    ['filedialog', './filedialog.js'],
     ['diagram', './diagram.js'],
     ['capabilities', './capabilities.js'],
   ];
@@ -608,8 +780,8 @@ async function loadPanels() {
         modules[name] = await import(spec);
       } catch (err) {
         modules[name] = null;
-        // dialogs.js has no panel of its own; its absence shows up when an
-        // action needs it, so do not shout about it here.
+        // dialogs.js and filedialog.js have no panel of their own; their
+        // absence shows up when an action needs them, so do not shout here.
         if (name === 'tree') renderModuleFallback($('#tree-root'), t('panel.tree'), err);
         if (name === 'details') renderModuleFallback($('#details-root'), t('panel.details'), err);
         if (name === 'diagram') renderModuleFallback($('#diagram-root'), t('panel.diagram'), err);
@@ -731,6 +903,36 @@ async function commitMetadata() {
     showError(err);
     syncMetadataInputs(true); // roll the inputs back to the server's version
   }
+}
+
+/**
+ * The metadata POST currently in flight, so a save can wait for it.
+ * commitMetadata() handles its own errors and never rejects, so nothing here
+ * needs a catch.
+ */
+let metadataPending = null;
+
+function queueMetadata() {
+  metadataPending = commitMetadata();
+  return metadataPending;
+}
+
+/**
+ * Push whatever the user is typing to the server before writing a file.
+ *
+ * Ctrl+S with the caret still in the Title box must save the title that is on
+ * screen. Blurring fires the field's own `change` handler -- commitMetadata
+ * here, and details.js's PATCH for a node field -- and then we wait for the
+ * metadata round trip. details.js's own commit is not awaitable from here, so a
+ * node edit saved in the same keystroke can land just after the write; that
+ * shows up honestly as the dirty badge coming back, never as a silent loss.
+ */
+async function flushPendingEdits() {
+  const active = document.activeElement;
+  if (active && isTextEntry(active) && typeof active.blur === 'function') {
+    active.blur();
+  }
+  if (metadataPending) await metadataPending;
 }
 
 // ---------------------------------------------------------------------------
@@ -889,10 +1091,421 @@ async function actionHistory(kind) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// files and exports
+//
+// Paths here are always SERVER paths: filedialog.js browses /api/fs/* and hands
+// back an absolute path, and the server does the reading and writing. Nothing
+// in this section touches the user's disk from the browser.
+// ---------------------------------------------------------------------------
+
+/**
+ * Path helpers, deliberately duplicated from filedialog.js rather than
+ * imported: a static import of that module would take the whole shell down with
+ * it if it ever failed to parse, which is the exact failure the dynamic import
+ * in loadPanels() exists to contain.
+ */
+function pathBaseName(path) {
+  const parts = String(path == null ? '' : path).split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+function pathDirName(path) {
+  const text = String(path == null ? '' : path).replace(/[\\/]+$/, '');
+  const cut = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+  if (cut < 0) return null;
+  return cut === 0 ? text.slice(0, 1) : text.slice(0, cut);
+}
+
+/**
+ * A file-name stem for a download: the open file's name when there is one, the
+ * document title otherwise. Characters Windows forbids in a name are replaced
+ * rather than dropped, so two distinct titles cannot collapse into one name.
+ */
+function documentStem() {
+  const current = store.state && store.state.currentPath;
+  if (current) {
+    const name = pathBaseName(current);
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? name.slice(0, dot) : name;
+  }
+  const title = String(store.metadata().title || '').trim();
+  const stem = title
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stem || 'fta_analysis';
+}
+
+function exportFilename(extension) {
+  return documentStem() + '.' + extension;
+}
+
+/** Ask filedialog.js for a path. Resolves null when cancelled or unavailable. */
+async function pickPath(mode) {
+  const module = modules.filedialog;
+  const open = module && (module.openFileDialog || module.default);
+  if (typeof open !== 'function') {
+    toast(t('msg.noFileDialog'), 'error', 'NO_FILE_DIALOG');
+    return null;
+  }
+  const current = (store.state && store.state.currentPath) || '';
+  try {
+    const chosen = await open({
+      mode,
+      startDir: current ? pathDirName(current) : null,
+      filename:
+        mode === 'save'
+          ? current
+            ? pathBaseName(current)
+            : exportFilename('json')
+          : null,
+      extensions: ['.json'],
+    });
+    return chosen || null;
+  } catch (err) {
+    showError(err);
+    return null;
+  }
+}
+
+/**
+ * Install the payload from POST /api/file/open (or a later /api/import/json).
+ *
+ * That payload is the *document* view -- tree, metadata, zeroNodes,
+ * currentPath, dirty, canUndo, canRedo (routes/files.py::_document_payload) --
+ * and deliberately not the per-launch session facts /api/state also carries
+ * (capabilities, language, nativeDot, aiConfigured). Those cannot change by
+ * opening a file, so it is merged over the state already held rather than
+ * replacing it: a plain setState would blank `capabilities` and take the Excel
+ * button's explanation with it.
+ *
+ * If a document key is missing the merge would keep the *previous* document's
+ * value for it -- a stale dirty badge, or an undo button that lies -- so that
+ * case takes one extra /api/state read instead of guessing.
+ */
+const DOCUMENT_KEYS = ['tree', 'metadata', 'zeroNodes', 'currentPath', 'dirty', 'canUndo', 'canRedo'];
+
+async function adoptDocument(payload) {
+  const complete =
+    Boolean(payload) &&
+    DOCUMENT_KEYS.every((key) => Object.prototype.hasOwnProperty.call(payload, key));
+
+  store.setState({ ...(store.state || {}), ...(payload || {}) });
+  store.select(rootId());
+  syncMetadataInputs(true);
+  if (complete) return;
+
+  try {
+    store.setState(await api.get('/state'));
+    store.select(rootId());
+    syncMetadataInputs(true);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function actionLoad() {
+  // The backend has no unsaved-changes guard on open (only /new has one), so
+  // the guard lives here -- ask before the picker, not after, so a user who
+  // meant to save first has not already picked a file.
+  if (store.state && store.state.dirty) {
+    const proceed = await askConfirm(t('confirm.discardOpen'), {
+      title: t('btn.load'),
+      confirmLabel: t('btn.load'),
+    });
+    if (!proceed) return;
+  }
+
+  const path = await pickPath('open');
+  if (!path) return;
+
+  try {
+    const payload = await api.post('/file/open', { path });
+    await adoptDocument(payload);
+    toast(t('msg.opened', { path: (store.state && store.state.currentPath) || path }), 'ok');
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function actionSave() {
+  await flushPendingEdits();
+  try {
+    const result = await api.post('/file/save', {});
+    store.applyMutation(result);
+    const path = result.currentPath || (store.state && store.state.currentPath) || '';
+    toast(t('msg.savedTo', { path }), 'ok');
+  } catch (err) {
+    // 409 NO_CURRENT_PATH is not a failure: this document has never been
+    // written, so Save means Save As. That is the desktop's Ctrl+S.
+    if (err instanceof ApiError && err.code === 'NO_CURRENT_PATH') {
+      await actionSaveAs();
+      return;
+    }
+    showError(err);
+  }
+}
+
+async function actionSaveAs() {
+  await flushPendingEdits();
+  const path = await pickPath('save');
+  if (!path) return;
+  try {
+    const result = await api.post('/file/save-as', { path });
+    store.applyMutation(result);
+    toast(t('msg.savedTo', { path: result.currentPath || path }), 'ok');
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// ---- downloads ------------------------------------------------------------
+
+const EXPORTS = {
+  json: { url: '/api/export/json', extension: 'json' },
+  xml: { url: '/api/export/xml', extension: 'xml' },
+  xlsx: { url: '/api/export/xlsx', extension: 'xlsx' },
+};
+
+/** The name the server suggested, if any. Never a path -- see the strip below. */
+function filenameFromDisposition(header) {
+  if (!header) return null;
+  const encoded = /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      return pathBaseName(decodeURIComponent(encoded[1].trim().replace(/^"|"$/g, '')));
+    } catch (_err) {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(header);
+  // pathBaseName strips any directory the header tried to smuggle in: the
+  // download name must never be able to steer where the browser writes.
+  return plain ? pathBaseName(plain[1].trim()) : null;
+}
+
+/**
+ * GET an /api/* URL that answers with a file rather than JSON.
+ *
+ * api.js cannot be used: it parses every response as JSON, which would corrupt
+ * an .xlsx. And a plain <a href> / window.open cannot be used either, because a
+ * navigation carries no custom headers and the export endpoints sit behind the
+ * X-FTA-Token guard -- the link would 403 and the browser would save the error
+ * page. So the request is a fetch with the header, and the bytes are handed to
+ * the browser as a blob.
+ */
+async function fetchDownload(url) {
+  const token = getToken();
+  if (!token) {
+    onSessionInvalid();
+    throw new ApiError('NO_SESSION', t('session.title'), { reason: 'no_token' });
+  }
+
+  const headers = {};
+  headers[TOKEN_HEADER] = token;
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+      credentials: 'same-origin',
+      redirect: 'follow',
+    });
+  } catch (cause) {
+    throw new ApiError(
+      'NETWORK_ERROR',
+      'Could not reach the editor server. It may have been stopped in the terminal.',
+      { url, cause: String((cause && cause.message) || cause) }
+    );
+  }
+
+  const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+  const isJson = contentType.indexOf('json') !== -1;
+
+  // A failure comes back as the standard envelope; so, in principle, could a
+  // 200 carrying {"ok": false}. Both are checked, because writing an error
+  // envelope to disk under the name "analysis.xlsx" is the worst outcome here.
+  if (!response.ok || isJson) {
+    const text = await response.text().catch(() => '');
+    let payload = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch (_err) {
+        payload = null;
+      }
+    }
+    const failed =
+      !response.ok || (payload && typeof payload === 'object' && payload.ok === false);
+    if (failed) {
+      const envelope =
+        payload && payload.error && typeof payload.error === 'object' ? payload.error : {};
+      if (response.status === 403) {
+        clearToken();
+        window.dispatchEvent(
+          new CustomEvent(SESSION_INVALID_EVENT, {
+            detail: { reason: (envelope.detail && envelope.detail.reason) || 'forbidden' },
+          })
+        );
+      }
+      throw new ApiError(
+        envelope.code || 'HTTP_' + response.status,
+        envelope.message || 'The export failed (HTTP ' + response.status + ').',
+        envelope.detail || null,
+        response.status
+      );
+    }
+    // A successful JSON body is the JSON export itself. Rebuild the blob from
+    // the text already read rather than re-reading a consumed body.
+    return {
+      blob: new Blob([text], { type: contentType || 'application/json' }),
+      filename: filenameFromDisposition(response.headers.get('Content-Disposition')),
+    };
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get('Content-Disposition')),
+  };
+}
+
+/** Hand a blob to the browser as a download. */
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoked late: Firefox cancels an in-flight download when the object URL
+  // goes away in the same tick as the click.
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+async function actionExport(kind) {
+  const spec = EXPORTS[kind];
+  if (!spec) return;
+  // Export what is on screen: a title still sitting uncommitted in its input
+  // would otherwise be missing from the file.
+  await flushPendingEdits();
+
+  const fallbackName = exportFilename(spec.extension);
+  setStatus(t('msg.downloading', { name: fallbackName }), 'info');
+  try {
+    const result = await fetchDownload(spec.url);
+    const name = result.filename || fallbackName;
+    saveBlob(result.blob, name);
+    toast(t('msg.downloaded', { name }), 'ok');
+  } catch (err) {
+    showError(err);
+  }
+}
+
+/** base64 -> bytes, for the image POST /api/render answers with. */
+function base64ToBytes(data) {
+  const binary = atob(String(data || ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * Render the diagram to a PNG file, the desktop editor's "Render" button.
+ *
+ * This is the native-Graphviz path (300 dpi). Without a system `dot` the button
+ * is gated off by applyCapabilityGates() and the message points at the diagram
+ * panel's own PNG button, which rasterises what the in-browser renderer drew --
+ * a different engine, so it is named rather than silently substituted.
+ */
+async function actionRenderImage() {
+  const name = exportFilename('png');
+  setStatus(t('msg.downloading', { name }), 'info');
+  try {
+    const result = await api.post('/render', {
+      format: 'png',
+      hideZero: document.documentElement.dataset.hideZero === '1',
+      highQuality: true,
+    });
+    saveBlob(
+      new Blob([base64ToBytes(result.data)], { type: result.contentType || 'image/png' }),
+      name
+    );
+    toast(t('msg.downloaded', { name }), 'ok');
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'RENDERER_UNAVAILABLE') {
+      toast(t('msg.renderUnavailable'), 'warn', err.code);
+      return;
+    }
+    showError(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// capability gating (spec 6.8)
+// ---------------------------------------------------------------------------
+
+/**
+ * true / false / null, where null means "the server did not say". Mirrors
+ * capabilities.js: an unreported capability is never folded into false, because
+ * accusing a build of a limitation nobody measured is its own kind of lie.
+ */
+function capability(name) {
+  const state = store.state;
+  const caps =
+    state && state.capabilities && typeof state.capabilities === 'object'
+      ? state.capabilities
+      : null;
+  if (caps && typeof caps[name] === 'boolean') return caps[name];
+  if (state && typeof state[name] === 'boolean') return state[name];
+  return null;
+}
+
+/** Buttons whose availability depends on an optional dependency. */
+const CAPABILITY_GATES = [
+  { action: 'excel', capability: 'excelExport', message: 'msg.excelUnavailable' },
+  { action: 'render', capability: 'nativeDot', message: 'msg.renderUnavailable' },
+];
+
+/**
+ * Disable-with-an-explanation, never hide. A vanished button reads as "this
+ * build never had the feature"; a dimmed one that says openpyxl is missing and
+ * how to install it is a bug report the user can fix themselves.
+ */
+function applyCapabilityGates() {
+  for (const gate of CAPABILITY_GATES) {
+    const button = $('[data-action="' + gate.action + '"]');
+    if (!button) continue;
+    const off = capability(gate.capability) === false;
+    button.setAttribute('aria-disabled', off ? 'true' : 'false');
+    if (off) {
+      button.dataset.capability = gate.capability;
+      button.title = t(gate.message);
+    } else {
+      delete button.dataset.capability;
+      if (button.dataset.i18nTitle) button.title = t(button.dataset.i18nTitle);
+    }
+  }
+}
+
 function explainUnbuilt(button) {
   const phase = button.dataset.phase || 'a later phase';
   const label = button.getAttribute('aria-label') || button.textContent.trim();
   toast(t('msg.notAvailable', { label, phase }), 'info');
+}
+
+/** Why this button did nothing: a missing dependency, or an unbuilt phase. */
+function explainDisabled(button) {
+  const gate = CAPABILITY_GATES.find((entry) => entry.capability === button.dataset.capability);
+  if (gate) {
+    toast(t(gate.message), 'warn', 'CAPABILITY_UNAVAILABLE');
+    return;
+  }
+  explainUnbuilt(button);
 }
 
 const ACTIONS = {
@@ -900,13 +1513,20 @@ const ACTIONS = {
   add: actionAdd,
   edit: actionEdit,
   delete: actionDelete,
+  load: actionLoad,
+  save: actionSave,
+  'save-as': actionSaveAs,
+  json: () => actionExport('json'),
+  xml: () => actionExport('xml'),
+  excel: () => actionExport('xlsx'),
+  render: actionRenderImage,
 };
 
 function wireActionBar() {
   for (const button of document.querySelectorAll('[data-action]')) {
     button.addEventListener('click', () => {
       if (button.getAttribute('aria-disabled') === 'true') {
-        explainUnbuilt(button);
+        explainDisabled(button);
         return;
       }
       const handler = ACTIONS[button.dataset.action];
@@ -932,10 +1552,10 @@ function setHideZero(on) {
 }
 
 function wireTopbar() {
-  $('#mode-select').addEventListener('change', commitMetadata);
+  $('#mode-select').addEventListener('change', queueMetadata);
   for (const sel of ['#title-input', '#date-input']) {
     const el = $(sel);
-    el.addEventListener('change', commitMetadata);
+    el.addEventListener('change', queueMetadata);
     el.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') el.blur();
     });
@@ -981,6 +1601,10 @@ function renderShell(state) {
   const path = $('#statusline-path');
   path.textContent = state.currentPath || t('status.noFile');
   path.title = state.currentPath || '';
+
+  // Runs on every state change, so a capability that only arrives with the
+  // first /api/state is applied the moment it does.
+  applyCapabilityGates();
 }
 
 // ---------------------------------------------------------------------------
@@ -1019,12 +1643,24 @@ function onKeyDown(event) {
   }
 
   if (sessionLost) return;
-  // Typing must never trigger an action, and Ctrl+A/Ctrl+Z inside a field must
-  // keep meaning select-all and undo-my-typing.
-  if (isTextEntry(event.target) || modalOpen()) return;
+  if (modalOpen()) return;
 
   const ctrl = event.ctrlKey || event.metaKey;
   const key = (event.key || '').toLowerCase();
+
+  // Ctrl+S is checked before the text-entry guard below: saving has to work
+  // with the caret still in the Title box, and actionSave flushes that field
+  // before it writes. Ctrl+Shift+S is Save As, as on the desktop.
+  if (ctrl && !event.altKey && key === 's') {
+    event.preventDefault();
+    if (event.shiftKey) actionSaveAs();
+    else actionSave();
+    return;
+  }
+
+  // Typing must never trigger an action, and Ctrl+A/Ctrl+Z inside a field must
+  // keep meaning select-all and undo-my-typing.
+  if (isTextEntry(event.target)) return;
 
   if (!ctrl) {
     if (event.key === 'Delete' || event.key === 'Del') {

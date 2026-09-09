@@ -290,12 +290,30 @@ class FTACore:
             try:
                 with open(file_path, 'r', encoding=enc) as f:
                     content = f.read().strip()
-                    # Handle double-wrapped JSON
-                    if content.startswith("{{"):
-                        content = "{" + content[2:]
-                    if content.endswith("}}"):
-                        content = content[:-1]
+                # Divergence D8: parse the document as written FIRST, and only
+                # fall back to the double-wrap repair when that fails.
+                #
+                # At baseline the repair ran unconditionally, and its
+                # `endswith("}}")` test matches every *minified* analysis --
+                # the tree's closing brace followed by the document's. Stripping
+                # one brace turned a perfectly valid file into invalid JSON, and
+                # because the failure surfaced as a JSONDecodeError the loop
+                # blamed the encoding: "Failed to read file with common
+                # encodings". Files this editor writes use indent=2 and never
+                # tripped it, so the bug only bit documents minified elsewhere.
+                #
+                # Trying the raw text first keeps the legacy repair available for
+                # the genuinely double-wrapped files it was added for, while a
+                # valid document is now simply parsed.
+                try:
                     loaded_data = json.loads(content)
+                except json.JSONDecodeError:
+                    repaired = content
+                    if repaired.startswith("{{"):
+                        repaired = "{" + repaired[2:]
+                    if repaired.endswith("}}"):
+                        repaired = repaired[:-1]
+                    loaded_data = json.loads(repaired)
                 break
             except (UnicodeDecodeError, json.JSONDecodeError):
                 continue

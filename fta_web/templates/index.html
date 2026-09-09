@@ -197,16 +197,34 @@
 
     <span class="sep" aria-hidden="true"></span>
 
-    <button type="button" class="btn" data-action="load" aria-disabled="true" data-phase="P3"
-            data-i18n="btn.load" data-i18n-title="phase.p3" title="Coming in P3">Load</button>
-    <button type="button" class="btn" data-action="save" aria-disabled="true" data-phase="P3"
-            data-i18n="btn.save" data-i18n-title="phase.p3" title="Coming in P3">Save</button>
-    <button type="button" class="btn" data-action="xml" aria-disabled="true" data-phase="P3"
-            data-i18n="btn.xml" data-i18n-title="phase.p3" title="Coming in P3">XML</button>
-    <button type="button" class="btn" data-action="excel" aria-disabled="true" data-phase="P3"
-            data-i18n="btn.excel" data-i18n-title="phase.p3" title="Coming in P3">Excel</button>
-    <button type="button" class="btn" data-action="render" aria-disabled="true" data-phase="P2"
-            data-i18n="btn.render" data-i18n-title="phase.p2" title="Coming in P2">Render</button>
+    <button type="button" class="btn" data-action="load"
+            data-i18n="btn.load" data-i18n-title="tip.load"
+            title="Open a saved analysis from disk">Load</button>
+    <button type="button" class="btn" data-action="save"
+            data-i18n="btn.save" data-i18n-title="tip.save"
+            title="Save to the current file (Ctrl+S)">Save</button>
+    <button type="button" class="btn" data-action="save-as"
+            data-i18n="btn.saveAs" data-i18n-title="tip.saveAs"
+            title="Save to another file (Ctrl+Shift+S)">Save As</button>
+
+    <span class="sep" aria-hidden="true"></span>
+
+    <!-- Downloads, not disk writes: these fetch /api/export/* with the session
+         header and hand the bytes to the browser. Excel and Render carry
+         data-capability when the server reports the dependency missing; the
+         button stays visible and says what to install (spec 6.8). -->
+    <button type="button" class="btn" data-action="json"
+            data-i18n="btn.json" data-i18n-title="tip.json"
+            title="Download a copy as JSON">JSON</button>
+    <button type="button" class="btn" data-action="xml"
+            data-i18n="btn.xml" data-i18n-title="tip.xml"
+            title="Download a copy as XML">XML</button>
+    <button type="button" class="btn" data-action="excel"
+            data-i18n="btn.excel" data-i18n-title="tip.excel"
+            title="Download a copy as an Excel workbook">Excel</button>
+    <button type="button" class="btn" data-action="render"
+            data-i18n="btn.render" data-i18n-title="tip.render"
+            title="Download the diagram as a PNG image">Render</button>
 
     <div class="statusline">
       <span class="statusline__path" id="statusline-path"></span>

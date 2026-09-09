@@ -11,7 +11,7 @@
   },
   "vendored": {
     "fta_web/core/AI_agent_handler.py": "f7bc2b8fbb23c20cd226f886676379d80c37da0aa76c0b4e8d6f5760d718548a",
-    "fta_web/core/FTA_Editor_core.py": "51ce55d9b91404240d96548b8950a79ba2fc636e1d025bd6e62f04081b2e2ff2",
+    "fta_web/core/FTA_Editor_core.py": "7635c1db9b50c9786e3fab1cd28b50e891d268c6ac3c46a70d617b189259b2e8",
     "fta_web/core/ai_providers.py": "87733070411e444987fe1e730b39c16ea3b173877e2177db93cf1bdeb8a2b4c2",
     "fta_web/core/json_viewer.py": "a4f18f2fbf68c38018676329be5206be1ae04048d8839758059fd4ce14f84191",
     "fta_web/examples/sampleFTA.json": "c2a99673302a30f79156604ce0d81178f28c6ab68b2e45d4a5143d9c03ea3aa3"
@@ -19,6 +19,7 @@
   "divergences": [
     "D1",
     "D5",
-    "D7"
+    "D7",
+    "D8"
   ]
 }
