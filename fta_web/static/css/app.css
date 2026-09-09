@@ -1,0 +1,880 @@
+/* ==========================================================================
+   app.css -- layout and components. Reads tokens from theme.css; defines no
+   colour literals of its own so a palette change is a one-file change.
+   ==========================================================================
+
+   Notes for the tree/details/dialogs modules
+   ------------------------------------------
+   * Bare form elements (input, select, textarea, button) inside a .panel are
+     already styled, so a panel built from plain HTML looks right without
+     inventing class names.
+   * Conventions this stylesheet honours, so you get behaviour for free:
+       .is-selected     on a tree row  -> selection highlight
+       .is-zero         on a tree row  -> dimmed, and HIDDEN when the
+                                          "Hide Zero" box is ticked (the shell
+                                          sets [data-hide-zero="1"] on <html>)
+       .is-dangling     on a link row  -> warning tint
+       .field           label+control wrapper in the details form
+   * Modals: give the backdrop `data-fta-modal="open"`. The shell suppresses
+     its keyboard shortcuts while such an element exists and lets Escape
+     through to you (see the fta:escape event in main.js).
+   ========================================================================== */
+
+/* ---- base ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { height: 100%; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p, figure { margin: 0; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s-2);
+  top: -3rem;
+  z-index: 100;
+  padding: var(--s-2) var(--s-3);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  transition: top var(--dur);
+}
+.skip-link:focus { top: var(--s-2); }
+
+/* ---- controls ------------------------------------------------------------ */
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--ctl-h);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur), border-color var(--dur), color var(--dur);
+}
+.btn:hover { background: var(--surface-hover); }
+.btn:active { background: var(--surface-active); }
+
+.btn--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.btn--primary:hover { background: var(--accent-hover); }
+.btn--primary:active { background: var(--accent-hover); }
+
+.btn--danger { color: var(--danger); border-color: var(--border); }
+.btn--danger:hover { background: var(--danger-soft); border-color: var(--danger); }
+
+.btn--icon {
+  width: var(--ctl-h);
+  min-width: var(--ctl-h);
+  padding: 0;
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+.btn--ghost { background: transparent; border-color: transparent; }
+.btn--ghost:hover { background: var(--surface-hover); }
+
+/* Not-yet-built actions stay focusable so a keyboard user can reach them and
+   read the tooltip; the click handler explains instead of doing nothing. */
+.btn[aria-disabled="true"],
+.btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
+.btn[aria-disabled="true"]:hover,
+.btn:disabled:hover { background: var(--surface-2); }
+
+.btn[aria-disabled="true"]::after {
+  content: attr(data-phase);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.btn[aria-disabled="true"]:not([data-phase])::after { content: none; }
+
+input[type="text"],
+input[type="number"],
+input[type="search"],
+select,
+textarea {
+  min-height: var(--ctl-h);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  max-width: 100%;
+}
+textarea { min-height: 4.5em; resize: vertical; line-height: 1.4; }
+input:hover, select:hover, textarea:hover { border-color: var(--border-strong); }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+input[readonly], input:disabled, select:disabled, textarea:disabled {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+.field { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.field > label,
+.field-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ---- top bar ------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.topbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.topbar__group--grow { flex: 1 1 220px; }
+.topbar__group--end { margin-left: auto; }
+
+.topbar__label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+#title-input { flex: 1 1 200px; min-width: 120px; }
+#date-input { width: 11ch; font-variant-numeric: tabular-nums; }
+#mode-select { width: 7.5ch; }
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+/* dirty indicator ---------------------------------------------------------- */
+.dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: var(--ctl-h);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.dirty__dot { font-size: 10px; line-height: 1; color: var(--ok); }
+.dirty[data-dirty="true"] { background: var(--warn-soft); border-color: var(--warn); }
+.dirty[data-dirty="true"] .dirty__dot { color: var(--warn); }
+
+/* ---- workspace grid ------------------------------------------------------ */
+
+.workspace {
+  display: grid;
+  min-height: 0;
+  padding: var(--s-2);
+  grid-template-columns:
+    var(--tree-w, 320px) var(--splitter) minmax(0, 1fr) var(--splitter) var(--ai-w, 340px);
+  grid-template-rows:
+    minmax(0, 1fr) var(--splitter) var(--details-h, 260px);
+  grid-template-areas:
+    "tree          split-tree    diagram       split-ai ai"
+    "split-details split-details split-details split-ai ai"
+    "details       details       details       split-ai ai";
+}
+
+#tree-panel    { grid-area: tree; }
+#diagram-panel { grid-area: diagram; }
+#details-panel { grid-area: details; }
+#ai-panel      { grid-area: ai; }
+[data-splitter="tree"]    { grid-area: split-tree; }
+[data-splitter="ai"]      { grid-area: split-ai; }
+[data-splitter="details"] { grid-area: split-details; }
+
+/* ---- splitters ----------------------------------------------------------- */
+
+.splitter {
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  touch-action: none;
+}
+.splitter::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  background: var(--border);
+  border-radius: 2px;
+  transition: background var(--dur);
+}
+.splitter--v { cursor: col-resize; }
+.splitter--v::before { width: 2px; height: 34px; }
+.splitter--h { cursor: row-resize; }
+.splitter--h::before { height: 2px; width: 34px; }
+.splitter:hover::before,
+.splitter:focus-visible::before,
+.splitter.is-dragging::before { background: var(--accent); }
+.splitter--v:hover::before,
+.splitter--v.is-dragging::before { height: 100%; }
+.splitter--h:hover::before,
+.splitter--h.is-dragging::before { width: 100%; }
+
+/* While a drag is in flight the cursor must not flicker over child elements. */
+body.is-resizing { user-select: none; }
+body.is-resizing--v, body.is-resizing--v * { cursor: col-resize !important; }
+body.is-resizing--h, body.is-resizing--h * { cursor: row-resize !important; }
+
+/* ---- panels -------------------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 5px 8px 5px 10px;
+  min-height: 34px;
+  background: var(--panel-header);
+  border-bottom: 1px solid var(--border);
+}
+
+.panel__title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.panel__meta {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.panel__spacer { flex: 1 1 auto; }
+
+.panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s-2);
+}
+.panel__body--flush { padding: 0; }
+
+/* ---- placeholders for panels that arrive in a later phase ---------------- */
+
+.placeholder {
+  height: 100%;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  text-align: center;
+  color: var(--text-faint);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--surface-2) 0 10px,
+      transparent 10px 20px
+    );
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+}
+.placeholder__glyph { font-size: 26px; line-height: 1; opacity: .8; }
+.placeholder__title { font-size: var(--fs-lg); font-weight: 600; color: var(--text-dim); }
+.placeholder__note { font-size: var(--fs-sm); max-width: 34ch; }
+.placeholder__badge {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- AI panel status dot ------------------------------------------------- */
+
+.status-dot { font-size: 11px; line-height: 1; color: var(--text-faint); }
+.status-dot[data-on="true"] { color: var(--ok); }
+
+/* ---- AI assistant panel (chat.js) ---------------------------------------
+   The panel is a column: an invitation when nothing is set up, the message
+   log (the only part that scrolls), a busy line, the quick actions, and the
+   composer. Everything is built by chat.js; only the looks live here.        */
+
+#ai-root { overflow: hidden; }
+
+.chat {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+}
+
+/* Not configured is an invitation, never a warning: accent tones, not amber.
+   The same reasoning as the AI row in capabilities.js -- an assistant nobody
+   has set up yet is the expected default, not a fault. */
+.chat__invite {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.chat__invite[hidden] { display: none; }
+.chat-invite__title { font-size: var(--fs-lg); font-weight: 600; }
+.chat-invite__body,
+.chat-invite__free { font-size: var(--fs-sm); color: var(--text-dim); }
+.chat-invite__btn { align-self: flex-start; }
+
+.chat__log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+}
+.chat-msg__role {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.chat-msg__body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.chat-msg--user { background: var(--accent-soft); }
+.chat-msg--user .chat-msg__role { color: var(--accent); }
+.chat-msg--assistant { background: var(--surface-2); border-color: var(--border); }
+.chat-msg--system { padding: 0 8px; color: var(--text-dim); font-size: var(--fs-xs); }
+.chat-msg--error {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.chat-msg--error .chat-msg__role { color: var(--danger); }
+
+/* A rejected AI update explains itself with a long excerpt. It has to be
+   readable without pushing the conversation off the screen, so it collapses
+   and scrolls inside itself. */
+.chat-block {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.chat-block__summary {
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.chat-block__pre {
+  margin: 0;
+  padding: 8px;
+  max-height: 16em;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.chat-changes[data-retired="true"] { opacity: .65; border-left-color: var(--border); }
+.chat-changes__title { font-size: var(--fs-sm); font-weight: 700; }
+.chat-changes__hint,
+.chat-changes__status,
+.chat-changes__target { font-size: var(--fs-xs); color: var(--text-dim); }
+.chat-changes__list { display: flex; flex-direction: column; gap: var(--s-2); }
+.chat-changes__item { display: flex; flex-direction: column; gap: 2px; }
+.chat-changes__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.chat-changes__box { flex: 0 0 auto; margin-top: 2px; }
+.chat-changes__text { overflow-wrap: anywhere; }
+.chat-changes__target,
+.chat-block--inline { margin-left: 21px; }
+.chat-changes__foot { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+.chat__busy {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.chat__busy[hidden] { display: none; }
+.chat__spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: chat-spin .8s linear infinite;
+}
+@keyframes chat-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .chat__spinner { animation: none; }
+}
+.chat[data-busy="true"] .chat__log { opacity: .8; }
+
+.chat__actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.chat__action--end { margin-left: auto; }
+
+.chat__composer { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--s-1); }
+.chat__input { width: 100%; min-height: 3.6em; }
+.chat__send { align-self: flex-end; }
+
+/* ---- AI setup dialog (aisettings.js) -------------------------------------
+   The frame (.fta-modal / .fta-modal-overlay) comes from dialogs.js; these
+   rules are only the inside of the dialog.                                   */
+
+.aiset { width: min(34rem, 100%); }
+.aiset-body { gap: var(--s-3); }
+.aiset-form { display: flex; flex-direction: column; gap: var(--s-3); }
+.aiset-form[hidden] { display: none; }
+.aiset-intro,
+.aiset-loading { font-size: var(--fs-sm); color: var(--text-dim); }
+.aiset-block { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+
+/* Provider first: a card each, with the console link in plain sight so the
+   question "where do I get a key?" is answered before it is asked. */
+.aiset-providers { display: flex; flex-direction: column; gap: var(--s-2); }
+.aiset-provider {
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.aiset-provider[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.aiset-provider__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+.aiset-provider__hint,
+.aiset-provider__where {
+  margin-top: 2px;
+  padding-left: 23px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.aiset-provider__link { color: var(--accent); overflow-wrap: anywhere; }
+
+.aiset-key,
+.aiset-model { display: flex; align-items: center; gap: var(--s-2); }
+.aiset-key__input,
+.aiset-model__input { flex: 1 1 auto; min-width: 0; }
+/* input[type=password] is not in the shared control rule above, so it is
+   restated here rather than widening a global selector from this section. */
+.aiset-key__input {
+  min-height: var(--ctl-h);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+}
+.aiset-key__toggle,
+.aiset-model__refresh { flex: 0 0 auto; }
+
+.aiset-note { font-size: var(--fs-xs); color: var(--text-dim); overflow-wrap: anywhere; }
+.aiset-note[hidden] { display: none; }
+.aiset-note[data-kind="warn"] { color: var(--warn); }
+.aiset-note[data-kind="ok"] { color: var(--ok); }
+
+.aiset-advanced { border-top: 1px solid var(--border); padding-top: var(--s-2); }
+.aiset-advanced__summary { cursor: pointer; font-size: var(--fs-sm); color: var(--text-dim); }
+.aiset-advanced .aiset-block { margin-top: var(--s-2); }
+.aiset-endpoint__input { width: 100%; font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+.aiset-status { min-height: 1.2em; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.aiset-status[data-kind="idle"],
+.aiset-status[data-kind="info"],
+.aiset-status[data-kind="busy"] { color: var(--text-dim); }
+.aiset-status[data-kind="ok"] { color: var(--ok); font-weight: 600; }
+.aiset-status[data-kind="error"] { color: var(--danger); font-weight: 600; }
+
+.aiset-foot { align-items: center; }
+.aiset-clear { margin-right: auto; }
+.aiset-clear[hidden] { display: none; }
+.aiset[data-busy="true"] { cursor: progress; }
+
+/* ---- generic tree / details styling the sibling modules inherit ---------- */
+
+.panel__body ul,
+.panel__body ol { list-style: none; margin: 0; padding: 0; }
+
+.tree-node,
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+  cursor: default;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.tree-node:hover,
+.tree-row:hover { background: var(--surface-hover); }
+.tree-node.is-selected,
+.tree-row.is-selected {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tree-node.is-zero,
+/* tree.js emits .fta-tree-row; .tree-row was a P1 placeholder name that the
+   P5 rewrite replaced. Both are matched so neither selector silently stops
+   applying again -- this mismatch meant the "Hide Zero" toggle had no visible
+   effect on the tree panel at all, while still filtering the diagram, which
+   read as the toggle being half-broken rather than mis-selectored. */
+.tree-row.is-zero,
+.fta-tree-row.is-zero { color: var(--text-faint); font-style: italic; }
+.is-dangling { color: var(--warn); }
+
+/* "Hide Zero P_calc" is pure CSS: the shell flips the attribute, so it works
+   whatever markup tree.js emits, as long as zero rows carry .is-zero. */
+html[data-hide-zero="1"] .tree-node.is-zero,
+html[data-hide-zero="1"] .tree-row.is-zero,
+html[data-hide-zero="1"] .fta-tree-row.is-zero { display: none; }
+
+/* ---- action bar ---------------------------------------------------------- */
+
+.actionbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  background: var(--chrome);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.actionbar .sep { height: var(--ctl-h); margin: 0 var(--s-2); }
+
+.statusline {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+.statusline__msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46ch;
+}
+.statusline__msg[data-kind="error"] { color: var(--danger); font-weight: 600; }
+.statusline__msg[data-kind="ok"] { color: var(--ok); }
+.statusline__path {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 30ch;
+}
+
+/* ---- toasts -------------------------------------------------------------- */
+
+.toasts {
+  position: fixed;
+  right: var(--s-3);
+  bottom: calc(var(--ctl-h) + var(--s-5));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: min(420px, calc(100vw - var(--s-5)));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-sm);
+  animation: toast-in 160ms ease-out;
+}
+.toast--error { border-left-color: var(--danger); background: var(--danger-soft); }
+.toast--ok { border-left-color: var(--ok); background: var(--ok-soft); }
+.toast--warn { border-left-color: var(--warn); background: var(--warn-soft); }
+
+.toast__body { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.toast__code {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.toast__close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+}
+.toast__close:hover { background: var(--surface-hover); color: var(--text); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- blocking overlay (no session / boot failure) ------------------------ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+}
+.overlay[hidden] { display: none; }
+
+.overlay__card {
+  max-width: 56ch;
+  padding: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-2);
+  text-align: left;
+}
+.overlay__glyph { font-size: 30px; line-height: 1; }
+.overlay__title {
+  margin: var(--s-3) 0 var(--s-2);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+}
+.overlay__body { color: var(--text-dim); font-size: var(--fs-md); }
+.overlay__body p + p { margin-top: var(--s-2); }
+.overlay__cmd {
+  display: block;
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ---- narrow viewports ---------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(4, minmax(160px, auto));
+    grid-template-areas: "tree" "diagram" "details" "ai";
+    gap: var(--s-2);
+    overflow: auto;
+  }
+  .splitter { display: none; }
+  .statusline { width: 100%; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+
+/* P2: the diagram panel manages its own toolbar/stage/status rows, so its body
+   is a flush flex column rather than the padded default. */
+.panel__body--flush {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* P3: a button switched off by a missing optional dependency rather than by an
+   unbuilt phase (Excel without openpyxl, Render without a system Graphviz).
+
+   It keeps the dimmed-but-focusable treatment every aria-disabled button has,
+   so it cannot be mistaken for a live control -- and it keeps its badge, which
+   would otherwise be blanked by the `:not([data-phase])` rule above. The badge
+   only draws the eye; the explanation and the remedy are in the button's title
+   and in the message its click raises. Hiding the button instead would read as
+   "this build never had Excel export", which is the misunderstanding spec 6.8
+   exists to prevent. This rule must stay after that `:not([data-phase])` rule:
+   they have equal specificity, so source order decides. */
+.btn[aria-disabled="true"][data-capability]::after {
+  content: "!";
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* The action bar carries eleven buttons at P3 and wraps on a narrow window; the
+   status line then needs its own row rather than a 30ch sliver at the end. */
+@media (max-width: 1100px) {
+  .actionbar .statusline { flex-basis: 100%; margin-left: 0; }
+}
