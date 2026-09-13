@@ -16,18 +16,36 @@ from datetime import datetime
 def sanitize_id(s):
     return re.sub(r'[^0-9A-Za-z_]', '_', str(s))
 
-def node_label(node):
+def node_label(node, font_size=14, small_font_size=9, cellpadding=6, pad_spaces=4):
+    """The HTML-like table label for one node.
+
+    ``pad_spaces`` trailing space characters are appended to both text rows
+    (see the bottom of this function): every attempt so far to compute a
+    numeric box width ourselves -- a per-character estimate, an explicit
+    ``WIDTH`` on the cell -- was still wrong, because it depended on
+    guessing the same thing that is actually unknowable in advance: how wide
+    *this* text renders in whichever font the browser (or a native ``dot``)
+    actually resolves the requested font name to. Appended spaces sidestep
+    that guess entirely -- they are measured by the SAME engine, in the SAME
+    font, at the SAME size as the visible text, so whatever that engine's
+    systematic error is, it applies equally to the padding, and the box
+    simply grows by however much extra room ``pad_spaces`` characters need.
+    It is an invisible fudge factor rather than a calculation, but a
+    fudge factor that automatically tracks the very metrics that were
+    causing the mismatch, and it is directly adjustable (diagram.js's box
+    scale control) when auto-detection still is not enough.
+    """
     name = node.get("name", node.get("id", ""))
     p = node.get("probability")
     cp = node.get("calculatedProbability")
     gate = node.get("logicGate", "")
-    
+
     p_str = f"{p:.1E}" if p is not None else "N/A"
     cp_str = f"{cp:.1E}" if cp is not None else "N/A"
-    
+
     # Show gate type with probabilities, all on same line
     gate_str = f"Gate: {gate} | " if gate else ""
-    
+
     # Color coding based on calculated probability
     if cp == 1.0:
         bgcolor = "pink"
@@ -37,10 +55,19 @@ def node_label(node):
         bgcolor = "lightyellow"
     else:
         bgcolor = "white"
-    
-    return f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" BGCOLOR="{bgcolor}">
-        <TR><TD HEIGHT="24">{name}</TD></TR>
-        <TR><TD HEIGHT="18"><FONT POINT-SIZE="9">{gate_str}P:{p_str} | P_calc:{cp_str}</FONT></TD></TR>
+
+    # CELLPADDING gives the text room on every side; HEIGHT is only a
+    # *minimum* (Graphviz still grows a cell to fit its font, so this never
+    # clips anything, it just sizes the box). The padding spaces (see the
+    # docstring above) go inside the same <FONT> run as the visible text so
+    # they are measured at the same size, in the same (guessed) font.
+    name_height = max(1, round(font_size * 1.7))
+    meta_height = max(1, round(small_font_size * 2.0))
+    meta_text = f'{gate_str}P:{p_str} | P_calc:{cp_str}'
+    pad = ' ' * max(0, int(pad_spaces))
+    return f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="{cellpadding}" BGCOLOR="{bgcolor}">
+        <TR><TD HEIGHT="{name_height}"><FONT POINT-SIZE="{font_size}">{name}{pad}</FONT></TD></TR>
+        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">{meta_text}{pad}</FONT></TD></TR>
     </TABLE>>'''
 
 def gather_nodes(root, hide_zero=False):
@@ -108,13 +135,37 @@ def gather_nodes(root, hide_zero=False):
     
     return nodes, edges
 
-def build_dot(nodes, edges):
+def build_dot(nodes, edges, font_name="Noto Sans CJK JP", scale=4, dark=False):
+    """Build the DOT source for ``nodes``/``edges``.
+
+    ``font_name`` is trusted by the time it gets here -- callers reaching this
+    from a network request (``fta_web/rendering.py``) must sanitize it first,
+    since it is interpolated directly into ``fontname="..."`` attributes.
+    ``scale`` is the number of blank space characters appended to every
+    node's text (see ``node_label``'s docstring for why spaces rather than a
+    computed width): the box has no size of its own, it just wraps its
+    label, so more invisible trailing padding is what grows the box.
+    ``dark`` swaps the page background and the tree connectors (lines and
+    their arrowheads, which Graphviz colors the same as the edge) for a dark
+    theme. The node boxes themselves are left alone: their fill is always one
+    of a few light, pastel colours (see ``node_label``), which stays readable
+    with the (also unchanged) black label text whichever theme surrounds it.
+    """
+    font_size = 14
+    small_font_size = 9
+    cellpadding = 6
+    pad_spaces = max(0, round(scale))
+    nodesep = 0.12
+    ranksep = 0.5
+    margin = 0.05
+    bgcolor = "#1b1f23" if dark else "white"
+    edge_color = "white" if dark else "black"
     lines = [
         'digraph G {',
         '  rankdir=LR;',
-        '  graph [nodesep=0.12, ranksep=0.5, margin=0.05, overlap=false];',  # Remove splines=true to allow per-edge override
-        '  node [shape=none, fontname="Noto Sans CJK JP"];',
-        '  edge [fontname="Noto Sans CJK JP", arrowsize=0.6];'
+        f'  graph [nodesep={nodesep}, ranksep={ranksep}, margin={margin}, overlap=false, bgcolor="{bgcolor}"];',  # Remove splines=true to allow per-edge override
+        f'  node [shape=none, fontname="{font_name}"];',
+        f'  edge [fontname="{font_name}", arrowsize=0.6, color="{edge_color}"];'
     ]
 
     # Build parent-child relationships (only for structural edges, not links)
@@ -171,7 +222,8 @@ def build_dot(nodes, edges):
     # Create nodes in traversal order
     for nid in traversal_order:
         if nid in nodes:
-            lines.append(f'  {sanitize_id(nid)} [label={node_label(nodes[nid])}];')
+            label = node_label(nodes[nid], font_size, small_font_size, cellpadding, pad_spaces)
+            lines.append(f'  {sanitize_id(nid)} [label={label}];')
 
     # Align nodes at same depth using invisible edges to preserve order
     for depth in sorted(nodes_by_depth.keys()):
@@ -202,11 +254,15 @@ def build_dot(nodes, edges):
             else:
                 link_counter[edge_key] += 1
             
-            # Link edges with polyline splines for sharp right-angle turns
+            # Link edges with polyline splines for sharp right-angle turns.
+            # Kept blue in both themes: it is already readable on a dark
+            # background, and its colour is how a link is told apart from a
+            # tree edge, so tying it to the dark/light swap would remove that
+            # distinction rather than just re-theming it.
             lines.append(f'  {src_id} -> {tgt_id} [style=dashed, constraint=false, splines=polyline, penwidth=1.5, color="blue"];')
         else:
             # Tree edges: use straight lines with splines=line for direct connections
-            lines.append(f'  {src_id}:e -> {tgt_id}:w [style=solid, splines=line, penwidth=1.5, color="black"];')
+            lines.append(f'  {src_id}:e -> {tgt_id}:w [style=solid, splines=line, penwidth=1.5, color="{edge_color}"];')
 
     lines.append('}')
     return "\n".join(lines)

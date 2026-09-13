@@ -48,6 +48,123 @@ function t(key, fallback) {
   return out === key ? fallback : out;
 }
 
+// ---------------------------------------------------------------------------
+// box sizing: font auto-detect + a manual scale override.
+//
+// The mismatch this exists to close: viz-js (WASM Graphviz) lays out each
+// node's HTML label using its OWN estimate of the named font's metrics, then
+// the browser paints the same text with whatever font it actually resolves
+// "fontname" to. When those two disagree -- most commonly because the
+// requested font is not installed and the browser silently substitutes one
+// with different glyph widths -- the drawn text can crowd or cross the box
+// border that was sized for the *other* font's metrics.
+//
+// Detecting which candidate fonts this browser/OS actually has narrows that
+// gap (both sides now agree on a font that really exists here), and the
+// manual scale is the escape hatch for whatever gap is left: it inflates
+// font size and padding together, which is what grows the box, since a box
+// has no size of its own beyond what its label needs.
+// ---------------------------------------------------------------------------
+
+/** Preference order: Meiryo first per spec, then other common CJK-capable
+ * fonts, ending in a generic family that is always considered "available". */
+const FONT_CANDIDATES = [
+  'Meiryo',
+  'Yu Gothic UI',
+  'Yu Gothic',
+  'Hiragino Sans',
+  'Hiragino Kaku Gothic Pro',
+  'Noto Sans CJK JP',
+  'Noto Sans JP',
+  'MS PGothic',
+  'sans-serif',
+];
+
+const DIAGRAM_SETTINGS_KEY = 'fta.diagram.settings';
+// "Scale" is a count of trailing blank characters appended to every node's
+// text (json_viewer.node_label on the server): a computed pixel/point width
+// was tried twice and still left text spilling past the border in some
+// cases, because it depended on guessing the same unknowable thing -- how
+// wide this exact text renders in whichever font actually gets used. Padding
+// spaces are measured by that same (mis-)guess, so the box grows by exactly
+// as much room as they need, no separate width arithmetic required.
+const SCALE_MIN = 0;
+const SCALE_MAX = 30;
+const SCALE_DEFAULT = 4;
+
+function readDiagramSettings() {
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(DIAGRAM_SETTINGS_KEY);
+  } catch (_err) {
+    raw = null;
+  }
+  // fontChoice '' means "auto-detect"; popoverLeft/Top null means "not moved
+  // yet, use the default lower-right pin".
+  const out = { fontChoice: '', scale: SCALE_DEFAULT, popoverLeft: null, popoverTop: null };
+  if (!raw) return out;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.fontChoice === 'string') out.fontChoice = parsed.fontChoice;
+    const scale = Math.round(Number(parsed && parsed.scale));
+    if (Number.isFinite(scale)) out.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, scale));
+    const left = Number(parsed && parsed.popoverLeft);
+    const top = Number(parsed && parsed.popoverTop);
+    if (Number.isFinite(left)) out.popoverLeft = left;
+    if (Number.isFinite(top)) out.popoverTop = top;
+  } catch (_err) {
+    /* corrupt entry: keep the defaults */
+  }
+  return out;
+}
+
+function writeDiagramSettings(settings) {
+  try {
+    window.localStorage.setItem(DIAGRAM_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (_err) {
+    /* private mode: the choice just does not persist across reloads */
+  }
+}
+
+/**
+ * True when the diagram should be drawn dark. Reads the same signal main.js
+ * sets on `<html data-theme>` (main.js owns the theme cycle; this only reads
+ * its result) -- 'system' leaves the attribute off, so that case falls
+ * through to the OS/browser preference via `prefers-color-scheme`.
+ */
+function isDarkMode() {
+  const attr = document.documentElement.getAttribute('data-theme');
+  if (attr === 'dark') return true;
+  if (attr === 'light') return false;
+  try {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  } catch (_err) {
+    return false;
+  }
+}
+
+/** First candidate this browser reports as available, cached for the page's
+ * lifetime -- `document.fonts.check` is cheap but there is no reason to
+ * repeat it on every render. */
+let detectedFontCache = null;
+function detectFont() {
+  if (detectedFontCache) return detectedFontCache;
+  let found = FONT_CANDIDATES[FONT_CANDIDATES.length - 1]; // 'sans-serif': always matches
+  try {
+    for (const name of FONT_CANDIDATES) {
+      if (name === 'sans-serif') break;
+      if (document.fonts && document.fonts.check(`14px "${name}"`)) {
+        found = name;
+        break;
+      }
+    }
+  } catch (_err) {
+    /* document.fonts unsupported (very old browser): fall back to generic */
+  }
+  detectedFontCache = found;
+  return found;
+}
+
 /**
  * Mirror of `json_viewer.sanitize_id`:
  *     re.sub(r'[^0-9A-Za-z_]', '_', str(s))
@@ -95,12 +212,193 @@ export function initDiagram(container) {
     return b;
   };
 
+  // ---- box-sizing popover (font auto-detect + manual scale) --------------
+  const boxSettings = readDiagramSettings();
+
+  const fontSelect = el('select', { 'aria-label': 'Diagram font' }, [
+    el('option', { value: '', text: 'Auto-detect' }),
+    ...FONT_CANDIDATES.filter((n) => n !== 'sans-serif').map((n) => el('option', { value: n, text: n })),
+    el('option', { value: 'sans-serif', text: 'System default' }),
+  ]);
+  fontSelect.value = boxSettings.fontChoice;
+
+  const scaleInput = el('input', {
+    type: 'number',
+    min: String(SCALE_MIN),
+    max: String(SCALE_MAX),
+    step: '1',
+    'aria-label': 'Diagram box scale',
+    value: String(boxSettings.scale),
+  });
+
+  const fontDetectedNote = el('span', { class: 'diagram__fontnote' });
+
+  function refreshFontNote() {
+    const active = boxSettings.fontChoice ? boxSettings.fontChoice : detectFont();
+    fontDetectedNote.textContent = boxSettings.fontChoice
+      ? ''
+      : t('diagram.fontAutoUsing', 'Detected: ') + active;
+  }
+
+  const popoverCloseBtn = el('button', {
+    type: 'button',
+    class: 'diagram__popoverHead__close',
+    'aria-label': t('diagram.fontSettingsClose', 'Close'),
+    text: '×',
+    onclick: () => closePopover(),
+  });
+  const popoverHead = el('div', { class: 'diagram__popoverHead' }, [
+    el('span', { text: t('diagram.fontSettings', 'Font & box size') }),
+    popoverCloseBtn,
+  ]);
+
+  const popover = el(
+    'div',
+    { class: 'diagram__popover', hidden: true },
+    [
+      popoverHead,
+      el('label', { class: 'diagram__popoverRow' }, [
+        el('span', { text: t('diagram.fontLabel', 'Font') }),
+        fontSelect,
+      ]),
+      fontDetectedNote,
+      el('label', { class: 'diagram__popoverRow' }, [
+        el('span', { text: t('diagram.scaleLabel', 'Box scale') }),
+        scaleInput,
+      ]),
+      el('p', { class: 'diagram__popoverHint' }, [
+        t(
+          'diagram.scaleHint',
+          'If text still spills out of the boxes after auto-detect, raise the scale.'
+        ),
+      ]),
+    ]
+  );
+
+  const aaBtn = btn('Aa', 'diagram.fontSettings', 'Font & box size', () => {
+    if (popover.hidden) openPopover();
+    else closePopover();
+  });
+
+  const POPOVER_MARGIN = 8;
+
+  function clampPopoverPosition(left, top, width, height) {
+    const maxLeft = Math.max(POPOVER_MARGIN, window.innerWidth - width - POPOVER_MARGIN);
+    const maxTop = Math.max(POPOVER_MARGIN, window.innerHeight - height - POPOVER_MARGIN);
+    return {
+      left: Math.max(POPOVER_MARGIN, Math.min(left, maxLeft)),
+      top: Math.max(POPOVER_MARGIN, Math.min(top, maxTop)),
+    };
+  }
+
+  function placePopover(left, top) {
+    const width = popover.offsetWidth;
+    const height = popover.offsetHeight;
+    const pos = clampPopoverPosition(left, top, width, height);
+    popover.style.left = `${pos.left}px`;
+    popover.style.top = `${pos.top}px`;
+    return pos;
+  }
+
+  /**
+   * Positioned as `position: fixed` and appended straight to `document.body`
+   * (see below), not inside the toolbar: the toolbar lives inside
+   * `#diagram-root`, which -- like every `.panel` -- has `overflow: hidden`
+   * so a long diagram or a wide SVG cannot blow out the surrounding layout.
+   * A merely `position: absolute` popover would be clipped by that the
+   * moment the diagram panel is narrower than the popover, which is exactly
+   * what made this menu vanish or run off-screen before. Anchoring by
+   * `getBoundingClientRect()` and clamping to the viewport keeps it fully
+   * visible regardless of panel width.
+   *
+   * Default position is the diagram panel's lower-right corner (pinned
+   * there, as requested); once the user drags it, that spot is remembered
+   * (in localStorage) and used instead until they drag it again.
+   */
+  function openPopover() {
+    popover.hidden = false;
+    if (boxSettings.popoverLeft !== null && boxSettings.popoverTop !== null) {
+      placePopover(boxSettings.popoverLeft, boxSettings.popoverTop);
+      return;
+    }
+    const stageRect = stage.getBoundingClientRect();
+    const width = popover.offsetWidth;
+    const height = popover.offsetHeight;
+    placePopover(
+      stageRect.right - width - POPOVER_MARGIN,
+      stageRect.bottom - height - POPOVER_MARGIN
+    );
+  }
+
+  function closePopover() {
+    popover.hidden = true;
+  }
+
+  // ---- dragging: pointerdown on the header moves the whole popover -------
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let draggingPopover = false;
+  popoverHead.addEventListener('pointerdown', (ev) => {
+    if (ev.target === popoverCloseBtn || ev.button !== 0) return;
+    draggingPopover = true;
+    const rect = popover.getBoundingClientRect();
+    dragOffsetX = ev.clientX - rect.left;
+    dragOffsetY = ev.clientY - rect.top;
+    popoverHead.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+  });
+  popoverHead.addEventListener('pointermove', (ev) => {
+    if (!draggingPopover) return;
+    const pos = placePopover(ev.clientX - dragOffsetX, ev.clientY - dragOffsetY);
+    boxSettings.popoverLeft = pos.left;
+    boxSettings.popoverTop = pos.top;
+  });
+  const endPopoverDrag = (ev) => {
+    if (!draggingPopover) return;
+    draggingPopover = false;
+    try { popoverHead.releasePointerCapture(ev.pointerId); } catch (_err) { /* already released */ }
+    writeDiagramSettings(boxSettings);
+  };
+  popoverHead.addEventListener('pointerup', endPopoverDrag);
+  popoverHead.addEventListener('pointercancel', endPopoverDrag);
+
+  fontSelect.addEventListener('change', () => {
+    boxSettings.fontChoice = fontSelect.value;
+    writeDiagramSettings(boxSettings);
+    refreshFontNote();
+    schedule();
+  });
+  scaleInput.addEventListener('change', () => {
+    const value = Math.round(Number(scaleInput.value));
+    boxSettings.scale = Number.isFinite(value)
+      ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, value))
+      : SCALE_DEFAULT;
+    scaleInput.value = String(boxSettings.scale);
+    writeDiagramSettings(boxSettings);
+    schedule();
+  });
+  const onDocClickClosePopover = (ev) => {
+    if (popover.hidden) return;
+    if (popover.contains(ev.target) || aaBtn.contains(ev.target)) return;
+    closePopover();
+  };
+  document.addEventListener('click', onDocClickClosePopover);
+  // A resize can invalidate the position this was last opened at (or the
+  // panel it belongs to may no longer even be on screen); closing rather
+  // than repositioning avoids a popover stranded over the wrong panel.
+  const onWindowResizeClosePopover = () => closePopover();
+  window.addEventListener('resize', onWindowResizeClosePopover);
+  refreshFontNote();
+  // Appended to <body>, not the toolbar -- see openPopover()'s comment.
+  document.body.appendChild(popover);
+
   const toolbar = el('div', { class: 'diagram__toolbar' }, [
     btn('−', 'diagram.zoomOut', 'Zoom out', () => zoomBy(1 / ZOOM_STEP)),
     zoomLabel,
     btn('+', 'diagram.zoomIn', 'Zoom in', () => zoomBy(ZOOM_STEP)),
     btn('⤢', 'diagram.fit', 'Fit to window', () => fit()),
     el('span', { class: 'diagram__spacer' }),
+    aaBtn,
     btn('SVG', 'diagram.exportSvg', 'Export as SVG', () => exportSvg()),
     btn('PNG', 'diagram.exportPng', 'Export as PNG', () => exportPng()),
   ]);
@@ -117,6 +415,17 @@ export function initDiagram(container) {
   container.appendChild(toolbar);
   container.appendChild(stage);
   container.appendChild(status);
+
+  /** The font/scale to actually send with this render -- the single place
+   * both /api/dot and /api/render's native path read from, so the on-screen
+   * preview and any exported file always agree on box sizing. */
+  function effectiveBoxSettings() {
+    return {
+      font: boxSettings.fontChoice || detectFont(),
+      scale: boxSettings.scale,
+      dark: isDarkMode(),
+    };
+  }
 
   let scale = 1;
   let tx = 0;
@@ -241,7 +550,11 @@ export function initDiagram(container) {
     const mine = ++generation;
     try {
       const hideZero = !!(window.ftaShell && window.ftaShell.hideZero);
-      const payload = await api.get(`/dot?hideZero=${hideZero ? 'true' : 'false'}`);
+      const box = effectiveBoxSettings();
+      const payload = await api.get(
+        `/dot?hideZero=${hideZero ? 'true' : 'false'}&font=${encodeURIComponent(box.font)}` +
+        `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}`
+      );
       if (mine !== generation || destroyed) return; // a newer render superseded this one
       renderer = payload.renderer || 'wasm';
 
@@ -328,7 +641,15 @@ export function initDiagram(container) {
     if (caps.nativeDot) {
       // A real `dot` rasterises at 300 dpi; prefer it over a canvas upscale.
       try {
-        const res = await api.post('/render', { format: 'png', hideZero: !!(window.ftaShell && window.ftaShell.hideZero), highQuality: true });
+        const box = effectiveBoxSettings();
+        const res = await api.post('/render', {
+          format: 'png',
+          hideZero: !!(window.ftaShell && window.ftaShell.hideZero),
+          highQuality: true,
+          font: box.font,
+          scale: box.scale,
+          dark: box.dark,
+        });
         const bin = atob(res.data);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
@@ -383,19 +704,40 @@ export function initDiagram(container) {
   // screen-reader user switching mid-session would otherwise hear the old
   // language. Re-render on the next diagram update picks up the meta line for
   // free; the toolbar needs this.
-  const onLanguage = () => { retitleToolbar(); schedule(); };
+  const onLanguage = () => { retitleToolbar(); refreshFontNote(); schedule(); };
   window.addEventListener('fta:language', onLanguage);
+
+  // Explicit light/dark from the theme toggle...
+  const onThemeChange = () => schedule();
+  window.addEventListener('fta:theme', onThemeChange);
+  // ...and the OS-level preference, for when the toggle is left on 'system'
+  // (isDarkMode() falls through to this same media query at render time).
+  let darkMediaQuery = null;
+  try {
+    darkMediaQuery = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (darkMediaQuery) darkMediaQuery.addEventListener('change', onThemeChange);
+  } catch (_err) {
+    darkMediaQuery = null;
+  }
 
   applyTransform();
   schedule();
 
   return {
     refresh: schedule,
+    exportSvg,
+    exportPng,
+    getBoxSettings: effectiveBoxSettings,
     destroy() {
       destroyed = true;
       if (timer) clearTimeout(timer);
       window.removeEventListener('fta:hide-zero', onHideZero);
       window.removeEventListener('fta:language', onLanguage);
+      window.removeEventListener('fta:theme', onThemeChange);
+      if (darkMediaQuery) darkMediaQuery.removeEventListener('change', onThemeChange);
+      window.removeEventListener('resize', onWindowResizeClosePopover);
+      document.removeEventListener('click', onDocClickClosePopover);
+      if (popover.parentNode) popover.parentNode.removeChild(popover);
       if (typeof unsubscribe === 'function') unsubscribe();
       clear(container);
     },
@@ -403,13 +745,13 @@ export function initDiagram(container) {
 }
 
 const STYLES = `
-.diagram__toolbar { display:flex; align-items:center; gap:4px; padding:4px 8px;
+.diagram__toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:4px 8px;
   border-bottom:1px solid var(--fta-border, #d7dde5); flex:0 0 auto; }
 .diagram__spacer { flex:1 1 auto; }
 .diagram__zoom { font-variant-numeric: tabular-nums; font-size:12px; min-width:44px;
-  text-align:center; color: var(--fta-muted, #5d6a78); }
+  text-align:center; color: var(--fta-muted-fg, #5d6a78); }
 .diagram__btn { font:inherit; font-size:12px; line-height:1; padding:4px 8px; cursor:pointer;
-  background: var(--fta-surface, #fff); color: var(--fta-text, #10151c);
+  background: var(--fta-surface, #fff); color: var(--fta-fg, #10151c);
   border:1px solid var(--fta-border, #d7dde5); border-radius:4px; }
 .diagram__btn:hover { background: var(--fta-surface-hover, #eef2f6); }
 .diagram__btn:focus-visible { outline:2px solid var(--fta-accent, #14507d); outline-offset:1px; }
@@ -423,9 +765,43 @@ const STYLES = `
 .diagram__canvas g.node.is-selected > path,
 .diagram__canvas g.node.is-selected > ellipse {
   stroke: var(--fta-accent, #14507d); stroke-width:2.5px; }
-.diagram__status { flex:0 0 auto; padding:4px 8px; font-size:12px; min-height:0; }
-.diagram__status--error { color: var(--fta-danger, #a8321c); }
-.diagram__status--warn { color: var(--fta-warn, #a85b00); }
+.diagram__status { flex:0 0 auto; padding:4px 8px; font-size:12px; min-height:0;
+  color: var(--fta-fg, #10151c); }
+.diagram__status--error { color: var(--fta-danger-fg, #a8321c); }
+.diagram__status--warn { color: var(--fta-warn-fg, #a85b00); }
+.diagram__popover {
+  /* Fixed and appended to <body> (see openPopover() in the JS): a diagram
+     panel is a .panel with overflow: hidden, which would otherwise clip
+     this the moment the panel is narrower than the popover. Position
+     defaults to the diagram's lower-right corner and is user-draggable
+     (see the pointerdown wiring on .diagram__popoverHead below); both are
+     computed/clamped to the viewport in JS. */
+  position:fixed; z-index:1000;
+  display:flex; flex-direction:column; gap:6px; width:15rem; max-width:calc(100vw - 8px);
+  padding:10px;
+  background: var(--fta-surface, #fff); color: var(--fta-fg, #10151c);
+  border:1px solid var(--fta-border, #d7dde5); border-radius:6px;
+  box-shadow: 0 8px 24px rgba(16,20,24,0.20); font-size:12px;
+}
+.diagram__popoverHead {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin:-10px -10px 0; padding:6px 8px;
+  border-bottom:1px solid var(--fta-border, #d7dde5);
+  background: var(--fta-surface-2, #f4f6f8);
+  border-radius:6px 6px 0 0;
+  cursor:move; touch-action:none; user-select:none;
+  font-weight:600;
+}
+.diagram__popoverHead__close { font:inherit; font-size:14px; line-height:1; padding:0 4px;
+  cursor:pointer; background:transparent; color:inherit; border:0; }
+.diagram__popoverRow { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.diagram__popoverRow select,
+.diagram__popoverRow input { font:inherit; font-size:12px; padding:2px 4px;
+  border:1px solid var(--fta-border, #d7dde5); border-radius:4px;
+  background: var(--fta-surface, #fff); color: inherit; }
+.diagram__popoverRow input[type="number"] { width:4.5rem; }
+.diagram__fontnote { color: var(--fta-muted-fg, #5d6a78); font-size:11px; min-height:1.2em; overflow-wrap:anywhere; }
+.diagram__popoverHint { margin:0; color: var(--fta-muted-fg, #5d6a78); font-size:11px; line-height:1.4; }
 `;
 
 export default initDiagram;

@@ -55,9 +55,11 @@ try:  # normal package import: ``import fta_web.routes.render``
     from ..rendering import (
         RenderError,
         build_dot_text,
+        clamp_scale,
         content_type_for,
         describe_renderer,
         render_native,
+        sanitize_font_name,
     )
     from ..state import get_state
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
@@ -71,9 +73,11 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from rendering import (  # type: ignore[no-redef]
         RenderError,
         build_dot_text,
+        clamp_scale,
         content_type_for,
         describe_renderer,
         render_native,
+        sanitize_font_name,
     )
     from state import get_state  # type: ignore[no-redef]
 
@@ -153,7 +157,7 @@ def _validate_format(value: Any) -> str:
     return fmt
 
 
-def _dot_source(hide_zero: bool) -> str:
+def _dot_source(hide_zero: bool, font_name: str, scale: int, dark: bool) -> str:
     """The current document as DOT, read under the state lock.
 
     The lock is held for the whole walk, not just for a ``get_data()`` call:
@@ -162,7 +166,9 @@ def _dot_source(hide_zero: bool) -> str:
     """
     state = get_state()
     with state.lock:
-        return build_dot_text(state.core, hide_zero=hide_zero)
+        return build_dot_text(
+            state.core, hide_zero=hide_zero, font_name=font_name, scale=scale, dark=dark
+        )
 
 
 # ---- endpoints -----------------------------------------------------------
@@ -177,27 +183,42 @@ def get_dot():
     otherwise. The DOT returned here is identical either way; the field lets
     the page enable or disable its "export image" affordance without a second
     round trip, and keeps it honest as Graphviz comes and goes.
+
+    ``font`` and ``scale`` are the client's box-sizing controls
+    (diagram.js auto-detects an installed font and offers a manual scale
+    slider next to it): both are sanitized/clamped here rather than trusted,
+    since ``font`` lands in a DOT ``fontname="..."`` attribute. ``dark``
+    matches the diagram's colours to the client's current theme.
     """
     hide_zero = _as_bool(request.args.get("hideZero"), "hideZero")
-    dot_text = _dot_source(hide_zero)
+    font_name = sanitize_font_name(request.args.get("font"))
+    scale = clamp_scale(request.args.get("scale"))
+    dark = _as_bool(request.args.get("dark"), "dark")
+    dot_text = _dot_source(hide_zero, font_name, scale, dark)
     renderer, _path = describe_renderer()
-    return ok_response(dot=dot_text, renderer=renderer, hideZero=hide_zero)
+    return ok_response(
+        dot=dot_text, renderer=renderer, hideZero=hide_zero, font=font_name, scale=scale, dark=dark
+    )
 
 
 @render_bp.post("/render")
 def post_render():
     """Render the current document natively and return the image bytes.
 
-    Body: ``{"format": "svg"|"png", "hideZero": bool, "highQuality": bool}``.
-    All three are optional; the defaults are an SVG of the whole tree at
-    normal quality.
+    Body: ``{"format": "svg"|"png", "hideZero": bool, "highQuality": bool,
+    "font": str, "scale": number, "dark": bool}``. All are optional;
+    ``font``/``scale``/``dark`` default the same way ``GET /api/dot`` does, so
+    a native export matches what the client was just previewing.
     """
     payload = _body()
     fmt = _validate_format(payload.get("format"))
     hide_zero = _as_bool(payload.get("hideZero"), "hideZero")
     high_quality = _as_bool(payload.get("highQuality"), "highQuality")
+    font_name = sanitize_font_name(payload.get("font"))
+    scale = clamp_scale(payload.get("scale"))
+    dark = _as_bool(payload.get("dark"), "dark")
 
-    dot_text = _dot_source(hide_zero)
+    dot_text = _dot_source(hide_zero, font_name, scale, dark)
 
     try:
         image = render_native(dot_text, fmt, high_quality=high_quality)

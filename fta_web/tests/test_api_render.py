@@ -40,6 +40,8 @@ from json_viewer import build_dot, gather_nodes, sanitize_id  # noqa: E402
 
 from fta_web import rendering  # noqa: E402
 from fta_web.rendering import (  # noqa: E402
+    DEFAULT_FONT,
+    DEFAULT_SCALE,
     RenderError,
     RendererUnavailable,
     build_dot_text,
@@ -53,13 +55,17 @@ needs_graphviz = pytest.mark.skipif(
     not HAS_NATIVE_DOT, reason="requires a native Graphviz 'dot' on PATH"
 )
 
-#: The four lines json_viewer.main() inserts, for a document titled "T" dated
-#: "D". Pinned literally: this is the parity contract with the CLI.
+#: The five lines build_dot_text inserts on top of what json_viewer.main()
+#: itself inserts (json_viewer.py:302-307) -- the last one, fontcolor, is
+#: this app's own addition for dark-mode diagrams (fta_web/rendering.py).
+#: Pinned literally: this is the parity contract with the CLI, for a document
+#: titled "T" dated "D", with no explicit font/dark override.
 HEADER_TEMPLATE = [
     '  labelloc="t";',
     '  label="{title}\\nDate: {date}";',
     "  fontsize=14;",
-    '  fontname="Noto Sans CJK JP";',
+    '  fontname="' + DEFAULT_FONT + '";',
+    '  fontcolor="black";',
 ]
 
 
@@ -125,9 +131,9 @@ def header_for(title, date):
 
 
 def strip_header(dot_text):
-    """The DOT minus the four inserted header lines."""
+    """The DOT minus the five inserted header lines."""
     lines = dot_text.split("\n")
-    return "\n".join(lines[:1] + lines[5:])
+    return "\n".join(lines[:1] + lines[6:])
 
 
 def fake_which(result):
@@ -147,7 +153,7 @@ def fake_which(result):
 class TestBuildDotText:
     def test_body_is_exactly_what_the_vendored_pipeline_produces(self, core):
         nodes, edges = gather_nodes(core.get_data(), hide_zero=False)
-        expected = build_dot(nodes, edges)
+        expected = build_dot(nodes, edges, font_name=DEFAULT_FONT, scale=DEFAULT_SCALE)
 
         produced = build_dot_text(core)
 
@@ -155,7 +161,7 @@ class TestBuildDotText:
 
     def test_body_matches_the_vendored_pipeline_with_hide_zero_too(self, core):
         nodes, edges = gather_nodes(core.get_data(), hide_zero=True)
-        expected = build_dot(nodes, edges)
+        expected = build_dot(nodes, edges, font_name=DEFAULT_FONT, scale=DEFAULT_SCALE)
 
         assert strip_header(build_dot_text(core, hide_zero=True)) == expected
 
@@ -163,15 +169,15 @@ class TestBuildDotText:
         lines = build_dot_text(core).split("\n")
 
         assert lines[0] == "digraph G {"
-        assert lines[1:5] == header_for("Pump Failure", "2026-01-31")
+        assert lines[1:6] == header_for("Pump Failure", "2026-01-31")
         # The vendored body starts immediately after the header, unshifted.
-        assert lines[5] == "  rankdir=LR;"
+        assert lines[6] == "  rankdir=LR;"
         assert lines[-1] == "}"
 
     def test_header_carries_the_live_metadata(self, core):
         core.set_metadata(title="Renamed", date="2020-02-29")
 
-        assert build_dot_text(core).split("\n")[1:5] == header_for(
+        assert build_dot_text(core).split("\n")[1:6] == header_for(
             "Renamed", "2020-02-29"
         )
 

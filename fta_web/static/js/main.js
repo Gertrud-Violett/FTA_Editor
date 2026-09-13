@@ -57,10 +57,12 @@
  * and would come back 403, so downloads are fetched with the header and handed
  * to the browser as a blob URL instead. See downloadExport().
  *
- * Two buttons are gated on /api/state's `capabilities` rather than on a phase
- * flag: Excel (openpyxl) and Render (a native Graphviz). A gated button stays
- * visible and focusable and says what is missing and how to install it --
- * disappearing would leave the user believing the build never had the feature.
+ * One button is gated on /api/state's `capabilities` rather than on a phase
+ * flag: Excel (openpyxl). A gated button stays visible and focusable and says
+ * what is missing and how to install it -- disappearing would leave the user
+ * believing the build never had the feature. Render is NOT gated on a native
+ * Graphviz: actionRenderImage() falls back to the diagram panel's in-browser
+ * PNG export when /api/render 503s, so the button works either way.
  *
  * THE AI PANEL (P4)
  * -----------------
@@ -240,6 +242,10 @@ const STRINGS = {
 
     'file.openTitle': 'Open Analysis',
     'file.saveTitle': 'Save Analysis As',
+    'file.pathLabel': 'Path',
+    'file.pathPlaceholder': 'Paste or type a path, then press Go',
+    'file.pathGo': 'Go',
+    'file.pathGoTitle': 'Go to the typed or pasted path',
     'file.up': 'Up one level',
     'file.parent': 'Parent folder',
     'file.location': 'Files in this folder',
@@ -324,6 +330,12 @@ const STRINGS = {
     'diagram.nothingToExport': 'Nothing to export yet.',
     'diagram.pngFailed': 'Could not rasterise the diagram to PNG.',
     'diagram.nativeFellBack': 'System Graphviz unavailable; exported from the browser renderer instead.',
+    'diagram.fontSettings': 'Font & box size',
+    'diagram.fontSettingsClose': 'Close',
+    'diagram.fontLabel': 'Font',
+    'diagram.fontAutoUsing': 'Detected: ',
+    'diagram.scaleLabel': 'Box scale',
+    'diagram.scaleHint': 'If text still spills out of the boxes after auto-detect, raise the scale.',
 
     // --- P4: the AI assistant panel (chat.js) and its setup dialog
     // (aisettings.js). Every string those two modules show is here, including
@@ -590,6 +602,10 @@ const STRINGS = {
 
     'file.openTitle': '解析を開く',
     'file.saveTitle': '名前を付けて保存',
+    'file.pathLabel': 'パス',
+    'file.pathPlaceholder': 'パスを貼り付けまたは入力して「移動」を押してください',
+    'file.pathGo': '移動',
+    'file.pathGoTitle': '入力・貼り付けたパスへ移動',
     'file.up': '上の階層へ',
     'file.parent': '親フォルダー',
     'file.location': 'このフォルダー内のファイル',
@@ -671,6 +687,12 @@ const STRINGS = {
     'diagram.nothingToExport': '書き出せる図がまだありません。',
     'diagram.pngFailed': '図をPNGに変換できませんでした。',
     'diagram.nativeFellBack': 'システムのGraphvizが利用できないため、ブラウザ内描画で書き出しました。',
+    'diagram.fontSettings': 'フォントと枠サイズ',
+    'diagram.fontSettingsClose': '閉じる',
+    'diagram.fontLabel': 'フォント',
+    'diagram.fontAutoUsing': '検出結果: ',
+    'diagram.scaleLabel': '枠の拡大率',
+    'diagram.scaleHint': '自動検出後もテキストが枠からはみ出す場合は拡大率を上げてください。',
 
     // --- P4: the AI assistant panel (chat.js) and its setup dialog
     // (aisettings.js).
@@ -885,6 +907,10 @@ function applyTheme() {
   else document.documentElement.setAttribute('data-theme', theme);
   writeLocal('fta.theme', theme);
   applyThemeLabel();
+  // diagram.js matches the rendered diagram's background/connectors to the
+  // theme; it cannot see `theme` (module-private to this file), so it needs
+  // telling explicitly rather than polling document.documentElement itself.
+  window.dispatchEvent(new CustomEvent('fta:theme', { detail: { theme } }));
 }
 
 function applyThemeLabel() {
@@ -1187,7 +1213,12 @@ async function loadPanels() {
 
   callInit(modules.tree, ['initTree', 'init', 'default'], $('#tree-root'), t('panel.tree'));
   callInit(modules.details, ['initDetails', 'init', 'default'], $('#details-root'), t('panel.details'));
-  callInit(modules.diagram, ['initDiagram', 'init', 'default'], $('#diagram-root'), t('panel.diagram'));
+  diagramPanel = callInit(
+    modules.diagram,
+    ['initDiagram', 'init', 'default'],
+    $('#diagram-root'),
+    t('panel.diagram')
+  );
   callInit(modules.capabilities, ['initCapabilities', 'init', 'default'], $('#capabilities-host'), 'capabilities', true);
   callInit(modules.chat, ['initChat', 'init', 'default'], $('#ai-root'), t('panel.ai'));
   // aisettings.js has no panel of its own; like dialogs.js and filedialog.js
@@ -1198,22 +1229,26 @@ async function loadPanels() {
 }
 
 function callInit(module, names, host, label, optional = false) {
-  if (!module) return;
+  if (!module) return null;
   for (const name of names) {
     if (typeof module[name] === 'function') {
       try {
-        module[name](host);
+        return module[name](host);
       } catch (err) {
         if (optional) showError(err);
         else renderModuleFallback(host, label, err);
       }
-      return;
+      return null;
     }
   }
   if (!optional) {
     renderModuleFallback(host, label, new Error('no init export found'));
   }
+  return null;
 }
+
+/** The diagram panel's own controls (exportPng/exportSvg/refresh), once loaded. */
+let diagramPanel = null;
 
 const DIALOG_ENTRY_POINTS = {
   add: ['openAddDialog', 'openAddNodeDialog', 'addNode', 'showAddDialog'],
@@ -1397,7 +1432,15 @@ async function actionAdd() {
   const fn = dialogFn('add');
   if (fn) {
     try {
-      await fn(parentId);
+      const fields = await fn(parentId);
+      // null means the dialog was cancelled -- the fields-collecting dialog
+      // does not talk to the server itself, so the actual creation happens
+      // here, exactly like actionEdit hands off to details.js and actionNew
+      // posts to /new.
+      if (!fields) return;
+      const result = await api.post('/nodes', { parentId, ...fields });
+      store.applyMutation(result);
+      if (result.nodeId) store.select(result.nodeId);
     } catch (err) {
       showError(err);
     }
@@ -1818,19 +1861,27 @@ function base64ToBytes(data) {
 /**
  * Render the diagram to a PNG file, the desktop editor's "Render" button.
  *
- * This is the native-Graphviz path (300 dpi). Without a system `dot` the button
- * is gated off by applyCapabilityGates() and the message points at the diagram
- * panel's own PNG button, which rasterises what the in-browser renderer drew --
- * a different engine, so it is named rather than silently substituted.
+ * Prefers the native-Graphviz path (300 dpi, exact font metrics). If that
+ * 503s -- no system `dot`, or it vanished since startup -- this falls back to
+ * exactly what the diagram panel's own PNG toolbar button does: rasterise the
+ * in-browser (WASM) renderer's SVG via canvas. Both buttons must behave the
+ * same way here; a user should never be told to install Graphviz for a PNG
+ * export that the other button already produces without it.
  */
 async function actionRenderImage() {
   const name = exportFilename('png');
   setStatus(t('msg.downloading', { name }), 'info');
+  // Same font/box-scale the diagram panel is previewing, so a native export
+  // matches what is on screen instead of reverting to server-side defaults.
+  const box = diagramPanel && typeof diagramPanel.getBoxSettings === 'function'
+    ? diagramPanel.getBoxSettings()
+    : null;
   try {
     const result = await api.post('/render', {
       format: 'png',
       hideZero: document.documentElement.dataset.hideZero === '1',
       highQuality: true,
+      ...(box ? { font: box.font, scale: box.scale, dark: box.dark } : {}),
     });
     saveBlob(
       new Blob([base64ToBytes(result.data)], { type: result.contentType || 'image/png' }),
@@ -1839,6 +1890,11 @@ async function actionRenderImage() {
     toast(t('msg.downloaded', { name }), 'ok');
   } catch (err) {
     if (err instanceof ApiError && err.code === 'RENDERER_UNAVAILABLE') {
+      if (diagramPanel && typeof diagramPanel.exportPng === 'function') {
+        toast(t('diagram.nativeFellBack'), 'warn', err.code);
+        await diagramPanel.exportPng();
+        return;
+      }
       toast(t('msg.renderUnavailable'), 'warn', err.code);
       return;
     }
@@ -1894,10 +1950,16 @@ function capability(name) {
   return null;
 }
 
-/** Buttons whose availability depends on an optional dependency. */
+/**
+ * Buttons whose availability depends on an optional dependency.
+ *
+ * 'render' is deliberately not gated on nativeDot: actionRenderImage() falls
+ * back to the same in-browser PNG export the diagram panel's own PNG button
+ * uses, so the button works either way -- gating it off would tell the user
+ * to install Graphviz for a limitation that no longer exists.
+ */
 const CAPABILITY_GATES = [
   { action: 'excel', capability: 'excelExport', message: 'msg.excelUnavailable' },
-  { action: 'render', capability: 'nativeDot', message: 'msg.renderUnavailable' },
 ];
 
 /**

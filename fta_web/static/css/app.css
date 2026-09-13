@@ -260,7 +260,9 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 
 #title-input { flex: 1 1 200px; min-width: 120px; }
 #date-input { width: 11ch; font-variant-numeric: tabular-nums; }
-#mode-select { width: 7.5ch; }
+/* 7.5ch clipped "FTA"/"ETA" under the native dropdown arrow, which is not
+   part of the ch-based text measurement; a bit of extra room clears it. */
+#mode-select { width: 10ch; }
 
 .checkbox {
   display: inline-flex;
