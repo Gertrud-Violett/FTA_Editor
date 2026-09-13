@@ -66,7 +66,7 @@ _excel_export_cache: Any = _EXCEL_UNPROBED
 _PROVIDER_SDKS = {
     "OpenAI": "openai",
     "Anthropic Claude": "anthropic",
-    "Google Gemini": "google.generativeai",
+    "Google Gemini": "google.genai",  # divergence D11: migrated off google.generativeai
 }
 
 _provider_sdk_cache: Any = None
@@ -87,12 +87,15 @@ def _probe_provider_sdks() -> Dict[str, bool]:
     This one **really imports**, unlike the ``dot`` and openpyxl probes which
     use ``find_spec``. ``find_spec`` answers "is there something on the path
     called this", which is not the same question. In a PyInstaller build of
-    ``google.generativeai`` -- a PEP 420 namespace package -- ``find_spec``
-    reports it present while the import itself raises, so a find_spec-based
-    probe told the UI the provider was available and the user then hit
-    "package not installed" on Test & Save. A capability indicator that lies is
-    worse than no indicator: it is the one thing the user checks before
-    believing a failure is their fault.
+    ``google.generativeai`` (the package this provider used before divergence
+    D11) -- a PEP 420 namespace package -- ``find_spec`` reported it present
+    while the import itself raised, so a find_spec-based probe told the UI the
+    provider was available and the user then hit "package not installed" on
+    Test & Save. ``google.genai``, the replacement, lives under the same
+    ``google`` namespace, so the same failure mode is assumed possible here
+    too until proven otherwise on a real frozen build. A capability indicator
+    that lies is worse than no indicator: it is the one thing the user checks
+    before believing a failure is their fault.
 
     The cost is paid once per process and only on first access, not at startup,
     so a user who never opens the AI panel never imports grpc.

@@ -3,18 +3,28 @@
 # The source of truth is the repo-root pyproject.toml, and the recommended
 # install path is `uv sync --extra web --extra excel --extra ai` (see
 # README.md). This file exists for the pip fallback and lists ONLY what the
-# web layer adds; the vendored core in fta_web/core/ keeps its own
-# dependencies, which come from the repo-root requirements.txt:
+# web layer adds; most of the vendored core's dependencies come from the
+# repo-root requirements.txt:
 #
-#   openpyxl  -- Excel export (FTA_Editor_core)
+#   openpyxl    -- Excel export (FTA_Editor_core)
+#   openai      -- OpenAI provider (AI_agent_handler) -- identical package
+#   anthropic   -- Anthropic provider (AI_agent_handler) -- identical package
 #
 # (Pillow is desktop-only: the web app's diagram renders as SVG in the
 # browser and never touches PIL. See pyproject.toml's `desktop` extra.)
+#
+# google-genai is listed here, not in the root file, because it genuinely
+# differs from the desktop app's Gemini dependency: fta_web/core/ai_providers.py
+# migrated off the deprecated google-generativeai (divergence D11 in
+# fta_web/core/DIVERGENCE.md); the frozen src/ai_providers.py did not and
+# could not. Installing both files' requirements together installs both
+# packages side by side, which is fine -- they serve different apps.
 #
 # Install both:
 #   pip install -r requirements.txt -r fta_web/requirements.txt
 
 Flask>=3.0.0
+google-genai>=1.0.0
 
 # Intentionally absent
 # -------------------

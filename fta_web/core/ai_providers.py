@@ -204,89 +204,117 @@ class AnthropicProvider(AIProvider):
 
 
 class GeminiProvider(AIProvider):
-    """Google Gemini API provider"""
-    
+    """Google Gemini API provider.
+
+    Divergence D11 (fta_web/core/DIVERGENCE.md): migrated from
+    ``google.generativeai`` to ``google.genai``. The former is end-of-life
+    ("All support ... has ended ... switch to the google.genai package") and,
+    as a PEP 420 namespace package, silently failed to import in a
+    PyInstaller build -- see build/README.md's former "Known limitation:
+    Gemini in a frozen build" section, now resolved by this migration.
+    ``google.genai`` also drops the ~100 MB google-api-python-client/grpc
+    dependency chain the old package pulled in for no reason this app uses.
+    """
+
     @staticmethod
     def get_provider_name() -> str:
         return "Google Gemini"
-    
+
     def get_default_endpoint(self) -> str:
         return "https://generativelanguage.googleapis.com/v1beta"
-    
+
     def get_default_models(self) -> List[str]:
-        return ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
-    
+        # Divergence D9 refreshed the Anthropic list for the same reason this
+        # one is stale: gemini-1.5-* was retired well before this migration.
+        # This is the fallback shown only when the live fetch below fails, so
+        # a wrong entry here does the most damage -- see D9's writeup. The
+        # model field is an editable combo regardless, so a newer name can
+        # always be typed in.
+        return ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
+
+    def _client(self, api_key: str):
+        """A fresh client. ``endpoint`` is accepted by every provider in this
+        module for interface uniformity, but the Gemini Developer API has no
+        equivalent of an OpenAI-compatible custom base URL -- the old
+        ``google.generativeai`` implementation ignored it too."""
+        from google import genai
+
+        return genai.Client(api_key=api_key)
+
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available models from Google Gemini API"""
         try:
-            import google.generativeai as genai
-            
-            genai.configure(api_key=api_key)
-            models = genai.list_models()
-            
-            # Filter for models that support generateContent
+            client = self._client(api_key)
+
+            # supported_actions holds the same raw REST action names
+            # (e.g. "generateContent") that the old SDK exposed as
+            # supported_generation_methods -- same filter, new field name.
             available = []
-            for model in models:
-                if "generateContent" in model.supported_generation_methods:
-                    model_name = model.name.replace("models/", "")
-                    available.append(model_name)
-            
+            for model in client.models.list():
+                if "generateContent" in (model.supported_actions or []):
+                    available.append((model.name or "").replace("models/", ""))
+
             return sorted(available) if available else self.get_default_models(), None
         except ImportError:
-            return self.get_default_models(), "Google Generative AI package not installed"
+            return self.get_default_models(), "google-genai package not installed"
         except Exception as e:
             return self.get_default_models(), f"Could not fetch models: {str(e)}"
-    
+
     def test_connection(self, api_key: str, endpoint: str, model: str) -> Tuple[bool, str]:
         """Test Gemini connection"""
         try:
-            import google.generativeai as genai
-            
-            genai.configure(api_key=api_key)
-            gm = genai.GenerativeModel(model)
-            response = gm.generate_content("Hello, this is a test.", stream=False)
+            client = self._client(api_key)
+            client.models.generate_content(model=model, contents="Hello, this is a test.")
             return True, "Google Gemini connection successful!"
         except ImportError:
-            return False, "Google Generative AI package not installed. Run: pip install google-generativeai"
+            return False, "google-genai package not installed. Run: pip install google-genai"
         except Exception as e:
             return False, f"Gemini connection failed: {str(e)}"
-    
+
     def send_message(self, api_key: str, endpoint: str, model: str,
                     messages: List[Dict[str, str]],
                     max_tokens: int = 2000) -> Tuple[Optional[str], Optional[str]]:
         """Send message via Gemini API"""
         try:
-            import google.generativeai as genai
-            
-            genai.configure(api_key=api_key)
-            
-            # Prepare system instruction
+            from google.genai import types
+
+            client = self._client(api_key)
+
+            # Same shape as the pre-migration code: the last "system" message
+            # becomes the system instruction, everything else becomes history
+            # with "assistant" remapped to Gemini's "model" role, and the
+            # final turn is sent as the new message rather than replayed into
+            # history.
             system_instruction = ""
-            chat_messages = []
-            
+            turns: List[Tuple[str, str]] = []  # (role, text), role already remapped
+
             for msg in messages:
                 if msg.get("role") == "system":
                     system_instruction = msg.get("content", "")
                 else:
-                    chat_messages.append({
-                        "role": "user" if msg.get("role") == "user" else "model",
-                        "parts": msg.get("content", "")
-                    })
-            
-            gm = genai.GenerativeModel(
-                model,
-                system_instruction=system_instruction if system_instruction else None
+                    role = "user" if msg.get("role") == "user" else "model"
+                    turns.append((role, msg.get("content", "")))
+
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction or None,
+                max_output_tokens=max_tokens,
             )
-            
-            chat = gm.start_chat(history=chat_messages[:-1] if len(chat_messages) > 1 else [])
-            response = chat.send_message(
-                chat_messages[-1]["parts"] if chat_messages else "Hello",
-                stream=False
-            )
-            
+
+            # ContentDict history entries need parts as a list of PartDicts;
+            # the final message goes to send_message as a plain string, which
+            # -- unlike a single-element PartDict list -- is unambiguous to
+            # the SDK's argument validator.
+            history = [
+                {"role": role, "parts": [{"text": text}]}
+                for role, text in turns[:-1]
+            ]
+            chat = client.chats.create(model=model, config=config, history=history)
+            final_message = turns[-1][1] if turns else "Hello"
+            response = chat.send_message(final_message)
+
             return response.text, None
         except ImportError:
-            return None, "Google Generative AI package not installed. Run: pip install google-generativeai"
+            return None, "google-genai package not installed. Run: pip install google-genai"
         except Exception as e:
             return None, f"Gemini error: {str(e)}"
 
