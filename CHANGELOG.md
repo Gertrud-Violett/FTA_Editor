@@ -48,12 +48,36 @@ run version 1.5.1.
 - **Standalone executable** (`build/fta_editor.spec`) — a PyInstaller *onedir*
   bundle of the web app that runs with **neither Python nor Graphviz
   installed**. Build with
-  `python3 -m PyInstaller --clean --noconfirm --distpath build/dist --workpath build/build build/fta_editor.spec`;
-  about 20 MB on Linux. Onefile is deliberately not used — it re-extracts the
-  whole bundle to a temp directory on every launch and reliably trips antivirus
-  heuristics. See [`build/README.md`](build/README.md) for the full rationale,
-  per-OS notes and verification steps. Windows and macOS builds must be
-  produced on those platforms; PyInstaller does not cross-compile.
+  `uv sync --extra all --extra build && uv run python -m PyInstaller --clean --noconfirm --distpath build/dist --workpath build/build build/fta_editor.spec`;
+  about 20 MB on Linux with no AI providers bundled, up to ~79 MB with all
+  three. Onefile is deliberately not used — it re-extracts the whole bundle to
+  a temp directory on every launch and reliably trips antivirus heuristics.
+  See [`build/README.md`](build/README.md) for the full rationale, per-OS
+  notes and verification steps. Windows and macOS builds must be produced on
+  those platforms; PyInstaller does not cross-compile.
+
+- **`pyproject.toml`** — the source of truth for dependencies, for both apps.
+  `[project.optional-dependencies]` splits them by what actually needs them:
+  `web` (Flask), `desktop` (Pillow), `excel` (openpyxl, shared), `ai` (OpenAI +
+  Anthropic + Gemini SDKs, shared), `test` (pytest) and `build` (PyInstaller);
+  `all` bundles everything a user wants, `dev` adds `test` and `build` for
+  contributors. Recommended install: `uv sync --extra <name>`, which also
+  writes the committed `uv.lock` — exact resolved versions, so a `uv sync` run
+  later reproduces the same environment. `pip install -r requirements.txt
+  [-r fta_web/requirements.txt]` remains a supported fallback for anyone
+  without [uv](https://docs.astral.sh/uv/); `install.py` now detects which
+  tool is available and uses it, defaulting to uv.
+
+  `[tool.uv] package = false`: this project is intentionally not built as an
+  installable package. `src/` and `fta_web/` are flat module directories with
+  no `__init__.py`, and `fta_web/core/` is imported by bare module name via a
+  `sys.path` insertion — the layout that keeps it byte-identical to `src/` for
+  the divergence pin (see `fta_web/core/DIVERGENCE.md`). Turning either tree
+  into a real package would mean restructuring code a hash pin depends on
+  staying untouched, so `pyproject.toml` declares dependencies without a
+  `[build-system]` table, and `pip install .` is not a supported path — use
+  `-r requirements.txt` instead. Both apps still run the ordinary way, e.g.
+  `uv run python fta_web/run.py`.
 
 - **`fta_web/runtime_paths.py`** — single place that resolves bundled data
   paths, through `sys._MEIPASS` when frozen and relative to `fta_web/` from a
@@ -110,11 +134,21 @@ run version 1.5.1.
   rooted ordered tree shapes of 1–8 nodes. No patch was applied; regression
   tests pin the layout instead.
 
-- `requirements.txt` is unchanged. The web app's one extra dependency, Flask,
-  is in `fta_web/requirements.txt`; install both with
-  `pip install -r requirements.txt -r fta_web/requirements.txt`.
+- `requirements.txt` and `fta_web/requirements.txt` are unchanged in content —
+  same packages, same versions — and remain the pip-fallback path. They are
+  now secondary to `pyproject.toml`, described above, which is where a new
+  dependency gets added first.
 
-- `README.md` and `QUICKSTART.md` now lead with the web app.
+- **`setup.py` removed.** It declared `python_requires=">=3.14"` (the rest of
+  the project has always targeted 3.10+) and packaged `src/` with
+  `find_packages(where="src")`, which finds nothing — `src/` has no
+  `__init__.py`, so `pip install .` against it silently produced an empty
+  distribution. `pyproject.toml` is the replacement, and is explicit that this
+  project is not meant to be built as a package at all (see above) rather than
+  quietly failing to be one.
+
+- `README.md` and `QUICKSTART.md` now lead with the web app, and their install
+  instructions lead with `uv sync`.
 
 ### Deprecated
 

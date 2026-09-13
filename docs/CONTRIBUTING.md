@@ -47,15 +47,22 @@ Thank you for your interest in contributing! This document provides guidelines f
 git clone https://github.com/YOUR_USERNAME/FTA_editor.git
 cd FTA_editor
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies -- with uv (recommended) or plain pip
+uv sync --extra dev
+pip install -r requirements.txt -r fta_web/requirements.txt pytest pyinstaller  # pip alternative
 
 # Run tests
-python -m pytest tests/
+uv run pytest tests/ fta_web/tests/    # or: python -m pytest tests/ fta_web/tests/
 
-# Run application
-python src/FTA_Editor_UI.py
+# Run an application
+uv run python src/FTA_Editor_UI.py     # desktop
+uv run python fta_web/run.py           # web (recommended)
 ```
+
+`uv sync --extra dev` installs everything: both apps' optional features, plus
+`pytest` and `pyinstaller`. See `pyproject.toml` for the full extras list
+(`web`, `desktop`, `excel`, `ai`, `test`, `build`, `all`, `dev`) if you only
+need a subset.
 
 ## Coding Standards
 
@@ -175,10 +182,9 @@ Format:
 
 ## Release Process
 
-1. Update version in setup.py
+1. Update `version` in `pyproject.toml`
 2. Update CHANGELOG.md
 3. Create release tag
-4. Build and publish to PyPI
 
 ## Questions?
 

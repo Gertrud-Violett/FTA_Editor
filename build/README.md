@@ -12,12 +12,32 @@ are git-ignored; `fta_editor.spec` and this file are tracked.
 ## Prerequisites
 
 On the machine doing the build — and it must be the **same OS and CPU
-architecture as the target**, see [Per-OS notes](#per-os-notes):
+architecture as the target**, see [Per-OS notes](#per-os-notes). Dependencies
+are declared once, in the repo-root `pyproject.toml`; the `build` extra adds
+PyInstaller itself, `all` adds every optional feature the two apps have
+(Excel export, all three AI providers, the desktop preview):
+
+**With [uv](https://docs.astral.sh/uv/) (recommended):**
+
+```
+uv sync --extra all --extra build
+```
+
+`uv sync` creates `.venv/` and installs the exact versions pinned in
+`uv.lock`, so a build repeated later reproduces the same bundle. Run the build
+itself with `uv run` (see [Build](#build) below) so it uses this venv.
+
+**With plain pip, if `uv` is not available:**
 
 ```
 python3 -m pip install -r requirements.txt -r fta_web/requirements.txt
 python3 -m pip install pyinstaller
 ```
+
+This installs the same packages, just unpinned to exact versions and without
+a lockfile. `pyproject.toml` has no `[build-system]` table — see its closing
+comment for why — so `pip install .` does not work here; `-r requirements.txt`
+is the pip path, not `pip install`.
 
 Verified with PyInstaller 6.22.2 on CPython 3.10.
 
@@ -50,10 +70,13 @@ relative to itself, but PyInstaller resolves `--distpath`/`--workpath` relative
 to the working directory):
 
 ```
-python3 -m PyInstaller --clean --noconfirm \
+uv run python -m PyInstaller --clean --noconfirm \
     --distpath build/dist --workpath build/build \
     build/fta_editor.spec
 ```
+
+(Without uv: drop the `uv run` prefix — `python3 -m PyInstaller ...` — as long
+as you `pip install`ed into the interpreter you're invoking with.)
 
 Output: `build/dist/fta_editor/` — around **20 MB, 97 files** on Linux, of which
 the executable itself is ~3.2 MB and the rest is `_internal/`.

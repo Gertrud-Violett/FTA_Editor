@@ -22,12 +22,17 @@ Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor 
 ### Installation
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies -- uv (recommended) or plain pip
+uv sync --extra desktop --extra excel --extra ai
+# pip install -r requirements.txt
 
 # Run the application
-python src/FTA_Editor_UI.py
+uv run python src/FTA_Editor_UI.py
+# python src/FTA_Editor_UI.py
 ```
+
+See the root [README](../README.md#quick-start) for the web app, which is the
+recommended way to run the editor as of v1.6.
 
 ### First Launch
 

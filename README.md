@@ -39,7 +39,16 @@ cd FTA_Editor
 
 ### Web app (recommended)
 
+Dependencies are declared once, in `pyproject.toml`. Install them with
+[uv](https://docs.astral.sh/uv/) if you have it — it's faster and pins exact
+versions via the committed `uv.lock` — or with plain pip if you don't:
+
 ```bash
+# with uv (recommended)
+uv sync --extra web --extra excel --extra ai
+uv run python fta_web/run.py
+
+# or with pip
 pip install -r requirements.txt -r fta_web/requirements.txt
 python3 fta_web/run.py
 ```
@@ -72,8 +81,8 @@ For machines without a Python installation, the web app can be frozen into a
 single folder containing everything, Graphviz included:
 
 ```bash
-pip install pyinstaller
-python3 -m PyInstaller --clean --noconfirm \
+uv sync --extra all --extra build
+uv run python -m PyInstaller --clean --noconfirm \
     --distpath build/dist --workpath build/build \
     build/fta_editor.spec
 
@@ -89,6 +98,11 @@ per-OS notes and how to verify a build.
 The original Tkinter application, unchanged in 1.6:
 
 ```bash
+# with uv
+uv sync --extra desktop --extra excel --extra ai
+uv run python src/FTA_Editor_UI.py
+
+# or with pip
 pip install -r requirements.txt
 python src/FTA_Editor_UI.py
 ```
@@ -96,11 +110,14 @@ python src/FTA_Editor_UI.py
 ### Requirements
 
 - Python 3.10+
-- Flask (web app) — `fta_web/requirements.txt`
 - Graphviz — **required by the desktop app**, optional for the web app
   ([graphviz.org](https://graphviz.org/download/))
-- Tk and Pillow — desktop app only
-- See `requirements.txt` for the rest
+- Tk — part of the standard library, but packaged separately by the OS; see
+  `python3 -c "import tkinter"` and your OS's `python3-tk` (or equivalent)
+  package if that fails. Desktop app only, not installable via pip/uv.
+- Everything else is declared in `pyproject.toml` as optional extras
+  (`web`, `desktop`, `excel`, `ai`) — `uv sync --extra <name>`, or see
+  `requirements.txt` / `fta_web/requirements.txt` for the pip equivalent.
 
 ## AI Assistant Setup
 
@@ -188,7 +205,9 @@ FTA_Editor/
 ├── tests/                        # Desktop test suite
 ├── data/examples/               # Sample data
 ├── docs/                        # Documentation
-└── requirements.txt             # Python dependencies
+├── pyproject.toml                # Dependencies (source of truth) + uv config
+├── uv.lock                       # Exact resolved versions, for `uv sync`
+└── requirements.txt             # Python dependencies, for the pip fallback
 ```
 
 `fta_web/core/` is a **vendored fork** of four modules from `src/`, taken at a
