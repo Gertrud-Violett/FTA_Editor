@@ -116,10 +116,11 @@ for enc in encodings:
 ### Local Development
 
 ```bash
-# Setup
-pip install -r requirements.txt
-sudo apt install graphviz fonts-noto-cjk  # Linux
-brew install graphviz                      # macOS
+# Setup -- uv (recommended, see pyproject.toml) or pip
+uv sync --extra dev
+# pip install -r requirements.txt -r fta_web/requirements.txt
+sudo apt install graphviz fonts-noto-cjk  # Linux, desktop app / native rendering only
+brew install graphviz                      # macOS, desktop app / native rendering only
 
 # Run GUI
 python src/FTA_Editor_UI.py
@@ -190,7 +191,7 @@ python tests/test_probability_calculation.py  # Just probability
 - **Naming**: `snake_case` functions, `PascalCase` classes
 - **Error handling**: Return `(success: bool, error: str)` tuples
 - **Testing**: pytest with descriptive test names (`test_<feature>_<scenario>`)
-- **Versioning**: Update `setup.py`, `CHANGELOG.md`, `Dockerfile` versions together
+- **Versioning**: Update `pyproject.toml` (the `version` field) and `CHANGELOG.md` together
 
 ## Key Files Reference
 
@@ -215,7 +216,11 @@ python tests/test_probability_calculation.py  # Just probability
 1. **Probability calculations**: Run `test_probability_calculation.py` first
 2. **Web API changes**: Update `save_core()` calls, test session persistence
 3. **Tree structure changes**: Update `json_viewer.py` rendering logic
-4. **Version bumps**: Update setup.py, CHANGELOG.md, Dockerfile, docker-compose.yml
+4. **Version bumps**: Update `pyproject.toml`, `CHANGELOG.md`
+   (`Dockerfile`/`docker-compose.yml` referenced here no longer exist -- the
+   Render/Docker deployment path was removed; this file predates that and the
+   fta_web/ web app. Its "Render.com Deployment" section above is stale in the
+   same way and should not be followed.)
 5. **Font/i18n**: Test with Japanese example data
 
 ## Quick Commands

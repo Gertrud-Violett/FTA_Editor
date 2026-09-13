@@ -15,13 +15,19 @@ still supported — its instructions are below.
 ```bash
 git clone https://github.com/Gertrud-Violett/FTA_Editor.git
 cd FTA_Editor
+
+# with uv (recommended -- faster, pins exact versions)
+uv sync --extra web --extra excel --extra ai
+
+# or with pip
 pip install -r requirements.txt -r fta_web/requirements.txt
 ```
 
 ## 2. Run
 
 ```bash
-python3 fta_web/run.py
+uv run python fta_web/run.py     # if you used uv above
+python3 fta_web/run.py           # if you used pip
 ```
 
 Your browser opens on the editor. The terminal prints the URL as well — it
@@ -37,11 +43,13 @@ URL, `--root ~/trees` to confine the file browser to one directory.
 **Extra prerequisites:** Tk and [Graphviz](https://graphviz.org/download/).
 
 ```bash
-pip install -r requirements.txt
-python src/FTA_Editor_UI.py
+uv sync --extra desktop --extra excel --extra ai   # or: pip install -r requirements.txt
+uv run python src/FTA_Editor_UI.py                 # or: python src/FTA_Editor_UI.py
 ```
 
-Or run `python install.py`, which checks the prerequisites for you.
+Or run `python install.py`, which detects `uv` and uses it automatically,
+falling back to pip if `uv` isn't on your PATH — either way it checks
+prerequisites and offers to launch the app when it's done.
 </details>
 
 <details>
@@ -50,8 +58,8 @@ Or run `python install.py`, which checks the prerequisites for you.
 Build a standalone folder that contains its own Python **and** its own Graphviz:
 
 ```bash
-pip install pyinstaller
-python3 -m PyInstaller --clean --noconfirm \
+uv sync --extra all --extra build
+uv run python -m PyInstaller --clean --noconfirm \
     --distpath build/dist --workpath build/build \
     build/fta_editor.spec
 
@@ -97,6 +105,9 @@ See [README.md](README.md#ai-assistant-setup) for detailed setup instructions.
 - ✅ **Standalone executable**: a build that needs neither Python nor Graphviz on the target machine — see [build/README.md](build/README.md).
 - ✅ **Five defect fixes** in the web app's copy of the core, each written up in [`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md) — notably `NOT` gates that were silently computed as `OR`, a move guard that permitted exactly the moves that corrupt the tree, and minified JSON files that failed to open with a misleading "encoding" error.
 - ✅ **Desktop app unchanged** and still supported.
+- ✅ **Installation via `pyproject.toml`**: `uv sync --extra <name>` is the
+  recommended path (fast, exact versions pinned in `uv.lock`); plain
+  `pip install -r requirements.txt` still works if you don't have uv.
 
 ## Keyboard Shortcuts
 

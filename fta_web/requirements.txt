@@ -1,11 +1,15 @@
-# fta_web -- web UI dependencies
+# fta_web -- web UI dependencies -- pip fallback
 #
-# This file lists ONLY what the web layer adds. The vendored core in
-# fta_web/core/ keeps its own dependencies, which come from the repo-root
-# requirements.txt:
+# The source of truth is the repo-root pyproject.toml, and the recommended
+# install path is `uv sync --extra web --extra excel --extra ai` (see
+# README.md). This file exists for the pip fallback and lists ONLY what the
+# web layer adds; the vendored core in fta_web/core/ keeps its own
+# dependencies, which come from the repo-root requirements.txt:
 #
 #   openpyxl  -- Excel export (FTA_Editor_core)
-#   Pillow    -- diagram image handling
+#
+# (Pillow is desktop-only: the web app's diagram renders as SVG in the
+# browser and never touches PIL. See pyproject.toml's `desktop` extra.)
 #
 # Install both:
 #   pip install -r requirements.txt -r fta_web/requirements.txt
