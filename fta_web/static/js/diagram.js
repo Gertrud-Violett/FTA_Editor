@@ -256,8 +256,26 @@ export function initDiagram(container) {
       const parsed = doc.documentElement;
       if (!parsed || parsed.nodeName === 'parsererror') throw new Error('Graphviz returned invalid SVG.');
       svgEl = document.importNode(parsed, true);
-      svgEl.removeAttribute('width');
-      svgEl.removeAttribute('height');
+      // Give the SVG real intrinsic pixel size from its own viewBox rather
+      // than stripping width/height outright. .diagram__canvas is
+      // position:absolute with no explicit size (it shrink-wraps its child so
+      // the zoom transform below has something concrete to scale), and a
+      // naked <svg> with only a viewBox inside such a parent has nothing to
+      // lay out against -- Chromium collapses it to 0x0 instead of falling
+      // back to a UA default, so the rendered diagram becomes invisible while
+      // still being fully present in the DOM (every existing check --
+      // "does a <svg> exist", "does it contain this text" -- passes anyway).
+      // Zoom still comes entirely from .diagram__canvas's own
+      // `transform: scale()` in applyTransform(), which multiplies this
+      // intrinsic size, so fixing the collapse does not fight zoom.
+      const vb = svgEl.viewBox && svgEl.viewBox.baseVal;
+      if (vb && vb.width > 0 && vb.height > 0) {
+        svgEl.setAttribute('width', String(vb.width));
+        svgEl.setAttribute('height', String(vb.height));
+      } else {
+        svgEl.removeAttribute('width');
+        svgEl.removeAttribute('height');
+      }
       canvas.appendChild(svgEl);
 
       markSelection();

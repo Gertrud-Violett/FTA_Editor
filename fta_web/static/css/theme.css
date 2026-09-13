@@ -108,6 +108,33 @@
   --depth-3: #b06a12;
   --depth-4: #c04a7a;
   --depth-5: #4b7a1f;
+
+  /* ---- desktop-parity chrome ---------------------------------------------
+     The Tkinter app's top bar and action bar sat on the system's default
+     grey (#f0f0f0-ish on most desktops); its buttons and the AI panel's
+     title strip used bright, distinct pastels rather than one accent colour
+     everywhere. Same regions, same colour language -- see FTA_Editor_UI.py's
+     _build_top_bar, _build_button_bar and _build_ai_chat_panel for the
+     literal hex values these are drawn from.                                */
+  --chrome-desktop: #eef1f5;
+  --ai-header-bg: #e6f3ff;      /* desktop: title_frame bg="#e6f3ff" */
+
+  /* One text colour for every candy button below: dark, like Tk's default
+     black button label sitting on a pale fill. Dark-mode redefines this to
+     a light colour once the fills themselves go dark instead of pale.       */
+  --btn-text: var(--text);
+
+  --btn-new:      #90ee90;      /* desktop: New Analysis */
+  --btn-add:      #20b2aa;      /* desktop: (A)dd Node */
+  --btn-edit:     #66cdaa;      /* desktop: (E)dit Node */
+  --btn-delete:   #8fbc8f;      /* desktop: (D)elete Node */
+  --btn-load:     #b0c4de;      /* desktop: Load JSON */
+  --btn-save:     #b0e0e6;      /* desktop: (S)ave JSON As */
+  --btn-save-as:  #a6d8de;      /* web-only split of Save/Save As; same family */
+  --btn-json:     #c9e4de;      /* web-only: desktop's Save *is* JSON */
+  --btn-xml:      #dda0dd;      /* desktop: Export XML */
+  --btn-excel:    #f0e68c;      /* desktop: Export Excel */
+  --btn-render:   #87ceeb;      /* desktop: (R)ender Img */
 }
 
 /* --- 2. OS dark, unless the user explicitly chose light --------------------
@@ -157,6 +184,25 @@
     --depth-3: #e2a44e;
     --depth-4: #ef7fa8;
     --depth-5: #8fc95c;
+
+    /* Desktop-parity chrome, dark: same hues as the light pastels above, deep
+       enough to read as filled buttons rather than washed-out swatches. Text
+       flips to light, since these are now dark fills, not pale ones.        */
+    --chrome-desktop: #171b23;
+    --ai-header-bg: #16283c;
+    --btn-text: #eef3f8;
+
+    --btn-new:      #2f6b46;
+    --btn-add:      #1f6b66;
+    --btn-edit:     #2f7d6e;
+    --btn-delete:   #3f6b53;
+    --btn-load:     #3a5578;
+    --btn-save:     #3a6570;
+    --btn-save-as:  #37606b;
+    --btn-json:     #3a6b5e;
+    --btn-xml:      #6b4a6b;
+    --btn-excel:    #7a6f2f;
+    --btn-render:   #2f5a78;
   }
 }
 
@@ -206,6 +252,25 @@
   --depth-3: #e2a44e;
   --depth-4: #ef7fa8;
   --depth-5: #8fc95c;
+
+  /* Desktop-parity chrome, dark: same hues as the light pastels above, deep
+     enough to read as filled buttons rather than washed-out swatches. Text
+     flips to light, since these are now dark fills, not pale ones.        */
+  --chrome-desktop: #171b23;
+  --ai-header-bg: #16283c;
+  --btn-text: #eef3f8;
+
+  --btn-new:      #2f6b46;
+  --btn-add:      #1f6b66;
+  --btn-edit:     #2f7d6e;
+  --btn-delete:   #3f6b53;
+  --btn-load:     #3a5578;
+  --btn-save:     #3a6570;
+  --btn-save-as:  #37606b;
+  --btn-json:     #3a6b5e;
+  --btn-xml:      #6b4a6b;
+  --btn-excel:    #7a6f2f;
+  --btn-render:   #2f5a78;
 }
 
 /* An explicit light choice on a dark OS: block 1 already holds the light

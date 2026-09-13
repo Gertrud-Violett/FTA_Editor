@@ -124,6 +124,52 @@ button, input, select, textarea {
 .btn--ghost { background: transparent; border-color: transparent; }
 .btn--ghost:hover { background: var(--surface-hover); }
 
+/* ---- desktop-parity action bar -------------------------------------------
+   The Tkinter button bar coloured every action a distinct pastel rather than
+   using one accent everywhere (FTA_Editor_UI.py:_build_button_bar). Same
+   idea here, keyed off the action bar's own data-action attribute so the
+   markup needs no extra classes. Hover/active just brighten or dim the same
+   fill -- Tk buttons had no hover state to match, so this is new feedback,
+   not a fidelity target. */
+.actionbar .btn[data-action] {
+  color: var(--btn-text);
+  border-color: rgba(0, 0, 0, .18);
+}
+:root[data-theme="dark"] .actionbar .btn[data-action] {
+  border-color: rgba(0, 0, 0, .35);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .actionbar .btn[data-action] {
+    border-color: rgba(0, 0, 0, .35);
+  }
+}
+.actionbar .btn[data-action="new"]     { background: var(--btn-new); }
+.actionbar .btn[data-action="add"]     { background: var(--btn-add); }
+.actionbar .btn[data-action="edit"]    { background: var(--btn-edit); }
+.actionbar .btn[data-action="delete"]  { background: var(--btn-delete); }
+.actionbar .btn[data-action="load"]    { background: var(--btn-load); }
+.actionbar .btn[data-action="save"]    { background: var(--btn-save); }
+.actionbar .btn[data-action="save-as"] { background: var(--btn-save-as); }
+.actionbar .btn[data-action="json"]    { background: var(--btn-json); }
+.actionbar .btn[data-action="xml"]     { background: var(--btn-xml); }
+.actionbar .btn[data-action="excel"]   { background: var(--btn-excel); }
+.actionbar .btn[data-action="render"]  { background: var(--btn-render); }
+
+.actionbar .btn[data-action]:hover:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(0.94);
+}
+.actionbar .btn[data-action]:active:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(0.88);
+}
+/* A missing-dependency button (spec 6.8) stays legible: grey out the fill
+   rather than dimming a colour that would otherwise read as "still usable". */
+.actionbar .btn[data-action][aria-disabled="true"],
+.actionbar .btn[data-action]:disabled {
+  background: var(--surface-2);
+  color: var(--text-faint);
+  border-color: var(--border);
+}
+
 /* Not-yet-built actions stay focusable so a keyboard user can reach them and
    read the tooltip; the click handler explains instead of doing nothing. */
 .btn[aria-disabled="true"],
@@ -191,7 +237,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
   align-items: center;
   gap: var(--s-3);
   padding: var(--s-2) var(--s-3);
-  background: var(--chrome);
+  background: var(--chrome-desktop);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
@@ -206,11 +252,9 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .topbar__group--end { margin-left: auto; }
 
 .topbar__label {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text);
   white-space: nowrap;
 }
 
@@ -336,12 +380,15 @@ body.is-resizing--h, body.is-resizing--h * { cursor: row-resize !important; }
   border-bottom: 1px solid var(--border);
 }
 
+/* Desktop: the AI panel's title strip was its own light blue
+   (title_frame bg="#e6f3ff" in _build_ai_chat_panel), distinct from the
+   other panels' plain header. */
+#ai-panel > .panel__head { background: var(--ai-header-bg); }
+
 .panel__title {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-lg);
   font-weight: 700;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text);
   white-space: nowrap;
 }
 
@@ -688,7 +735,7 @@ html[data-hide-zero="1"] .fta-tree-row.is-zero { display: none; }
   align-items: center;
   gap: var(--s-1);
   padding: var(--s-2) var(--s-3);
-  background: var(--chrome);
+  background: var(--chrome-desktop);
   border-top: 1px solid var(--border);
   flex-wrap: wrap;
 }
