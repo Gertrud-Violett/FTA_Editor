@@ -1,0 +1,216 @@
+/* ==========================================================================
+   theme.css -- the design tokens. Nothing in here selects a component.
+   ==========================================================================
+
+   Three blocks define the palette, in this order:
+
+     1. :root                                            -- the COMPLETE light
+        palette. Every token the app uses is defined exactly once here, so a
+        token can never be missing in one theme and present in another.
+
+     2. @media (prefers-color-scheme: dark)
+          :root:not([data-theme="light"])                -- the OS default.
+        Guarded by :not([data-theme="light"]) so an explicit "light" choice
+        wins over a dark OS.
+
+     3. :root[data-theme="dark"]                         -- the manual toggle,
+        which must also win on a light OS, hence a second copy.
+
+   Blocks 2 and 3 redefine ONLY the colour tokens; sizes, fonts and shapes are
+   theme-independent and stay in block 1. The two dark blocks are byte-identical
+   by design -- CSS has no way to share one declaration block between a media
+   query and a plain selector, so if you touch one, touch the other.
+
+   `color-scheme` is set alongside the palette so the browser paints native
+   scrollbars, form controls and the canvas behind the page to match.
+
+   No @font-face, no @import, no url() to anything off this machine: the app
+   ships as an offline executable and must render identically with no network.
+   ========================================================================== */
+
+:root {
+  /* ---- typography -------------------------------------------------------
+     System stacks only. The Japanese faces are listed after the Latin ones so
+     they are picked up for JA text without overriding Latin rendering.       */
+  --font-ui:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic",
+    Meiryo, "Noto Sans CJK JP", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "DejaVu Sans Mono", "Liberation Mono", monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 13.5px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --lh: 1.45;
+
+  /* ---- spacing, shape, motion ------------------------------------------ */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  --ctl-h: 28px;          /* height of every control in the top bar */
+  --splitter: 6px;        /* drag handle thickness; JS reads none of this */
+  --dur: 120ms;
+
+  /* ---- light palette ---------------------------------------------------- */
+  color-scheme: light;
+
+  --bg: #eceff4;                 /* behind the panels */
+  --panel: #ffffff;              /* panel body */
+  --panel-header: #f6f8fb;       /* panel title strip */
+  --chrome: #f9fafc;             /* top bar / action bar */
+  --surface: #ffffff;            /* inputs, cards */
+  --surface-2: #f2f5f9;          /* subtle fills, placeholders */
+  --surface-hover: #e8edf4;
+  --surface-active: #dbe3ee;
+
+  --border: #d4dae3;
+  --border-strong: #b3bdcb;
+
+  --text: #1a2030;
+  --text-dim: #566175;
+  --text-faint: #8a93a3;
+  --text-on-accent: #ffffff;
+
+  --accent: #2f6fd0;
+  --accent-hover: #2761b8;
+  --accent-soft: #e5edfb;
+
+  --focus: #2f6fd0;
+
+  --ok: #1d8049;
+  --ok-soft: #e1f3e8;
+  --warn: #9a5d00;
+  --warn-soft: #fbeed8;
+  --danger: #bd2b2b;
+  --danger-hover: #a32424;
+  --danger-soft: #fae5e5;
+
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
+  --shadow-2: 0 8px 28px rgba(16, 24, 40, .16);
+  --scrim: rgba(20, 26, 38, .55);
+
+  /* Tree depth tints. tree.js may colour rows by depth with
+     var(--depth-N) and wrap around past 5; the desktop editor cycles too.    */
+  --depth-0: #2f6fd0;
+  --depth-1: #7a4bc4;
+  --depth-2: #0f8a86;
+  --depth-3: #b06a12;
+  --depth-4: #c04a7a;
+  --depth-5: #4b7a1f;
+}
+
+/* --- 2. OS dark, unless the user explicitly chose light --------------------
+   KEEP IN SYNC WITH BLOCK 3 BELOW. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #0f1218;
+    --panel: #171b23;
+    --panel-header: #1c212b;
+    --chrome: #131720;
+    --surface: #1d222c;
+    --surface-2: #222834;
+    --surface-hover: #2a313f;
+    --surface-active: #333c4c;
+
+    --border: #2b323f;
+    --border-strong: #414b5c;
+
+    --text: #e4e8ef;
+    --text-dim: #a0aabb;
+    --text-faint: #6f7a8c;
+    --text-on-accent: #ffffff;
+
+    --accent: #5b9bf0;
+    --accent-hover: #74acf5;
+    --accent-soft: #1b2942;
+
+    --focus: #74acf5;
+
+    --ok: #4cc27f;
+    --ok-soft: #16301f;
+    --warn: #e0a144;
+    --warn-soft: #322412;
+    --danger: #f0716b;
+    --danger-hover: #f68b86;
+    --danger-soft: #34181a;
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .40), 0 1px 3px rgba(0, 0, 0, .30);
+    --shadow-2: 0 8px 28px rgba(0, 0, 0, .55);
+    --scrim: rgba(6, 9, 14, .70);
+
+    --depth-0: #5b9bf0;
+    --depth-1: #b28bf0;
+    --depth-2: #3ec3bd;
+    --depth-3: #e2a44e;
+    --depth-4: #ef7fa8;
+    --depth-5: #8fc95c;
+  }
+}
+
+/* --- 3. Manual dark, on any OS --------------------------------------------
+   KEEP IN SYNC WITH BLOCK 2 ABOVE. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0f1218;
+  --panel: #171b23;
+  --panel-header: #1c212b;
+  --chrome: #131720;
+  --surface: #1d222c;
+  --surface-2: #222834;
+  --surface-hover: #2a313f;
+  --surface-active: #333c4c;
+
+  --border: #2b323f;
+  --border-strong: #414b5c;
+
+  --text: #e4e8ef;
+  --text-dim: #a0aabb;
+  --text-faint: #6f7a8c;
+  --text-on-accent: #ffffff;
+
+  --accent: #5b9bf0;
+  --accent-hover: #74acf5;
+  --accent-soft: #1b2942;
+
+  --focus: #74acf5;
+
+  --ok: #4cc27f;
+  --ok-soft: #16301f;
+  --warn: #e0a144;
+  --warn-soft: #322412;
+  --danger: #f0716b;
+  --danger-hover: #f68b86;
+  --danger-soft: #34181a;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .40), 0 1px 3px rgba(0, 0, 0, .30);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, .55);
+  --scrim: rgba(6, 9, 14, .70);
+
+  --depth-0: #5b9bf0;
+  --depth-1: #b28bf0;
+  --depth-2: #3ec3bd;
+  --depth-3: #e2a44e;
+  --depth-4: #ef7fa8;
+  --depth-5: #8fc95c;
+}
+
+/* An explicit light choice on a dark OS: block 1 already holds the light
+   palette and block 2 is disarmed by its :not() guard, so only color-scheme
+   needs restating here. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}

@@ -5,6 +5,125 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-09
+
+The editor now runs in a browser. Everything in this release is additive: the
+Tkinter desktop app in `src/` is byte-for-byte unchanged and still the way to
+run version 1.5.1.
+
+### Added
+
+- **Web application (`fta_web/`)** — the same editor as a local, single-user
+  web app. `python3 fta_web/run.py` starts a loopback-only server and opens a
+  browser on it.
+  - **Tree editing**: add, edit, delete, reorder and move nodes; 50 levels of
+    undo/redo; live probability recalculation with AND/OR gates; FTA and ETA
+    modes; zero-probability nodes highlighted.
+  - **Diagram rendering with no Graphviz installed.** The browser draws the
+    diagram from `GET /api/dot` using a vendored WebAssembly build of Graphviz
+    (`static/vendor/viz-js/viz.js`). A native `dot` binary, when present, is
+    used only by `POST /api/render` to produce a file to save.
+  - **Honest capability disclosure.** `GET /api/state` returns a
+    `capabilities` object (`nativeDot`, `excelExport`, `aiConfigured`); the UI
+    disables and *explains* a control whose optional dependency is missing
+    instead of offering a button that fails when pressed.
+  - **File I/O and exports**: open/save/save-as with a sandboxed file browser,
+    plus JSON, XML, Excel, SVG and PNG export.
+  - **AI assistant**: chat, "Analyze FTA" and "Update FTA", over OpenAI,
+    Azure/Microsoft Copilot, Anthropic Claude and Google Gemini — the same
+    providers and the same credential file (`~/.fta_editor/ai_credentials.json`)
+    as the desktop app.
+  - **Security model** for a tool that can read and write local files: bound to
+    `127.0.0.1` only and not configurable; a per-launch token minted at startup,
+    never persisted, required in the `X-FTA-Token` header on every `/api/*`
+    call; Host/Origin pinned against DNS rebinding; the filesystem endpoints
+    confined to a sandbox root (`--root`, default `$HOME`) with an extension
+    allowlist; request bodies capped at 10 MB. A cookie session is deliberately
+    *not* used — the browser would attach it to a forged cross-site request,
+    which is the attack the header token prevents.
+  - Refuses to start under gunicorn/uWSGI/mod_wsgi or with `WEB_CONCURRENCY>1`:
+    the whole editor state is one in-process object, so a second worker would
+    not crash, it would silently lose edits.
+
+- **Standalone executable** (`build/fta_editor.spec`) — a PyInstaller *onedir*
+  bundle of the web app that runs with **neither Python nor Graphviz
+  installed**. Build with
+  `python3 -m PyInstaller --clean --noconfirm --distpath build/dist --workpath build/build build/fta_editor.spec`;
+  about 20 MB on Linux. Onefile is deliberately not used — it re-extracts the
+  whole bundle to a temp directory on every launch and reliably trips antivirus
+  heuristics. See [`build/README.md`](build/README.md) for the full rationale,
+  per-OS notes and verification steps. Windows and macOS builds must be
+  produced on those platforms; PyInstaller does not cross-compile.
+
+- **`fta_web/runtime_paths.py`** — single place that resolves bundled data
+  paths, through `sys._MEIPASS` when frozen and relative to `fta_web/` from a
+  checkout.
+
+### Changed
+
+- **Vendored core fork.** `fta_web/core/` holds copies of `AI_agent_handler.py`,
+  `FTA_Editor_core.py`, `ai_providers.py` and `json_viewer.py` taken from `src/`
+  at commit `e5f655f`. `src/`, `tests/` and `data/` are frozen for the 1.6 line
+  and pinned by SHA-256 in `fta_web/core/BASELINE.json`; the fork is the copy
+  1.6 is allowed to patch, and `fta_web/tests/test_vendor_integrity.py` fails
+  the build if either side changes without the manifest and the divergence
+  record being updated together.
+
+  Five defects are fixed in the fork and **not** in `src/`. Full write-ups,
+  including the evidence and the behaviour change for each, are in
+  [`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md):
+
+  - **D1** — `AIAgentHandler._get_client()` was dead code that could only ever
+    raise `AttributeError` (`__init__` never assigned `self._client`). Deleted;
+    the live path, `_get_provider()`, was already correct. No observable change.
+  - **D5** — `logicGate: "NOT"` was accepted by validation but computed as
+    **OR**: the probability engine branches on `AND` and falls through to the OR
+    union formula for everything else, so a NOT gate produced a wrong number
+    with no error and nothing in the UI to show the gate had been ignored. `NOT`
+    is now rejected at all four acceptance sites with a message naming the
+    offending node, and is no longer advertised to the model in the schema or
+    the system prompt. Trees relying on the silent OR fallback now surface an
+    error, which is the point. The probability engine itself is unchanged.
+  - **D7** — the move guard asked its question backwards. It tested whether the
+    node being moved was inside the target's subtree, rather than whether the
+    new parent was a descendant of the node being moved, so it rejected every
+    legal move (promoting a grandchild, reordering under the same parent) and
+    permitted the corrupting ones (a node into its own child or grandchild).
+    Argument order corrected; the function now returns a real `bool` instead of
+    leaking a node dict.
+  - **D8** — minified JSON was mangled and then blamed on the file's encoding.
+    A double-wrap repair ran unconditionally *before* parsing, and its
+    `endswith("}}")` test matches every minified document; stripping the brace
+    turned a valid file into invalid JSON and the resulting error was reported
+    as "Failed to read file with common encodings". The document is now parsed
+    as written first, with the legacy repair as a fallback. Minified files open;
+    nothing that loaded before stops loading.
+  - **D9** — `AnthropicProvider.get_default_models()` still returned the Claude
+    3 family. That list is the *fallback* used when the live model fetch fails,
+    which is exactly when a stale entry does the most damage. Refreshed to the
+    current family, most-capable first. The model field is an editable combo and
+    the live fetch is preferred, so the list ageing again degrades gracefully.
+
+  One reported defect, **D3** (Excel sibling rows overwriting each other), was
+  investigated and **not** reproduced — the report misreads a `nonlocal`
+  high-water mark as a per-level counter. Verified exhaustively against all 626
+  rooted ordered tree shapes of 1–8 nodes. No patch was applied; regression
+  tests pin the layout instead.
+
+- `requirements.txt` is unchanged. The web app's one extra dependency, Flask,
+  is in `fta_web/requirements.txt`; install both with
+  `pip install -r requirements.txt -r fta_web/requirements.txt`.
+
+- `README.md` and `QUICKSTART.md` now lead with the web app.
+
+### Deprecated
+
+- Nothing yet. The desktop application (`src/FTA_Editor_UI.py`) is **unchanged,
+  supported and retained** in this release. It is expected to be marked
+  deprecated after 1.6 has shipped and the web app has been exercised in
+  practice; it will be kept available after that, not deleted. Until that
+  announcement, both applications are current.
+
 ## [1.5.1] - 2025-12-16
 
 ### Added

@@ -1,0 +1,299 @@
+{
+  "title": "sampleFTA",
+  "date": "2025-10-31",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Root Event",
+    "type": "Root",
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "root_0",
+        "name": "Ev1 with a very long name for testing",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "AND",
+        "notes": "",
+        "children": [
+          {
+            "id": "root_0_0",
+            "name": "Ev1.1",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "AND",
+            "notes": "",
+            "children": [
+              {
+                "id": "root_0_0_0",
+                "name": "Ev1.1.1",
+                "type": "Event",
+                "probability": 0.5,
+                "logicGate": "OR",
+                "notes": "",
+                "children": [],
+                "calculatedProbability": 0.4,
+                "links": [
+                  {
+                    "target_id": "root_1_1",
+                    "relation": "OR"
+                  },
+                  {
+                    "target_id": "root_0_2",
+                    "relation": "AND"
+                  }
+                ]
+              },
+              {
+                "id": "root_0_0_1",
+                "name": "Ev1.1.2",
+                "type": "Event",
+                "probability": 0.5,
+                "logicGate": "OR",
+                "notes": "",
+                "children": [],
+                "calculatedProbability": 0.5,
+                "links": []
+              }
+            ],
+            "calculatedProbability": 0.2,
+            "links": []
+          },
+          {
+            "id": "root_0_1",
+            "name": "Ev1.2",
+            "type": "Event",
+            "probability": 0.8,
+            "logicGate": "OR",
+            "notes": "",
+            "children": [
+              {
+                "id": "root_0_1_0",
+                "name": "Ev1.2.1 with very lone name for testing, super long name blah blah blah hogehoge",
+                "type": "Event",
+                "probability": 1.0,
+                "logicGate": "OR",
+                "notes": "",
+                "children": [],
+                "calculatedProbability": 1.0,
+                "links": []
+              }
+            ],
+            "calculatedProbability": 1.0,
+            "links": []
+          },
+          {
+            "id": "root_0_2",
+            "name": "Ev1.3",
+            "type": "Event",
+            "probability": 0.8,
+            "logicGate": "OR",
+            "notes": "",
+            "children": [],
+            "calculatedProbability": 0.8,
+            "links": []
+          },
+          {
+            "id": "root_0_3",
+            "name": "Ev1.4",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "children": [],
+            "calculatedProbability": 1.0,
+            "links": []
+          }
+        ],
+        "calculatedProbability": 0.16,
+        "links": []
+      },
+      {
+        "id": "root_1",
+        "name": "Ev2",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "Totally mumojumbo note for testing, very long note. \nOption 2: Sync or Mirror the folder to SharePoint. If you want broader access or better integration: Use Power Automate or a scheduled script to keep the SharePoint folder updated.\nThen embed or link to the SharePoint-hosted version.\n\n\n\n Option 3: Use a Script or Tool to Integrate\nIf you need a more automated or dynamic solution, you can:\n\nUse PowerShell or Power Automate Desktop to sync the folder.\nUse OneDrive Sync if the folder is mapped locally.",
+        "children": [
+          {
+            "id": "root_1_0",
+            "name": "Ev2.1",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "AND",
+            "notes": "",
+            "children": [
+              {
+                "id": "root_1_0_0",
+                "name": "Ev2.1.1",
+                "type": "Event",
+                "probability": 0.0,
+                "logicGate": "OR",
+                "notes": "",
+                "children": [],
+                "calculatedProbability": 0.0,
+                "links": []
+              },
+              {
+                "id": "root_1_0_1",
+                "name": "Ev2.1.2",
+                "type": "Event",
+                "probability": 1.0,
+                "logicGate": "OR",
+                "notes": "",
+                "children": [],
+                "calculatedProbability": 1.0,
+                "links": []
+              }
+            ],
+            "calculatedProbability": 0.0,
+            "links": []
+          },
+          {
+            "id": "root_1_1",
+            "name": "Ev2.2",
+            "type": "Event",
+            "probability": 0.0,
+            "logicGate": "OR",
+            "notes": "",
+            "children": [],
+            "calculatedProbability": 0.0,
+            "links": []
+          }
+        ],
+        "calculatedProbability": 0.0,
+        "links": []
+      },
+      {
+        "id": "root_2",
+        "name": "Ev3",
+        "type": "Event",
+        "probability": 0.7,
+        "logicGate": "AND",
+        "notes": "",
+        "children": [
+          {
+            "id": "root_2_0",
+            "name": "Ev3.1",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "children": [],
+            "calculatedProbability": 1.0,
+            "links": []
+          },
+          {
+            "id": "root_2_1",
+            "name": "Ev3.2",
+            "type": "Event",
+            "probability": 0.0,
+            "logicGate": "OR",
+            "notes": "",
+            "children": [],
+            "calculatedProbability": 0.0,
+            "links": []
+          },
+          {
+            "id": "root_2_2",
+            "name": "Ev3.3",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "children": [],
+            "calculatedProbability": 1.0,
+            "links": []
+          }
+        ],
+        "calculatedProbability": 0.0,
+        "links": []
+      },
+      {
+        "id": "root_3",
+        "name": "Ev4",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "root_3_0",
+            "name": "Ev4.1",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [
+              {
+                "id": "root_3_0_0",
+                "name": "Ev4.1.1",
+                "type": "Event",
+                "probability": 0.5,
+                "logicGate": "AND",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "calculatedProbability": 0.5
+              },
+              {
+                "id": "root_3_0_1",
+                "name": "Ev4.1.2",
+                "type": "Event",
+                "probability": 0.2,
+                "logicGate": "AND",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "calculatedProbability": 0.2
+              }
+            ],
+            "calculatedProbability": 0.6
+          }
+        ],
+        "calculatedProbability": 0.6
+      },
+      {
+        "id": "root_4",
+        "name": "Ev5",
+        "type": "Event",
+        "probability": 0.75,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "root_4_0",
+            "name": "Ev5.1",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "calculatedProbability": 1.0
+          }
+        ],
+        "calculatedProbability": 1.0
+      },
+      {
+        "id": "root_5",
+        "name": "Ev6",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "calculatedProbability": 1.0
+      }
+    ],
+    "calculatedProbability": 1.0,
+    "probability": 1.0,
+    "notes": "",
+    "links": []
+  }
+}

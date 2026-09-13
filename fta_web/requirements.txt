@@ -1,0 +1,28 @@
+# fta_web -- web UI dependencies
+#
+# This file lists ONLY what the web layer adds. The vendored core in
+# fta_web/core/ keeps its own dependencies, which come from the repo-root
+# requirements.txt:
+#
+#   openpyxl  -- Excel export (FTA_Editor_core)
+#   Pillow    -- diagram image handling
+#
+# Install both:
+#   pip install -r requirements.txt -r fta_web/requirements.txt
+
+Flask>=3.0.0
+
+# Intentionally absent
+# -------------------
+# flask-session / any server-side session store: this is a single-user local
+# tool whose entire state lives in one in-process object. Authentication is a
+# per-launch token in a request header (see fta_web/security.py), not a cookie
+# session -- a cookie would be attached automatically by the browser to a
+# forged cross-site request, which is exactly the attack the token prevents.
+#
+# gunicorn / uwsgi / any pre-forking server: multiple workers would each hold a
+# private copy of the editor state and silently lose edits. app.create_app()
+# refuses to start under one.
+#
+# flask-cors: the API must be reachable from one origin only. Adding CORS
+# headers would undo the anti-DNS-rebinding checks.
