@@ -50,14 +50,14 @@ optional at runtime by design:
 | `openpyxl` | `.xlsx` export | `capabilities.excelExport: false`; the export offers JSON/XML/SVG/PNG only |
 | `openai` | OpenAI + Azure/Copilot providers | provider present in the list, "package not installed" on connect |
 | `anthropic` | Anthropic Claude provider | as above |
-| `google-generativeai` | Google Gemini provider | as above |
+| `google-genai` | Google Gemini provider (`google-generativeai` pre-D11) | as above |
 
 The spec prints which of these it bundled and which it skipped. Read that line;
 it is the only warning you get that you have built a crippled release:
 
 ```
 fta_editor.spec: optional packages bundled: openpyxl
-fta_editor.spec: optional packages NOT installed, so NOT bundled: openai, anthropic, google.generativeai
+fta_editor.spec: optional packages NOT installed, so NOT bundled: openai, anthropic, google.genai
 ```
 
 Graphviz is **not** a build prerequisite and not a runtime one — see
@@ -290,39 +290,37 @@ env -i HOME=/tmp/fakehome PATH=/nonexistent \
 
 It should start and serve normally with no Python and nothing else on `PATH`.
 
-## Known limitation: Gemini in a frozen build
+## Resolved: Gemini in a frozen build (divergence D11)
 
-**Verified against the built binary: OpenAI and Anthropic work; Google Gemini does
-not.** With a deliberately invalid key, OpenAI and Anthropic both reach their APIs and
-return `401`, which proves their client libraries loaded. Gemini returns *"Google
-Generative AI package not installed"* — the provider's `except ImportError` branch.
+**Previously** (before D11): with a deliberately invalid key, OpenAI and Anthropic both
+reached their APIs and returned `401`, proving their client libraries loaded, while
+Gemini returned *"Google Generative AI package not installed"* — the provider's
+`except ImportError` branch, even though the build log printed it as bundled. The cause
+was that `google.generativeai` lives under `google`, a **PEP 420 namespace package**: a
+plain `hiddenimports` entry for it is accepted without complaint and collects nothing,
+so the failure only appeared at runtime.
 
-The cause is that `google.generativeai` lives under `google`, a **PEP 420 namespace
-package**. A plain `hiddenimports` entry for it is accepted without complaint and
-collects nothing: the build prints "bundled", the bundle ships without
-`google/generativeai`, and the failure only appears at runtime. `collect_all()` (now in
-the spec) does place the files in the bundle, but the import still fails inside the
-frozen app — PyInstaller's importer and namespace packages remain an unsolved
-combination here.
+**Fix:** `fta_web/core/ai_providers.py`'s `GeminiProvider` was migrated from the
+end-of-life `google.generativeai` to its replacement, `google.genai` (see
+`fta_web/core/DIVERGENCE.md`, D11 — Google's own migration notice reads "All support for
+the `google.generativeai` package has ended... switch to the `google.genai` package").
+`google.genai` lives under the same `google` namespace-package structure, so the spec's
+`collect_all()` workaround was retargeted at it (and at `google.auth`, a real transitive
+dependency found by inspecting `sys.modules`, not assumed).
 
-**This is disclosed, not hidden.** `AppState._probe_provider_sdks` really imports each
-SDK rather than calling `find_spec`, precisely because `find_spec` reported Gemini
-present in the frozen build while the import raised. The capability indicator therefore
-shows Gemini as unavailable in a frozen build, and the AI settings dialog can say so
-before the user pastes a key.
+**Verified against the rebuilt binary: all three providers now work.** With a
+deliberately invalid key, all three reach their real API and return the provider's own
+4xx error — OpenAI and Anthropic `401`, Gemini `400 INVALID_ARGUMENT` /
+*"API key not valid"* from `generativelanguage.googleapis.com` — proving every client
+library loaded and made a genuine network call, not an `ImportError` masquerading as one.
+`capabilities.aiProviders` in `/api/state` also reports all three as `true` in the frozen
+build now, where Gemini previously reported `false`.
 
-**Workarounds, in order of preference:**
-
-1. Run from source (`python fta_web/run.py`), where all three providers work.
-2. Use OpenAI or Anthropic in the packaged build.
-3. Migrate `GeminiProvider` to the `google.genai` package — see below.
-
-`google.generativeai` is **end-of-life** ("All support for the `google.generativeai`
-package has ended... switch to the `google.genai` package"). Its replacement is far
-lighter and avoids the `google-api-python-client` dependency entirely, so migrating
-would very likely fix the freeze problem *and* shrink the bundle further. That is a
-change to `fta_web/core/ai_providers.py` and needs a real Gemini key to verify, so it is
-recorded as the top v1.7 item rather than done blind.
+**This remains disclosed, not silently trusted.** `AppState._probe_provider_sdks` still
+really imports each SDK rather than calling `find_spec`, on the same reasoning that
+caught the original bug: a probe that can be fooled is worse than no probe. If a future
+SDK swap reintroduces a namespace-package collection gap, the capability indicator will
+say so rather than let the AI settings dialog offer a provider that cannot connect.
 
 ## Bundle size
 
@@ -331,17 +329,30 @@ Measured on Linux, all optional packages installed:
 | Configuration | Size |
 |---|---|
 | No AI SDKs | 20 MB |
-| All three AI SDKs, naive | 194 MB |
-| After exclusions and the discovery-document filter | **79 MB** |
+| All three AI SDKs, naive (pre-D11, `google.generativeai`) | 194 MB |
+| After exclusions and the discovery-document filter (pre-D11) | 79 MB |
+| Post-D11 (`google.genai` + `google.auth`, its own test suite filtered out) | **80 MB** |
 
-Two things account for the difference:
+Post-D11, the ~100 MB `googleapiclient`/grpc chain is gone from a build that installs
+only `google-genai` — `google.genai` doesn't depend on it at all, so the discovery-document
+filter below now drops 0 documents on a `web`+`ai` install. It still runs, and still
+matters, on a build machine that also has the *desktop* app's dependencies installed
+(`google-generativeai`, kept because `src/ai_providers.py` is frozen — see the `desktop`
+extra in `pyproject.toml`), where that chain still arrives transitively. `google.genai`
+also ships its own ~2 MB test suite (`google/genai/tests/`, ~200 modules) inside the
+installed distribution; the spec filters it out of `collect_all()`'s results the same way
+it excludes `pytest`/`hypothesis` elsewhere — test code has no business in a shipped
+bundle regardless of which package it came from.
+
+Two things account for the pre-D11 gap between "naive" and filtered, kept here for the
+historical record:
 
 - **`googleapiclient/discovery_cache/documents`** — ~600 JSON descriptors, one per
   Google API (BigQuery, Compute, YouTube…), **102 MB**. They are *data*, not modules, so
   an `excludes` entry does not touch them; the spec filters them off `a.datas` after
-  Analysis. The Gemini provider never calls `discovery.build()`, the only thing that
-  reads them. If a future provider does, it will raise `UnknownApiNameOrVersion` at that
-  call — loudly — and the filter is where to look.
+  Analysis. Neither Gemini provider implementation has ever called `discovery.build()`,
+  the only thing that reads them. If a future provider does, it will raise
+  `UnknownApiNameOrVersion` at that call — loudly — and the filter is where to look.
 - **`hypothesis` (2 MB) and `uvloop` (13 MB)** were being bundled: a property-based
   testing library and an unused async event loop, both pulled in transitively from the
   dev environment. Neither has a caller in this app.

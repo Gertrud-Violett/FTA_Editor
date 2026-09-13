@@ -10,7 +10,7 @@ vendored module and its `src/` counterpart must be traceable to an entry below. 
 hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
-Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**.
+Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -201,6 +201,69 @@ fetch is unavailable. No API call shape changed; `AnthropicProvider.send_message
 `test_connection` are untouched.
 
 **Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D11 — Migrated `GeminiProvider` off the end-of-life `google.generativeai` SDK
+
+**Defect:** `GeminiProvider` (baseline `src/ai_providers.py`, class starting line 197) is
+built on `google.generativeai`, which Google has ended support for: "All support for the
+`google.generativeai` package has ended... switch to the `google.genai` package." Beyond
+the deprecation itself, the package is a **PEP 420 namespace package** under `google`,
+and PyInstaller's `hiddenimports` silently fails to collect it: the frozen build reported
+Gemini "bundled" while the import raised at runtime (`build/README.md`'s former "Known
+limitation: Gemini in a frozen build" section documented this). `google.generativeai`
+also drags in the ~100 MB `google-api-python-client`/grpc dependency chain for
+functionality this app never uses.
+
+**Fix:** Rewrote `GeminiProvider` against `google.genai`, the SDK's unified successor:
+
+- `genai.Client(api_key=...)` replaces the old `genai.configure()` + `GenerativeModel(...)`
+  pair.
+- `client.models.list()` replaces `genai.list_models()`; each model's `supported_actions`
+  field (the REST action names, e.g. `"generateContent"`) replaces the old
+  `supported_generation_methods` field — same filter, new field name, verified against the
+  installed SDK rather than assumed.
+- `client.models.generate_content(model=..., contents=...)` replaces
+  `GenerativeModel.generate_content()` for the one-shot connection test.
+- `client.chats.create(model=..., config=..., history=...)` plus `Chat.send_message()`
+  replaces `GenerativeModel.start_chat(history=...)` plus `ChatSession.send_message()`.
+  History entries are `{"role": ..., "parts": [{"text": ...}]}` dicts, matching
+  `google.genai.types.ContentDict`/`PartDict`; the *final* turn is sent to
+  `send_message()` as a plain string rather than replayed into history, because passing a
+  single-element `PartDict` list there raises `"Message must be a valid part type"` — `str`
+  is a first-class member of the accepted `Union`, a one-element list-of-dict is not.
+- `types.GenerateContentConfig(system_instruction=..., max_output_tokens=...)` replaces
+  the constructor kwargs `GenerativeModel(system_instruction=...)` and the per-call
+  `generation_config={"max_output_tokens": ...}`.
+- `response.text` is unchanged in shape from the old SDK.
+
+`get_default_endpoint()`, `get_default_models()` (already refreshed by D9's sibling
+reasoning — see that entry) and the `except ImportError` fallback strings are otherwise
+unchanged in intent; only the import path and error text now name `google-genai`.
+
+Because `google.genai` lives under the same `google` namespace-package structure that
+broke `hiddenimports` for the old SDK, `build/fta_editor.spec`'s `collect_all()` workaround
+now targets `google.genai` and `google.auth` (the latter discovered as a real transitive
+import by inspecting `sys.modules` after `import google.genai`, not assumed from the
+package name) instead of `google.generativeai` and `google.ai.generativelanguage`.
+`fta_web/state.py`'s `_probe_provider_sdks()` real-imports the SDK rather than using
+`find_spec` for exactly the reason D9's sibling defect in this file exists elsewhere in
+the project: `find_spec` reported the old package "present" in a frozen build while the
+import itself raised, and a capability indicator that lies is worse than none.
+
+**Behavior change:** None visible to a working integration — `test_connection` and
+`send_message` still return the same `(bool, str)` / `(Optional[str], Optional[str])`
+shapes. A frozen build's Gemini provider, previously non-functional
+(`"Google Generative AI package not installed"` regardless of key validity), now reaches
+the real API. `pyproject.toml`'s `ai` extra now installs `google-genai` instead of
+`google-generativeai`; the `desktop` extra gained `google-generativeai` explicitly, since
+`src/ai_providers.py` is frozen and still needs the old package — the two apps now
+genuinely require different SDKs for the same provider.
+
+**Files:** `fta_web/core/ai_providers.py`, `fta_web/state.py`, `build/fta_editor.spec`,
+`pyproject.toml`, `requirements.txt`, `fta_web/requirements.txt`,
+`fta_web/tests/test_api_render.py`
 
 ---
 

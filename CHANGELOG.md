@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-09-13
+
+Bug-fix release found by building and exercising the packaged executable from
+[1.6.0](#160---2026-09-09) rather than only running from source.
+
+### Fixed
+
+- **Gemini in a frozen build.** The standalone executable's Google Gemini
+  provider was non-functional (`"Google Generative AI package not installed"`
+  regardless of key validity) while OpenAI and Anthropic worked correctly —
+  caused by `google.generativeai` living under `google`, a PEP 420 namespace
+  package that PyInstaller's plain `hiddenimports` silently fails to collect.
+  Fixed by migrating `fta_web/core/ai_providers.py`'s `GeminiProvider` off the
+  now end-of-life `google.generativeai` SDK onto its replacement,
+  `google.genai` (divergence **D11** in `fta_web/core/DIVERGENCE.md`), and
+  retargeting `build/fta_editor.spec`'s namespace-package `collect_all()`
+  workaround at `google.genai` and `google.auth`. Verified against a rebuilt
+  binary: all three providers now reach their real API with a deliberately
+  invalid key and return the provider's own 4xx error. `pyproject.toml`'s `ai`
+  extra now installs `google-genai`; the `desktop` extra gained
+  `google-generativeai` explicitly, since the frozen `src/ai_providers.py`
+  still needs the old package — the two apps now genuinely require different
+  SDKs for the same provider. Bundle size: 80 MB with all three AI SDKs
+  (down slightly from 1.6.0's 79 MB baseline despite adding a package, because
+  `google.genai` itself needs none of the ~100 MB `google-api-python-client`
+  chain the old SDK required — see `build/README.md`'s "Bundle size" section).
+
+### Investigated, not a defect
+
+- **Button clicks appearing to do nothing.** Reported after a packaged-build
+  test: clicking any action-bar button seemed to not reach the server. Could
+  not be reproduced — real, CDP-dispatched mouse clicks (not synthetic
+  `.click()`) against a freshly built and launched binary correctly fire the
+  expected `POST` request with no console errors, both before and after the
+  Gemini fix above. If this recurs, the details that would narrow it down are
+  the browser and OS used, whether the tab was freshly opened for that launch
+  or reused from an earlier one (a stale per-launch auth token would fail
+  every request), and anything shown in the browser's own developer console.
+
 ## [1.6.0] - 2026-09-09
 
 The editor now runs in a browser. Everything in this release is additive: the

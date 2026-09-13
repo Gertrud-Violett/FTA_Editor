@@ -171,7 +171,7 @@ hiddenimports = [
 OPTIONAL_IMPORTS = (
     "openai",              # OpenAI + Azure OpenAI providers
     "anthropic",           # Anthropic provider
-    "google.generativeai",  # Gemini provider
+    "google.genai",        # Gemini provider (divergence D11: was google.generativeai)
     "openpyxl",            # .xlsx export
 )
 
@@ -195,22 +195,26 @@ hiddenimports.extend(_present)
 #
 # ``google`` is a PEP 420 namespace package: there is no google/__init__.py, and
 # the subpackages live in separate distributions. A plain hiddenimports entry
-# for "google.generativeai" is accepted without complaint and then collects
-# NOTHING -- the build reports it as bundled, the bundle ships without
-# google/generativeai at all, and at runtime the provider's
-# ``except ImportError`` reports "package not installed". That is a silent,
-# build-time-invisible loss of one of the three AI providers; it was caught only
-# by exercising each provider against the frozen binary.
+# for a dotted name under it is accepted without complaint and then collects
+# NOTHING -- the build reports it as bundled, the bundle ships without the
+# package at all, and at runtime the provider's ``except ImportError`` reports
+# "package not installed". That is a silent, build-time-invisible loss of one
+# of the three AI providers; it was caught only by exercising each provider
+# against the frozen binary. Divergence D11 migrated the Gemini provider from
+# google.generativeai to google.genai, which lives under the same google
+# namespace and pulls in google.auth alongside it -- both listed below, found
+# by actually importing google.genai and inspecting sys.modules rather than
+# assumed from the package name.
 #
 # collect_all() walks the real package directory, so it picks up the submodules,
-# their data files, and the compiled grpc/protobuf extensions underneath.
+# their data files, and any compiled extensions underneath.
 _GOOGLE_NAMESPACE_PACKAGES = (
-    "google.generativeai",
-    "google.ai.generativelanguage",
+    "google.genai",
+    "google.auth",
 )
 extra_datas = []      # collect_all results, merged into Analysis(datas=...)
 extra_binaries = []   # collect_all results, merged into Analysis(binaries=...)
-if "google.generativeai" in _present:
+if "google.genai" in _present:
     from PyInstaller.utils.hooks import collect_all  # noqa: F821
 
     for _pkg in _GOOGLE_NAMESPACE_PACKAGES:
@@ -220,6 +224,16 @@ if "google.generativeai" in _present:
             print("fta_editor.spec: WARNING: could not collect %s (%s); the "
                   "Gemini provider will be missing from this build." % (_pkg, exc))
             continue
+        # google-genai, unusually, ships its own test suite inside the
+        # installed distribution (google/genai/tests/, ~2 MB, ~35 modules).
+        # collect_all() walks the package directory verbatim and has no
+        # concept of "test code" to skip, so it comes along for the ride
+        # unless filtered here -- the same reason pytest/hypothesis are
+        # excluded above, just reached through a different mechanism because
+        # this one is collect_all data/hidden-imports, not a `excludes`-able
+        # top-level import.
+        _datas = [d for d in _datas if ".genai.tests" not in d[1].replace("\\", ".").replace("/", ".")]
+        _hidden = [h for h in _hidden if not h.startswith("google.genai.tests")]
         extra_datas.extend(_datas)
         extra_binaries.extend(_binaries)
         hiddenimports.extend(_hidden)
@@ -315,10 +329,16 @@ a = Analysis(  # noqa: F821  (PyInstaller global)
 # bundles all of them. They are *data*, not modules, so an `excludes` entry does
 # not touch them; they have to be filtered off a.datas here.
 #
-# The Gemini provider (core/ai_providers.py GeminiProvider) talks to
-# generativelanguage directly through google.generativeai. It never calls
-# googleapiclient.discovery.build(), which is the only thing that reads these
-# documents. Removing them takes the bundle from ~179 MB to ~77 MB.
+# fta_web's own Gemini provider (core/ai_providers.py GeminiProvider) talks to
+# generativelanguage directly through google.genai as of divergence D11, which
+# does not depend on google-api-python-client at all -- these documents are
+# not bundled anymore when only google-genai is installed. This filter earns
+# its keep when a build machine also has the *desktop* app's dependencies
+# installed (the `desktop` extra's google-generativeai, still needed because
+# src/ai_providers.py is frozen), which does pull in the discovery client
+# transitively. Neither provider calls googleapiclient.discovery.build(), the
+# only thing that actually reads these documents, so dropping them is safe
+# regardless of which combination is on the build machine.
 #
 # If a future provider ever does call discovery.build(), it will raise
 # UnknownApiNameOrVersion at that call -- loudly, not silently -- and this

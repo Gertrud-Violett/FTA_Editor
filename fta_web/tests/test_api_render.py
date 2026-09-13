@@ -642,7 +642,7 @@ class TestCapabilities:
         for name, module in (
             ("OpenAI", "openai"),
             ("Anthropic Claude", "anthropic"),
-            ("Google Gemini", "google.generativeai"),
+            ("Google Gemini", "google.genai"),  # divergence D11
         ):
             try:
                 present = importlib.util.find_spec(module) is not None
