@@ -44,6 +44,7 @@ For a title without a quote or a backslash the output is byte-identical to
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -87,6 +88,55 @@ HIGH_QUALITY_FLAGS = ("-Gdpi=300", "-Gfontsize=14", "-Nfontsize=12", "-Efontsize
 #: with the error instead of living only in the docs.
 GRAPHVIZ_DOWNLOAD_URL = "https://graphviz.org/download/"
 
+#: Diagram font/box-scale knobs (spec: "font auto-detect, default Meiryo,
+#: manual scaling option"). The browser detects which fonts are actually
+#: installed on the *viewer's* machine (fta_web/static/js/diagram.js) and
+#: sends its pick on every /api/dot and /api/render call; these are only the
+#: fallback when the client sends nothing (an old tab, a direct API call, the
+#: json_viewer.py CLI).
+DEFAULT_FONT = "Meiryo"
+
+#: "Scale" is the number of trailing blank characters appended to every
+#: node's text (json_viewer.node_label): a computed pixel/point width was
+#: tried twice (an estimate, then an explicit HTML-label WIDTH) and both
+#: still left text spilling past the border, because both depended on
+#: guessing the same unknowable thing -- how wide this exact text renders in
+#: whichever font a given engine (viz-js/WASM, or a native `dot`) actually
+#: resolves the requested name to. Padding spaces are measured by that same
+#: engine at that same guess, so whatever its error is, it applies equally
+#: to the padding, and the box grows by however much room the extra
+#: characters need -- no width arithmetic of our own to get wrong.
+DEFAULT_SCALE = 4
+MIN_SCALE = 0
+MAX_SCALE = 30
+
+# Whitelist rather than escape: this string is interpolated straight into a
+# DOT `fontname="..."` attribute (json_viewer.build_dot), so the safe move is
+# to refuse anything that is not obviously a bare font name -- no quote, no
+# backslash, no way out of the attribute -- rather than trying to escape an
+# arbitrary client-supplied string correctly in every Graphviz build.
+_FONT_NAME_RE = re.compile(r'^[A-Za-z0-9 _\-]{1,60}$')
+
+
+def sanitize_font_name(value: object) -> str:
+    """A DOT-safe font name from client input, or :data:`DEFAULT_FONT`."""
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate and _FONT_NAME_RE.match(candidate):
+            return candidate
+    return DEFAULT_FONT
+
+
+def clamp_scale(value: object) -> int:
+    """A whole number of padding spaces within [MIN_SCALE, MAX_SCALE]."""
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return DEFAULT_SCALE
+    if number != number or number in (float("inf"), float("-inf")):  # NaN/inf
+        return DEFAULT_SCALE
+    return int(min(MAX_SCALE, max(MIN_SCALE, round(number))))
+
 
 # ---- errors --------------------------------------------------------------
 
@@ -127,7 +177,13 @@ def _escape_label(text: object) -> str:
     return str(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
-def build_dot_text(core, hide_zero: bool = False) -> str:
+def build_dot_text(
+    core,
+    hide_zero: bool = False,
+    font_name: str = DEFAULT_FONT,
+    scale: float = DEFAULT_SCALE,
+    dark: bool = False,
+) -> str:
     """Render the tree held by ``core`` to Graphviz DOT source.
 
     Args:
@@ -137,10 +193,24 @@ def build_dot_text(core, hide_zero: bool = False) -> str:
             endpoint does) and for holding ``state.lock`` across this call.
         hide_zero: drop nodes whose ``calculatedProbability`` is exactly 0.0,
             matching the CLI's ``--hide-zero``.
+        font_name: Graphviz ``fontname`` for every node/edge/title. Sanitized
+            here (not just at the route boundary) since this function is
+            itself part of the module's public surface.
+        scale: number of trailing blank characters appended to every node's
+            text (see json_viewer.build_dot/node_label) -- the manual "box
+            size" override for when font auto-detection on the client still
+            leaves text spilling past the border.
+        dark: match the diagram's background and tree connectors to the
+            client's current theme (see ``json_viewer.build_dot``); also
+            switches the title/date header to a light colour so it stays
+            readable against the darker background.
 
     Returns:
         The complete DOT document, title/date header included.
     """
+    font_name = sanitize_font_name(font_name)
+    scale = clamp_scale(scale)
+
     data = core.get_data() or {}
     metadata = core.get_metadata() or {}
     # The CLI falls back to "FTA Diagram" and today's date when the file
@@ -156,16 +226,17 @@ def build_dot_text(core, hide_zero: bool = False) -> str:
         # An empty document is not an error -- it is a graph with no nodes.
         nodes, edges = {}, []
 
-    dot_text = build_dot(nodes, edges)
+    dot_text = build_dot(nodes, edges, font_name=font_name, scale=scale, dark=dark)
 
     # json_viewer.py:302-307, replicated. Index order matters: each insert
-    # shifts the ones after it, so 1,2,3,4 lands them in written order
+    # shifts the ones after it, so 1,2,3,4,5 lands them in written order
     # directly under `digraph G {`.
     dot_lines = dot_text.split("\n")
     dot_lines.insert(1, '  labelloc="t";')
     dot_lines.insert(2, f'  label="{_escape_label(title)}\\nDate: {_escape_label(date)}";')
     dot_lines.insert(3, '  fontsize=14;')
-    dot_lines.insert(4, '  fontname="Noto Sans CJK JP";')
+    dot_lines.insert(4, f'  fontname="{font_name}";')
+    dot_lines.insert(5, f'  fontcolor="{"white" if dark else "black"}";')
     return "\n".join(dot_lines)
 
 

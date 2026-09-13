@@ -155,6 +155,27 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 
 > **Security**: Credentials are stored locally at `~/.fta_editor/ai_credentials.json`, never in the repository.
 
+### Where Your API Key Is Stored
+
+- **Location**: `~/.fta_editor/ai_credentials.json` -- that is, a folder named
+  `.fta_editor` in your own user home directory (`C:\Users\<you>\.fta_editor\`
+  on Windows, `/home/<you>/.fta_editor/` or `/Users/<you>/.fta_editor/` on
+  Linux/macOS). This is the same file whether you run the desktop editor or
+  the web UI (`fta_web`), so setting it up once covers both.
+- **Format**: a plain JSON file containing the provider name, the API key,
+  the endpoint and the selected model. It is **not encrypted** -- treat it
+  like any other file that holds a secret, and rely on your OS user account
+  and disk permissions to keep it private.
+- **Scope**: local to this machine only. The key never leaves your computer
+  except in the direct request the AI Assistant makes to the provider you
+  configured (OpenAI, Anthropic or Google); it is never sent anywhere else,
+  written into a saved `.json` analysis file, or committed to the
+  repository.
+- **Removing it**: click the **⚙ (Settings)** button in the AI Assistant
+  panel and use **Clear** to delete the stored key (this removes the file).
+  You can also delete `ai_credentials.json` by hand while the editor is
+  closed.
+
 ### Features
 
 **Quick Actions**:

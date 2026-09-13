@@ -272,6 +272,25 @@ export function openFileDialog(options) {
 
   const locationLine = el('p', { class: 'fdlg-location', 'aria-live': 'polite' });
 
+  // A pasted/typed path, in addition to clicking through the list -- see
+  // goToPath() for why it accepts either a folder or a file.
+  const pathInput = el('input', {
+    type: 'text',
+    class: 'fdlg-path',
+    autocomplete: 'off',
+    spellcheck: 'false',
+    'aria-label': t('file.pathLabel'),
+    placeholder: t('file.pathPlaceholder'),
+  });
+  const pathGoButton = el('button', {
+    type: 'button',
+    class: 'fta-btn is-tiny',
+    text: t('file.pathGo'),
+    title: t('file.pathGoTitle'),
+    onclick: () => goToPath(pathInput.value),
+  });
+  const pathRow = el('div', { class: 'fdlg-pathrow' }, [pathInput, pathGoButton]);
+
   const list = el('div', {
     class: 'fdlg-list',
     id: listId,
@@ -313,6 +332,7 @@ export function openFileDialog(options) {
 
   const body = el('div', { class: 'fta-modal-body fdlg-body' }, [
     el('div', { class: 'fdlg-toolbar' }, [upButton, locationLine]),
+    pathRow,
     list,
     hint,
     mode === 'save' ? nameField : null,
@@ -489,12 +509,17 @@ export function openFileDialog(options) {
   /**
    * List `target`. Returns true when the listing rendered, false when it did
    * not -- the caller uses that to fall back to the next candidate directory.
+   *
+   * `quiet` suppresses the dialog's own error message: `goToPath()` calls
+   * this first to try a pasted value as a folder, and on the specific
+   * "not a directory" failure wants to try it as a *file* instead, without a
+   * "not a folder" message flashing in between.
    */
-  async function navigate(target) {
+  async function navigate(target, quiet) {
     if (!target) return false;
     const mine = ++generation;
     setBusy(true);
-    setMessage(t('file.loading'), 'busy');
+    if (!quiet) setMessage(t('file.loading'), 'busy');
     try {
       const res = await api.get('/fs/list?path=' + encodeURIComponent(target));
       if (mine !== generation || closed) return false;
@@ -508,6 +533,7 @@ export function openFileDialog(options) {
         .filter((entry) => matchesExtension(entry.name, extensions))
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       renderList();
+      pathInput.value = cwd;
       // fsbrowser caps a listing at MAX_LIST_ENTRIES and says so. A silently
       // half-listed folder is exactly how a user concludes their file is gone.
       setMessage(res.truncated ? t('file.truncated') : '', res.truncated ? 'warn' : null);
@@ -520,17 +546,69 @@ export function openFileDialog(options) {
         close(null);
         return false;
       }
-      // PATH_REJECTED lands here, and it is not a crash: the sandbox refused a
-      // directory. Say what the server said and leave the dialog open.
-      setMessage(errorText(err, 'file.errList'), 'error');
+      lastNavigateError = err;
+      if (!quiet) {
+        // PATH_REJECTED lands here, and it is not a crash: the sandbox
+        // refused a directory. Say what the server said and leave the
+        // dialog open.
+        setMessage(errorText(err, 'file.errList'), 'error');
+      }
       return false;
     } finally {
       if (mine === generation) setBusy(false);
     }
   }
 
+  let lastNavigateError = null;
+
   function goUp() {
     if (parent) navigate(parent);
+  }
+
+  /**
+   * Go to a pasted/typed absolute (or root-relative) path, in addition to
+   * clicking through the list. Tries it as a folder first; a file path
+   * refused with PATH_REJECTED/not_a_directory is then treated as the actual
+   * choice (open mode) or split into folder + name (save mode), so a path
+   * copied from elsewhere -- Explorer, Finder, a terminal, another app --
+   * works whether it names a folder or the file itself.
+   */
+  async function goToPath(raw) {
+    const value = String(raw || '').trim();
+    if (!value || busy) return;
+    setMessage('');
+    lastNavigateError = null;
+    const ok = await navigate(value, true);
+    if (ok) return;
+    const err = lastNavigateError;
+    const isFileNotDir =
+      err && err.code === 'PATH_REJECTED' && err.detail && err.detail.reason === 'not_a_directory';
+    if (!isFileNotDir) {
+      setMessage(errorText(err, 'file.errList'), 'error');
+      pathInput.focus();
+      return;
+    }
+    if (mode === 'open') {
+      if (extensions.length && !matchesExtension(value, extensions)) {
+        setMessage(t('file.errExtension', { ext: extensionLabel }), 'error');
+        pathInput.focus();
+        return;
+      }
+      close(value);
+      return;
+    }
+    // Save mode: split into folder + file name, navigate to the folder and
+    // prefill the name box exactly as clicking a file in the list does.
+    const dir = dirName(value);
+    const base = baseName(value);
+    if (!dir || !(await navigate(dir))) {
+      setMessage(errorText(err, 'file.errList'), 'error');
+      pathInput.focus();
+      return;
+    }
+    nameInput.value = base;
+    nameInput.focus();
+    nameInput.select();
   }
 
   /** Enter / double-click on the highlighted row. */
@@ -714,11 +792,13 @@ export function openFileDialog(options) {
 
     const inList = list === event.target || list.contains(event.target);
     const onButton = event.target && event.target.tagName === 'BUTTON';
+    const onPathInput = event.target === pathInput;
 
     if (event.key === 'Enter') {
       if (onButton) return; // let the button take its own click
       event.preventDefault();
-      if (inList) activate();
+      if (onPathInput) goToPath(pathInput.value);
+      else if (inList) activate();
       else confirmChoice();
       return;
     }
@@ -831,6 +911,20 @@ const STYLES = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.fdlg-pathrow { display: flex; align-items: center; gap: 0.4rem; }
+.fdlg-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--fta-border);
+  border-radius: var(--fta-radius);
+  background: var(--fta-surface);
+  color: var(--fta-fg);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
 }
 
 .fdlg-list {

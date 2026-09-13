@@ -16,10 +16,21 @@ apps as they like.
 """
 import importlib
 import logging
+import mimetypes
 import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
+
+# Flask's static handler resolves Content-Type from the stdlib `mimetypes`
+# module, which on Windows reads HKEY_CLASSES_ROOT. Some machines have that
+# key overridden to text/plain for .js (a stale association left by other
+# software) -- browsers then refuse to execute <script type="module"> since
+# its MIME type is not a JavaScript type, and the app looks like every
+# button is dead because main.js never ran. Force the correct types
+# regardless of what the registry says.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
 
 # Support being imported as a bare module (``import app``) no matter how the
 # process was started. fta_web has no __init__.py on purpose -- the vendored
