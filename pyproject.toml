@@ -1,0 +1,109 @@
+[project]
+name = "fta-editor"
+version = "1.6.0"
+description = "Fault Tree / Event Tree Analysis editor -- a Tkinter desktop app and a browser-based web app sharing one probability engine"
+readme = "README.md"
+license = { text = "BSD-2-Clause" }
+requires-python = ">=3.10"
+authors = [{ name = "makkiblog.com" }]
+keywords = ["fault-tree", "event-tree", "fta", "eta", "reliability", "safety", "probability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+
+# Intentionally empty. Neither app has a dependency it cannot run without --
+# every optional package degrades to a disclosed, honest fallback rather than
+# a crash (see fta_web spec section 6.8: a missing capability is reported, not
+# hidden). `pip install .` / `uv sync` with no extras still gets you a working
+# --if minimal-- install; pick the extras below for what you actually use.
+dependencies = []
+
+[project.optional-dependencies]
+# The web app (fta_web/). Only Flask itself is required to serve it -- the
+# diagram renders via a vendored WebAssembly Graphviz with no Python
+# dependency, so a bare `web` install already draws diagrams.
+web = ["Flask>=3.0.0"]
+
+# The Tkinter desktop app (src/FTA_Editor_UI.py). Tkinter itself is part of
+# the standard library but is packaged separately by the OS -- see the
+# platform notes in QUICKSTART.md. Pillow renders the diagram preview inside
+# the desktop window.
+desktop = ["Pillow>=10.0.0"]
+
+# .xlsx export, shared by both apps (FTA_Editor_core.export_to_excel).
+excel = ["openpyxl>=3.1.0"]
+
+# The AI assistant, shared by both apps. All three are optional independently
+# of each other -- configuring one provider does not require the other two.
+ai = ["openai>=1.0.0", "anthropic>=0.7.0", "google-generativeai>=0.3.0"]
+
+# Running the test suite.
+test = ["pytest>=7.0.0"]
+
+# Building the standalone executable (build/fta_editor.spec).
+build = ["pyinstaller>=6.0.0"]
+
+# Everything an end user of either app would plausibly want: both UIs, both
+# export formats, all three AI providers. Excludes test/build, which are for
+# contributors, not users.
+all = [
+    "Flask>=3.0.0",
+    "Pillow>=10.0.0",
+    "openpyxl>=3.1.0",
+    "openai>=1.0.0",
+    "anthropic>=0.7.0",
+    "google-generativeai>=0.3.0",
+]
+
+# The kitchen sink: `all`, plus the tools to test and package the project.
+# What a contributor wants; more than most users need.
+dev = [
+    "Flask>=3.0.0",
+    "Pillow>=10.0.0",
+    "openpyxl>=3.1.0",
+    "openai>=1.0.0",
+    "anthropic>=0.7.0",
+    "google-generativeai>=0.3.0",
+    "pytest>=7.0.0",
+    "pyinstaller>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Gertrud-Violett/FTA_Editor"
+"Bug Reports" = "https://github.com/Gertrud-Violett/FTA_Editor/issues"
+Documentation = "https://github.com/Gertrud-Violett/FTA_Editor/tree/main/docs"
+Changelog = "https://github.com/Gertrud-Violett/FTA_Editor/blob/main/CHANGELOG.md"
+
+# ---------------------------------------------------------------------------
+# Not a distributable package.
+# ---------------------------------------------------------------------------
+# src/ and fta_web/ are flat module directories (no __init__.py), and
+# fta_web/core/ is deliberately imported by bare module name via a sys.path
+# insertion rather than as a subpackage -- AI_agent_handler.py does
+# `from ai_providers import ...` at module level, and that layout is what
+# keeps the vendored copy byte-identical to src/ (see
+# fta_web/core/DIVERGENCE.md). Turning either tree into an importable package
+# would mean restructuring code that a hash pin depends on staying untouched.
+#
+# `package = false` tells uv this pyproject exists to declare and lock
+# dependencies for `uv sync` / `uv run`, not to build a wheel. There is
+# therefore no [build-system] table: pip cannot build this project either,
+# which is why the documented pip fallback is `pip install -r requirements.txt`
+# (or `-r fta_web/requirements.txt`), never `pip install .`.
+#
+# Both apps are still run the ordinary way, from either tool's venv:
+#   uv run python src/FTA_Editor_UI.py
+#   uv run python fta_web/run.py
+[tool.uv]
+package = false
