@@ -480,6 +480,17 @@ def test_save_overwrites_atomically_and_leaves_no_temp_files(client, sandbox):
     assert sorted(p.name for p in sandbox.iterdir()) == ["analysis.json"]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "POSIX file modes do not exist on Windows. os.chmod there honours only "
+        "the read-only bit, so chmod(0o640) reports back as 0o666 and the "
+        "assertion below is meaningless rather than failing for a real reason. "
+        "The behaviour this guards -- an atomic save preserving the mode of the "
+        "file it replaces -- is itself POSIX-only; the save path is still "
+        "covered on Windows by the atomicity test above, which does pass there."
+    ),
+)
 def test_save_keeps_the_permissions_of_the_file_it_replaces(client, sandbox):
     target = write_document(sandbox)
     target.chmod(0o640)
