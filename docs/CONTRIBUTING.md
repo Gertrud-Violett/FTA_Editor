@@ -64,6 +64,53 @@ uv run python fta_web/run.py           # web (recommended)
 (`web`, `desktop`, `excel`, `ai`, `test`, `build`, `all`, `dev`) if you only
 need a subset.
 
+Every pull request runs the full suite on Linux (Python 3.10 and 3.13) and,
+advisorily, on Windows — see [`.github/workflows/tests.yml`](../.github/workflows/tests.yml).
+
+## Frozen code and the vendored fork
+
+**Read this before editing anything under `src/`, `tests/`, `data/` or
+`fta_web/core/`.** These are not ordinary source directories, and the rules are
+enforced by tests rather than by review.
+
+| Directory | Status | May you edit it? |
+|---|---|---|
+| `src/`, `tests/`, `data/` | **Frozen** for the 1.6 line, pinned by SHA-256 | **No.** Any change fails `test_upstream_is_frozen` |
+| `fta_web/core/` | **Vendored fork** of four `src/` modules, pinned by SHA-256 | Yes — but every edit must be recorded (below) |
+| everything else in `fta_web/` | Ordinary source | Yes, normally |
+
+The desktop app (`src/`) and the web app (`fta_web/`) are deliberately two
+separate tools that are allowed to disagree. `fta_web/core/` is the copy v1.6
+owns and may patch; `src/` is the copy that must not move, so that the
+difference between them stays a short, readable list instead of accumulating
+silently.
+
+### If you change a file in `fta_web/core/`
+
+All three steps, in the same pull request:
+
+1. **Write the divergence up** in [`fta_web/core/DIVERGENCE.md`](../fta_web/core/DIVERGENCE.md)
+   under its own `## D<n> — <title>` heading. Follow the existing entries: what
+   the defect or need was, what the fix does, and what observably changes.
+   Prefer evidence over assertion — several entries record a behaviour
+   comparison actually run against both copies.
+2. **Add the ID** to the `divergences` array in
+   [`fta_web/core/BASELINE.json`](../fta_web/core/BASELINE.json).
+3. **Re-pin the file's hash** in the same file's `vendored` map:
+
+   ```bash
+   sha256sum fta_web/core/<file>.py
+   ```
+
+Then run `uv run pytest fta_web/tests/test_vendor_integrity.py` — it checks all
+three, plus that `src/` is untouched and that every declared ID has a written-up
+heading.
+
+Skipping this does not produce a quiet inconsistency; it produces a **red test
+suite on `main`**, which is exactly what happened once already (see divergence
+**D12**, recorded after the fact). The guard is cheap to satisfy and expensive
+to ignore.
+
 ## Coding Standards
 
 ### Python Style

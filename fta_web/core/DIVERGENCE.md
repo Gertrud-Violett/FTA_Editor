@@ -10,7 +10,7 @@ vendored module and its `src/` counterpart must be traceable to an entry below. 
 hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
-Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**.
+Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -264,6 +264,81 @@ genuinely require different SDKs for the same provider.
 **Files:** `fta_web/core/ai_providers.py`, `fta_web/state.py`, `build/fta_editor.spec`,
 `pyproject.toml`, `requirements.txt`, `fta_web/requirements.txt`,
 `fta_web/tests/test_api_render.py`
+
+---
+
+## D12 — Diagram box sizing, and the font/scale/dark knobs the web renderer needs
+
+**Recorded after the fact.** The change described here reached `main` in PR #8 without an
+entry in this file or a re-pin in `BASELINE.json`, which left
+`fta_web/tests/test_vendor_integrity.py` failing on `main` — the guard doing exactly its
+job. This entry closes that gap; the code itself is unchanged by it.
+
+**This is the first divergence in `json_viewer.py`**, and it is the last vendored *module*
+to leave byte-identity with `src/` — its two hashes in `BASELINE.json` were equal up to
+this point. (`fta_web/examples/sampleFTA.json` remains identical to its `data/`
+counterpart.) Any future reader who assumed "the renderer is a straight copy" should stop
+assuming it here.
+
+**Defect / need:** two separate things, both in the label and DOT emitters:
+
+1. **Node boxes did not fit their text.** `node_label()` emitted a fixed
+   `HEIGHT="24"`/`HEIGHT="18"` per row, no `CELLPADDING`, and no `POINT-SIZE` on the name
+   row, so the box size was decided by whatever the rendering engine's default font
+   metrics happened to be. The web app renders through *two* engines — the vendored
+   viz-js WebAssembly build in the browser and, when available, a native `dot` — which
+   resolve the same requested font name differently, so a box that fitted in one clipped
+   or ran ragged in the other.
+2. **The web app needs per-request rendering options the CLI never had.** `build_dot()`
+   hard-coded `fontname="Noto Sans CJK JP"`, a white background and black edges. The web
+   UI offers a font/box-scale control and a dark theme, and all three have to be settable
+   per request rather than baked in.
+
+**Fix:** both emitters gained keyword parameters, defaulted so existing 1-arg/2-arg calls
+still work:
+
+- `node_label(node)` → `node_label(node, font_size=14, small_font_size=9, cellpadding=6,
+  pad_spaces=4)`. Adds `CELLPADDING`, derives each row's `HEIGHT` from its font size (a
+  *minimum* — Graphviz still grows a cell to fit, so this sizes without clipping), wraps
+  the name row in its own `<FONT POINT-SIZE>`, and appends `pad_spaces` trailing spaces
+  **inside** the same `<FONT>` run as the visible text.
+- `build_dot(nodes, edges)` → `build_dot(nodes, edges, font_name="Noto Sans CJK JP",
+  scale=4, dark=False)`. `font_name` parameterizes the node/edge `fontname`; `scale`
+  becomes `node_label`'s `pad_spaces`; `dark` swaps the graph `bgcolor` and the tree-edge
+  colour (lines and their arrowheads, which Graphviz colours together).
+
+The trailing-space padding is a deliberate fudge factor and is documented as one in the
+source. Computing a box width requires predicting how wide *this* text renders in whatever
+font the engine actually resolved — the same unknown that caused the mismatch. Padding
+characters are measured by the same engine, in the same font, at the same size as the
+visible text, so whatever that engine's systematic error is, it applies equally to the
+padding and the box simply grows to suit. It is adjustable from the UI when auto-detection
+still falls short.
+
+Two things were deliberately *not* themed: node fills stay on their light pastel scale
+(they carry the probability colour coding, and stay readable with the unchanged black
+label text on either background), and link edges stay blue in both themes (colour is how a
+link is distinguished from a tree edge, so swapping it would erase the distinction rather
+than re-theme it).
+
+**`gather_nodes()` is untouched** — verified by running both copies over
+`data/examples/sampleFTA.json` and comparing: identical `(nodes, edges)` output. The graph
+*structure* logic has not diverged, only what is emitted for it.
+
+**Security note:** `font_name` is interpolated straight into `fontname="..."` and now
+originates from a network request. Sanitizing it is the **caller's** job and is done in
+`fta_web/rendering.py` (`sanitize_font_name`, which rejects anything that is not a bare
+font name, and `clamp_scale`) before either function is reached — verified present and
+applied. Any future caller reaching `build_dot` from untrusted input must do the same.
+
+**Behavior change:** Diagram output changes at the defaults — this is not a
+signature-only refactor. Same node and edge count, same structure, different label markup:
+on the sample tree, 9,729 → 11,086 characters of DOT across an unchanged 162 lines. Boxes
+render larger and no longer clip. `src/json_viewer.py` and the desktop app that uses it are
+unaffected: they are frozen, and the desktop app does not import this copy.
+
+**Files:** `fta_web/core/json_viewer.py` (callers, not pinned:
+`fta_web/rendering.py`, `fta_web/routes/render.py`, `fta_web/static/js/diagram.js`)
 
 ---
 

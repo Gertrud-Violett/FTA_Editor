@@ -1,0 +1,122 @@
+name: tests
+
+# Why this exists
+# ---------------
+# v1.6's whole isolation architecture is enforced by tests, not by convention:
+# fta_web/tests/test_vendor_integrity.py checks that src/ is still frozen, that
+# every vendored file matches its SHA-256 pin in fta_web/core/BASELINE.json, and
+# that every divergence declared there has a written-up entry in DIVERGENCE.md.
+# Those guards only guard if something runs them. PR #8 patched a pinned file
+# without re-pinning it and landed on main with the suite red, which is exactly
+# the failure mode this workflow closes.
+#
+# It also runs on Windows. The most expensive bug in this project so far was
+# Windows-only (a registry association making Flask serve .js as text/plain, so
+# every button in the app appeared dead -- see fta_web/app.py's mimetypes call):
+# invisible from Linux, and only found by a user running a real build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A force-push or a quick follow-up commit should cancel the superseded run
+# rather than queue behind it. Never cancel on main -- those runs are the
+# record of what the released branch actually did.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The gate. Must stay green; it is the one that may block a merge.
+  # ---------------------------------------------------------------------------
+  linux:
+    name: ubuntu / py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The ends of the supported range in pyproject.toml
+        # (requires-python = ">=3.10"). The versions in between fail in the
+        # same ways as one of these two often enough not to be worth the
+        # minutes.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Graphviz is NOT a runtime requirement of the web app -- it renders
+      # through a vendored WebAssembly build of Graphviz in the browser. It is
+      # installed here because the native `dot` path (used by POST /api/render
+      # to produce a file to save) is otherwise skipped:
+      # test_api_render.py marks those `skipif(shutil.which("dot") is None)`.
+      # Without this step the suite still passes, just with less of it run.
+      - name: Install Graphviz (exercises the native `dot` render path)
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked, not --frozen: it asserts uv.lock is in sync with
+      # pyproject.toml and fails if it is not, so a dependency or version edit
+      # committed without re-running `uv lock` is caught here rather than
+      # surfacing later as an environment that cannot be reproduced.
+      - name: Install dependencies
+        run: uv sync --locked --extra all --extra test
+        env:
+          UV_PYTHON: ${{ matrix.python-version }}
+
+      # Bare `pytest` on purpose -- the same command a developer runs locally.
+      # pytest.ini supplies testpaths and the importlib import mode (required,
+      # not stylistic: fta_web/tests/core/ holds vendored test copies whose
+      # basenames collide with the frozen originals in tests/, which the
+      # default prepend mode cannot load together). Keeping CI on the
+      # documented command means a broken pytest.ini fails here too, instead
+      # of being papered over by flags only CI passes.
+      - name: Run the test suite
+        run: uv run pytest -q
+
+  # ---------------------------------------------------------------------------
+  # Cross-platform signal. Advisory for now -- see the note below before
+  # making it required.
+  # ---------------------------------------------------------------------------
+  windows:
+    name: windows / py3.13 (advisory)
+    runs-on: windows-latest
+    # TODO: drop continue-on-error and add this job to the branch protection
+    # rules once it has been green for a few runs.
+    #
+    # It is advisory on its first outing for an honest reason: the suite has
+    # never been executed on Windows, so a failure here is at least as likely
+    # to be a path/encoding assumption in a *test* as a real defect in the app.
+    # Neither is worth blocking an unrelated PR on until someone has looked at
+    # the first red run. Do not leave it advisory indefinitely -- a job nobody
+    # is allowed to fail is a job nobody reads.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No Graphviz here on purpose: the native-dot tests skip themselves when
+      # `dot` is absent, and "Windows user without Graphviz installed" is the
+      # configuration this app is explicitly built to work in.
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --extra all --extra test
+        env:
+          UV_PYTHON: "3.13"
+
+      - name: Run the test suite
+        run: uv run pytest -q
