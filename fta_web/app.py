@@ -22,15 +22,35 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-# Flask's static handler resolves Content-Type from the stdlib `mimetypes`
-# module, which on Windows reads HKEY_CLASSES_ROOT. Some machines have that
-# key overridden to text/plain for .js (a stale association left by other
-# software) -- browsers then refuse to execute <script type="module"> since
-# its MIME type is not a JavaScript type, and the app looks like every
-# button is dead because main.js never ran. Force the correct types
-# regardless of what the registry says.
-mimetypes.add_type("text/javascript", ".js")
-mimetypes.add_type("text/css", ".css")
+def register_web_mime_types() -> None:
+    """Pin the Content-Type of the two file types the frontend is made of.
+
+    Flask's static handler resolves Content-Type from the stdlib ``mimetypes``
+    module, which on Windows reads HKEY_CLASSES_ROOT. Some machines have that
+    key overridden to ``text/plain`` for ``.js`` -- a stale association left by
+    other software. Browsers then refuse to execute ``<script type="module">``,
+    because the HTML spec requires a module script to arrive as a JavaScript
+    MIME type and will not sniff its way out of a wrong one. The app looks
+    like every single button is dead, because ``main.js`` never ran at all.
+
+    That is not a hypothetical: it shipped, and it took a user running a real
+    build on Windows to find, because the machine doing the developing was
+    Linux and the bug is invisible there.
+
+    ``mimetypes.add_type`` wins over whatever the registry said, so calling
+    this makes the served type correct regardless of the host's state. It runs
+    at import (below) rather than inside ``create_app`` so that it is in effect
+    for any caller that reaches the static handler, however the app was built.
+
+    ``X-Content-Type-Options: nosniff`` (see security.py) makes this
+    load-bearing rather than cosmetic: with sniffing disabled, a wrong
+    Content-Type is fatal instead of merely sloppy.
+    """
+    mimetypes.add_type("text/javascript", ".js")
+    mimetypes.add_type("text/css", ".css")
+
+
+register_web_mime_types()
 
 # Support being imported as a bare module (``import app``) no matter how the
 # process was started. fta_web has no __init__.py on purpose -- the vendored
