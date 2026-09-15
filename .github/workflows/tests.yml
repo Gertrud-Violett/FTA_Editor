@@ -84,22 +84,23 @@ jobs:
         run: uv run pytest -q
 
   # ---------------------------------------------------------------------------
-  # Cross-platform signal. Advisory for now -- see the note below before
-  # making it required.
+  # Cross-platform gate. Blocking, same as Linux.
+  #
+  # This job started out advisory (continue-on-error) because the suite had
+  # never run on Windows and a first failure was as likely to be a test's own
+  # portability assumption as a real defect. It found one immediately: 12
+  # failures, every hash-pinned file, because Git for Windows checks out LF as
+  # CRLF and the pins are a byte-level contract. Every reported hash was
+  # confirmed to be exactly the CRLF conversion of the LF original, and nothing
+  # else failed -- 542 passed, 3 skipped, all 12 failures the same cause.
+  # Fixed in .gitattributes; see the comment there.
+  #
+  # Made blocking once that was understood and fixed, rather than left advisory
+  # forever: a job nobody is allowed to fail is a job nobody reads.
   # ---------------------------------------------------------------------------
   windows:
-    name: windows / py3.13 (advisory)
+    name: windows / py3.13
     runs-on: windows-latest
-    # TODO: drop continue-on-error and add this job to the branch protection
-    # rules once it has been green for a few runs.
-    #
-    # It is advisory on its first outing for an honest reason: the suite has
-    # never been executed on Windows, so a failure here is at least as likely
-    # to be a path/encoding assumption in a *test* as a real defect in the app.
-    # Neither is worth blocking an unrelated PR on until someone has looked at
-    # the first red run. Do not leave it advisory indefinitely -- a job nobody
-    # is allowed to fail is a job nobody reads.
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4

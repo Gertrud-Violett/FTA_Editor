@@ -64,8 +64,19 @@ uv run python fta_web/run.py           # web (recommended)
 (`web`, `desktop`, `excel`, `ai`, `test`, `build`, `all`, `dev`) if you only
 need a subset.
 
-Every pull request runs the full suite on Linux (Python 3.10 and 3.13) and,
-advisorily, on Windows — see [`.github/workflows/tests.yml`](../.github/workflows/tests.yml).
+Every pull request runs the full suite on Linux (Python 3.10 and 3.13) and on
+Windows — see [`.github/workflows/tests.yml`](../.github/workflows/tests.yml).
+
+> **Cloning on Windows:** do not set `core.autocrlf=true` for this repository.
+> The integrity tests below pin files by SHA-256, which is a contract about
+> *bytes*, and rewriting LF to CRLF on checkout breaks every pin at once on a
+> tree nobody has edited. [`.gitattributes`](../.gitattributes) prevents this
+> for fresh clones. A clone made **before** that file existed still has CRLF
+> copies on disk; renormalize it once with:
+>
+> ```bash
+> git rm --cached -r . && git reset --hard
+> ```
 
 ## Frozen code and the vendored fork
 
