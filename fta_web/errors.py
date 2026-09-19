@@ -15,12 +15,19 @@ from typing import Any, Dict, Optional, Tuple
 
 from flask import jsonify
 
+try:  # normal package import: ``import fta_web.errors``
+    from . import i18n
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import i18n  # type: ignore[no-redef]
+
 
 class ApiError(Exception):
     """Raised anywhere in a request to abort with a structured error.
 
-    Registered as a Flask error handler in app.create_app, so route code can
-    raise this instead of threading (payload, status) tuples through helpers.
+    Registered as a Flask error handler in app.create_app and on each
+    blueprint, so route code can raise this instead of threading
+    (payload, status) tuples through helpers. Every one of those handlers
+    must return :func:`api_error_response` so the message is localized.
     """
 
     def __init__(
@@ -41,6 +48,16 @@ class ApiError(Exception):
         if self.detail:
             error["detail"] = self.detail
         return {"ok": False, "error": error}
+
+
+def api_error_response(exc: ApiError) -> Tuple[Dict[str, Any], int]:
+    """The ``(payload, status)`` every ``ApiError`` handler returns.
+
+    One function for the app-level and the blueprint-level handlers: a
+    blueprint handler wins over the app's for errors raised in its views, so a
+    blueprint that built the payload itself would silently skip localization.
+    """
+    return i18n.localize_error(exc.to_payload(), i18n.request_language()), exc.status
 
 
 def error_response(

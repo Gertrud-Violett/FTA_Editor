@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+Findings from the September 2026 code review (`docs/CODE_REVIEW_2026-09.md`), web
+app only — the legacy desktop app in `desktop/` is frozen and keeps its defects,
+which `desktop/README.md` lists.
+
+- **Probability engine** (`fta_web/core/FTA_Editor_core.py`, divergences D14–D18):
+  results are no longer rounded to six decimals at every gate, so probabilities
+  below 5e-7 — the normal failure-rate range — are no longer zeroed, flagged as
+  zero and hidden; duplicate node ids in a loaded file are renamed
+  (`<id>_dup2`, …) and reported instead of silently aliasing each other's maths;
+  the top-level node's id is forced to `root` on load with links remapped; a link
+  cycle no longer saturates the tree to 1.0; `set_metadata()` no longer resets the
+  date when called without it.
+- **Diagram** (`fta_web/core/json_viewer.py`, D13, D19; `diagram.js`): node names
+  containing `<`, `>` or `&` no longer break the DOT and blank the whole diagram;
+  the SVG imported from the WASM renderer is sanitised (no scripts, event
+  attributes or non-http links), closing an HTML-injection path via a shared
+  `.json`; DOT ids for non-ASCII or punctuated node ids no longer collide.
+- **API** (`fta_web/routes/`, `tree_ops.py`, `state.py`): deleting a node strips
+  every link into the deleted subtree and reports them as `removedLinks`, and new
+  ids never reuse an id present anywhere in the tree, so a stale link can no
+  longer silently re-target an unrelated new node; `/api/file/open` and
+  `/api/import/json` return `warnings` for ids renamed on load; `/api/ai/update`
+  normalises the AI's JSON before installing it (a string probability no longer
+  500s every diagram request); `/api/ai/changes/apply` no longer records an undo
+  step for an all-rejected batch; API errors are localised on every blueprint
+  (`?lang=ja` works for domain errors); the AI-SDK probe no longer runs under the
+  state lock; root-protection guards use the actual top-level id.
+- **Frontend**: AI "Apply selected" sends the server's pending-change indices
+  rather than card positions, so it can no longer apply a proposal the user
+  never saw, and "Analyze FTA" now shows its proposals; Save / Save As / exports
+  wait for in-flight field commits (`fta:flush`) instead of racing them, and
+  details-panel commits are serialised so out-of-order responses cannot install
+  a stale tree; Hide Zero hides the whole item (children included) and keyboard
+  navigation and range selection skip hidden rows; the Node Details panel, Add
+  Node dialog and links editor are fully localised (48 new catalog keys) and
+  the delete confirmation button reads "Delete"; details errors use the shell's
+  toasts; `beforeunload` also protects typed-but-uncommitted text; Escape in a
+  field no longer dismisses the top toast; focus returns to the tree after a
+  dialog whose trigger row was re-rendered; the bare Delete key only acts from
+  the tree; the diagram's settings popover no longer intercepts clicks while
+  hidden; the first mouse click in the tree after loading no longer selects the
+  root instead of the clicked row (the keyboard hint used to appear above the
+  rows on focus and shift them under the pressed button — it now appears below
+  the list).
+- **Credentials**: `~/.fta_editor/ai_credentials.json` and its directory are now
+  created with owner-only permissions (D20; best-effort on Windows).
+- **Tests**: `test_vendor_integrity` hashes with line endings normalised, so it
+  no longer fails every pin on a Windows `autocrlf` checkout; the six POSIX-only
+  symlink/permission tests are skipped where symlinks or mode bits are
+  unavailable. New suites: `fta_web/tests/test_core_fixes.py`,
+  `fta_web/tests/test_backend_fixes.py`.
+
+### Changed
+
+- **The web app is now the primary path; the desktop app is a fallback.** The
+  legacy Tkinter application and everything that belongs only to it moved from
+  the repo root into `desktop/`: `src/` → `desktop/src/`, `tests/` →
+  `desktop/tests/`, `data/` → `desktop/data/`. Contents are byte-for-byte
+  unchanged and the frozen suite still passes from its new home (the tests
+  resolve `src/` and `data/` relative to their own parent directory, so moving
+  the three together needed no edits to them). `fta_web/core/BASELINE.json`
+  and `fta_web/tests/test_vendor_integrity.py` now pin the new paths — same
+  hashes. `pytest.ini`, `install.py`, `pyproject.toml`, the build spec and all
+  docs point at `desktop/src/FTA_Editor_UI.py`; `desktop/README.md` records
+  the fallback's status and the defects it does not fix.
+
 ## [1.6.1] - 2026-09-13
 
 Bug-fix release found by building and exercising the packaged executable from

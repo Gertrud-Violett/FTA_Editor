@@ -409,20 +409,26 @@ export function initChat(host) {
   function renderChanges(changes) {
     if (!Array.isArray(changes) || !changes.length) return;
 
-    // Indices are positions in the server's newest suggestion list. An older
-    // card's indices point into a list the server has since replaced, so
-    // applying one would apply the wrong changes: retire it instead.
+    // The server keeps one pending list for the whole conversation and clears
+    // it on apply, so an older card's slots are stale once a newer card exists:
+    // retire it instead of letting it apply the wrong changes.
     if (openChanges) retireChanges(openChanges, t('ai.changes.superseded'));
 
     const rows = [];
     const list = el('ul', { class: 'chat-changes__list' });
+    // pending_changes accumulates across the conversation, so the card's list
+    // position is not the server slot; `change.index` is. Without it the card
+    // cannot be applied safely.
+    let indexed = true;
 
-    changes.forEach((change, index) => {
+    changes.forEach((change, position) => {
+      const index = change && Number.isInteger(change.index) ? change.index : position;
+      if (!(change && Number.isInteger(change.index))) indexed = false;
       const box = el('input', { type: 'checkbox', class: 'chat-changes__box', checked: true });
       box.checked = true;
       const label = el('label', { class: 'chat-changes__label' }, [
         box,
-        el('span', { class: 'chat-changes__text', text: changeTitle(change, index) }),
+        el('span', { class: 'chat-changes__text', text: changeTitle(change, position) }),
       ]);
       const item = el('li', { class: 'chat-changes__item' }, [label]);
 
@@ -458,6 +464,11 @@ export function initChat(host) {
     ]);
 
     const handle = { card: card, rows: rows, status: status, buttons: [applyBtn, dismissBtn] };
+    if (!indexed) {
+      applyBtn.disabled = true;
+      applyBtn.title = t('ai.changes.unindexed');
+      status.textContent = t('ai.changes.unindexed');
+    }
     applyBtn.addEventListener('click', () => applyChanges(handle, changes.length));
     dismissBtn.addEventListener('click', () => {
       retireChanges(handle, t('ai.changes.dismissed'));
@@ -560,7 +571,11 @@ export function initChat(host) {
     });
   }
 
-  /** Analyze is read-only by contract, so suggestions are not offered here. */
+  /**
+   * Analyze does not change the document itself, but the server still parses
+   * and queues any proposals in the reply; showing the card is what lets the
+   * user see (and apply or dismiss) what is now pending.
+   */
   function actionAnalyze() {
     if (blocked()) return;
     addMessage('user', t('ai.msg.analyzePrompt'));
@@ -568,6 +583,7 @@ export function initChat(host) {
       const result = await api.post('/ai/analyze', {});
       if (destroyed) return;
       showReply(result);
+      renderChanges(listFrom(result, ['changes', 'suggestions']));
     });
   }
 

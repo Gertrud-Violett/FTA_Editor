@@ -45,7 +45,6 @@ from werkzeug.exceptions import HTTPException  # noqa: E402
 
 import config  # noqa: E402  (also puts fta_web/core on sys.path)
 import errors  # noqa: E402
-import i18n  # noqa: E402
 import security  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -125,20 +124,10 @@ def _assert_single_worker() -> None:
         raise RuntimeError(_MULTIWORKER_MESSAGE % reason)
 
 
-def _request_language() -> str:
-    """The language to answer this request's errors in. Never raises."""
-    try:
-        return i18n.resolve_language(
-            request.args.get("lang"), request.headers.get("Accept-Language")
-        )
-    except Exception:  # an error path must not add a second failure
-        return config.DEFAULT_LANGUAGE
-
-
 def _json_http_error(code: str, message: str, status: int, **detail: Any):
     """Render an HTTP-level failure in the standard envelope, localized."""
     err = errors.ApiError(code, message, status=status, detail=detail or None)
-    payload = i18n.localize_error(err.to_payload(), _request_language())
+    payload, _status = errors.api_error_response(err)
     return jsonify(payload), status
 
 
@@ -153,8 +142,7 @@ def _register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(errors.ApiError)
     def _handle_api_error(err: errors.ApiError):
-        payload = i18n.localize_error(err.to_payload(), _request_language())
-        return payload, err.status
+        return errors.api_error_response(err)
 
     @app.errorhandler(404)
     def _handle_404(err):

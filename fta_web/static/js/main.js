@@ -217,6 +217,7 @@ const STRINGS = {
     'msg.rootProtected': 'The root node cannot be deleted.',
     'msg.newCreated': 'Started a new analysis.',
     'msg.deleted': 'Deleted "{name}".',
+    'msg.removedLinks': 'Removed {n} link(s) that pointed into the deleted nodes.',
     'msg.metadataSaved': 'Metadata updated.',
     'msg.editInDetails': 'Edit the selected node in the Node Details panel.',
     'msg.notAvailable': '"{label}" is not built yet - it arrives in {phase}.',
@@ -225,6 +226,7 @@ const STRINGS = {
     'msg.noFileDialog':
       'The file browser module is unavailable, so files cannot be opened or saved.',
     'msg.opened': 'Opened {path}',
+    'msg.openWarnings': '{n} warning(s) while loading: {text}',
     'msg.savedTo': 'Saved to {path}',
     'msg.downloading': 'Preparing {name}...',
     'msg.downloaded': 'Downloaded {name}',
@@ -502,6 +504,60 @@ const STRINGS = {
     'tree.deletedMany': 'Deleted {n} nodes. Undo steps back one node at a time.',
     'tree.deletePartial': 'Deleted {done} of {total} nodes; the rest were left in place.',
     'tree.rootKept': 'The root node cannot be deleted, so nothing was removed.',
+
+    'ai.changes.unindexed': 'These suggestions cannot be applied: the server did not number them.',
+
+    'dialog.title': 'Dialog',
+    'dialog.confirmTitle': 'Confirm',
+    'dialog.ok': 'OK',
+    'dialog.cancel': 'Cancel',
+    'dialog.dismiss': 'Dismiss',
+    'dialog.somethingWrong': 'Something went wrong.',
+    'dialog.addNode': 'Add Node',
+    'dialog.addNodeUnder': 'Add Node under {id}',
+    'dialog.nameRequired': 'Name is required.',
+    'dialog.typeRequired': 'Type must not be empty.',
+    'dialog.probabilityRange': 'Probability must be a number between 0.0 and 1.0.',
+    'dialog.gateNot':
+      'NOT gates are not supported: the probability engine has no NOT '
+      + 'semantics and would score the node as OR. Use AND or OR.',
+    'dialog.gateInvalid': 'Logic gate must be AND or OR.',
+    'dialog.gateUnsupported': '{gate} (unsupported)',
+
+    'details.aria': 'Node details',
+    'details.name': 'Name',
+    'details.type': 'Type',
+    'details.probability': 'Probability',
+    'details.probabilityBase': 'Probability (base)',
+    'details.logicGate': 'Logic Gate',
+    'details.notes': 'Notes',
+    'details.links': 'Links',
+    'details.empty': 'Select a node in the tree to edit it.',
+    'details.nodeId': 'Node ID',
+    'details.calculated': 'Calculated probability',
+    'details.zeroFlag': '✖ zero probability',
+    'details.saveFailed': 'Could not save the change.',
+
+    'links.search': 'Search Events',
+    'links.searchPlaceholder': 'Filter by name or id',
+    'links.matching': 'Matching events',
+    'links.noMatch': 'No matching events',
+    'links.section': '{relation} Links',
+    'links.listAria': '{relation} links',
+    'links.add': 'Add →',
+    'links.addTitle': 'Add the selected events as {relation} links',
+    'links.remove': '← Remove',
+    'links.removeTitle': 'Remove the selected {relation} links',
+    'links.self': 'A node cannot link to itself.',
+    'links.duplicate': 'Already linked with that relation.',
+    'links.selectFirst': 'Select one or more events above first.',
+    'links.added': 'Added {n} {relation} link(s).',
+    'links.skippedSelf': 'Skipped the node itself.',
+    'links.skippedDuplicate': 'Skipped {n} already linked.',
+    'links.selectToRemove': 'Select one or more {relation} links to remove.',
+    'links.removed': 'Removed {n} {relation} link(s).',
+    'links.saveFailed': 'Could not save the links.',
+    'links.loadFailed': 'Could not load the node list.',
   },
 
   ja: {
@@ -577,6 +633,7 @@ const STRINGS = {
     'msg.rootProtected': 'ルートノードは削除できません。',
     'msg.newCreated': '新しい解析を開始しました。',
     'msg.deleted': '「{name}」を削除しました。',
+    'msg.removedLinks': '削除したノードを指していたリンク {n} 件を削除しました。',
     'msg.metadataSaved': 'メタデータを更新しました。',
     'msg.editInDetails': 'ノード詳細パネルで編集してください。',
     'msg.notAvailable': '「{label}」は未実装です（{phase}）。',
@@ -585,6 +642,7 @@ const STRINGS = {
     'msg.noFileDialog':
       'ファイルブラウザモジュールが利用できないため、ファイルを開く・保存する操作は実行できません。',
     'msg.opened': '{path} を開きました',
+    'msg.openWarnings': '読み込み時の警告 {n} 件: {text}',
     'msg.savedTo': '{path} に保存しました',
     'msg.downloading': '{name} を準備しています...',
     'msg.downloaded': '{name} をダウンロードしました',
@@ -851,6 +909,60 @@ const STRINGS = {
     'tree.deletedMany': '{n} 件のノードを削除しました。元に戻す操作は1件ずつ戻ります。',
     'tree.deletePartial': '{total} 件中 {done} 件のノードを削除しました。残りはそのままです。',
     'tree.rootKept': 'ルートノードは削除できないため、何も削除されませんでした。',
+
+    'ai.changes.unindexed': 'この提案は適用できません（サーバーが番号を付けていません）。',
+
+    'dialog.title': 'ダイアログ',
+    'dialog.confirmTitle': '確認',
+    'dialog.ok': '決定',
+    'dialog.cancel': 'キャンセル',
+    'dialog.dismiss': '閉じる',
+    'dialog.somethingWrong': '問題が発生しました。',
+    'dialog.addNode': 'ノードを追加',
+    'dialog.addNodeUnder': '{id} の配下にノードを追加',
+    'dialog.nameRequired': '名前は必須です。',
+    'dialog.typeRequired': '種別は空にできません。',
+    'dialog.probabilityRange': '確率は 0.0 から 1.0 の間の数値で入力してください。',
+    'dialog.gateNot':
+      'NOTゲートには対応していません。確率計算エンジンにNOTの意味付けがなく、'
+      + 'ORとして計算されてしまいます。ANDまたはORを使用してください。',
+    'dialog.gateInvalid': '論理ゲートは AND または OR を指定してください。',
+    'dialog.gateUnsupported': '{gate}（非対応）',
+
+    'details.aria': 'ノード詳細',
+    'details.name': '名前',
+    'details.type': '種別',
+    'details.probability': '確率',
+    'details.probabilityBase': '確率（基本）',
+    'details.logicGate': '論理ゲート',
+    'details.notes': 'メモ',
+    'details.links': 'リンク',
+    'details.empty': 'ツリーでノードを選択すると編集できます。',
+    'details.nodeId': 'ノードID',
+    'details.calculated': '計算確率',
+    'details.zeroFlag': '✖ 確率ゼロ',
+    'details.saveFailed': '変更を保存できませんでした。',
+
+    'links.search': 'イベントを検索',
+    'links.searchPlaceholder': '名前またはIDで絞り込み',
+    'links.matching': '一致するイベント',
+    'links.noMatch': '一致するイベントはありません',
+    'links.section': '{relation} リンク',
+    'links.listAria': '{relation} リンク',
+    'links.add': '追加 →',
+    'links.addTitle': '選択したイベントを {relation} リンクとして追加',
+    'links.remove': '← 削除',
+    'links.removeTitle': '選択した {relation} リンクを削除',
+    'links.self': 'ノードを自分自身にリンクすることはできません。',
+    'links.duplicate': 'その関係で既にリンクされています。',
+    'links.selectFirst': '先に上の一覧からイベントを1つ以上選択してください。',
+    'links.added': '{relation} リンクを {n} 件追加しました。',
+    'links.skippedSelf': 'ノード自身はスキップしました。',
+    'links.skippedDuplicate': 'リンク済みの {n} 件をスキップしました。',
+    'links.selectToRemove': '削除する {relation} リンクを1つ以上選択してください。',
+    'links.removed': '{relation} リンクを {n} 件削除しました。',
+    'links.saveFailed': 'リンクを保存できませんでした。',
+    'links.loadFailed': 'ノード一覧を読み込めませんでした。',
   },
 };
 
@@ -1317,11 +1429,9 @@ function metadataChanged() {
 /**
  * All three fields go on every call, always.
  *
- * FTACore.set_metadata() rewrites `date` to today whenever it is handed None
- * alongside another field (desktop behaviour, kept deliberately in the
- * backend). Posting {"mode": "ETA"} on its own would therefore silently
- * overwrite the document's date. Sending the current title and date back with
- * every change makes that impossible.
+ * The server only touches the fields it is handed (D18), so this is not needed
+ * for correctness any more; it is kept because one full snapshot per change is
+ * simpler to reason about than three partial ones, and it costs nothing.
  */
 async function commitMetadata() {
   if (!store.state || sessionLost) return;
@@ -1354,17 +1464,20 @@ function queueMetadata() {
  *
  * Ctrl+S with the caret still in the Title box must save the title that is on
  * screen. Blurring fires the field's own `change` handler -- commitMetadata
- * here, and details.js's PATCH for a node field -- and then we wait for the
- * metadata round trip. details.js's own commit is not awaitable from here, so a
- * node edit saved in the same keystroke can land just after the write; that
- * shows up honestly as the dirty badge coming back, never as a silent loss.
+ * here, details.js's PATCH for a node field, tree.js's rename -- and those
+ * round trips race the save for the server lock. So after the blur the panels
+ * are asked, through `fta:flush`, for whatever they still have on the wire,
+ * and the save waits for all of it.
  */
 async function flushPendingEdits() {
   const active = document.activeElement;
   if (active && isTextEntry(active) && typeof active.blur === 'function') {
     active.blur();
   }
-  if (metadataPending) await metadataPending;
+  const flush = new CustomEvent('fta:flush', { detail: { promises: [] } });
+  window.dispatchEvent(flush);
+  if (metadataPending) flush.detail.promises.push(metadataPending);
+  await Promise.allSettled(flush.detail.promises);
 }
 
 // ---------------------------------------------------------------------------
@@ -1515,6 +1628,10 @@ async function actionDelete() {
     store.applyMutation(result);
     store.select(parentId);
     toast(t('msg.deleted', { name }), 'ok');
+    // Links from surviving nodes into the deleted subtree go with it; say so,
+    // since those nodes were never selected.
+    const removedLinks = Array.isArray(result.removedLinks) ? result.removedLinks : [];
+    if (removedLinks.length) toast(t('msg.removedLinks', { n: removedLinks.length }), 'warn');
   } catch (err) {
     showError(err);
   }
@@ -1668,6 +1785,13 @@ async function actionLoad() {
     const payload = await api.post('/file/open', { path });
     await adoptDocument(payload);
     toast(t('msg.opened', { path: (store.state && store.state.currentPath) || path }), 'ok');
+    // Ids the loader had to rename (duplicates) -- the file on disk still has
+    // the old ones until the next save.
+    const warnings = Array.isArray(payload && payload.warnings) ? payload.warnings : [];
+    if (warnings.length) {
+      const text = warnings.map((w) => String((w && w.message) || '')).filter(Boolean).join(' ');
+      toast(t('msg.openWarnings', { n: warnings.length, text }), 'warn');
+    }
   } catch (err) {
     showError(err);
   }
@@ -1869,6 +1993,8 @@ function base64ToBytes(data) {
  * export that the other button already produces without it.
  */
 async function actionRenderImage() {
+  // Same rule as actionExport: the picture must include the edit still in a field.
+  await flushPendingEdits();
   const name = exportFilename('png');
   setStatus(t('msg.downloading', { name }), 'info');
   // Same font/box-scale the diagram panel is previewing, so a native export
@@ -2167,6 +2293,12 @@ function onKeyDown(event) {
 
   if (!ctrl) {
     if (event.key === 'Delete' || event.key === 'Del') {
+      // Bare Delete belongs to the tree. From the diagram stage or a top-bar
+      // chip it would remove the selected node with no visible connection.
+      const target = event.target;
+      const inTree = target instanceof Element && Boolean(target.closest('#tree-root'));
+      const idle = !target || target === document.body || target === document.documentElement;
+      if (!inTree && !idle) return;
       event.preventDefault();
       actionDelete();
     }
@@ -2238,7 +2370,12 @@ async function boot() {
     actionAiSettings();
   });
   window.addEventListener('beforeunload', (event) => {
-    if (store.state && store.state.dirty) {
+    // Typed-but-not-committed text is not in store.state.dirty yet: details.js
+    // marks such a field data-dirty, and an open inline rename is one too.
+    const unsavedField =
+      document.querySelector('#details-root [data-dirty="true"]') ||
+      document.querySelector('#tree-root .fta-tree-rename');
+    if ((store.state && store.state.dirty) || unsavedField) {
       event.preventDefault();
       event.returnValue = '';
     }

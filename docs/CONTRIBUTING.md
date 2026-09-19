@@ -52,12 +52,17 @@ uv sync --extra dev
 pip install -r requirements.txt -r fta_web/requirements.txt pytest pyinstaller  # pip alternative
 
 # Run tests
-uv run pytest tests/ fta_web/tests/    # or: python -m pytest tests/ fta_web/tests/
+uv run pytest fta_web/tests/ desktop/tests/   # or: python -m pytest (pytest.ini lists both)
 
 # Run an application
-uv run python src/FTA_Editor_UI.py     # desktop
-uv run python fta_web/run.py           # web (recommended)
+uv run python fta_web/run.py                  # web app -- the primary path
+uv run python desktop/src/FTA_Editor_UI.py    # legacy desktop app -- backup/fallback, frozen
 ```
+
+The web app (`fta_web/`) is where all new work goes. `desktop/` holds the
+original Tkinter application and its test suite as a fallback; its `src/` is
+hash-pinned by `fta_web/tests/test_vendor_integrity.py` and must not be edited
+(see `fta_web/core/DIVERGENCE.md`).
 
 `uv sync --extra dev` installs everything: both apps' optional features, plus
 `pytest` and `pyinstaller`. See `pyproject.toml` for the full extras list
@@ -120,14 +125,18 @@ def test_eta_mode_calculation():
 ### Running Tests
 
 ```bash
-# All tests
-python -m pytest tests/
+# All tests (web app + legacy desktop suite)
+python -m pytest
 
-# Specific test file
-python tests/test_core_module.py
+# Web app only
+python -m pytest fta_web/tests/
+
+# Legacy desktop suite only
+python -m pytest desktop/tests/
+python desktop/tests/test_core_module.py      # a single file, the old way
 
 # With coverage
-python -m pytest tests/ --cov=src --cov-report=html
+python -m pytest fta_web/tests/ --cov=fta_web --cov-report=html
 ```
 
 ### Writing Tests

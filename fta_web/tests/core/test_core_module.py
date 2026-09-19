@@ -6,6 +6,8 @@ import unittest
 import sys
 from pathlib import Path
 
+from pytest import approx
+
 # Add the vendored core directory to path (fta_web/core).
 # tests/core/<file>.py -> parents[0]=core, [1]=tests, [2]=fta_web
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "core"))
@@ -34,7 +36,7 @@ class TestProbabilityCalculationWithCore(unittest.TestCase):
         })
         self.core.recalculate_probabilities()
         data = self.core.get_data()
-        self.assertEqual(data["calculatedProbability"], 0.5)
+        self.assertEqual(data["calculatedProbability"], approx(0.5))
     
     def test_and_gate_with_two_children(self):
         """Test AND gate: should calculate product(child_probs) only"""
@@ -69,7 +71,7 @@ class TestProbabilityCalculationWithCore(unittest.TestCase):
         self.core.recalculate_probabilities()
         data = self.core.get_data()
         # AND: product(children) = 0.5 * 0.4 = 0.2 (parent base probability is ignored when children exist)
-        self.assertEqual(data["calculatedProbability"], 0.2)
+        self.assertEqual(data["calculatedProbability"], approx(0.2))
     
     def test_or_gate_with_two_children(self):
         """Test OR gate: should use 1 - product(1 - child_prob)"""
@@ -104,7 +106,7 @@ class TestProbabilityCalculationWithCore(unittest.TestCase):
         self.core.recalculate_probabilities()
         data = self.core.get_data()
         # OR: 1 - product(1 - child_prob) = 1 - (1-0.5)*(1-0.4) = 1 - 0.5*0.6 = 1 - 0.3 = 0.7
-        self.assertEqual(data["calculatedProbability"], 0.7)
+        self.assertEqual(data["calculatedProbability"], approx(0.7))
     
     def test_and_link_simple(self):
         """Test AND link between nodes"""
@@ -145,9 +147,9 @@ class TestProbabilityCalculationWithCore(unittest.TestCase):
         child1 = self.core.find_node_by_id("child1")
         child2 = self.core.find_node_by_id("child2")
         # child2 has no links: 0.6
-        self.assertEqual(child2["calculatedProbability"], 0.6)
+        self.assertEqual(child2["calculatedProbability"], approx(0.6))
         # child1 AND-linked to child2: 0.8 * 0.6 = 0.48
-        self.assertEqual(child1["calculatedProbability"], 0.48)
+        self.assertEqual(child1["calculatedProbability"], approx(0.48))
     
     def test_file_io_json(self):
         """Test JSON save and load functionality"""

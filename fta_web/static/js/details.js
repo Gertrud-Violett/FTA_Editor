@@ -37,6 +37,7 @@ import {
   parseProbability,
   sanitizeName,
   showError,
+  t,
   uid,
   validateGate,
 } from './dialogs.js';
@@ -88,12 +89,21 @@ const DETAILS_CSS = `
 
 /** The editable fields, in the order the desktop dialog lists them. */
 const FIELDS = [
-  { key: 'name', label: 'Name', kind: 'text' },
-  { key: 'type', label: 'Type', kind: 'text' },
-  { key: 'probability', label: 'Probability (base)', kind: 'text' },
-  { key: 'logicGate', label: 'Logic Gate', kind: 'gate' },
-  { key: 'notes', label: 'Notes', kind: 'textarea' },
+  { key: 'name', label: 'details.name', kind: 'text' },
+  { key: 'type', label: 'details.type', kind: 'text' },
+  { key: 'probability', label: 'details.probabilityBase', kind: 'text' },
+  { key: 'logicGate', label: 'details.logicGate', kind: 'gate' },
+  { key: 'notes', label: 'details.notes', kind: 'textarea' },
 ];
+
+/*
+ * Every PATCH from this panel runs through one chain so a blur commit can
+ * never overtake an earlier one, and `fta:flush` (Save, exports) can await the
+ * tail. `sequence` numbers the requests so only the newest response is
+ * applied: the server view is cumulative, so an older one is stale by then.
+ */
+let pending = Promise.resolve();
+let sequence = 0;
 
 /** The stored value of a field, as the form displays it. */
 function displayValue(node, key) {
@@ -153,7 +163,7 @@ function syncGateOptions(select, gate) {
     const option = el('option', {
       value: gate,
       disabled: true,
-      text: gate + ' (unsupported)',
+      text: t('dialog.gateUnsupported', { gate: gate }),
       dataset: { unsupported: 'true' },
     });
     select.insertBefore(option, select.firstChild);
@@ -175,7 +185,7 @@ export function initDetails(container) {
   let panel = container.querySelector(':scope > .fta-details');
   if (panel) clear(panel);
   else {
-    panel = el('section', { class: 'fta-details', 'aria-label': 'Node details' });
+    panel = el('section', { class: 'fta-details' });
     container.appendChild(panel);
   }
 
@@ -183,18 +193,17 @@ export function initDetails(container) {
 
   const idOut = el('code', { text: '—' });
   const calcOut = el('b', { text: '—' });
-  const zeroFlag = el('span', { class: 'fta-details-flag', text: '✖ zero probability', hidden: true });
+  const idLabel = document.createTextNode('');
+  const calcLabel = document.createTextNode('');
+  const zeroFlag = el('span', { class: 'fta-details-flag', hidden: true });
   const meta = el('div', { class: 'fta-details-meta' }, [
-    el('span', {}, ['Node ID ', idOut]),
-    el('span', {}, ['Calculated probability ', calcOut]),
+    el('span', {}, [idLabel, idOut]),
+    el('span', {}, [calcLabel, calcOut]),
     zeroFlag,
   ]);
 
   const banner = el('p', { class: 'fta-details-banner', role: 'alert', hidden: true });
-  const empty = el('p', {
-    class: 'fta-details-empty',
-    text: 'Select a node in the tree to edit it.',
-  });
+  const empty = el('p', { class: 'fta-details-empty' });
 
   const form = el('form', { class: 'fta-details-form', novalidate: true, hidden: true });
   form.addEventListener('submit', (event) => event.preventDefault());
@@ -208,16 +217,13 @@ export function initDetails(container) {
 
     const id = uid('fta-details');
     control.id = id;
+    const label = el('label', { for: id });
     const error = el('p', { class: 'fta-field-error', id: id + '-error', hidden: true });
     control.setAttribute('aria-describedby', error.id);
-    form.appendChild(
-      el('div', { class: 'fta-field' }, [
-        el('label', { for: id, text: spec.label }),
-        control,
-        error,
-      ])
-    );
-    fields[spec.key] = { spec: spec, control: control, error: error };
+    form.appendChild(el('div', { class: 'fta-field' }, [label, control, error]));
+    // `baseline` is the value last written from the store; F-7 compares
+    // against it to flag unsaved typing for main.js's beforeunload check.
+    fields[spec.key] = { spec: spec, control: control, label: label, error: error, baseline: '' };
   }
 
   const linksEditor = createLinksEditor({
@@ -225,10 +231,23 @@ export function initDetails(container) {
     links: [],
     onChange: (links) => send({ links: links }),
   });
-  const linksSection = el('div', { hidden: true }, [
-    el('h3', { class: 'fta-details-links-title', text: 'Links' }),
-    linksEditor.element,
-  ]);
+  const linksTitle = el('h3', { class: 'fta-details-links-title' });
+  const linksSection = el('div', { hidden: true }, [linksTitle, linksEditor.element]);
+
+  function relabel() {
+    panel.setAttribute('aria-label', t('details.aria'));
+    idLabel.data = t('details.nodeId') + ' ';
+    calcLabel.data = t('details.calculated') + ' ';
+    zeroFlag.textContent = t('details.zeroFlag');
+    empty.textContent = t('details.empty');
+    linksTitle.textContent = t('details.links');
+    for (const key of Object.keys(fields)) {
+      fields[key].label.textContent = t(fields[key].spec.label);
+    }
+    const node = currentNode();
+    if (node) syncGateOptions(fields.logicGate.control, displayValue(node, 'logicGate'));
+    linksEditor.relabel();
+  }
 
   panel.appendChild(meta);
   panel.appendChild(banner);
@@ -269,6 +288,22 @@ export function initDetails(container) {
     field.control.setAttribute('aria-invalid', message ? 'true' : 'false');
   }
 
+  /** Flag the control when its text differs from what the store last gave it. */
+  function syncDirty(key) {
+    const field = fields[key];
+    if (field.control.value !== field.baseline) field.control.dataset.dirty = 'true';
+    else delete field.control.dataset.dirty;
+  }
+
+  /** Write a store value into the control and reset the dirty baseline. */
+  function populate(key, value) {
+    const field = fields[key];
+    if (field.spec.kind === 'gate') syncGateOptions(field.control, value);
+    else if (field.control.value !== value) field.control.value = value;
+    field.baseline = value;
+    delete field.control.dataset.dirty;
+  }
+
   function clearErrors() {
     setBanner('');
     for (const key of Object.keys(fields)) setFieldError(key, '');
@@ -279,23 +314,50 @@ export function initDetails(container) {
 
   /**
    * PATCH one or more fields. The response is the full post-mutation view, so
-   * the store is refreshed from it rather than from a follow-up GET.
+   * the store is refreshed from it rather than from a follow-up GET. Queued
+   * behind every earlier commit; see `pending` above.
    */
-  async function send(patch) {
+  function send(patch) {
     const id = currentId();
-    if (!id) return;
+    if (!id) return Promise.resolve();
     setBanner('');
-    try {
-      const result = await api.patch('/nodes/' + encodeURIComponent(id), patch);
-      store.applyMutation(result);
-    } catch (err) {
-      const message = errorMessage(err, 'Could not save the change.');
-      setBanner(message);
-      showError(err, 'Could not save the change.');
-      const field = errorField(err);
-      if (field && fields[field]) setFieldError(field, message);
-      throw err;
+    sequence += 1;
+    const seq = sequence;
+    const request = pending.then(async () => {
+      try {
+        const result = await api.patch('/nodes/' + encodeURIComponent(id), patch);
+        if (seq === sequence) store.applyMutation(result);
+        return result;
+      } catch (err) {
+        const fallback = t('details.saveFailed');
+        const message = errorMessage(err, fallback);
+        setBanner(message);
+        showError(err, fallback);
+        const field = errorField(err);
+        if (field && fields[field]) setFieldError(field, message);
+        throw err;
+      }
+    });
+    // The chain itself must never reject, or every later commit would be skipped.
+    pending = request.then(
+      () => undefined,
+      () => undefined
+    );
+    return request;
+  }
+
+  /**
+   * F-4: let Save/export wait for the queue. The focused field is committed
+   * first so a value typed but not yet blurred is included in the flush.
+   */
+  function onFlush(event) {
+    const detail = event && event.detail;
+    if (!detail || !Array.isArray(detail.promises)) return;
+    const active = document.activeElement;
+    for (const key of Object.keys(fields)) {
+      if (fields[key].control === active) commitField(key);
     }
+    detail.promises.push(pending);
   }
 
   /** Validate one field and return `{ok, value}` in the shape the API wants. */
@@ -307,12 +369,12 @@ export function initDetails(container) {
         return validateGate(raw);
       case 'name': {
         const name = sanitizeName(raw);
-        if (!name) return { ok: false, message: 'Name is required.' };
+        if (!name) return { ok: false, message: t('dialog.nameRequired') };
         return { ok: true, value: name };
       }
       case 'type': {
         const type = String(raw === null || raw === undefined ? '' : raw).trim();
-        if (!type) return { ok: false, message: "'type' must be a non-empty string." };
+        if (!type) return { ok: false, message: t('dialog.typeRequired') };
         return { ok: true, value: type };
       }
       default:
@@ -344,20 +406,30 @@ export function initDetails(container) {
     const result = validateField(key, field.control.value);
     if (!result.ok) {
       setFieldError(key, result.message);
+      syncDirty(key);
       return;
     }
     setFieldError(key, '');
     if (unchanged(node, key, result.value)) {
       // Re-normalise the box (whitespace collapsed, gate upper-cased) so what
       // is displayed is what is stored.
-      field.control.value = displayValue(node, key);
+      populate(key, displayValue(node, key));
       return;
     }
     const patch = {};
     patch[key] = result.value;
-    send(patch).catch(() => {
-      /* reported by send(); the typed value stays so it can be corrected */
-    });
+    const nodeId = String(node.id);
+    send(patch).then(
+      () => {
+        // The store already holds the response, so the box is clean again
+        // unless the user has since moved on to another node.
+        const now = currentNode();
+        if (now && String(now.id) === nodeId) populate(key, displayValue(now, key));
+      },
+      () => {
+        /* reported by send(); the typed value stays (and stays dirty) so it can be corrected */
+      }
+    );
   }
 
   for (const key of Object.keys(fields)) {
@@ -365,18 +437,26 @@ export function initDetails(container) {
     const control = field.control;
 
     if (field.spec.kind === 'gate') {
-      control.addEventListener('change', () => commitField(key));
+      control.addEventListener('change', () => {
+        syncDirty(key);
+        commitField(key);
+      });
     } else {
       control.addEventListener('blur', () => commitField(key));
-      control.addEventListener('input', () => setFieldError(key, ''));
+      control.addEventListener('input', () => {
+        setFieldError(key, '');
+        syncDirty(key);
+      });
       control.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && field.spec.kind !== 'textarea') {
           event.preventDefault();
           control.blur();
         } else if (event.key === 'Escape') {
+          // Escape here means "discard my typing", not "dismiss the toast".
           event.preventDefault();
+          event.stopPropagation();
           const node = currentNode();
-          if (node) control.value = displayValue(node, key);
+          if (node) populate(key, displayValue(node, key));
           setFieldError(key, '');
         }
       });
@@ -418,17 +498,9 @@ export function initDetails(container) {
     zeroFlag.hidden = !(Array.isArray(zeroNodes) && zeroNodes.map(String).indexOf(String(node.id)) !== -1);
 
     for (const key of Object.keys(fields)) {
-      const field = fields[key];
-      const control = field.control;
-      const value = displayValue(node, key);
-      if (field.spec.kind === 'gate') {
-        if (switched || document.activeElement !== control) syncGateOptions(control, value);
-        continue;
-      }
+      const control = fields[key].control;
       // Never clobber the box the user is typing in.
-      if (switched || (document.activeElement !== control && control.value !== value)) {
-        control.value = value;
-      }
+      if (switched || document.activeElement !== control) populate(key, displayValue(node, key));
     }
 
     if (switched) linksEditor.setSelfId(node.id);
@@ -445,13 +517,18 @@ export function initDetails(container) {
     renderedId = id;
   }
 
+  relabel();
   const unsubscribe = store.subscribe(update);
   update();
+  window.addEventListener('fta:language', relabel);
+  window.addEventListener('fta:flush', onFlush);
 
   return {
     refresh: update,
     destroy() {
       if (typeof unsubscribe === 'function') unsubscribe();
+      window.removeEventListener('fta:language', relabel);
+      window.removeEventListener('fta:flush', onFlush);
       clear(panel);
       if (panel.parentNode === container) container.removeChild(panel);
     },

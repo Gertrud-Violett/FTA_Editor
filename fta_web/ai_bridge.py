@@ -394,7 +394,7 @@ def provider_catalog() -> List[Dict[str, Any]]:
 
     Read from ``AIProviderFactory.get_all_providers()`` rather than hardcoded,
     so this list is by construction the same one the desktop settings dialog
-    shows (``src/FTA_Editor_UI.py:339``) and cannot drift from it.
+    shows (``desktop/src/FTA_Editor_UI.py:339``) and cannot drift from it.
     """
     catalog: List[Dict[str, Any]] = []
     for display_name, provider in AIProviderFactory.get_all_providers().items():
@@ -602,7 +602,7 @@ def pending_changes_view(handler: AIAgentHandler) -> List[Dict[str, Any]]:
 
 # ---- full-JSON update diagnostics ---------------------------------------
 #
-# The desktop editor's Update FTA flow (src/FTA_Editor_UI.py:855-895) does not
+# The desktop editor's Update FTA flow (desktop/src/FTA_Editor_UI.py:855-895) does not
 # just say "invalid JSON": on a parse failure it prints the first 500
 # characters of what the model actually said, and on a validation failure it
 # locates the offending node and prints that node's JSON. That detail is the

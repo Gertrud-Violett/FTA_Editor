@@ -6,6 +6,8 @@ import unittest
 import sys
 from pathlib import Path
 
+from pytest import approx
+
 # Add the vendored core directory to path (fta_web/core) for consistency with
 # the rest of the vendored suite. This module is self-contained -- it exercises
 # the ProbabilityCalculator reimplementation defined below rather than the core
@@ -63,10 +65,10 @@ class ProbabilityCalculator:
                 
                 if gate == "AND":
                     # AND gate: product of children probabilities
-                    base = round(self._product(child_probs), 6)
+                    base = self._product(child_probs)
                 else:
                     # OR gate: union formula
-                    base = round(1 - self._product([1 - p for p in child_probs]), 6)
+                    base = 1 - self._product([1 - p for p in child_probs])
 
             # Process links
             links = node.get("links", []) or []
@@ -85,10 +87,10 @@ class ProbabilityCalculator:
                 (and_probs if rel == "AND" else or_probs).append(tp)
 
             if and_probs:
-                base = round(base * self._product(and_probs), 6)
+                base = base * self._product(and_probs)
             if or_probs:
                 vals = [base] + or_probs
-                base = round(1 - self._product([1 - p for p in vals]), 6)
+                base = 1 - self._product([1 - p for p in vals])
 
             memo[nid] = base
             visiting.remove(nid)
@@ -120,7 +122,7 @@ class TestProbabilityCalculation(unittest.TestCase):
             "links": []
         }
         result = self.calc.recalculate_probabilities(data)
-        self.assertEqual(result["calculatedProbability"], 0.5)
+        self.assertEqual(result["calculatedProbability"], approx(0.5))
     
     def test_and_gate_with_two_children(self):
         """Test AND gate: should calculate product(child_probs)"""
@@ -155,9 +157,9 @@ class TestProbabilityCalculation(unittest.TestCase):
         result = self.calc.recalculate_probabilities(data)
         # AND: product(children) = 0.5 * 0.4 = 0.2
         # Parent's base probability is ignored when children exist
-        self.assertEqual(result["calculatedProbability"], 0.2)
-        self.assertEqual(result["children"][0]["calculatedProbability"], 0.5)
-        self.assertEqual(result["children"][1]["calculatedProbability"], 0.4)
+        self.assertEqual(result["calculatedProbability"], approx(0.2))
+        self.assertEqual(result["children"][0]["calculatedProbability"], approx(0.5))
+        self.assertEqual(result["children"][1]["calculatedProbability"], approx(0.4))
     
     def test_or_gate_with_two_children(self):
         """Test OR gate: should use 1 - product(1 - child_prob)"""
@@ -191,7 +193,7 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # OR: 1 - product(1 - child_prob) = 1 - (1-0.5)*(1-0.4) = 1 - 0.5*0.6 = 1 - 0.3 = 0.7
-        self.assertEqual(result["calculatedProbability"], 0.7)
+        self.assertEqual(result["calculatedProbability"], approx(0.7))
     
     def test_and_gate_with_three_children(self):
         """Test AND gate with three children"""
@@ -234,7 +236,7 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # AND: product(children) = 0.5 * 0.6 * 0.8 = 0.24
-        self.assertEqual(result["calculatedProbability"], 0.24)
+        self.assertEqual(result["calculatedProbability"], approx(0.24))
     
     def test_or_gate_with_three_children(self):
         """Test OR gate with three children"""
@@ -277,7 +279,7 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # OR: 1 - (1-0.5)*(1-0.6)*(1-0.8) = 1 - 0.5*0.4*0.2 = 1 - 0.04 = 0.96
-        self.assertEqual(result["calculatedProbability"], 0.96)
+        self.assertEqual(result["calculatedProbability"], approx(0.96))
     
     def test_and_link_simple(self):
         """Test AND link between nodes"""
@@ -316,9 +318,9 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # child2 has no links: 0.6
-        self.assertEqual(result["children"][1]["calculatedProbability"], 0.6)
+        self.assertEqual(result["children"][1]["calculatedProbability"], approx(0.6))
         # child1 AND-linked to child2: 0.8 * 0.6 = 0.48
-        self.assertEqual(result["children"][0]["calculatedProbability"], 0.48)
+        self.assertEqual(result["children"][0]["calculatedProbability"], approx(0.48))
     
     def test_or_link_simple(self):
         """Test OR link between nodes"""
@@ -357,9 +359,9 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # child2: 0.3
-        self.assertEqual(result["children"][1]["calculatedProbability"], 0.3)
+        self.assertEqual(result["children"][1]["calculatedProbability"], approx(0.3))
         # child1 OR-linked to child2: 1 - (1-0.5)*(1-0.3) = 1 - 0.5*0.7 = 1 - 0.35 = 0.65
-        self.assertEqual(result["children"][0]["calculatedProbability"], 0.65)
+        self.assertEqual(result["children"][0]["calculatedProbability"], approx(0.65))
     
     def test_mixed_and_or_links(self):
         """Test node with both AND and OR links"""
@@ -411,11 +413,11 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # child2: 0.8, child3: 0.4
-        self.assertEqual(result["children"][1]["calculatedProbability"], 0.8)
-        self.assertEqual(result["children"][2]["calculatedProbability"], 0.4)
+        self.assertEqual(result["children"][1]["calculatedProbability"], approx(0.8))
+        self.assertEqual(result["children"][2]["calculatedProbability"], approx(0.4))
         # child1: first apply AND link: 0.5 * 0.8 = 0.4
         # then apply OR link: 1 - (1-0.4)*(1-0.4) = 1 - 0.6*0.6 = 1 - 0.36 = 0.64
-        self.assertEqual(result["children"][0]["calculatedProbability"], 0.64)
+        self.assertEqual(result["children"][0]["calculatedProbability"], approx(0.64))
     
     def test_zero_probability_leaf(self):
         """Test that zero probability propagates correctly"""
@@ -449,7 +451,7 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # AND gate with one zero child: 1.0 * (0.0 * 1.0) = 0.0
-        self.assertEqual(result["calculatedProbability"], 0.0)
+        self.assertEqual(result["calculatedProbability"], approx(0.0))
     
     def test_nested_and_gates(self):
         """Test nested AND gates"""
@@ -493,12 +495,12 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # grandchild1: 0.5, grandchild2: 0.6
-        self.assertEqual(result["children"][0]["children"][0]["calculatedProbability"], 0.5)
-        self.assertEqual(result["children"][0]["children"][1]["calculatedProbability"], 0.6)
+        self.assertEqual(result["children"][0]["children"][0]["calculatedProbability"], approx(0.5))
+        self.assertEqual(result["children"][0]["children"][1]["calculatedProbability"], approx(0.6))
         # child1 (AND gate): product(children) = 0.5 * 0.6 = 0.3
-        self.assertEqual(result["children"][0]["calculatedProbability"], 0.3)
+        self.assertEqual(result["children"][0]["calculatedProbability"], approx(0.3))
         # root (AND gate): product(children) = 0.3
-        self.assertEqual(result["calculatedProbability"], 0.3)
+        self.assertEqual(result["calculatedProbability"], approx(0.3))
     
     def test_nested_or_gates(self):
         """Test nested OR gates"""
@@ -542,12 +544,12 @@ class TestProbabilityCalculation(unittest.TestCase):
         }
         result = self.calc.recalculate_probabilities(data)
         # grandchild1: 0.5, grandchild2: 0.2
-        self.assertEqual(result["children"][0]["children"][0]["calculatedProbability"], 0.5)
-        self.assertEqual(result["children"][0]["children"][1]["calculatedProbability"], 0.2)
+        self.assertEqual(result["children"][0]["children"][0]["calculatedProbability"], approx(0.5))
+        self.assertEqual(result["children"][0]["children"][1]["calculatedProbability"], approx(0.2))
         # child1 (OR gate): 1 - (1-0.5)*(1-0.2) = 1 - 0.5*0.8 = 1 - 0.4 = 0.6
-        self.assertEqual(result["children"][0]["calculatedProbability"], 0.6)
+        self.assertEqual(result["children"][0]["calculatedProbability"], approx(0.6))
         # root (OR gate): 1 - (1-0.6) = 1 - 0.4 = 0.6
-        self.assertEqual(result["calculatedProbability"], 0.6)
+        self.assertEqual(result["calculatedProbability"], approx(0.6))
     
     def test_circular_reference_protection(self):
         """Test that circular references are handled (uses base probability)"""
@@ -646,7 +648,7 @@ class TestSampleDataValidation(unittest.TestCase):
         result = self.calc.recalculate_probabilities(data)
         # First AND link: 0.5 * 0.8 = 0.4
         # Then OR link: 1 - (1-0.4)*(1-0.0) = 1 - 0.6*1.0 = 0.4
-        self.assertEqual(result["children"][0]["calculatedProbability"], 0.4)
+        self.assertEqual(result["children"][0]["calculatedProbability"], approx(0.4))
 
 
 def run_tests():

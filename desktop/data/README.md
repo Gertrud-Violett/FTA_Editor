@@ -1,11 +1,14 @@
-# Data Directory
+# Data Directory (legacy desktop app)
 
-This directory contains sample data and examples for FTA/ETA Editor.
+This directory contains the sample data used by the legacy desktop app and
+its frozen test suite. The web app ships its own copy of the same tree at
+`fta_web/examples/sampleFTA.json`; both files are hash-pinned together in
+`fta_web/core/BASELINE.json`.
 
 ## Structure
 
 ```
-data/
+desktop/data/
 ├── examples/          # Example analysis files
 │   └── sampleFTA.json # Sample fault tree
 └── README.md          # This file
@@ -23,8 +26,8 @@ A complete example fault tree analysis with:
 
 **Usage**:
 ```bash
-python src/FTA_Editor_UI.py
-# Click "Load JSON" → Select data/examples/sampleFTA.json
+python desktop/src/FTA_Editor_UI.py
+# Click "Load JSON" → Select desktop/data/examples/sampleFTA.json
 ```
 
 ## Creating Your Own Data
@@ -77,7 +80,7 @@ To add your own example:
 
 1. Create analysis in the application
 2. Save as JSON
-3. Copy to `data/examples/`
+3. Copy to `desktop/data/examples/` (or `fta_web/examples/` for the web app)
 4. Add description here
 
 ## Sample Analyses
@@ -106,4 +109,4 @@ Use ETA mode for:
 
 ## Need Help?
 
-See [User Guide](../docs/USER_GUIDE.md) for more information on creating analyses.
+See [User Guide](../../docs/USER_GUIDE.md) for more information on creating analyses.

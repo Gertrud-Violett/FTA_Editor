@@ -1,11 +1,13 @@
 """
 Vendor integrity guard for the fta_web fork of the FTA Editor core.
 
-``fta_web/core/`` holds vendored copies of modules taken from ``src/`` at a
-pinned baseline commit. Two things must stay true for that fork to remain
-auditable:
+``fta_web/core/`` holds vendored copies of modules taken from the legacy
+desktop app's ``src/`` (now ``desktop/src/``) at a pinned baseline commit. Two
+things must stay true for that fork to remain auditable:
 
-1. ``src/`` is FROZEN -- it must never change while the fork is in flight.
+1. ``desktop/src/`` is FROZEN -- it must never change while the fork is in
+   flight. (It was moved from the repo root's ``src/`` when the web app became
+   the primary path; the move changed paths only, every hash is unchanged.)
 2. Every intentional edit to ``fta_web/core/`` is recorded: the pin in
    ``BASELINE.json`` is refreshed and the reason is written up in
    ``DIVERGENCE.md``.
@@ -18,7 +20,7 @@ The manifest is ``fta_web/core/BASELINE.json``:
     {
       "baseline_commit": "...",
       "vendored_at": "YYYY-MM-DD",
-      "upstream":  {"src/<file>.py": "<sha256>", ...},
+      "upstream":  {"desktop/src/<file>.py": "<sha256>", ...},
       "vendored":  {"fta_web/core/<file>.py": "<sha256>", ...},
       "divergences": ["D1", "D3", ...]
     }
@@ -38,7 +40,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CORE_DIR = REPO_ROOT / "fta_web" / "core"
 BASELINE_PATH = CORE_DIR / "BASELINE.json"
 DIVERGENCE_PATH = CORE_DIR / "DIVERGENCE.md"
-SRC_DIR = REPO_ROOT / "src"
+SRC_DIR = REPO_ROOT / "desktop" / "src"
+SRC_PREFIX = "desktop/src/"
 
 
 def _load_baseline():
@@ -53,7 +56,16 @@ BASELINE = _load_baseline()
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """sha256 of the file with line endings normalised to LF.
+
+    The pins were taken from LF content (what git stores). A Windows checkout
+    with ``core.autocrlf=true`` rewrites every text file to CRLF on the way
+    out, which changed every hash in this suite and made it fail on every file
+    -- including files nobody had touched -- on such machines. Normalising
+    before hashing keeps the guard about *content*, which is the only thing
+    it is meant to protect, and lets it give the same answer on every OS.
+    """
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _pairs(section: str):
@@ -70,7 +82,7 @@ def _divergence_ids():
 
 
 def _src_py_files():
-    """Every .py file actually present in src/, as repo-root-relative posix paths."""
+    """Every .py file actually present in desktop/src/, as repo-root-relative posix paths."""
     if not SRC_DIR.is_dir():
         return []
     return sorted(
@@ -122,25 +134,25 @@ def test_baseline_manifest_has_required_sections():
 def test_upstream_is_frozen(rel_path, pinned_hash):
     """
     Every upstream file must still hash to the value pinned at the baseline
-    commit. src/ is frozen for the duration of this fork.
+    commit. desktop/src/ is frozen for the duration of this fork.
     """
     path = REPO_ROOT / rel_path
 
     assert path.exists(), (
         f"FROZEN TREE BROKEN: upstream file {rel_path} has been DELETED.\n"
-        "src/ must not be modified while fta_web/core/ is vendored from it."
+        "desktop/src/ must not be modified while fta_web/core/ is vendored from it."
     )
 
     actual = _sha256(path)
     assert actual == pinned_hash, (
-        f"FROZEN TREE BROKEN: src/ was MODIFIED.\n"
+        f"FROZEN TREE BROKEN: desktop/src/ was MODIFIED.\n"
         f"  file:     {rel_path}\n"
         f"  expected: {pinned_hash}  (pinned at baseline commit "
         f"{BASELINE.get('baseline_commit', '?')})\n"
         f"  actual:   {actual}\n"
-        "src/ is frozen for the duration of this fork. Revert the change to "
-        "src/ -- do NOT re-pin the hash to make this pass. Fork-side changes "
-        "belong in fta_web/core/."
+        "desktop/src/ is frozen for the duration of this fork. Revert the change "
+        "to desktop/src/ -- do NOT re-pin the hash to make this pass. Fork-side "
+        "changes belong in fta_web/core/."
     )
 
 
@@ -215,16 +227,16 @@ def test_divergence_is_documented(divergence_id):
 @pytest.mark.parametrize("rel_path", _src_py_files())
 def test_src_file_is_covered_by_manifest(rel_path):
     """
-    Every .py file present in src/ must appear in the upstream map, so a file
-    added to src/ after the baseline cannot slip past the freeze unnoticed.
+    Every .py file present in desktop/src/ must appear in the upstream map, so
+    a file added there after the baseline cannot slip past the freeze unnoticed.
     """
     if not BASELINE:
         pytest.skip("BASELINE.json does not exist yet")
 
     upstream = BASELINE.get("upstream") or {}
     assert rel_path in upstream, (
-        f"FREEZE COVERAGE GAP: {rel_path} exists in src/ but is not listed in "
-        "the 'upstream' map of fta_web/core/BASELINE.json.\n"
+        f"FREEZE COVERAGE GAP: {rel_path} exists in desktop/src/ but is not "
+        "listed in the 'upstream' map of fta_web/core/BASELINE.json.\n"
         "An unlisted file is unprotected -- it could be added or edited without "
         "the freeze check noticing. Add it to the manifest with its sha256.\n"
         f"Currently pinned: {sorted(upstream)}"
@@ -233,12 +245,13 @@ def test_src_file_is_covered_by_manifest(rel_path):
 
 def test_manifest_lists_no_missing_src_files():
     """
-    The upstream map must not reference src/ .py files that no longer exist.
+    The upstream map must not reference desktop/src/ .py files that no longer
+    exist.
 
-    Scoped to src/*.py deliberately: the upstream map may also pin frozen
-    non-src assets (e.g. data/examples/sampleFTA.json). Those are still
-    hash-checked by test_upstream_is_frozen; they just are not enumerated by
-    the src/ scan, so they must not be reported as stale here.
+    Scoped to desktop/src/*.py deliberately: the upstream map may also pin
+    frozen non-src assets (e.g. desktop/data/examples/sampleFTA.json). Those
+    are still hash-checked by test_upstream_is_frozen; they just are not
+    enumerated by the src scan, so they must not be reported as stale here.
     """
     if not BASELINE:
         pytest.skip("BASELINE.json does not exist yet")
@@ -247,12 +260,12 @@ def test_manifest_lists_no_missing_src_files():
     listed = {
         p
         for p in (BASELINE.get("upstream") or {})
-        if p.startswith("src/") and p.endswith(".py")
+        if p.startswith(SRC_PREFIX) and p.endswith(".py")
     }
     stale = sorted(listed - present)
 
     assert not stale, (
         "FROZEN TREE BROKEN: BASELINE.json pins upstream files that are no "
-        f"longer present in src/: {stale}\n"
-        "src/ is frozen -- files must not be deleted or renamed."
+        f"longer present in desktop/src/: {stale}\n"
+        "desktop/src/ is frozen -- files must not be deleted or renamed."
     )

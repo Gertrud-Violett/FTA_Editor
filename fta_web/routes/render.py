@@ -50,6 +50,7 @@ try:  # normal package import: ``import fta_web.routes.render``
         INVALID_JSON,
         RENDERER_UNAVAILABLE,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from ..rendering import (
@@ -68,6 +69,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         INVALID_JSON,
         RENDERER_UNAVAILABLE,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from rendering import (  # type: ignore[no-redef]
@@ -97,7 +99,7 @@ _FALSE_STRINGS = frozenset({"0", "false", "no", "off", ""})
 def _handle_api_error(exc: ApiError):
     # Registered on the blueprint as well as the app (see routes/tree.py) so
     # the blueprint returns the documented envelope wherever it is mounted.
-    return exc.to_payload(), exc.status
+    return api_error_response(exc)
 
 
 # ---- request helpers -----------------------------------------------------

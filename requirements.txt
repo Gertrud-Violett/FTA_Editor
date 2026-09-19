@@ -31,7 +31,7 @@ Pillow>=10.0.0
 # AI Agent functionality
 # Supports multiple AI platforms: OpenAI, Anthropic Claude, Google Gemini
 #
-# google-generativeai specifically: src/ai_providers.py (frozen) still uses
+# google-generativeai specifically: desktop/src/ai_providers.py (frozen) still uses
 # this deprecated package. fta_web's vendored copy migrated to google-genai
 # (see fta_web/core/DIVERGENCE.md, D11) and lists it separately in
 # fta_web/requirements.txt -- the two apps genuinely need different packages

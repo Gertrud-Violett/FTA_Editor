@@ -54,7 +54,7 @@
  * to that module.
  */
 import { api } from './api.js';
-import { clear, confirmDialog, el, injectStyles } from './dialogs.js';
+import { clear, confirmDialog, el, injectStyles, restoreFocus } from './dialogs.js';
 
 /* ------------------------------------------------------------- shell glue -- */
 
@@ -374,9 +374,7 @@ export function openFileDialog(options) {
     document.removeEventListener('keydown', onKeydown, true);
     if (typeTimer) window.clearTimeout(typeTimer);
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    if (trigger && typeof trigger.focus === 'function' && trigger.isConnected) {
-      trigger.focus();
-    }
+    restoreFocus(trigger);
     settle(value === undefined ? null : value);
   }
 

@@ -7,7 +7,7 @@ format, depth numbering, move legality -- testable without a request context
 and without a Tk main loop.
 
 These functions replace logic the desktop editor kept inside its Tkinter
-widgets (``src/FTA_Editor_UI.py``), which read structure off the treeview
+widgets (``desktop/src/FTA_Editor_UI.py``), which read structure off the treeview
 rather than off the data. The data is the source of truth here.
 """
 from __future__ import annotations
@@ -24,20 +24,63 @@ def _children(node: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return node.get("children") or []
 
 
-def next_child_id(core, parent_id: str) -> str:
-    """Generate the id the desktop editor would generate for a new child.
+def top_level_id(core) -> Optional[str]:
+    """The id of the loaded tree's top-level node, or None if there is no tree.
 
-    Ported verbatim from ``src/FTA_Editor_UI.py`` lines 1414-1424 (``add_node``),
-    with the children read from the data structure instead of
+    Normally ``ROOT_ID``; read off the data rather than assumed, so guards
+    that protect "the root" protect whatever node is actually on top.
+    """
+    data = core.get_data()
+    if not isinstance(data, dict) or data.get("id") is None:
+        return None
+    return str(data.get("id"))
+
+
+def all_ids(core) -> set:
+    """Every node id in the tree, as strings."""
+    ids: set = set()
+
+    def walk(node: Dict[str, Any]) -> None:
+        ids.add(str(node.get("id")))
+        for child in _children(node):
+            walk(child)
+
+    data = core.get_data()
+    if isinstance(data, dict):
+        walk(data)
+    return ids
+
+
+def next_child_id(core, parent_id: str) -> str:
+    """Generate the id for a new child of ``parent_id``.
+
+    The starting point is the desktop editor's generator, ported from
+    ``desktop/src/FTA_Editor_UI.py`` lines 1414-1424 (``add_node``) with the
+    children read from the data structure instead of
     ``Treeview.get_children()``:
 
         scan the parent's existing children for ids shaped ``<parent_id>_<n>``,
         take the maximum ``n``, and return ``<parent_id>_{n+1}``
 
-    So the first child of ``root`` is ``root_0``, and gaps are never reused:
-    children ``root_0``/``root_5`` yield ``root_6``. Ids that do not start with
-    ``<parent_id>_``, and ids whose trailing segment is not an integer, are
-    ignored -- exactly as the ``int()``/``ValueError`` guard does upstream.
+    So the first child of ``root`` is ``root_0``, and gaps among the current
+    siblings are never reused: children ``root_0``/``root_5`` yield
+    ``root_6``. Ids that do not start with ``<parent_id>_``, and ids whose
+    trailing segment is not an integer, are ignored -- exactly as the
+    ``int()``/``ValueError`` guard does upstream.
+
+    Then, unlike the desktop editor, the candidate is stepped past any id that
+    exists **anywhere** in the tree, not only among the siblings. The desktop
+    editor only ever asks the treeview for direct children, so a child that
+    was moved elsewhere (``root_1`` now living under ``root_0``) or a
+    hand-edited file that reuses an id in another branch would make it mint a
+    duplicate -- and a duplicate id is what its treeview crashes on and what
+    turns a link into a pointer to the wrong node. Stepping past taken ids
+    changes nothing for a tree the desktop editor built itself, because there
+    every ``<parent_id>_<n>`` is a direct child of ``parent_id``.
+
+    An id that has been *deleted* is not in the tree and so may be handed out
+    again; that is safe only because ``routes/tree.py`` strips every link into
+    a deleted subtree at delete time (see ``strip_links_to``).
 
     This is the same shape ``FTACore._normalize_node`` invents for an id-less
     node (``f"{parent_id}_{idx}"``), so ids generated here survive a
@@ -59,13 +102,69 @@ def next_child_id(core, parent_id: str) -> str:
                 continue
             max_index = max(max_index, index)
 
-    return f"{parent_id}_{max_index + 1}"
+    taken = all_ids(core)
+    index = max_index + 1
+    while f"{parent_id}_{index}" in taken:
+        index += 1
+    return f"{parent_id}_{index}"
+
+
+def subtree_ids(core, node_id: str) -> set:
+    """``node_id`` plus every id below it, as strings. Empty if not found."""
+    root = core.find_node_by_id(node_id)
+    ids: set = set()
+
+    def walk(node: Dict[str, Any]) -> None:
+        ids.add(str(node.get("id")))
+        for child in _children(node):
+            walk(child)
+
+    if isinstance(root, dict):
+        walk(root)
+    return ids
+
+
+def strip_links_to(core, target_ids) -> List[Dict[str, Any]]:
+    """Remove every link in the tree whose ``target_id`` is in ``target_ids``.
+
+    Returns the removed links as ``[{"nodeId", "targetId", "relation"}, ...]``
+    in pre-order of the node that held them, so the caller can report what
+    changed. Links are edited in place on the live tree; call under the lock.
+    """
+    targets = {str(t) for t in target_ids}
+    removed: List[Dict[str, Any]] = []
+
+    def walk(node: Dict[str, Any]) -> None:
+        links = node.get("links")
+        if isinstance(links, list) and links:
+            kept = []
+            for link in links:
+                target = link.get("target_id") if isinstance(link, dict) else None
+                if target is not None and str(target) in targets:
+                    removed.append(
+                        {
+                            "nodeId": str(node.get("id")),
+                            "targetId": str(target),
+                            "relation": (link.get("relation") or "OR").upper(),
+                        }
+                    )
+                else:
+                    kept.append(link)
+            if len(kept) != len(links):
+                node["links"] = kept
+        for child in _children(node):
+            walk(child)
+
+    data = core.get_data()
+    if isinstance(data, dict):
+        walk(data)
+    return removed
 
 
 def depth_of(core, node_id: str) -> int:
     """Depth of a node below the root. Root is 0; -1 if the node is not found.
 
-    Replaces ``src/FTA_Editor_UI.py`` lines 1613-1619 (``_get_depth``), which
+    Replaces ``desktop/src/FTA_Editor_UI.py`` lines 1613-1619 (``_get_depth``), which
     walked ``Treeview.parent()`` until it hit ``'root'``.
 
     The depth is **uncapped**. The desktop editor applies ``min(depth + 1, 3)``
@@ -186,7 +285,7 @@ def move_node(
     node_id = str(node_id)
     new_parent_id = str(new_parent_id)
 
-    if node_id == ROOT_ID:
+    if node_id == ROOT_ID or node_id == top_level_id(core):
         return False, "The root node cannot be moved"
 
     node = core.find_node_by_id(node_id)

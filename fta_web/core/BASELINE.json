@@ -2,18 +2,18 @@
   "baseline_commit": "e5f655f",
   "vendored_at": "2026-09-07",
   "upstream": {
-    "src/AI_agent_handler.py": "492dcceb72e597bfa0a0461a0385c15a7c440d3ed72f168398400407f12017ee",
-    "src/FTA_Editor_UI.py": "e7760515891161efd0bd1ecbb3c539a24330e76063fdd90970315e64c3a23924",
-    "src/FTA_Editor_core.py": "51ce55d9b91404240d96548b8950a79ba2fc636e1d025bd6e62f04081b2e2ff2",
-    "src/ai_providers.py": "87733070411e444987fe1e730b39c16ea3b173877e2177db93cf1bdeb8a2b4c2",
-    "src/json_viewer.py": "a4f18f2fbf68c38018676329be5206be1ae04048d8839758059fd4ce14f84191",
-    "data/examples/sampleFTA.json": "c2a99673302a30f79156604ce0d81178f28c6ab68b2e45d4a5143d9c03ea3aa3"
+    "desktop/src/AI_agent_handler.py": "492dcceb72e597bfa0a0461a0385c15a7c440d3ed72f168398400407f12017ee",
+    "desktop/src/FTA_Editor_UI.py": "e7760515891161efd0bd1ecbb3c539a24330e76063fdd90970315e64c3a23924",
+    "desktop/src/FTA_Editor_core.py": "51ce55d9b91404240d96548b8950a79ba2fc636e1d025bd6e62f04081b2e2ff2",
+    "desktop/src/ai_providers.py": "87733070411e444987fe1e730b39c16ea3b173877e2177db93cf1bdeb8a2b4c2",
+    "desktop/src/json_viewer.py": "a4f18f2fbf68c38018676329be5206be1ae04048d8839758059fd4ce14f84191",
+    "desktop/data/examples/sampleFTA.json": "c2a99673302a30f79156604ce0d81178f28c6ab68b2e45d4a5143d9c03ea3aa3"
   },
   "vendored": {
-    "fta_web/core/AI_agent_handler.py": "f7bc2b8fbb23c20cd226f886676379d80c37da0aa76c0b4e8d6f5760d718548a",
-    "fta_web/core/FTA_Editor_core.py": "7635c1db9b50c9786e3fab1cd28b50e891d268c6ac3c46a70d617b189259b2e8",
+    "fta_web/core/AI_agent_handler.py": "fe035b8aefab92712b1984b1909378d723dafd505eb4e1ca143b20c6b5b69c72",
+    "fta_web/core/FTA_Editor_core.py": "aeb9bcafbff0eb105899435e9915c6ff86e17c9251d43ddda7b2cb6485b7e870",
     "fta_web/core/ai_providers.py": "796202c43364a00774da240364d1016278b0a3d8733bc411f17e88f7d8657dd4",
-    "fta_web/core/json_viewer.py": "a4f18f2fbf68c38018676329be5206be1ae04048d8839758059fd4ce14f84191",
+    "fta_web/core/json_viewer.py": "528f9aca1278c6cb9d3d77e5cd223c70590bcc8e899be0f3c4171a71ffb6ef74",
     "fta_web/examples/sampleFTA.json": "c2a99673302a30f79156604ce0d81178f28c6ab68b2e45d4a5143d9c03ea3aa3"
   },
   "divergences": [
@@ -22,6 +22,15 @@
     "D7",
     "D8",
     "D9",
-    "D11"
+    "D11",
+    "D12",
+    "D13",
+    "D14",
+    "D15",
+    "D16",
+    "D17",
+    "D18",
+    "D19",
+    "D20"
   ]
 }

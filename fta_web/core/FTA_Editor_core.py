@@ -24,6 +24,21 @@ def sanitize_name(s):
     return re.sub(r'\s+', ' ', str(s)).strip()
 
 
+#: The id every top-level node is given on load. The rest of the application
+#: (web ROOT_ID guards, the desktop Treeview) compares against this literal.
+ROOT_ID = "root"
+
+
+def _tidy(x):
+    """Trim binary float noise (0.30000000000000004 -> 0.3) without ever
+    flushing a small value to zero. Fixed-decimal rounding did the latter:
+    component failure rates of 1e-6..1e-9 are the normal working range in
+    reliability engineering, and 12 significant digits keep every one of
+    them while still giving the display and the tests the clean number the
+    decimal arithmetic would have produced."""
+    return float(f"{x:.12g}")
+
+
 class FTACore:
     """Core logic for Fault Tree Analysis operations"""
     
@@ -40,7 +55,11 @@ class FTACore:
             "notes": ""   # Added missing notes field
         }
         self.last_saved_file = None
-        
+        # What the last load_from_json() had to repair (duplicate ids renamed,
+        # top-level id forced to ROOT_ID). Each entry is a dict with at least
+        # "kind", "old_id", "new_id" and a human-readable "message".
+        self.last_load_warnings = []
+
         # Metadata fields with default date
         self.title = "Untitled Analysis"
         self.date = datetime.now().strftime("%Y-%m-%d")
@@ -63,15 +82,13 @@ class FTACore:
         }
     
     def set_metadata(self, title=None, date=None, mode=None):
-        """Set metadata fields"""
+        """Set metadata fields. Only the fields passed are changed; in
+        particular the date is never rewritten as a side effect of setting
+        the title or the mode."""
         if title is not None:
             self.title = title
         if date is not None:
             self.date = date
-        else:
-            # If date is not provided but other metadata is being set, update date to current
-            if title is not None or mode is not None:
-                self.date = datetime.now().strftime("%Y-%m-%d")
         if mode is not None:
             self.mode = mode
     
@@ -153,43 +170,57 @@ class FTACore:
         probability is NOT used. The calculated probability is determined 
         solely by the gate type and children probabilities.
         """
+        # Keyed by object identity, not by id: two nodes that share an id
+        # (possible in a hand-edited file) must never alias each other's
+        # result, and a node whose id changes mid-pass must not miss its memo.
         memo = {}
         visiting = set()
+        # Children-only gate result of every node currently on the stack, so a
+        # link that re-enters a gate node gets a real number rather than the
+        # node's own `probability`, which a gate ignores and which defaults to
+        # 1.0 -- the value that used to saturate every cycle to 1.0.
+        gate_only = {}
 
         def get_prob(node):
-            nid = node.get("id")
-            if nid in memo:
-                return memo[nid]
-            if nid in visiting:
-                # Circular reference detected, use base probability
-                val = float(node.get("probability", 1.0))
-                memo[nid] = val
-                return val
+            """Calculated probability of ``node``; None when the node is
+            being re-entered through a link before its own children have
+            been evaluated (a descendant linking back to an ancestor), in
+            which case the caller skips that link."""
+            key = id(node)
+            if key in memo:
+                return memo[key]
+            if key in visiting:
+                if key in gate_only:
+                    return gate_only[key]
+                if not (node.get("children") or []):
+                    return float(node.get("probability", 1.0))
+                return None
 
-            visiting.add(nid)
+            visiting.add(key)
             children = node.get("children", []) or []
-            
+
             # Calculate base probability from children
             if not children:
                 base = float(node.get("probability", 0.0))
             else:
-                child_probs = [get_prob(c) for c in children]
+                child_probs = [p for p in (get_prob(c) for c in children) if p is not None]
                 gate_value = node.get("logicGate", "OR")
                 # Normalize: treat None, empty string, or missing as OR
                 gate = str(gate_value).strip().upper() if gate_value else "OR"
-                
+
                 if gate == "AND":
                     # AND gate: product of children probabilities
-                    base = round(self._product(child_probs), 6)
+                    base = _tidy(self._product(child_probs))
                 else:
                     # OR gate: union formula (default)
-                    base = round(1 - self._product([1 - p for p in child_probs]), 6)
+                    base = _tidy(1 - self._product([1 - p for p in child_probs]))
+            gate_only[key] = base
 
             # Process links
             links = node.get("links", []) or []
             and_probs = []
             or_probs = []
-            
+
             for l in links:
                 tid = l.get("target_id")
                 rel = (l.get("relation") or "OR").upper()
@@ -199,19 +230,22 @@ class FTACore:
                 if not target:
                     continue
                 tp = get_prob(target)
+                if tp is None:
+                    continue
                 (and_probs if rel == "AND" else or_probs).append(tp)
 
             # Apply AND links first
             if and_probs:
-                base = round(base * self._product(and_probs), 6)
-            
+                base = _tidy(base * self._product(and_probs))
+
             # Apply OR links second
             if or_probs:
                 vals = [base] + or_probs
-                base = round(1 - self._product([1 - p for p in vals]), 6)
+                base = _tidy(1 - self._product([1 - p for p in vals]))
 
-            memo[nid] = base
-            visiting.remove(nid)
+            memo[key] = base
+            visiting.remove(key)
+            gate_only.pop(key, None)
             node["calculatedProbability"] = base
             return base
 
@@ -231,7 +265,7 @@ class FTACore:
             base_prob = float(node.get("probability", 1.0))
             
             # Child's calculated probability is parent's calc prob * child's base prob
-            calc_prob = round(parent_prob * base_prob, 6)
+            calc_prob = _tidy(parent_prob * base_prob)
             node["calculatedProbability"] = calc_prob
             
             # Recursively calculate for children
@@ -348,6 +382,9 @@ class FTACore:
             
             # Normalize the data structure
             self.fta_data = self._normalize_node(self.fta_data)
+            self.last_load_warnings = []
+            self._canonicalize_root_id(self.fta_data, self.last_load_warnings)
+            self._dedupe_node_ids(self.fta_data, self.last_load_warnings)
             self.last_saved_file = file_path
             self.recalculate_probabilities()
             
@@ -379,9 +416,66 @@ class FTACore:
         node["children"] = children
         for i, child in enumerate(children):
             self._normalize_node(child, node["id"], i)
-        
+
         return node
-    
+
+    @staticmethod
+    def _walk(node):
+        """Every node of the tree rooted at ``node``, pre-order."""
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            yield n
+            stack.extend(reversed(n.get("children", []) or []))
+
+    def _canonicalize_root_id(self, root, warnings):
+        """Force the top-level node's id to ROOT_ID, following every link that
+        pointed at its former id. Files written by other tools (or by hand)
+        carry ids like ``TOP`` or ``1`` for the top event, and every consumer
+        of this core hard-codes the literal."""
+        old = root.get("id")
+        if old == ROOT_ID:
+            return
+        root["id"] = ROOT_ID
+        for n in self._walk(root):
+            for l in n.get("links", []) or []:
+                if l.get("target_id") == old:
+                    l["target_id"] = ROOT_ID
+        warnings.append({
+            "kind": "root_id",
+            "old_id": old,
+            "new_id": ROOT_ID,
+            "message": f"Top-level node id {old!r} was changed to {ROOT_ID!r}.",
+        })
+
+    def _dedupe_node_ids(self, root, warnings):
+        """Give every later occurrence of a repeated id a fresh ``<id>_dupN``
+        id. Links keep pointing at the first occurrence, which is the node
+        ``find_node_by_id`` always resolved them to anyway."""
+        # Every id in the file, so a generated name cannot collide with one
+        # that only appears later in the walk.
+        taken = {n.get("id") for n in self._walk(root)}
+        seen = set()
+        for n in self._walk(root):
+            nid = n.get("id")
+            if nid not in seen:
+                seen.add(nid)
+                continue
+            suffix = 2
+            while f"{nid}_dup{suffix}" in taken:
+                suffix += 1
+            new_id = f"{nid}_dup{suffix}"
+            taken.add(new_id)
+            seen.add(new_id)
+            n["id"] = new_id
+            warnings.append({
+                "kind": "duplicate_id",
+                "old_id": nid,
+                "new_id": new_id,
+                "name": n.get("name", ""),
+                "message": f"Duplicate node id {nid!r} ({n.get('name', '')!r}) was renamed to {new_id!r}.",
+            })
+
     def prepare_export_data(self):
         """Prepare data for export (with metadata and tree data)"""
         export_data = {

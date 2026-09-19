@@ -70,6 +70,10 @@ _PROVIDER_SDKS = {
 }
 
 _provider_sdk_cache: Any = None
+# Its own lock, never AppState.lock: the probe imports whole SDKs (seconds, on
+# first call) and touches no document state, so document requests must not
+# queue behind it.
+_provider_sdk_lock = threading.Lock()
 
 
 def _probe_provider_sdks() -> Dict[str, bool]:
@@ -104,21 +108,25 @@ def _probe_provider_sdks() -> Dict[str, bool]:
     if _provider_sdk_cache is not None:
         return _provider_sdk_cache
 
-    available: Dict[str, bool] = {}
-    for provider, module in _PROVIDER_SDKS.items():
-        try:
-            importlib.import_module(module)
-            available[provider] = True
-        except BaseException:
-            # Deliberately broad. A half-present SDK can fail with almost
-            # anything on import -- ImportError, AttributeError from a version
-            # mismatch, or a bare SystemExit from a misbehaving C extension --
-            # and every one of them means the same thing to the user: this
-            # provider will not work. Reporting "unavailable" is the honest
-            # answer and keeps /api/state from returning a 500.
-            available[provider] = False
-    _provider_sdk_cache = available
-    return available
+    with _provider_sdk_lock:
+        if _provider_sdk_cache is not None:
+            return _provider_sdk_cache
+        available: Dict[str, bool] = {}
+        for provider, module in _PROVIDER_SDKS.items():
+            try:
+                importlib.import_module(module)
+                available[provider] = True
+            except BaseException:
+                # Deliberately broad. A half-present SDK can fail with almost
+                # anything on import -- ImportError, AttributeError from a
+                # version mismatch, or a bare SystemExit from a misbehaving C
+                # extension -- and every one of them means the same thing to
+                # the user: this provider will not work. Reporting
+                # "unavailable" is the honest answer and keeps /api/state from
+                # returning a 500.
+                available[provider] = False
+        _provider_sdk_cache = available
+        return available
 
 
 def _probe_excel_export() -> bool:
@@ -197,16 +205,21 @@ class AppState:
         """
         with self.lock:
             self.core.set_data(copy.deepcopy(snap.get("tree", {})))
-            # Assigned directly rather than through set_metadata(), which
-            # rewrites `date` to today whenever it is passed None.
+            # Assigned directly: a snapshot restores every field verbatim,
+            # and set_metadata() is an "only what you pass" API.
             self.core.title = snap.get("title", self.core.title)
             self.core.date = snap.get("date", self.core.date)
             self.core.mode = snap.get("mode", self.core.mode)
 
-    def push_undo(self) -> None:
-        """Record the pre-mutation state. Call this *before* mutating."""
+    def push_undo(self, snap: Optional[Dict[str, Any]] = None) -> None:
+        """Record the pre-mutation state. Call this *before* mutating.
+
+        ``snap`` lets a caller that had to mutate before knowing whether the
+        edit would stick (``POST /api/ai/changes/apply``) push the snapshot it
+        took beforehand, so a batch that changed nothing costs no undo step.
+        """
         with self.lock:
-            self._undo.append(self.snapshot())
+            self._undo.append(self.snapshot() if snap is None else snap)
             self._redo.clear()
 
     def undo(self) -> bool:
@@ -274,6 +287,13 @@ class AppState:
         level, unchanged, because the frontend shipped against them;
         ``capabilities`` is purely additive and carries the same values.
         """
+        # Outside the lock on purpose: the first call really imports the SDKs
+        # (see _probe_provider_sdks) and can take seconds; nothing it reads is
+        # document state, so no other request should wait on it. Computed on
+        # first access, not in __init__, so a user who never opens the AI
+        # panel never pays for grpc.
+        ai_providers = dict(_probe_provider_sdks())
+
         with self.lock:
             native_dot = bool(self.native_dot)
             # One call, two consumers: _ai_configured() touches the disk (and
@@ -294,10 +314,7 @@ class AppState:
                     # missing key is fixable from the UI; a missing SDK often is
                     # not (see _probe_provider_sdks), so the two are reported
                     # separately rather than collapsed into one flag.
-                    # Computed on first access, not in __init__: it really
-                    # imports the SDKs (see _probe_provider_sdks) and a user who
-                    # never opens the AI panel should not pay for grpc.
-                    "aiProviders": dict(_probe_provider_sdks()),
+                    "aiProviders": ai_providers,
                 },
                 "canUndo": self.can_undo,
                 "canRedo": self.can_redo,

@@ -1,7 +1,7 @@
 [project]
 name = "fta-editor"
 version = "1.6.1"
-description = "Fault Tree / Event Tree Analysis editor -- a Tkinter desktop app and a browser-based web app sharing one probability engine"
+description = "Fault Tree / Event Tree Analysis editor -- a browser-based web app (primary) with a legacy Tkinter desktop app kept as a fallback, sharing one probability engine"
 readme = "README.md"
 license = { text = "BSD-2-Clause" }
 requires-python = ">=3.10"
@@ -35,16 +35,17 @@ dependencies = []
 # dependency, so a bare `web` install already draws diagrams.
 web = ["Flask>=3.0.0"]
 
-# The Tkinter desktop app (src/FTA_Editor_UI.py). Tkinter itself is part of
-# the standard library but is packaged separately by the OS -- see the
-# platform notes in QUICKSTART.md. Pillow renders the diagram preview inside
-# the desktop window.
+# The legacy Tkinter desktop app (desktop/src/FTA_Editor_UI.py), kept as a
+# backup/fallback to the web app. Tkinter itself is part of the standard
+# library but is packaged separately by the OS -- see the platform notes in
+# QUICKSTART.md. Pillow renders the diagram preview inside the desktop window.
 #
-# google-generativeai here, not google-genai: src/ is frozen, and
-# src/ai_providers.py's GeminiProvider still uses the old, deprecated SDK.
-# fta_web/core/ai_providers.py (divergence D11) migrated to google-genai;
+# google-generativeai here, not google-genai: desktop/src/ is frozen, and
+# desktop/src/ai_providers.py's GeminiProvider still uses the old, deprecated
+# SDK. fta_web/core/ai_providers.py (divergence D11) migrated to google-genai;
 # the desktop app cannot follow without editing a hash-pinned file, so its
-# Gemini support stays pinned to the legacy package for as long as src/ ships.
+# Gemini support stays pinned to the legacy package for as long as
+# desktop/src/ ships.
 desktop = ["Pillow>=10.0.0", "google-generativeai>=0.3.0"]
 
 # .xlsx export, shared by both apps (FTA_Editor_core.export_to_excel).
@@ -103,11 +104,11 @@ Changelog = "https://github.com/Gertrud-Violett/FTA_Editor/blob/main/CHANGELOG.m
 # ---------------------------------------------------------------------------
 # Not a distributable package.
 # ---------------------------------------------------------------------------
-# src/ and fta_web/ are flat module directories (no __init__.py), and
+# desktop/src/ and fta_web/ are flat module directories (no __init__.py), and
 # fta_web/core/ is deliberately imported by bare module name via a sys.path
 # insertion rather than as a subpackage -- AI_agent_handler.py does
 # `from ai_providers import ...` at module level, and that layout is what
-# keeps the vendored copy byte-identical to src/ (see
+# keeps the vendored copy byte-identical to desktop/src/ (see
 # fta_web/core/DIVERGENCE.md). Turning either tree into an importable package
 # would mean restructuring code that a hash pin depends on staying untouched.
 #
@@ -118,7 +119,7 @@ Changelog = "https://github.com/Gertrud-Violett/FTA_Editor/blob/main/CHANGELOG.m
 # (or `-r fta_web/requirements.txt`), never `pip install .`.
 #
 # Both apps are still run the ordinary way, from either tool's venv:
-#   uv run python src/FTA_Editor_UI.py
-#   uv run python fta_web/run.py
+#   uv run python fta_web/run.py                  # primary
+#   uv run python desktop/src/FTA_Editor_UI.py    # legacy fallback
 [tool.uv]
 package = false

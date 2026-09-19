@@ -24,6 +24,97 @@
  */
 import { api, ApiError } from './api.js';
 
+/* ----------------------------------------------------------------- i18n ---- */
+
+/*
+ * English fallbacks for every key this file and details.js use. main.js owns
+ * the real table; this module can be imported before `window.ftaShell` exists
+ * (and is unit-testable without it), so a missing shell must not render keys.
+ */
+const FALLBACK = {
+  'dialog.title': 'Dialog',
+  'dialog.confirmTitle': 'Confirm',
+  'dialog.ok': 'OK',
+  'dialog.cancel': 'Cancel',
+  'dialog.dismiss': 'Dismiss',
+  'dialog.somethingWrong': 'Something went wrong.',
+  'dialog.addNode': 'Add Node',
+  'dialog.addNodeUnder': 'Add Node under {id}',
+  'dialog.nameRequired': 'Name is required.',
+  'dialog.typeRequired': 'Type must not be empty.',
+  'dialog.probabilityRange': 'Probability must be a number between 0.0 and 1.0.',
+  'dialog.gateNot':
+    'NOT gates are not supported: the probability engine has no NOT '
+    + 'semantics and would score the node as OR. Use AND or OR.',
+  'dialog.gateInvalid': 'Logic gate must be AND or OR.',
+  'dialog.gateUnsupported': '{gate} (unsupported)',
+
+  'details.aria': 'Node details',
+  'details.name': 'Name',
+  'details.type': 'Type',
+  'details.probability': 'Probability',
+  'details.probabilityBase': 'Probability (base)',
+  'details.logicGate': 'Logic Gate',
+  'details.notes': 'Notes',
+  'details.links': 'Links',
+  'details.empty': 'Select a node in the tree to edit it.',
+  'details.nodeId': 'Node ID',
+  'details.calculated': 'Calculated probability',
+  'details.zeroFlag': '✖ zero probability',
+  'details.saveFailed': 'Could not save the change.',
+
+  'links.search': 'Search Events',
+  'links.searchPlaceholder': 'Filter by name or id',
+  'links.matching': 'Matching events',
+  'links.noMatch': 'No matching events',
+  'links.section': '{relation} Links',
+  'links.listAria': '{relation} links',
+  'links.add': 'Add →',
+  'links.addTitle': 'Add the selected events as {relation} links',
+  'links.remove': '← Remove',
+  'links.removeTitle': 'Remove the selected {relation} links',
+  'links.self': 'A node cannot link to itself.',
+  'links.duplicate': 'Already linked with that relation.',
+  'links.selectFirst': 'Select one or more events above first.',
+  'links.added': 'Added {n} {relation} link(s).',
+  'links.skippedSelf': 'Skipped the node itself.',
+  'links.skippedDuplicate': 'Skipped {n} already linked.',
+  'links.selectToRemove': 'Select one or more {relation} links to remove.',
+  'links.removed': 'Removed {n} {relation} link(s).',
+  'links.saveFailed': 'Could not save the links.',
+  'links.loadFailed': 'Could not load the node list.',
+};
+
+function interpolate(text, vars) {
+  if (!vars) return text;
+  return text.replace(/\{(\w+)\}/g, (whole, name) =>
+    Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole
+  );
+}
+
+/**
+ * Translate through the shell when it is there, else through FALLBACK. The
+ * shell returns the key itself for an unknown key, which is also routed to
+ * FALLBACK so a stale table never shows `dialog.ok` to the user.
+ */
+export function t(key, vars) {
+  const shell = typeof window !== 'undefined' ? window.ftaShell : null;
+  if (shell && typeof shell.t === 'function') {
+    try {
+      const text = shell.t(key, vars);
+      if (text !== key || !FALLBACK[key]) return text;
+    } catch (_err) {
+      /* fall through */
+    }
+  }
+  const text = FALLBACK[key];
+  return text === undefined ? key : interpolate(text, vars);
+}
+
+function shell() {
+  return typeof window !== 'undefined' ? window.ftaShell : null;
+}
+
 /* ------------------------------------------------------------------ DOM ---- */
 
 let _uid = 0;
@@ -372,7 +463,7 @@ export function errorMessage(err, fallback) {
   if (isApiError(err)) return err.message;
   if (err && typeof err.message === 'string' && err.message) return err.message;
   if (typeof err === 'string' && err) return err;
-  return fallback || 'Something went wrong.';
+  return fallback || t('dialog.somethingWrong');
 }
 
 /** The stable error code, when there is one (`INVALID_FIELD`, ...). */
@@ -406,7 +497,7 @@ function toast(message, kind, code, timeout) {
   const close = el('button', {
     type: 'button',
     class: 'fta-toast-close',
-    'aria-label': 'Dismiss',
+    'aria-label': t('dialog.dismiss'),
     text: '×',
   });
   const box = el(
@@ -431,13 +522,29 @@ function toast(message, kind, code, timeout) {
 /**
  * Surface a failure. Never swallow an ApiError: the message the server wrote
  * is the only explanation the user gets.
+ *
+ * Routed through the shell's toast when it exists so the message shares the
+ * status line, the auto-dismiss timer and Escape; the private host below is
+ * only for a page that runs this module without main.js.
  */
 export function showError(err, fallback) {
-  toast(errorMessage(err, fallback), 'error', errorCode(err), 0);
+  const message = errorMessage(err, fallback);
+  const code = errorCode(err);
+  const sh = shell();
+  if (sh && typeof sh.toast === 'function') {
+    sh.toast(message, 'error', code);
+    return;
+  }
+  toast(message, 'error', code, 0);
 }
 
 /** Transient confirmation, e.g. "Added 2 AND link(s)". */
 export function showNotice(message) {
+  const sh = shell();
+  if (sh && typeof sh.toast === 'function') {
+    sh.toast(message, 'ok');
+    return;
+  }
   toast(message, 'notice', null, 4000);
 }
 
@@ -463,28 +570,22 @@ export function normalizeGate(value) {
 export function validateGate(value) {
   const gate = normalizeGate(value);
   if (gate === 'NOT') {
-    return {
-      ok: false,
-      message:
-        'NOT gates are not supported: the probability engine has no NOT ' +
-        'semantics and would score the node as OR. Use AND or OR.',
-    };
+    return { ok: false, message: t('dialog.gateNot') };
   }
   if (GATES.indexOf(gate) === -1) {
-    return { ok: false, message: "Logic gate must be 'AND' or 'OR'." };
+    return { ok: false, message: t('dialog.gateInvalid') };
   }
   return { ok: true, value: gate };
 }
 
-const PROBABILITY_MESSAGE = 'Probability must be a number between 0.0 and 1.0.';
-
 /** Mirror of `routes/tree.py::_validate_probability`. */
 export function parseProbability(raw) {
   const text = String(raw === null || raw === undefined ? '' : raw).trim();
-  if (text === '') return { ok: false, message: PROBABILITY_MESSAGE };
+  const bad = () => ({ ok: false, message: t('dialog.probabilityRange') });
+  if (text === '') return bad();
   const value = Number(text);
-  if (!Number.isFinite(value)) return { ok: false, message: PROBABILITY_MESSAGE };
-  if (value < 0 || value > 1) return { ok: false, message: PROBABILITY_MESSAGE };
+  if (!Number.isFinite(value)) return bad();
+  if (value < 0 || value > 1) return bad();
   return { ok: true, value: value };
 }
 
@@ -544,34 +645,22 @@ export function createLinksEditor(options) {
   const nameById = new Map();
 
   const searchId = uid('fta-link-search');
-  const search = el('input', { type: 'search', id: searchId, placeholder: 'Filter by name or id' });
-  const matches = el('select', {
-    multiple: true,
-    size: '8',
-    'aria-label': 'Matching events',
-  });
+  const search = el('input', { type: 'search', id: searchId });
+  const searchLabel = el('label', { for: searchId });
+  const matches = el('select', { multiple: true, size: '8' });
   const status = el('p', { class: 'fta-links-status', role: 'status' });
 
   const sections = {};
   for (const relation of GATES) {
-    const list = el('select', { multiple: true, size: '5', 'aria-label': relation + ' links' });
-    const addBtn = el('button', {
-      type: 'button',
-      class: 'fta-btn is-tiny',
-      text: 'Add →',
-      title: 'Add the selected events as ' + relation + ' links',
-    });
-    const removeBtn = el('button', {
-      type: 'button',
-      class: 'fta-btn is-tiny',
-      text: '← Remove',
-      title: 'Remove the selected ' + relation + ' links',
-    });
+    const list = el('select', { multiple: true, size: '5' });
+    const addBtn = el('button', { type: 'button', class: 'fta-btn is-tiny' });
+    const removeBtn = el('button', { type: 'button', class: 'fta-btn is-tiny' });
+    const legend = el('legend');
     addBtn.addEventListener('click', () => addSelected(relation));
     removeBtn.addEventListener('click', () => removeSelected(relation));
-    sections[relation] = { list: list, node: null };
+    sections[relation] = { list: list, addBtn: addBtn, removeBtn: removeBtn, legend: legend, node: null };
     sections[relation].node = el('fieldset', {}, [
-      el('legend', { text: relation + ' Links' }),
+      legend,
       el('div', { class: 'fta-links-picker' }, [
         list,
         el('div', { class: 'fta-links-buttons' }, [addBtn, removeBtn]),
@@ -580,15 +669,30 @@ export function createLinksEditor(options) {
   }
 
   const element = el('div', { class: 'fta-links' }, [
-    el('div', { class: 'fta-field' }, [
-      el('label', { for: searchId, text: 'Search Events' }),
-      search,
-    ]),
+    el('div', { class: 'fta-field' }, [searchLabel, search]),
     matches,
     status,
     sections.AND.node,
     sections.OR.node,
   ]);
+
+  /** Apply the current language to every static label; safe to call again. */
+  function relabel() {
+    searchLabel.textContent = t('links.search');
+    search.placeholder = t('links.searchPlaceholder');
+    matches.setAttribute('aria-label', t('links.matching'));
+    for (const relation of GATES) {
+      const section = sections[relation];
+      const vars = { relation: relation };
+      section.list.setAttribute('aria-label', t('links.listAria', vars));
+      section.addBtn.textContent = t('links.add');
+      section.addBtn.title = t('links.addTitle', vars);
+      section.removeBtn.textContent = t('links.remove');
+      section.removeBtn.title = t('links.removeTitle', vars);
+      section.legend.textContent = t('links.section', vars);
+    }
+    renderMatches();
+  }
 
   search.addEventListener('input', renderMatches);
   // Enter in the search box must not submit or confirm the surrounding dialog.
@@ -627,7 +731,7 @@ export function createLinksEditor(options) {
       matches.appendChild(el('option', { value: id, text: label }));
     }
     if (!matches.options.length) {
-      matches.appendChild(el('option', { value: '', disabled: true, text: 'No matching events' }));
+      matches.appendChild(el('option', { value: '', disabled: true, text: t('links.noMatch') }));
     }
   }
 
@@ -667,7 +771,7 @@ export function createLinksEditor(options) {
     } catch (err) {
       links = previous;
       renderLists();
-      setStatus(errorMessage(err, 'Could not save the links.'), true);
+      setStatus(errorMessage(err, t('links.saveFailed')), true);
     }
   }
 
@@ -695,17 +799,17 @@ export function createLinksEditor(options) {
 
     if (!added) {
       const why = skippedSelf
-        ? 'A node cannot link to itself.'
+        ? t('links.self')
         : skippedDuplicate
-          ? 'Already linked with that relation.'
-          : 'Select one or more events above first.';
+          ? t('links.duplicate')
+          : t('links.selectFirst');
       renderLists();
       setStatus(why, true);
       return;
     }
-    let message = 'Added ' + added + ' ' + relation + ' link(s).';
-    if (skippedSelf) message += ' Skipped the node itself.';
-    if (skippedDuplicate) message += ' Skipped ' + skippedDuplicate + ' already linked.';
+    let message = t('links.added', { n: added, relation: relation });
+    if (skippedSelf) message += ' ' + t('links.skippedSelf');
+    if (skippedDuplicate) message += ' ' + t('links.skippedDuplicate', { n: skippedDuplicate });
     commit(previous, message);
   }
 
@@ -713,14 +817,14 @@ export function createLinksEditor(options) {
     const list = sections[relation].list;
     const targets = selectedValues(list);
     if (!targets.length) {
-      setStatus('Select one or more ' + relation + ' links to remove.', true);
+      setStatus(t('links.selectToRemove', { relation: relation }), true);
       return;
     }
     const previous = links.map((link) => ({ ...link }));
     links = links.filter(
       (link) => !(link.relation === relation && targets.indexOf(link.target_id) !== -1)
     );
-    commit(previous, 'Removed ' + targets.length + ' ' + relation + ' link(s).');
+    commit(previous, t('links.removed', { n: targets.length, relation: relation }));
   }
 
   /** (Re)load the node list from the API. Failures are reported inline. */
@@ -733,8 +837,8 @@ export function createLinksEditor(options) {
       renderLists();
       setStatus('', false);
     } catch (err) {
-      setStatus(errorMessage(err, 'Could not load the node list.'), true);
-      showError(err, 'Could not load the node list.');
+      setStatus(errorMessage(err, t('links.loadFailed')), true);
+      showError(err, t('links.loadFailed'));
     }
   }
 
@@ -751,12 +855,13 @@ export function createLinksEditor(options) {
     selfId = id === undefined || id === null ? null : String(id);
   }
 
-  renderMatches();
+  relabel();
   renderLists();
 
   return {
     element: element,
     reload: reload,
+    relabel: relabel,
     getLinks: getLinks,
     setLinks: setLinks,
     setSelfId: setSelfId,
@@ -779,6 +884,20 @@ function focusableIn(root) {
   return Array.from(root.querySelectorAll(FOCUSABLE)).filter(
     (node) => node.getClientRects().length > 0
   );
+}
+
+/**
+ * Give focus back to the element that opened a dialog. A tree row trigger is
+ * re-rendered on every store change, so when it is gone the tree panel host
+ * takes focus instead of letting it drop to <body>.
+ */
+export function restoreFocus(trigger) {
+  if (trigger && typeof trigger.focus === 'function' && trigger.isConnected) {
+    trigger.focus();
+    return;
+  }
+  const host = document.getElementById('tree-root');
+  if (host && typeof host.focus === 'function') host.focus();
 }
 
 /**
@@ -806,7 +925,7 @@ function createModal(config) {
       'aria-labelledby': titleId,
       tabindex: '-1',
     },
-    [el('h2', { class: 'fta-modal-title', id: titleId, text: cfg.title || 'Dialog' }), body, footer]
+    [el('h2', { class: 'fta-modal-title', id: titleId, text: cfg.title || t('dialog.title') }), body, footer]
   );
   const overlay = el('div', { class: 'fta-modal-overlay' }, [dialog]);
 
@@ -821,9 +940,7 @@ function createModal(config) {
     closed = true;
     document.removeEventListener('keydown', onKeydown, true);
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    if (trigger && typeof trigger.focus === 'function' && trigger.isConnected) {
-      trigger.focus();
-    }
+    restoreFocus(trigger);
     settle(value);
   }
 
@@ -886,11 +1003,13 @@ function createModal(config) {
 
 /**
  * Yes/no confirmation. Resolves true for OK, false for Cancel or Escape.
+ * `confirmLabel` names the OK button; `okLabel` is accepted as an alias
+ * because main.js's delete confirmation passes that spelling.
  */
 export function confirmDialog(message, options) {
   const opts = options || {};
   const modal = createModal({
-    title: opts.title || 'Confirm',
+    title: opts.title || t('dialog.confirmTitle'),
     small: true,
     cancelValue: false,
     onEnter: () => modal.close(true),
@@ -901,13 +1020,13 @@ export function confirmDialog(message, options) {
   const cancel = el('button', {
     type: 'button',
     class: 'fta-btn',
-    text: opts.cancelLabel || 'Cancel',
+    text: opts.cancelLabel || t('dialog.cancel'),
     onclick: () => modal.close(false),
   });
   const confirm = el('button', {
     type: 'button',
     class: 'fta-btn is-primary',
-    text: opts.confirmLabel || 'OK',
+    text: opts.confirmLabel || opts.okLabel || t('dialog.ok'),
     onclick: () => modal.close(true),
   });
   modal.footer.appendChild(cancel);
@@ -950,7 +1069,7 @@ export function createGateSelect(value) {
     // A hand-edited file can carry an unsupported gate (NOT). Show it, disabled,
     // so the user sees what is stored instead of a silently rewritten value.
     select.insertBefore(
-      el('option', { value: current, disabled: true, text: current + ' (unsupported)' }),
+      el('option', { value: current, disabled: true, text: t('dialog.gateUnsupported', { gate: current }) }),
       select.firstChild
     );
   }
@@ -968,19 +1087,19 @@ export function createGateSelect(value) {
 export function openAddNodeDialog(parentId) {
   const parent = parentId === undefined || parentId === null ? null : String(parentId);
 
-  const nameField = field('Name', el('input', { type: 'text', value: '' }));
-  const typeField = field('Type', el('input', { type: 'text', value: 'Event' }));
+  const nameField = field(t('details.name'), el('input', { type: 'text', value: '' }));
+  const typeField = field(t('details.type'), el('input', { type: 'text', value: 'Event' }));
   const probabilityField = field(
-    'Probability',
+    t('details.probability'),
     el('input', { type: 'text', inputmode: 'decimal', value: '1.0' })
   );
-  const gateField = field('Logic Gate', createGateSelect('OR'));
-  const notesField = field('Notes', el('textarea', { rows: '4' }));
+  const gateField = field(t('details.logicGate'), createGateSelect('OR'));
+  const notesField = field(t('details.notes'), el('textarea', { rows: '4' }));
 
   const linksEditor = createLinksEditor({ selfId: null, links: [] });
 
   const modal = createModal({
-    title: parent ? 'Add Node under ' + parent : 'Add Node',
+    title: parent ? t('dialog.addNodeUnder', { id: parent }) : t('dialog.addNode'),
     cancelValue: null,
     onEnter: () => submit(),
   });
@@ -997,12 +1116,12 @@ export function openAddNodeDialog(parentId) {
     el('button', {
       type: 'button',
       class: 'fta-btn',
-      text: 'Cancel',
+      text: t('dialog.cancel'),
       onclick: () => modal.close(null),
     })
   );
   modal.footer.appendChild(
-    el('button', { type: 'button', class: 'fta-btn is-primary', text: 'OK', onclick: () => submit() })
+    el('button', { type: 'button', class: 'fta-btn is-primary', text: t('dialog.ok'), onclick: () => submit() })
   );
 
   function submit() {
@@ -1013,13 +1132,13 @@ export function openAddNodeDialog(parentId) {
 
     const name = sanitizeName(nameField.control.value);
     if (!name) {
-      nameField.setError('Name is required.');
+      nameField.setError(t('dialog.nameRequired'));
       nameField.control.focus();
       return;
     }
     const type = String(typeField.control.value || '').trim();
     if (!type) {
-      typeField.setError("'type' must be a non-empty string.");
+      typeField.setError(t('dialog.typeRequired'));
       typeField.control.focus();
       return;
     }

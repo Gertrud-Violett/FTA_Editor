@@ -13,8 +13,10 @@ for little user-facing gain.
 
 How it is applied
 -----------------
-Route code keeps raising English ``ApiError``. The central error handler in
-``app.py`` calls :func:`localize_error` on the way out: if the request asks for
+Route code keeps raising English ``ApiError``. Every ``ApiError`` handler --
+the app-level one in ``app.py`` and the per-blueprint ones in ``routes/*`` --
+goes through :func:`errors.api_error_response`, which calls
+:func:`localize_error` with :func:`request_language`: if the request asks for
 Japanese *and* the error's ``code`` has a Japanese entry below, the ``message``
 is swapped. The ``code`` and ``detail`` fields are never touched -- ``code`` is
 machine-readable, and ``detail`` holds the ids and paths a user needs verbatim.
@@ -141,6 +143,22 @@ def resolve_language(
             return tag.split("-")[0]
 
     return config.DEFAULT_LANGUAGE
+
+
+def request_language() -> str:
+    """The language to answer the current request's errors in. Never raises.
+
+    Safe to call outside a request context too (it then answers the default):
+    this runs in error paths, which must not add a second failure.
+    """
+    try:
+        from flask import request
+
+        return resolve_language(
+            request.args.get("lang"), request.headers.get("Accept-Language")
+        )
+    except Exception:
+        return config.DEFAULT_LANGUAGE
 
 
 def localize_message(code: str, message: str, language: str) -> str:

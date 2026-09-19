@@ -49,7 +49,7 @@
  */
 import { api, ApiError } from './api.js';
 import { store } from './store.js';
-import { clear, confirmDialog, el, uid } from './dialogs.js';
+import { clear, confirmDialog, el, restoreFocus, uid } from './dialogs.js';
 
 /* ------------------------------------------------------------- shell glue -- */
 
@@ -341,7 +341,7 @@ export function openAiSettings() {
     if (closeTimer) window.clearTimeout(closeTimer);
     document.removeEventListener('keydown', onKeydown, true);
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    if (trigger && typeof trigger.focus === 'function' && trigger.isConnected) trigger.focus();
+    restoreFocus(trigger);
     settle(value === undefined ? null : value);
   }
 
