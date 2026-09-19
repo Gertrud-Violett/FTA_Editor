@@ -126,8 +126,76 @@ Initiating Event (0.001)
 
 - Live visualization using Graphviz
 - Pan: Click and drag
-- Zoom: Ctrl + Mouse Wheel
+- Zoom: Ctrl + Mouse Wheel, or the **−** / **+** buttons (the percentage
+  between them shows the current level)
 - Updates automatically when tree changes
+
+### Appearance (web UI)
+
+These controls are in the browser version of the editor. Both remember your
+choice in the browser, so they survive a reload without being saved into your
+`.json` document — they are display preferences, not analysis data.
+
+#### Dark Mode
+
+The **◐** button in the top bar, next to the language switcher, cycles the
+theme. It follows your operating system's light/dark setting until you press
+it, after which your explicit choice wins.
+
+The diagram follows the theme too: the background and the tree connector lines
+switch with it. Two things deliberately stay the same in both themes —
+
+- **Node boxes** keep their light background colours, because those colours
+  carry meaning rather than styling (see the table below).
+- **Link edges** stay blue, because colour is how a cross-tree link is told
+  apart from a normal parent/child edge.
+
+#### What the Node Colours Mean
+
+A node box is shaded by its **calculated** probability (`P_calc`, the lower
+line in the box), not the value you typed:
+
+| Colour | Calculated probability | Reading |
+|---|---|---|
+| **Pink** | exactly `1.0` | Certain. Often a sign that an OR gate has saturated, or that a probability was entered as a percentage by mistake |
+| **Light blue** | exactly `0.0` | Impossible, and contributes nothing to its parent. These are also the nodes the **Hide Zero** checkbox removes |
+| **Light yellow** | `≥ 0.7` | High — worth attention when reading the tree |
+| **White** | everything else | Nothing flagged |
+
+The same colours are used in the browser, in a native Graphviz render, and in
+exported PNG/SVG, so a diagram you send to someone else reads the same way it
+does on screen.
+
+#### Box Sizing (font detection and scale)
+
+If text crowds or spills outside its node box, open the **Aa** popover on the
+diagram panel's toolbar. (The popover can be dragged to a new position if it
+covers something you need to see; it stays where you put it.)
+
+**Why this exists:** the diagram is laid out by Graphviz, which sizes each box
+from its *own* estimate of the named font's metrics, and then your browser
+paints the text with whatever font it actually resolves that name to. If the
+requested font is not installed, the browser silently substitutes one with
+different glyph widths, and the text no longer fits the box that was measured
+for the other font. This is most visible with Japanese text, where glyph widths
+vary the most.
+
+**Font**: leave it on **auto-detect** (the default) and the editor probes which
+of its candidate fonts your system actually has — Meiryo first, then Yu Gothic,
+Hiragino, Noto Sans CJK JP and others, ending in a generic fallback. Both sides
+then agree on a font that really exists on your machine, which closes most of
+the gap. You can also pick a specific font if you prefer one.
+
+**Box scale**: the escape hatch for whatever mismatch is left. It accepts
+**0–30** and defaults to **4**. Raising it inflates font size and padding
+together, which is what grows the box — a box has no size of its own beyond
+what its label needs. Raise it a step at a time until the text sits
+comfortably.
+
+> If the diagram looks right in the browser but wrong in an exported PNG, see
+> [CJK_RENDERING.md](CJK_RENDERING.md): a native Graphviz install renders the
+> export and may have a different set of fonts available than your browser
+> does.
 
 ### Node Details Panel
 
