@@ -172,12 +172,15 @@ const TREE_CSS = `
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--fta-muted-fg);
-  border-bottom: 1px solid var(--fta-border);
+  border-top: 1px solid var(--fta-border);
+  flex: 0 0 auto;
   display: none;
 }
 /* The hint is a reminder, not decoration: it appears while the panel has focus
    and stays out of the way otherwise. aria-describedby points at it either way,
-   so a screen reader hears it on the tree regardless of this rule. */
+   so a screen reader hears it on the tree regardless of this rule. It sits
+   under the list (see panel.append in initTree) so that appearing never moves
+   the row that is being clicked. */
 .fta-tree-panel:focus-within .fta-tree-hint { display: block; }
 
 .fta-tree {
@@ -537,7 +540,13 @@ export function initTree(container) {
     'aria-multiselectable': 'true',
     'aria-describedby': hintId,
   });
-  panel.append(toolbar, hint, host);
+  // The hint goes BELOW the rows, not above them. It appears on focus-within,
+  // and focus arrives on mousedown -- so a hint above the list would push
+  // every row down under a pressed mouse button, mouseup would land on a
+  // different row than mousedown, and the browser would retarget the click
+  // to their common ancestor (the root item). At the bottom it only shortens
+  // the scrollable list; nothing under the pointer moves.
+  panel.append(toolbar, host, hint);
 
   /** Re-read every string in the chrome. Called on boot and on a language flip. */
   function applyStrings() {
@@ -568,6 +577,20 @@ export function initTree(container) {
 
   /** {id, value, selStart, selEnd} while a row is being renamed, else null. */
   let editing = null;
+
+  /**
+   * The newest rename/move round trip. Save and export blur the editor and
+   * then wait on `fta:flush`, so the PATCH fired by that blur must be reachable
+   * from here or the save can overtake it on the server lock.
+   */
+  let pending = null;
+
+  /**
+   * Set when the shell announces an add/delete while a row holds the focus.
+   * The dialog's own focus restore lands on a row that the mutation has since
+   * re-rendered, so focus would fall to <body>; the next render puts it back.
+   */
+  let refocusAfterMutation = false;
 
   /** The active filter, '' when off, plus the expansion snapshot it displaced. */
   let query = '';
@@ -752,8 +775,10 @@ export function initTree(container) {
     const isLead = id === ctx.selectedId;
     const isEditing = Boolean(editing && editing.id === id);
 
+    // The zero mark sits on the <li> so "Hide Zero" removes the whole item
+    // (row and children) as the diagram does, not just the header row.
     const item = el('li', {
-      class: 'fta-tree-item',
+      class: 'fta-tree-item' + (isZero ? ' is-zero' : ''),
       role: 'treeitem',
       tabindex: '-1',
       draggable: isEditing || id === ctx.rootId ? 'false' : 'true',
@@ -769,7 +794,7 @@ export function initTree(container) {
     item.style.setProperty('--fta-level', String(Math.max(0, level)));
     if (hasChildren) item.setAttribute('aria-expanded', open ? 'true' : 'false');
 
-    const rowClass = 'fta-tree-row' + (isFull ? ' is-full' : isZero ? ' is-zero' : '');
+    const rowClass = 'fta-tree-row' + (isFull ? ' is-full' : '') + (isZero ? ' is-zero' : '');
     const label = isEditing
       ? el('input', {
           type: 'text',
@@ -952,8 +977,19 @@ export function initTree(container) {
     status.textContent = selection.size > 1 ? t('tree.selected', { n: selection.size }) : '';
   }
 
+  function hideZeroOn() {
+    return Boolean(window.ftaShell && window.ftaShell.hideZero);
+  }
+
+  /**
+   * The rows a user can see, in document order. Under "Hide Zero" the hidden
+   * items are left out, so arrows, Home/End and Shift-ranges never land on or
+   * silently include a row that is not on screen.
+   */
   function itemNodes() {
-    return Array.from(host.querySelectorAll('.fta-tree-item'));
+    const items = Array.from(host.querySelectorAll('.fta-tree-item'));
+    if (!hideZeroOn()) return items;
+    return items.filter((item) => !item.closest('.fta-tree-item.is-zero'));
   }
 
   function itemById(id) {
@@ -1037,13 +1073,18 @@ export function initTree(container) {
       return;
     }
 
-    try {
-      const result = await api.patch('/nodes/' + encodeURIComponent(id), { name: name });
-      store.applyMutation(result);
-      say(t('tree.renamed', { name: name }), 'ok');
-    } catch (err) {
-      fail(err);
-    }
+    const commit = (async () => {
+      try {
+        const result = await api.patch('/nodes/' + encodeURIComponent(id), { name: name });
+        store.applyMutation(result);
+        say(t('tree.renamed', { name: name }), 'ok');
+      } catch (err) {
+        fail(err);
+      }
+    })();
+    pending = commit;
+    await commit;
+    if (pending === commit) pending = null;
     render();
     // Only Enter takes the focus back to the row. A blur means the user is
     // already somewhere else, and yanking the focus back after the round trip
@@ -1075,22 +1116,27 @@ export function initTree(container) {
     expanded.add(String(newParentId)); // land somewhere the user can see
     if (!query) writeExpanded(expanded);
 
-    try {
-      const result = await api.post('/nodes/' + encodeURIComponent(id) + '/move', {
-        newParentId: String(newParentId),
-        index: index === null || index === undefined ? null : index,
-      });
-      store.applyMutation(result);
-      setSelection([id], id);
-      say(
-        sameParent
-          ? t('tree.reordered', { name: nameOf(id), parent: nameOf(newParentId) })
-          : t('tree.moved', { name: nameOf(id), parent: nameOf(newParentId) }),
-        'ok'
-      );
-    } catch (err) {
-      fail(err);
-    }
+    const commit = (async () => {
+      try {
+        const result = await api.post('/nodes/' + encodeURIComponent(id) + '/move', {
+          newParentId: String(newParentId),
+          index: index === null || index === undefined ? null : index,
+        });
+        store.applyMutation(result);
+        setSelection([id], id);
+        say(
+          sameParent
+            ? t('tree.reordered', { name: nameOf(id), parent: nameOf(newParentId) })
+            : t('tree.moved', { name: nameOf(id), parent: nameOf(newParentId) }),
+          'ok'
+        );
+      } catch (err) {
+        fail(err);
+      }
+    })();
+    pending = commit;
+    await commit;
+    if (pending === commit) pending = null;
     render();
     focusById(id);
   }
@@ -1380,6 +1426,9 @@ export function initTree(container) {
 
   function onAction(event) {
     const detail = (event && event.detail) || {};
+    if (detail.action === 'add' || detail.action === 'delete') {
+      refocusAfterMutation = host.contains(document.activeElement);
+    }
     if (detail.action !== 'delete') return;
     // One selected node stays with the shell: it already confirms, reports and
     // re-selects, and two code paths for the same delete is one too many.
@@ -1641,11 +1690,31 @@ export function initTree(container) {
     }
     lastSelected = selectedId;
     render();
+
+    if (refocusAfterMutation) {
+      refocusAfterMutation = false;
+      const active = document.activeElement;
+      // Only reclaim a focus that has nowhere else to be; a caret in another
+      // panel is never stolen.
+      if (!active || active === document.body || !active.isConnected) {
+        const items = itemNodes();
+        const lead = items.find((item) => item.dataset.lead === '1') || items[0];
+        if (lead) focusItem(lead, false);
+      }
+    }
   });
+
+  /** Hand the shell whatever rename/move is still on the wire (see `pending`). */
+  function onFlush(event) {
+    const detail = event && event.detail;
+    if (!detail || !Array.isArray(detail.promises)) return;
+    if (pending) detail.promises.push(pending);
+  }
 
   window.addEventListener('fta:action', onAction);
   window.addEventListener('fta:find', onFind);
   window.addEventListener('fta:language', onLanguage);
+  window.addEventListener('fta:flush', onFlush);
 
   render();
 
@@ -1657,6 +1726,7 @@ export function initTree(container) {
       window.removeEventListener('fta:action', onAction);
       window.removeEventListener('fta:find', onFind);
       window.removeEventListener('fta:language', onLanguage);
+      window.removeEventListener('fta:flush', onFlush);
       if (searchTimer) window.clearTimeout(searchTimer);
       clearHoverTimer();
       clear(panel);

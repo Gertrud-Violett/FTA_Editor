@@ -108,8 +108,8 @@ auditor is checking.
 
 Deliberately **not** bundled:
 
-- **Tcl/Tk** — the desktop app (`src/`) is a Tk program; this bundle is the web
-  app and contains none of it.
+- **Tcl/Tk** — the legacy desktop app (`desktop/src/`) is a Tk program; this
+  bundle is the web app and contains none of it.
 - **Pillow** — reached only through `openpyxl.drawing.image`, behind a
   `try: from PIL import Image / except ImportError`, for embedding pictures in a
   workbook. The Excel export writes cells, fonts, fills and alignment, and no
@@ -337,7 +337,7 @@ Post-D11, the ~100 MB `googleapiclient`/grpc chain is gone from a build that ins
 only `google-genai` — `google.genai` doesn't depend on it at all, so the discovery-document
 filter below now drops 0 documents on a `web`+`ai` install. It still runs, and still
 matters, on a build machine that also has the *desktop* app's dependencies installed
-(`google-generativeai`, kept because `src/ai_providers.py` is frozen — see the `desktop`
+(`google-generativeai`, kept because `desktop/src/ai_providers.py` is frozen — see the `desktop`
 extra in `pyproject.toml`), where that chain still arrives transitively. `google.genai`
 also ships its own ~2 MB test suite (`google/genai/tests/`, ~200 modules) inside the
 installed distribution; the spec filters it out of `collect_all()`'s results the same way

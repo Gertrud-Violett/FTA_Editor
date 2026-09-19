@@ -80,6 +80,7 @@ try:  # normal package import: ``import fta_web.routes.ai``
         INVALID_FIELD,
         INVALID_JSON,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from ..state import get_state
@@ -90,6 +91,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         INVALID_FIELD,
         INVALID_JSON,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from state import get_state  # type: ignore[no-redef]
@@ -127,7 +129,7 @@ NOT_CONFIGURED_MESSAGE = (
 def _handle_api_error(exc: ApiError):
     # Registered on the blueprint as well as the app (see routes/tree.py) so
     # the blueprint returns the documented envelope wherever it is mounted.
-    return exc.to_payload(), exc.status
+    return api_error_response(exc)
 
 
 # ---- request helpers -----------------------------------------------------
@@ -512,11 +514,9 @@ def post_apply_changes():
     rejected: List[Dict[str, Any]] = []
 
     with state.lock:
-        # Pushed before the first attempt so one Ctrl-Z reverses the whole
-        # batch. If every change is rejected below the tree is untouched and
-        # this entry is a harmless no-op on the stack -- the same trade
-        # routes/tree.py's move endpoint makes.
-        state.push_undo()
+        # Snapshot first, push only once something was applied: an all-rejected
+        # batch must not cost the user an undo step or wipe the redo stack.
+        before = state.snapshot()
 
         for index in indices:
             change = pending[index]
@@ -526,6 +526,9 @@ def post_apply_changes():
             (applied if ok else rejected).append(record)
 
         if not applied:
+            # The handler refuses before touching the tree, but restoring the
+            # snapshot makes "unchanged" a guarantee rather than a belief.
+            state.restore(before)
             raise ApiError(
                 AI_CHANGE_REJECTED,
                 "None of the selected changes could be applied; the analysis "
@@ -534,6 +537,8 @@ def post_apply_changes():
                 {"rejected": ai_bridge.scrub_deep(rejected)},
             )
 
+        # One entry for the whole batch, so one Ctrl-Z reverses all of it.
+        state.push_undo(before)
         state.core.recalculate_probabilities()
         state.mark_dirty()
 
@@ -565,7 +570,7 @@ def post_update():
       shrug on its own; with n_3's JSON beside it the fix is obvious.
 
     Both reproduce the desktop editor's Update FTA diagnostics
-    (``src/FTA_Editor_UI.py:855-895``). Nothing is applied in either case.
+    (``desktop/src/FTA_Editor_UI.py:855-895``). Nothing is applied in either case.
 
     On success the tree is replaced wholesale under the lock, with an undo
     entry pushed first -- so a rewrite that turns out to be wrong is one
@@ -610,8 +615,11 @@ def post_update():
         state.push_undo()
         # Deep-copied on the way in: set_data stores the reference it is given
         # (FTA_Editor_core.py:53), and the parsed object is also about to be
-        # walked for the response payload.
-        state.core.set_data(copy.deepcopy(updated))
+        # walked for the response payload. Normalised exactly as a loaded file
+        # is: the validator accepts anything float() accepts, so a model that
+        # writes "probability": "0.5" would otherwise leave a string in the
+        # tree and node_label's numeric formatting would 500 on /api/dot.
+        state.core.set_data(state.core._normalize_node(copy.deepcopy(updated)))
         state.core.recalculate_probabilities()
         state.mark_dirty()
 

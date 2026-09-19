@@ -1,7 +1,7 @@
 # Line endings, and why this file is load-bearing
 # ------------------------------------------------
 # This project pins files by SHA-256. fta_web/core/BASELINE.json records a hash
-# for every frozen file in src/, tests/ and data/ and for every vendored file in
+# for every frozen file in desktop/ (src/, tests/, data/) and for every vendored file in
 # fta_web/core/, and fta_web/tests/test_vendor_integrity.py fails if any of them
 # moves. That is a contract about *bytes*.
 #
@@ -35,9 +35,7 @@
 # would already cover them, but these are the files where a silent byte change
 # breaks the integrity guarantee rather than merely causing a noisy diff, so
 # they do not rely on `text=auto` guessing right.
-src/**              -text
-tests/**            -text
-data/**             -text
+desktop/**          -text
 fta_web/core/**     -text
 fta_web/examples/** -text
 

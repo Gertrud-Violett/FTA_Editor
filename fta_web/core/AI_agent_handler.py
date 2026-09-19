@@ -29,8 +29,14 @@ class AICredentialManager:
         self._ensure_credentials_dir()
     
     def _ensure_credentials_dir(self):
-        """Ensure the credentials directory exists"""
-        self.CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
+        """Ensure the credentials directory exists, readable by this user only.
+        The mode is honoured on POSIX and a no-op on Windows, where the home
+        directory's own ACL is what protects the file."""
+        self.CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(self.CREDENTIALS_DIR, 0o700)
+        except OSError:
+            pass
     
     def save_credentials(self, api_key: str, api_endpoint: str = "https://api.openai.com/v1",
                         model: str = "gpt-4o", provider: str = "OpenAI") -> Tuple[bool, Optional[str]]:
@@ -53,8 +59,21 @@ class AICredentialManager:
                 "model": model,
                 "provider": provider
             }
-            with open(self.CREDENTIALS_FILE, 'w', encoding='utf-8') as f:
+            # The file holds an API key: create it owner-read/write only
+            # rather than with the umask default, and tighten an existing
+            # file too (the mode passed to os.open applies only on creation).
+            self._ensure_credentials_dir()
+            fd = os.open(
+                str(self.CREDENTIALS_FILE),
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                0o600,
+            )
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(credentials, f, indent=2)
+            try:
+                os.chmod(self.CREDENTIALS_FILE, 0o600)
+            except OSError:
+                pass
             return True, None
         except Exception as e:
             return False, f"Failed to save credentials: {e}"

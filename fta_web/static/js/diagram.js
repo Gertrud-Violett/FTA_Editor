@@ -166,13 +166,94 @@ function detectFont() {
 }
 
 /**
- * Mirror of `json_viewer.sanitize_id`:
- *     re.sub(r'[^0-9A-Za-z_]', '_', str(s))
- * Graphviz writes the sanitized id into each node's <title>, so a node whose
- * real id contains a dot or a space cannot be matched back by string equality.
+ * Synchronous SHA-1 (hex). The WebCrypto digest is async and the id map is
+ * built inside a click handler, so a small in-line implementation is used;
+ * inputs are node ids, never more than a few hundred bytes.
+ */
+function sha1Hex(text) {
+  const bytes = new TextEncoder().encode(text);
+  const ml = bytes.length;
+  const wordCount = (((ml + 8) >> 6) << 4) + 16;
+  const words = new Uint32Array(wordCount);
+  for (let i = 0; i < ml; i += 1) words[i >> 2] |= bytes[i] << (24 - (i % 4) * 8);
+  words[ml >> 2] |= 0x80 << (24 - (ml % 4) * 8);
+  words[wordCount - 1] = ml * 8;
+
+  let h0 = 0x67452301;
+  let h1 = 0xefcdab89;
+  let h2 = 0x98badcfe;
+  let h3 = 0x10325476;
+  let h4 = 0xc3d2e1f0;
+  const w = new Uint32Array(80);
+  for (let block = 0; block < wordCount; block += 16) {
+    for (let i = 0; i < 16; i += 1) w[i] = words[block + i];
+    for (let i = 16; i < 80; i += 1) {
+      const x = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+      w[i] = (x << 1) | (x >>> 31);
+    }
+    let a = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i += 1) {
+      let f;
+      let k;
+      if (i < 20) { f = (b & c) | (~b & d); k = 0x5a827999; }
+      else if (i < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
+      else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
+      else { f = b ^ c ^ d; k = 0xca62c1d6; }
+      const next = (((a << 5) | (a >>> 27)) + f + e + k + w[i]) >>> 0;
+      e = d;
+      d = c;
+      c = (b << 30) | (b >>> 2);
+      b = a;
+      a = next;
+    }
+    h0 = (h0 + a) >>> 0;
+    h1 = (h1 + b) >>> 0;
+    h2 = (h2 + c) >>> 0;
+    h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0;
+  }
+  return [h0, h1, h2, h3, h4].map((v) => v.toString(16).padStart(8, '0')).join('');
+}
+
+/**
+ * Mirror of `json_viewer.sanitize_id`: an id made only of [0-9A-Za-z_] is
+ * kept; any other id is replaced character-for-character and suffixed with
+ * the first 8 hex digits of its SHA-1, so "a.b" and "a b" no longer collide.
+ * Graphviz writes the sanitized id into each node's <title>, which is what
+ * click-to-select matches against.
  */
 function sanitizeId(value) {
-  return String(value).replace(/[^0-9A-Za-z_]/g, '_');
+  const raw = String(value);
+  const clean = raw.replace(/[^0-9A-Za-z_]/g, '_');
+  if (clean === raw) return raw;
+  return clean + '_' + sha1Hex(raw).slice(0, 8);
+}
+
+const SAFE_HREF = /^(#|https?:\/\/)/i;
+
+/**
+ * Defence in depth on the Graphviz output: node names are escaped on the
+ * server, but the SVG is still imported into the live document, so anything
+ * that could run script is stripped here regardless.
+ */
+function sanitizeSvg(root) {
+  root.querySelectorAll('script, foreignObject').forEach((node) => node.remove());
+  const doc = root.ownerDocument;
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  const nodes = [root];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    for (const attr of Array.from(node.attributes)) {
+      const name = attr.name.toLowerCase();
+      const local = (attr.localName || name).toLowerCase();
+      if (name.startsWith('on')) node.removeAttributeNode(attr);
+      else if (local === 'href' && !SAFE_HREF.test(attr.value.trim())) node.removeAttributeNode(attr);
+    }
+  }
 }
 
 /**
@@ -517,6 +598,10 @@ export function initDiagram(container) {
 
   // ---- click a node -> select it in the tree ------------------------------
   stage.addEventListener('click', (ev) => {
+    // Any <a> left in the SVG has had its href vetted, but navigation away
+    // from the editor is never what a click on the diagram means.
+    const anchor = ev.target.closest && ev.target.closest('a');
+    if (anchor && stage.contains(anchor)) ev.preventDefault();
     if (!svgEl) return;
     const g = ev.target.closest && ev.target.closest('g.node');
     if (!g) return;
@@ -568,6 +653,7 @@ export function initDiagram(container) {
       const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
       const parsed = doc.documentElement;
       if (!parsed || parsed.nodeName === 'parsererror') throw new Error('Graphviz returned invalid SVG.');
+      sanitizeSvg(parsed);
       svgEl = document.importNode(parsed, true);
       // Give the SVG real intrinsic pixel size from its own viewBox rather
       // than stripping width/height outright. .diagram__canvas is
@@ -783,6 +869,12 @@ const STYLES = `
   border:1px solid var(--fta-border, #d7dde5); border-radius:6px;
   box-shadow: 0 8px 24px rgba(16,20,24,0.20); font-size:12px;
 }
+/* The explicit display:flex above outranks the UA's [hidden] rule, so a
+   closed popover kept its box and swallowed clicks on whatever it overlapped. */
+.diagram__popover[hidden] {
+  display:none;
+}
+.diagram__popover[hidden] { display:none; }
 .diagram__popoverHead {
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   margin:-10px -10px 0; padding:6px 8px;

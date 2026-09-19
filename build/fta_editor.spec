@@ -165,7 +165,8 @@ hiddenimports = [
 # than silent.
 #
 # Pillow/PIL is deliberately NOT here: it is imported only by
-# src/FTA_Editor_UI.py, the Tk desktop app, which this bundle does not contain.
+# desktop/src/FTA_Editor_UI.py, the legacy Tk app, which this bundle does not
+# contain.
 # Adding it would cost megabytes for code no web request can reach.
 # ---------------------------------------------------------------------------
 OPTIONAL_IMPORTS = (
@@ -260,8 +261,9 @@ if _absent:
 # a package name looking irrelevant; check the import site first.
 # ---------------------------------------------------------------------------
 excludes = [
-    # The desktop app (src/) is a Tk program; the web app never touches it, and
-    # Tcl/Tk costs tens of megabytes of runtime libraries and .tcl script trees.
+    # The legacy desktop app (desktop/src/) is a Tk program; the web app never
+    # touches it, and Tcl/Tk costs tens of megabytes of runtime libraries and
+    # .tcl script trees.
     "tkinter",
     "_tkinter",
     "tkinter.filedialog",
@@ -272,8 +274,9 @@ excludes = [
     # which is used for embedding pictures in a workbook. The Excel export in
     # core/FTA_Editor_core.py writes cells, fonts, fills and alignment and no
     # images at all. ~14 MB of imaging codecs for a code path with no caller.
-    # (Pillow is a genuine dependency of the *desktop* app -- src/FTA_Editor_UI.py
-    #  displays PNG previews with it -- which is why it is in requirements.txt.)
+    # (Pillow is a genuine dependency of the *desktop* app --
+    #  desktop/src/FTA_Editor_UI.py displays PNG previews with it -- which is
+    #  why it is in requirements.txt.)
     "PIL",
     # cryptography (and bcrypt behind it) arrive only through
     # werkzeug.serving.generate_adhoc_ssl_pair, the dev server's
@@ -335,7 +338,7 @@ a = Analysis(  # noqa: F821  (PyInstaller global)
 # not bundled anymore when only google-genai is installed. This filter earns
 # its keep when a build machine also has the *desktop* app's dependencies
 # installed (the `desktop` extra's google-generativeai, still needed because
-# src/ai_providers.py is frozen), which does pull in the discovery client
+# desktop/src/ai_providers.py is frozen), which does pull in the discovery client
 # transitively. Neither provider calls googleapiclient.discovery.build(), the
 # only thing that actually reads these documents, so dropping them is safe
 # regardless of which combination is on the build machine.

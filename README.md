@@ -7,16 +7,16 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-1.6.2-green.svg)](CHANGELOG.md)
 
-There are two ways to run it, and both are supported:
+There are two ways to run it:
 
-| | Runs in | Needs | Use it when |
+| | Runs in | Needs | Status |
 |---|---|---|---|
-| **Web app** (recommended, new in 1.6) | your browser, served from `127.0.0.1` | Python 3.10+ and Flask — **no Graphviz** | almost always |
-| **Desktop app** (1.5.1, unchanged) | a Tkinter window | Python 3.10+, Tk, **Graphviz**, Pillow | you want the original GUI, or a scripted Tk workflow |
+| **Web app** (`fta_web/`) — **the primary path** | your browser, served from `127.0.0.1` | Python 3.10+ and Flask — **no Graphviz** | actively developed; all new features land here |
+| **Legacy desktop app** (`desktop/`) — backup / fallback | a Tkinter window | Python 3.10+, Tk, **Graphviz**, Pillow | frozen at 1.5.1 behaviour; kept as a fallback, not maintained |
 
 Both edit the same files, keep AI credentials in the same place, and produce the
-same diagrams. The web app is the one under active development; the desktop app
-is unchanged in this release and remains supported.
+same diagrams. Use the web app unless you specifically need the old Tk window;
+see [desktop/README.md](desktop/README.md) for what the fallback does not fix.
 
 ## Features
 
@@ -94,18 +94,18 @@ Ship the whole `build/dist/fta_editor/` folder — the executable needs its
 `_internal/` sibling. See [build/README.md](build/README.md) for prerequisites,
 per-OS notes and how to verify a build.
 
-### Desktop app
+### Legacy desktop app (fallback)
 
-The original Tkinter application, unchanged in 1.6:
+The original Tkinter application, moved to `desktop/` and frozen:
 
 ```bash
 # with uv
 uv sync --extra desktop --extra excel --extra ai
-uv run python src/FTA_Editor_UI.py
+uv run python desktop/src/FTA_Editor_UI.py
 
 # or with pip
 pip install -r requirements.txt
-python src/FTA_Editor_UI.py
+python desktop/src/FTA_Editor_UI.py
 ```
 
 ### Requirements
@@ -159,10 +159,10 @@ Open the printed URL. The left panel is the tree, the middle the node details,
 the right the live diagram; the AI assistant is in its own panel. Everything is
 in one page — there is nothing to install in the browser.
 
-### GUI Application (desktop)
+### Legacy desktop application (fallback)
 
 ```bash
-python src/FTA_Editor_UI.py
+python desktop/src/FTA_Editor_UI.py
 ```
 
 **Keyboard Shortcuts:**
@@ -175,12 +175,17 @@ python src/FTA_Editor_UI.py
 
 ### Programmatic API
 
+The probability engine is a plain Python module. Use the web app's copy
+(`fta_web/core/`), which carries the documented fixes:
+
 ```python
-from src.FTA_Editor_core import FTACore
+import sys
+sys.path.insert(0, "fta_web/core")   # the modules import each other by bare name
+from FTA_Editor_core import FTACore
 
 core = FTACore()
 core.set_metadata(title="Analysis", mode="FTA")
-core.load_from_json("data/examples/sampleFTA.json")
+core.load_from_json("fta_web/examples/sampleFTA.json")
 core.recalculate_probabilities()
 core.export_to_excel("output.xlsx")
 ```
@@ -189,40 +194,40 @@ core.export_to_excel("output.xlsx")
 
 ```
 FTA_Editor/
-├── src/                          # Desktop application (frozen for the 1.6 line)
-│   ├── FTA_Editor_UI.py         # GUI application with AI chat
-│   ├── FTA_Editor_core.py       # Core business logic
-│   ├── AI_agent_handler.py      # AI agent and API handling
-│   └── json_viewer.py           # Diagram renderer
-├── fta_web/                      # Web application
+├── fta_web/                      # Web application -- THE PRIMARY PATH
 │   ├── run.py                   # Launcher -- the only supported entry point
 │   ├── app.py                   # Flask app factory
 │   ├── security.py              # Session token, Host/Origin pinning
 │   ├── routes/                  # /api blueprints: tree, render, files, ai
-│   ├── core/                    # Vendored fork of src/ -- see DIVERGENCE.md
+│   ├── core/                    # Vendored fork of desktop/src/ -- see DIVERGENCE.md
+│   ├── examples/                # Sample data (sampleFTA.json)
 │   ├── static/, templates/      # Frontend, incl. WebAssembly Graphviz
-│   └── tests/                   # Web app test suite
-├── build/                        # PyInstaller spec for the standalone build
-├── tests/                        # Desktop test suite
-├── data/examples/               # Sample data
+│   └── tests/                   # Web app test suite + vendor freeze guard
+├── desktop/                      # Legacy Tkinter app -- BACKUP / FALLBACK, frozen
+│   ├── src/                     # FTA_Editor_UI.py, FTA_Editor_core.py, json_viewer.py, AI_*
+│   ├── tests/                   # Its original test suite
+│   ├── data/examples/           # Its copy of the sample data
+│   └── README.md                # Status, how to run, known unpatched defects
+├── build/                        # PyInstaller spec for the standalone web-app build
 ├── docs/                        # Documentation
 ├── pyproject.toml                # Dependencies (source of truth) + uv config
 ├── uv.lock                       # Exact resolved versions, for `uv sync`
 └── requirements.txt             # Python dependencies, for the pip fallback
 ```
 
-`fta_web/core/` is a **vendored fork** of four modules from `src/`, taken at a
-pinned commit and patched for five defects that are documented one by one in
-[`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md). `src/`, `tests/` and
-`data/` are frozen for the 1.6 line and pinned by hash;
-`fta_web/tests/test_vendor_integrity.py` fails if either side moves without the
-record being updated.
+`fta_web/core/` is a **vendored fork** of four modules from `desktop/src/`,
+taken at a pinned commit and patched for defects that are documented one by
+one in [`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md).
+`desktop/src/`, `desktop/tests/` and `desktop/data/` are frozen and pinned by
+hash; `fta_web/tests/test_vendor_integrity.py` fails if either side changes
+without the record being updated.
 
 ## Testing
 
 ```bash
-python -m pytest tests/        # desktop
-python -m pytest fta_web/tests/  # web app, vendored core, and the freeze guard
+python -m pytest                   # both suites (pytest.ini lists them)
+python -m pytest fta_web/tests/    # web app, vendored core, and the freeze guard
+python -m pytest desktop/tests/    # the frozen legacy suite
 ```
 
 ## Analysis Modes
@@ -254,6 +259,9 @@ python -m pytest fta_web/tests/  # web app, vendored core, and the freeze guard
   - [Multi-Provider Setup](docs/MULTI_PROVIDER_SETUP.md) - OpenAI, Claude, Gemini
 - [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
 - [API Reference](docs/API_REFERENCE.md) - Programming interface
+- [Code Review 2026-09](docs/CODE_REVIEW_2026-09.md) - Known defects, ranked, with fix order
+- [Roadmap for mechanical engineers](docs/ROADMAP_MECHANICAL_ENGINEERS.md) - Proposed features and UI changes
+- [Legacy desktop app](desktop/README.md) - The frozen Tkinter fallback and what it does not fix
 
 ## Troubleshooting
 
@@ -308,4 +316,4 @@ BSD-2 License - Copyright (c) makkiblog.com
 ## Support
 
 - Issues: [GitHub Issues](https://github.com/Gertrud-Violett/FTA_editor/issues)
-- Examples: [data/examples/](data/examples/)
+- Examples: [fta_web/examples/](fta_web/examples/)

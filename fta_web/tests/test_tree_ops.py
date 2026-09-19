@@ -4,7 +4,7 @@ blueprint.
 
 The rules under test are parity rules -- a file edited in the web app has to
 round-trip through the desktop editor unchanged -- so several tests pin
-behaviour against the desktop source (``src/FTA_Editor_UI.py``) and against the
+behaviour against the desktop source (``desktop/src/FTA_Editor_UI.py``) and against the
 vendored core rather than against a hand-written expectation.
 
 ``conftest.py`` puts ``fta_web/core`` on sys.path for the vendored modules; the
@@ -92,7 +92,7 @@ def all_ids(core):
 def desktop_next_child_id(existing_child_ids, parent_id):
     """The desktop editor's id generator, transcribed verbatim.
 
-    ``src/FTA_Editor_UI.py`` lines 1414-1424, with the Tkinter call
+    ``desktop/src/FTA_Editor_UI.py`` lines 1414-1424, with the Tkinter call
     ``self.fta_tree.get_children(parent_id)`` replaced by its result. Kept
     byte-for-byte so the parity assertions below compare against the real
     algorithm and not a paraphrase of it.
@@ -135,7 +135,29 @@ class TestNextChildId:
         core = core_with(node("root", [node("root_0"), node("root_1")]))
         core.delete_node_from_data("root_1")
         # root_1 is gone, so the max index is 0 again and the id is recycled.
+        # Recycling a deleted id is only safe because DELETE /api/nodes strips
+        # every link into the deleted subtree first (B-3); the generator
+        # itself has no memory of what was deleted, matching the desktop.
         assert next_child_id(core, "root") == "root_1"
+
+    def test_an_id_taken_elsewhere_in_the_tree_is_never_reused(self):
+        """Departure from the desktop: the whole tree is scanned, not just the
+        siblings. The desktop reads direct treeview children only, so a child
+        moved under another node makes it mint a duplicate id."""
+        core = core_with(node("root", [node("root_0", [node("root_1")])]))
+        # Sibling scan alone would say root_1; that id lives under root_0.
+        assert next_child_id(core, "root") == "root_2"
+
+    def test_stepping_past_taken_ids_skips_a_run_of_them(self):
+        core = core_with(
+            node("root", [node("root_0", [node("root_1"), node("root_2")])])
+        )
+        assert next_child_id(core, "root") == "root_3"
+
+    def test_a_moved_child_does_not_get_its_id_reissued(self, sample_core):
+        move_node(sample_core, "root_1", "root_0")
+        assert next_child_id(sample_core, "root") == "root_2"
+        assert "root_1" in all_ids(sample_core)
 
     def test_ids_that_do_not_match_the_prefix_are_ignored(self):
         core = core_with(node("root", [node("custom-id"), node("other_9")]))
@@ -169,6 +191,9 @@ class TestNextChildId:
         ],
     )
     def test_matches_the_desktop_algorithm_exactly(self, child_ids):
+        """Holds whenever every ``root_<n>`` is a direct child of root -- which
+        is every tree the desktop editor built itself -- because the
+        whole-tree step (above) then has nothing to step past."""
         core = core_with(node("root", [node(cid) for cid in child_ids]))
         assert next_child_id(core, "root") == desktop_next_child_id(child_ids, "root")
 

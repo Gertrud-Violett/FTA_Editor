@@ -618,4 +618,4 @@ Get a brief summary of the FTA.
 
 ---
 
-For examples, see `tests/` directory and `data/examples/`.
+For examples, see `fta_web/tests/`, `fta_web/examples/` and the legacy `desktop/tests/`.

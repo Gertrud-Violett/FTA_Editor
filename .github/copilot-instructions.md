@@ -10,12 +10,19 @@ This is a **Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor** wit
 
 ### Three-Layer Design
 
-1. **Core Logic** (`src/FTA_Editor_core.py`): Stateful `FTACore` class managing:
+> **Layout note (2026-09):** the web app in `fta_web/` is the primary path.
+> The legacy Tkinter app and its tests/data moved to `desktop/` (`desktop/src/`,
+> `desktop/tests/`, `desktop/data/`) and are frozen. The `web_app/` references
+> below describe an older Render.com deployment that no longer exists; the
+> current web app is `fta_web/` (see `docs/V1.6_WEB_SPEC.md`). The vendored
+> core the web app actually runs is `fta_web/core/`.
+
+1. **Core Logic** (`desktop/src/FTA_Editor_core.py`, vendored as `fta_web/core/FTA_Editor_core.py`): Stateful `FTACore` class managing:
    - Tree data structure (recursive dict with `id`, `name`, `probability`, `children`, `logicGate`, `links`)
    - Probability calculations (FTA=bottom-up, ETA=top-down)
    - Import/export (JSON with multiple encodings, XML, hierarchical Excel)
    
-2. **Desktop GUI** (`src/FTA_Editor_UI.py`): Tkinter-based tree editor
+2. **Desktop GUI** (`desktop/src/FTA_Editor_UI.py`, legacy fallback): Tkinter-based tree editor
    - Single-threaded with X11 display for Docker
    - Calls `FTACore` methods directly
 
@@ -23,7 +30,7 @@ This is a **Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor** wit
    - **Session-based state** using filesystem sessions (not in-memory!)
    - `get_core()` restores state from session, `save_core()` persists after EVERY modification
    - Gunicorn deployment for Render.com (2 workers, 120s timeout)
-   - Diagram renderer (`src/json_viewer.py`) generates Graphviz PNG from tree data
+   - Diagram renderer (`desktop/src/json_viewer.py`; the web app uses `fta_web/core/json_viewer.py`) generates Graphviz PNG from tree data
 
 ### Critical Data Flow
 
@@ -123,13 +130,13 @@ sudo apt install graphviz fonts-noto-cjk  # Linux, desktop app / native renderin
 brew install graphviz                      # macOS, desktop app / native rendering only
 
 # Run GUI
-python src/FTA_Editor_UI.py
+python desktop/src/FTA_Editor_UI.py   # legacy fallback; the primary app is: python fta_web/run.py
 
 # Run web app
 python web_app/app.py  # http://localhost:5000
 
 # Run tests
-python -m pytest tests/
+python -m pytest fta_web/tests/ desktop/tests/
 ```
 
 ### Docker Deployment
@@ -172,8 +179,9 @@ docker-compose up fta-web
 ### Running Tests
 
 ```bash
-python tests/run_all_tests.py  # All tests
-python tests/test_probability_calculation.py  # Just probability
+python -m pytest                        # All tests (fta_web/tests + desktop/tests)
+python desktop/tests/run_all_tests.py   # Legacy desktop suite only
+python desktop/tests/test_probability_calculation.py  # Just probability
 ```
 
 ## Common Pitfalls
@@ -195,11 +203,11 @@ python tests/test_probability_calculation.py  # Just probability
 
 ## Key Files Reference
 
-- `src/FTA_Editor_core.py`: Business logic (594 lines, ~40 methods)
-- `src/json_viewer.py`: Graphviz rendering (326 lines)
+- `desktop/src/FTA_Editor_core.py`: Business logic (594 lines, ~40 methods)
+- `desktop/src/json_viewer.py`: Graphviz rendering (326 lines)
 - `web_app/app.py`: Flask API (383 lines, 15 endpoints)
 - `tests/test_probability_calculation.py`: 690 lines, covers all gate logic
-- `data/examples/sampleFTA.json`: Example tree structure
+- `fta_web/examples/sampleFTA.json` (and `desktop/data/examples/sampleFTA.json`): Example tree structure
 - `CHANGELOG.md`: Version history (v1.4.2 = session fixes + CJK fonts)
 - `DEPLOYMENT.md`: All deployment options (Render, Docker, local)
 
@@ -227,13 +235,13 @@ python tests/test_probability_calculation.py  # Just probability
 
 ```bash
 # Test installation
-python -m pytest tests/ -v
+python -m pytest -v
 
 # Load example
-python src/FTA_Editor_UI.py  # File → Open → data/examples/sampleFTA.json
+python desktop/src/FTA_Editor_UI.py  # File → Open → desktop/data/examples/sampleFTA.json
 
 # Generate diagram from JSON
-python src/json_viewer.py data/examples/sampleFTA.json output.png
+python desktop/src/json_viewer.py -i desktop/data/examples/sampleFTA.json -o output.png
 
 # Export formats
 core.export_to_json("out.json")

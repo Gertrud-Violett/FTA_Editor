@@ -31,8 +31,8 @@ Validation rules that are not obvious:
 
 The ``ApiError`` handler is registered on the blueprint (not the app), so the
 blueprint is self-contained: it returns the documented error envelope whether
-or not ``create_app`` also installs a global handler. Both render the identical
-payload via ``ApiError.to_payload()``.
+or not ``create_app`` also installs a global handler. Both go through
+``errors.api_error_response`` so the message is localized either way.
 """
 from __future__ import annotations
 
@@ -45,7 +45,6 @@ from flask import Blueprint, request
 try:  # normal package import: ``import fta_web.routes.tree``
     from ..errors import (
         CYCLE_REJECTED,
-        DUPLICATE_NODE_ID,
         INVALID_FIELD,
         INVALID_JSON,
         NODE_NOT_FOUND,
@@ -55,6 +54,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         ROOT_PROTECTED,
         UNSAVED_CHANGES,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from ..state import get_state
@@ -65,12 +65,14 @@ try:  # normal package import: ``import fta_web.routes.tree``
         find_parent_id,
         move_node,
         next_child_id,
+        strip_links_to,
+        subtree_ids,
+        top_level_id,
         would_create_cycle,
     )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from errors import (  # type: ignore[no-redef]
         CYCLE_REJECTED,
-        DUPLICATE_NODE_ID,
         INVALID_FIELD,
         INVALID_JSON,
         NODE_NOT_FOUND,
@@ -80,6 +82,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ROOT_PROTECTED,
         UNSAVED_CHANGES,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from state import get_state  # type: ignore[no-redef]
@@ -90,6 +93,9 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         find_parent_id,
         move_node,
         next_child_id,
+        strip_links_to,
+        subtree_ids,
+        top_level_id,
         would_create_cycle,
     )
 
@@ -106,7 +112,7 @@ NODE_FIELDS = ("name", "type", "probability", "logicGate", "notes", "links")
 
 @tree_bp.errorhandler(ApiError)
 def _handle_api_error(exc: ApiError):
-    return exc.to_payload(), exc.status
+    return api_error_response(exc)
 
 
 # ---- request helpers -----------------------------------------------------
@@ -377,8 +383,7 @@ def update_metadata():
 
     with state.lock:
         state.push_undo()
-        # set_metadata() rewrites `date` to today when it is passed None
-        # alongside another field -- desktop behaviour, kept deliberately.
+        # Fields passed as None are left untouched, including `date` (D18).
         state.core.set_metadata(title=title, date=date, mode=mode)
         state.core.recalculate_probabilities()
         state.mark_dirty()
@@ -456,7 +461,7 @@ def create_node():
         raise ApiError(
             INVALID_FIELD, "'type' must be a non-empty string.", 400, {"field": "type"}
         )
-    # Desktop default for a new node is 1.0 (src/FTA_Editor_UI.py:1431).
+    # Desktop default for a new node is 1.0 (desktop/src/FTA_Editor_UI.py:1431).
     probability = _validate_probability(payload.get("probability", 1.0))
     gate = _validate_gate(payload.get("logicGate", "OR"))
     notes = _validate_notes(payload.get("notes", ""))
@@ -466,19 +471,8 @@ def create_node():
         core = state.core
         _require_node(core, parent_id, PARENT_NOT_FOUND, "Parent node")
 
+        # next_child_id scans the whole tree, so the id is free by construction.
         new_id = next_child_id(core, parent_id)
-        if core.find_node_by_id(new_id) is not None:
-            # Only reachable for a hand-edited file that already uses the id
-            # elsewhere in the tree; the desktop editor would crash on the
-            # duplicate treeview iid, so step past it instead.
-            new_id = _unused_id(core, parent_id)
-            if new_id is None:
-                raise ApiError(
-                    DUPLICATE_NODE_ID,
-                    f"Could not allocate a free child id under '{parent_id}'.",
-                    409,
-                    {"parentId": parent_id},
-                )
 
         new_node = {
             "id": new_id,
@@ -504,14 +498,21 @@ def create_node():
         )
 
 
-def _unused_id(core, parent_id: str, limit: int = 10000) -> Optional[str]:
-    """First ``<parent_id>_<n>`` not already taken anywhere in the tree."""
-    start = int(next_child_id(core, parent_id).rsplit("_", 1)[-1])
-    for candidate_index in range(start, start + limit):
-        candidate = f"{parent_id}_{candidate_index}"
-        if core.find_node_by_id(candidate) is None:
-            return candidate
-    return None
+def _refuse_root(core, node_id: str, verb: str) -> None:
+    """``ROOT_PROTECTED`` if ``node_id`` is the top-level node.
+
+    Compared against the loaded tree's own top-level id, not only the literal
+    ``ROOT_ID``, so the guard cannot drift from whatever a file was loaded
+    with. Call with ``state.lock`` held.
+    """
+    node_id = str(node_id)
+    if node_id == ROOT_ID or node_id == top_level_id(core):
+        raise ApiError(
+            ROOT_PROTECTED,
+            f"The root node cannot be {verb}.",
+            400,
+            {"nodeId": node_id},
+        )
 
 
 @tree_bp.patch("/nodes/<node_id>")
@@ -575,29 +576,31 @@ def update_node(node_id: str):
 def delete_node(node_id: str):
     """Delete a node and its subtree. The root is not deletable.
 
-    Links pointing at the deleted node are left alone; the engine skips
-    unresolvable targets, which is what the desktop editor does too.
+    Every link anywhere in the tree that targets the deleted subtree is
+    removed too and reported as ``removedLinks``. The desktop editor leaves
+    such links dangling; here that is unsafe because a later Add under the
+    same parent can be given the deleted id back (see ``next_child_id``), and
+    a dangling link would then silently re-target the new, unrelated node.
     """
     state = get_state()
 
-    if str(node_id) == ROOT_ID:
-        raise ApiError(
-            ROOT_PROTECTED,
-            "The root node cannot be deleted.",
-            400,
-            {"nodeId": ROOT_ID},
-        )
-
     with state.lock:
         core = state.core
+        _refuse_root(core, node_id, "deleted")
         _require_node(core, node_id)
 
         state.push_undo()
+        doomed = subtree_ids(core, node_id)
         core.delete_node_from_data(node_id)
+        removed_links = strip_links_to(core, doomed)
         core.recalculate_probabilities()
         state.mark_dirty()
 
-        return ok_response(deletedId=str(node_id), **_mutation_payload(state))
+        return ok_response(
+            deletedId=str(node_id),
+            removedLinks=removed_links,
+            **_mutation_payload(state),
+        )
 
 
 @tree_bp.post("/nodes/<node_id>/move")
@@ -614,15 +617,11 @@ def move_node_endpoint(node_id: str):
     new_parent_id = str(new_parent_id)
     index = _validate_index(payload.get("index"))
 
-    if str(node_id) == ROOT_ID:
-        raise ApiError(
-            ROOT_PROTECTED, "The root node cannot be moved.", 400, {"nodeId": ROOT_ID}
-        )
-
     with state.lock:
         core = state.core
         # Pre-checked here rather than relying on move_node's message so each
         # failure gets its own stable error code.
+        _refuse_root(core, node_id, "moved")
         _require_node(core, node_id)
         _require_node(core, new_parent_id, PARENT_NOT_FOUND, "New parent node")
         if would_create_cycle(core, node_id, new_parent_id):

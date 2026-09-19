@@ -147,7 +147,7 @@ Thumbs.db
 output/
 *.xlsx
 *.xml
-!data/examples/*.json
+!desktop/data/examples/*.json
 temp/
 *.png
 *.jpg

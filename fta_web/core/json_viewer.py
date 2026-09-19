@@ -5,6 +5,8 @@ Copyright (c) makkiblog.com - BSD-2 License
 
 import json
 import argparse
+import hashlib
+import html
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,8 +15,22 @@ import tempfile
 import os
 from datetime import datetime
 
+_ID_UNSAFE = re.compile(r'[^0-9A-Za-z_]')
+
 def sanitize_id(s):
-    return re.sub(r'[^0-9A-Za-z_]', '_', str(s))
+    """A DOT identifier for node id ``s``, distinct for distinct ids.
+
+    Replacing every unsafe character with ``_`` alone is lossy (``a.b`` and
+    ``a b`` collapse into one DOT node and their edges cross-wire), so an id
+    that needed any replacement also gets a short hash of the original
+    appended. Ids that are already plain ASCII words come back unchanged,
+    which is what the frontend's click-to-select mapping relies on.
+    """
+    raw = str(s)
+    safe = _ID_UNSAFE.sub('_', raw)
+    if safe == raw:
+        return safe
+    return f"{safe}_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:8]}"
 
 def node_label(node, font_size=14, small_font_size=9, cellpadding=6, pad_spaces=4):
     """The HTML-like table label for one node.
@@ -35,7 +51,9 @@ def node_label(node, font_size=14, small_font_size=9, cellpadding=6, pad_spaces=
     causing the mismatch, and it is directly adjustable (diagram.js's box
     scale control) when auto-detection still is not enough.
     """
-    name = node.get("name", node.get("id", ""))
+    name = node.get("name")
+    if name is None:
+        name = node.get("id", "")
     p = node.get("probability")
     cp = node.get("calculatedProbability")
     gate = node.get("logicGate", "")
@@ -45,6 +63,14 @@ def node_label(node, font_size=14, small_font_size=9, cellpadding=6, pad_spaces=
 
     # Show gate type with probabilities, all on same line
     gate_str = f"Gate: {gate} | " if gate else ""
+
+    # The label below is Graphviz' HTML-like syntax, i.e. XML: a name such as
+    # "Pressure > 5 bar & T < 50" must be escaped or the whole diagram fails
+    # to parse (and, in the browser, an unescaped name can smuggle markup
+    # into the SVG). Quotes are left alone -- they are harmless in text
+    # content and this keeps the output readable.
+    name = html.escape(str(name), quote=False)
+    gate_str = html.escape(str(gate_str), quote=False)
 
     # Color coding based on calculated probability
     if cp == 1.0:

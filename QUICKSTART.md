@@ -4,9 +4,9 @@ Get up and running with FTA/ETA Editor in 3 steps.
 
 **Version**: 1.6.0 (Updated: September 9, 2026)
 
-New in 1.6: the editor runs in your **browser**, with no Graphviz to install.
-That is the recommended way to run it. The Tkinter desktop app is unchanged and
-still supported — its instructions are below.
+The editor runs in your **browser**, with no Graphviz to install — that is the
+primary way to run it. The original Tkinter desktop app is kept in `desktop/`
+as a frozen backup/fallback; its instructions are below.
 
 ## 1. Install
 
@@ -38,14 +38,17 @@ Useful flags: `--port 8765` for a fixed port, `--no-browser` to only print the
 URL, `--root ~/trees` to confine the file browser to one directory.
 
 <details>
-<summary><b>Desktop app instead (Tkinter, v1.5.1 behaviour, unchanged)</b></summary>
+<summary><b>Legacy desktop app instead (Tkinter, v1.5.1 behaviour, frozen fallback)</b></summary>
 
 **Extra prerequisites:** Tk and [Graphviz](https://graphviz.org/download/).
 
 ```bash
 uv sync --extra desktop --extra excel --extra ai   # or: pip install -r requirements.txt
-uv run python src/FTA_Editor_UI.py                 # or: python src/FTA_Editor_UI.py
+uv run python desktop/src/FTA_Editor_UI.py         # or: python desktop/src/FTA_Editor_UI.py
 ```
+
+See [desktop/README.md](desktop/README.md) for the defects that are fixed in
+the web app but not in this fallback.
 
 Or run `python install.py`, which detects `uv` and uses it automatically,
 falling back to pip if `uv` isn't on your PATH — either way it checks
@@ -124,9 +127,9 @@ Desktop app:
 
 ## Need Help?
 
-- Load example: `data/examples/sampleFTA.json` (the web app offers
-  `fta_web/examples/sampleFTA.json`, the same tree)
+- Load example: `fta_web/examples/sampleFTA.json` (the legacy desktop app
+  has the same tree at `desktop/data/examples/sampleFTA.json`)
 - Documentation: `docs/USER_GUIDE.md`
 - AI Setup: See [README.md](README.md#ai-assistant-setup)
 - Building a standalone executable: [build/README.md](build/README.md)
-- Test installation: `python -m pytest tests/ fta_web/tests/`
+- Test installation: `python -m pytest` (runs `fta_web/tests/` and `desktop/tests/`)

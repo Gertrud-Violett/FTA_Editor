@@ -3,7 +3,7 @@ name: tests
 # Why this exists
 # ---------------
 # v1.6's whole isolation architecture is enforced by tests, not by convention:
-# fta_web/tests/test_vendor_integrity.py checks that src/ is still frozen, that
+# fta_web/tests/test_vendor_integrity.py checks that desktop/src/ is still frozen, that
 # every vendored file matches its SHA-256 pin in fta_web/core/BASELINE.json, and
 # that every divergence declared there has a written-up entry in DIVERGENCE.md.
 # Those guards only guard if something runs them. PR #8 patched a pinned file
@@ -76,7 +76,7 @@ jobs:
       # Bare `pytest` on purpose -- the same command a developer runs locally.
       # pytest.ini supplies testpaths and the importlib import mode (required,
       # not stylistic: fta_web/tests/core/ holds vendored test copies whose
-      # basenames collide with the frozen originals in tests/, which the
+      # basenames collide with the frozen originals in desktop/tests/, which the
       # default prepend mode cannot load together). Keeping CI on the
       # documented command means a broken pytest.ini fails here too, instead
       # of being papered over by flags only CI passes.

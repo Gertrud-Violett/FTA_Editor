@@ -57,8 +57,8 @@ def check_graphviz() -> None:
 def choose_target() -> str:
     print()
     print("Which app do you want to set up?")
-    print("  1) Web app (recommended) -- runs in your browser, no Graphviz needed")
-    print("  2) Desktop app (Tkinter) -- the original UI")
+    print("  1) Web app (primary) -- runs in your browser, no Graphviz needed")
+    print("  2) Legacy desktop app (Tkinter, desktop/) -- backup / fallback only")
     print("  3) Both")
     choice = input("Choice [1]: ").strip() or "1"
     return {"1": "web", "2": "desktop", "3": "both"}.get(choice, "web")
@@ -79,7 +79,7 @@ def install_with_uv(target: str) -> bool:
     if target in ("web", "both"):
         print("  uv run python fta_web/run.py")
     if target in ("desktop", "both"):
-        print("  uv run python src/FTA_Editor_UI.py")
+        print("  uv run python desktop/src/FTA_Editor_UI.py")
     return True
 
 
@@ -100,7 +100,7 @@ def install_with_pip(target: str) -> bool:
     if target in ("web", "both"):
         print("  python fta_web/run.py")
     if target in ("desktop", "both"):
-        print("  python src/FTA_Editor_UI.py")
+        print("  python desktop/src/FTA_Editor_UI.py")
     return True
 
 
@@ -108,7 +108,8 @@ def run_tests(runner_prefix: list) -> None:
     print("\nRunning tests...")
     try:
         result = subprocess.run(
-            runner_prefix + ["pytest", "tests/", "-q"], cwd=REPO_ROOT
+            runner_prefix + ["pytest", "fta_web/tests/", "desktop/tests/", "-q"],
+            cwd=REPO_ROOT,
         )
         print("Tests passed" if result.returncode == 0 else "Some tests failed")
     except FileNotFoundError:

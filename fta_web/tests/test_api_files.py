@@ -26,6 +26,7 @@ string.
 """
 import io
 import json
+import os
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -37,6 +38,37 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+
+def _symlinks_supported() -> bool:
+    """Whether this process may create symlinks.
+
+    On Windows ``os.symlink`` needs ``SeCreateSymbolicLinkPrivilege`` (or
+    Developer Mode) and otherwise raises ``OSError [WinError 1314]``; some
+    filesystems raise ``NotImplementedError``. Probed once so the symlink
+    tests skip with a reason instead of failing on setup, which would make a
+    red run on such a machine mean nothing.
+    """
+    with tempfile.TemporaryDirectory() as scratch:
+        target = Path(scratch) / "target"
+        target.write_text("", encoding="utf-8")
+        try:
+            (Path(scratch) / "link").symlink_to(target)
+        except (OSError, NotImplementedError):
+            return False
+    return True
+
+
+requires_symlinks = pytest.mark.skipif(
+    not _symlinks_supported(),
+    reason="creating symlinks is not permitted here (on Windows this needs "
+    "SeCreateSymbolicLinkPrivilege or Developer Mode)",
+)
+
+posix_permissions = pytest.mark.skipif(
+    os.name == "nt",
+    reason="POSIX mode bits are not preserved or reported on Windows",
+)
 
 # conftest.py put fta_web/core on sys.path, so the vendored core imports under
 # its bare name -- exactly as fta_web/routes/files.py imports it.
@@ -266,6 +298,7 @@ def test_absolute_path_outside_the_root_is_rejected(client, sandbox):
     assert_rejected(response, reason="outside_root", status=400)
 
 
+@requires_symlinks
 def test_symlink_pointing_out_of_the_root_is_rejected(client, sandbox):
     """Resolve first, then confine: the target is what has to be inside."""
     secret = sandbox.parent / "outside" / "secret.json"
@@ -284,6 +317,7 @@ def test_symlink_pointing_out_of_the_root_is_rejected(client, sandbox):
     assert "not yours" not in text
 
 
+@requires_symlinks
 def test_symlinked_directory_out_of_the_root_is_rejected(client, sandbox):
     link = sandbox / "elsewhere"
     link.symlink_to(sandbox.parent / "outside", target_is_directory=True)
@@ -292,6 +326,7 @@ def test_symlinked_directory_out_of_the_root_is_rejected(client, sandbox):
     assert_rejected(response, reason="outside_root")
 
 
+@requires_symlinks
 def test_escaping_symlinks_are_not_even_listed(client, sandbox):
     (sandbox / "innocent.json").symlink_to(sandbox.parent / "outside" / "secret.json")
     (sandbox / "elsewhere").symlink_to(
@@ -304,6 +339,7 @@ def test_escaping_symlinks_are_not_even_listed(client, sandbox):
     assert payload["dirs"] == []
 
 
+@requires_symlinks
 def test_symlink_staying_inside_the_root_is_allowed(client, sandbox):
     """The rule is containment, not "no symlinks"."""
     real = write_document(sandbox, "real.json")
@@ -480,17 +516,7 @@ def test_save_overwrites_atomically_and_leaves_no_temp_files(client, sandbox):
     assert sorted(p.name for p in sandbox.iterdir()) == ["analysis.json"]
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason=(
-        "POSIX file modes do not exist on Windows. os.chmod there honours only "
-        "the read-only bit, so chmod(0o640) reports back as 0o666 and the "
-        "assertion below is meaningless rather than failing for a real reason. "
-        "The behaviour this guards -- an atomic save preserving the mode of the "
-        "file it replaces -- is itself POSIX-only; the save path is still "
-        "covered on Windows by the atomicity test above, which does pass there."
-    ),
-)
+@posix_permissions
 def test_save_keeps_the_permissions_of_the_file_it_replaces(client, sandbox):
     target = write_document(sandbox)
     target.chmod(0o640)
@@ -910,6 +936,7 @@ def test_blueprint_adopts_the_apps_configured_root(tmp_path):
         assert body(test_client.get("/api/fs/home"))["root"] == str(configured)
 
 
+@requires_symlinks
 def test_fsbrowser_resolves_a_symlinked_root(tmp_path):
     """A root reached through a symlink must not reject its own contents."""
     real = tmp_path / "real"

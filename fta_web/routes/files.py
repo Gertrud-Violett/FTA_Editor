@@ -88,6 +88,7 @@ try:  # normal package import: ``import fta_web.routes.files``
         NO_CURRENT_PATH,
         PATH_REJECTED,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from ..state import get_state
@@ -103,6 +104,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         NO_CURRENT_PATH,
         PATH_REJECTED,
         ApiError,
+        api_error_response,
         ok_response,
     )
     from state import get_state  # type: ignore[no-redef]
@@ -165,7 +167,7 @@ _NEW_FILE_MODE = _default_file_mode()
 def _handle_api_error(exc: ApiError):
     # Registered on the blueprint as well as the app (see routes/tree.py) so
     # the blueprint returns the documented envelope wherever it is mounted.
-    return exc.to_payload(), exc.status
+    return api_error_response(exc)
 
 
 @files_bp.errorhandler(fsbrowser.PathRejected)
@@ -177,11 +179,8 @@ def _handle_path_rejected(exc: fsbrowser.PathRejected):
     which check fired. ``detail.reason`` carries that distinction for the log
     and for the frontend's wording; it never names anything outside the root.
     """
-    return (
-        ApiError(
-            PATH_REJECTED, str(exc), exc.status, {"reason": exc.reason}
-        ).to_payload(),
-        exc.status,
+    return api_error_response(
+        ApiError(PATH_REJECTED, str(exc), exc.status, {"reason": exc.reason})
     )
 
 
@@ -326,7 +325,17 @@ def file_open():
 
     with state.lock:
         _install_document(state, loaded, target, dirty=False)
-        return ok_response(**_document_payload(state))
+        return ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
+
+
+def _load_warnings(core: FTACore) -> list:
+    """What the loader had to repair (D19/D20: root id, duplicate ids).
+
+    Each entry is ``{kind, old_id, new_id, name?, message}`` as the core
+    records it. Surfaced so the UI can tell the user that the file it opened
+    is not byte-for-byte the tree on screen.
+    """
+    return copy.deepcopy(getattr(core, "last_load_warnings", None) or [])
 
 
 @files_bp.post("/file/save")
@@ -649,4 +658,4 @@ def import_json():
         # this server can write to) and therefore dirty: the work exists only
         # in memory until the user picks a location with Save As.
         _install_document(state, loaded, None, dirty=True)
-        return ok_response(**_document_payload(state))
+        return ok_response(warnings=_load_warnings(loaded), **_document_payload(state))

@@ -724,11 +724,13 @@ body.is-resizing--h, body.is-resizing--h * { cursor: row-resize !important; }
 .fta-tree-row.is-zero { color: var(--text-faint); font-style: italic; }
 .is-dangling { color: var(--warn); }
 
-/* "Hide Zero P_calc" is pure CSS: the shell flips the attribute, so it works
-   whatever markup tree.js emits, as long as zero rows carry .is-zero. */
+/* "Hide Zero P_calc" is pure CSS: the shell flips the attribute. tree.js puts
+   .is-zero on the <li> as well as the row, and it is the <li> that is hidden:
+   hiding only the row would leave the children of a zero parent floating
+   headerless while the diagram drops the whole subtree. */
 html[data-hide-zero="1"] .tree-node.is-zero,
 html[data-hide-zero="1"] .tree-row.is-zero,
-html[data-hide-zero="1"] .fta-tree-row.is-zero { display: none; }
+html[data-hide-zero="1"] .fta-tree-item.is-zero { display: none; }
 
 /* ---- action bar ---------------------------------------------------------- */
 

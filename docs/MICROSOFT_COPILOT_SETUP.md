@@ -92,7 +92,8 @@ Microsoft Copilot for enterprises uses **Azure OpenAI Service**, which provides:
 
 2. **Launch FTA Editor**:
    ```bash
-   python src/FTA_Editor_UI.py
+   python fta_web/run.py                 # web app (primary)
+   # python desktop/src/FTA_Editor_UI.py # legacy desktop app (fallback)
    ```
 
 3. **Open AI Settings**:
