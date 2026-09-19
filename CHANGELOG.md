@@ -75,6 +75,89 @@ which `desktop/README.md` lists.
   docs point at `desktop/src/FTA_Editor_UI.py`; `desktop/README.md` records
   the fallback's status and the defects it does not fix.
 
+## [1.6.2] - 2026-09-15
+
+Fixes found by running the packaged build on Windows, and the CI that would
+have caught most of them. Nothing here changes the desktop app (`src/`), which
+remains frozen.
+
+### Fixed
+
+- **Every button in the web UI did nothing on some Windows machines.** Where
+  the `.js` entry in `HKEY_CLASSES_ROOT` had been overridden to `text/plain`
+  by other software, Flask's static handler — which asks the stdlib
+  `mimetypes` module — served `main.js` as plain text. Browsers refuse to
+  execute a `<script type="module">` that does not arrive as a JavaScript MIME
+  type, so no frontend code ran at all and the whole editor looked dead. The
+  server was healthy and its logs were clean, which is what made this hard to
+  recognise. `fta_web/app.py` now pins the `.js` and `.css` types at import,
+  overriding whatever the host claims.
+- **Add Node created nothing.** The dialog collected its fields and never sent
+  them to the server.
+- **Render was unavailable without a native Graphviz**, even though the
+  diagram panel's own PNG button already produced a file via the in-browser
+  WebAssembly renderer in exactly that situation. Render now tries native
+  first and falls back the same way.
+- **Diagram labels could spill outside their node boxes.** Graphviz sized each
+  box from its own estimate of the requested font's metrics, which does not
+  match how the browser — or a different Graphviz build — actually renders
+  that font, most visibly with Japanese text. Boxes are now sized by a trailing
+  run of blank characters measured by the same engine, at the same size, as the
+  visible text, so the box grows by whatever margin those characters genuinely
+  need instead of by a guessed pixel value.
+- **Dark mode did not reach the diagram.** The panel's chrome referenced CSS
+  custom properties that were never defined and silently fell back to
+  light-mode literals, and the rendered graph's background and connectors
+  stayed light. Both now track the theme. Node fills are deliberately left
+  alone — they encode calculated probability, not style — and link edges stay
+  blue, since colour is what distinguishes a link from a tree edge.
+- **The file dialog only accepted clicking through folders.** It now also takes
+  a typed or pasted absolute path, resolving it as a folder to browse into or a
+  file to open/save directly.
+- **The FTA/ETA mode selector was clipped** by its own dropdown arrow.
+- **Every SHA-256 pin failed on a Windows checkout.** Git for Windows defaults
+  to `core.autocrlf=true` and rewrites LF to CRLF, and the pins in
+  `fta_web/core/BASELINE.json` are a contract about *bytes*. A clean clone
+  showed a dozen integrity failures with nothing edited — and, less visibly,
+  the audit the PyInstaller bundle exists to support (hashing the shipped
+  `fta_web/core/` against `BASELINE.json`) could never have passed on Windows.
+  A new `.gitattributes` normalizes to LF and marks the pinned trees `-text`.
+  A clone made before it exists needs `git rm --cached -r . && git reset --hard`
+  once.
+
+### Added
+
+- **Continuous integration** (`.github/workflows/tests.yml`) — the full suite
+  on Linux (Python 3.10 and 3.13, with Graphviz installed so the native render
+  path is exercised) and on Windows. Previously nothing ran the tests unless a
+  person remembered to, which is how a broken vendor pin reached `main`. The
+  Windows job found two real problems on its first two runs.
+- **Regression tests for the static asset MIME types**
+  (`fta_web/tests/test_static_mime.py`). These reproduce the broken host — they
+  poison `mimetypes` to report `text/plain` for `.js` first — because the
+  obvious version of this test passes on Linux whether or not the fix exists,
+  and would have pinned nothing.
+- **A box-sizing control** on the diagram panel (the **Aa** popover): font
+  auto-detection preferring Meiryo, a manual scale (0–30, default 4), and a
+  draggable position.
+
+### Changed
+
+- **`docs/CHANGELOG.md` is now a pointer to this file** instead of a second
+  copy. It had drifted — it stopped at 1.5.1 while this file went on to 1.6.x —
+  and a changelog that is a year behind answers the question confidently and
+  wrongly. Every entry it held is present here.
+- **`docs/CONTRIBUTING.md` documents the frozen tree and the vendored fork.**
+  The rule that `src/`, `tests/` and `data/` must not change, and that any edit
+  to `fta_web/core/` needs a divergence entry plus a re-pin, previously existed
+  only inside the file it governs and in a test's failure message.
+- **`docs/USER_GUIDE.md`** documents dark mode, the box-sizing control, what
+  the node colours mean, and where the AI Assistant's API key is stored.
+- **Divergence D12** recorded in `fta_web/core/DIVERGENCE.md`: the diagram
+  sizing and font/scale/dark parameters described above are a change to the
+  vendored `json_viewer.py`. This is that file's first divergence and the last
+  vendored module to leave byte-identity with its `src/` counterpart.
+
 ## [1.6.1] - 2026-09-13
 
 Bug-fix release found by building and exercising the packaged executable from

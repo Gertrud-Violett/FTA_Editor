@@ -1,0 +1,47 @@
+# Line endings, and why this file is load-bearing
+# ------------------------------------------------
+# This project pins files by SHA-256. fta_web/core/BASELINE.json records a hash
+# for every frozen file in desktop/ (src/, tests/, data/) and for every vendored file in
+# fta_web/core/, and fta_web/tests/test_vendor_integrity.py fails if any of them
+# moves. That is a contract about *bytes*.
+#
+# Git for Windows defaults to core.autocrlf=true, which rewrites LF to CRLF on
+# checkout. A CRLF copy of a file is a different sequence of bytes, so it has a
+# different SHA-256 -- and every single pin breaks at once, on a tree where
+# nobody has edited anything.
+#
+# This is not hypothetical and it is not only about CI. It was found by the
+# Windows job in .github/workflows/tests.yml on its first ever run: 12 failures,
+# every hash-pinned file including data nobody had touched. Each reported hash
+# was confirmed to be exactly the CRLF conversion of the LF original.
+#
+# It matters off CI too:
+#   - A contributor cloning on Windows would see a dozen failures on a clean
+#     checkout and reasonably conclude the repo was broken.
+#   - The PyInstaller bundle ships fta_web/core/ as source specifically so an
+#     auditor can hash it against BASELINE.json (see build/fta_editor.spec).
+#     On Windows that audit could never pass.
+#
+# Normalize to LF in the working tree on every platform. Nothing here is a
+# Windows shell script (.bat/.cmd/.ps1), which is the usual reason to want CRLF
+# checked out; if one is ever added, give it an explicit `eol=crlf` line below
+# -- and keep it out of the pinned directories.
+* text=auto eol=lf
+
+# The hash-pinned trees, stated again and more strongly.
+#
+# `-text` means "never do end-of-line conversion on these files, in either
+# direction, whatever the platform or the user's core.autocrlf". The rule above
+# would already cover them, but these are the files where a silent byte change
+# breaks the integrity guarantee rather than merely causing a noisy diff, so
+# they do not rely on `text=auto` guessing right.
+desktop/**          -text
+fta_web/core/**     -text
+fta_web/examples/** -text
+
+# Vendored third-party build, checked in verbatim. Not hash-pinned, but there is
+# no reason to let Git rewrite a 1.1 MB generated artifact either.
+fta_web/static/vendor/** -text
+
+# Keep diffs of the lockfile readable but never let a tool reformat it.
+uv.lock text eol=lf
