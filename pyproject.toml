@@ -1,6 +1,6 @@
 [project]
 name = "fta-editor"
-version = "1.6.2"
+version = "1.6.3"
 description = "Fault Tree / Event Tree Analysis editor -- a browser-based web app (primary) with a legacy Tkinter desktop app kept as a fallback, sharing one probability engine"
 readme = "README.md"
 license = { text = "BSD-2-Clause" }

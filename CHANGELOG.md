@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-09-21
+
+Correctness release for the web app, which is now the primary path. Every
+web-app finding of the September 2026 code review is fixed; the legacy desktop
+app moved to `desktop/` as a frozen fallback. Verified on the packaged Windows
+build (`build/dist/fta_editor/fta_editor.exe`, PyInstaller 6.22.3): page, static
+assets, token enforcement, DOT, Excel export and all three AI providers.
+
+### Documentation
+
+- `docs/CODE_REVIEW_2026-09.md` records the status of every finding, the latest
+  test results (622 passed, 6 skipped; CI green on Linux and Windows) and a
+  condensed list of recommended feature upgrades;
+  `docs/ROADMAP_MECHANICAL_ENGINEERS.md` notes that all its blocking review
+  items are closed.
+- `build/README.md`: Windows build is verified, not "out of scope"; added a
+  warning about building from a cloud-synced `.venv`.
+
 ### Fixed
 
 Findings from the September 2026 code review (`docs/CODE_REVIEW_2026-09.md`), web

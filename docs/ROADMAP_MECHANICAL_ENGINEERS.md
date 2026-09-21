@@ -4,6 +4,12 @@
 Companion document: [`CODE_REVIEW_2026-09.md`](CODE_REVIEW_2026-09.md) (defects found in
 the same review; several of them block items below and are marked as such).
 
+**Status 2026-09-20:** every review item this document marks as *blocked by* (B-2
+rounding, B-4/B-5 ids and cycles, F-1 AI apply indices, F-6 localisation) is fixed and
+merged to `main` (PR #11, `6f93d61`; 622 tests passing). All items below are unblocked.
+The review document now carries a condensed copy of this list under "Recommended
+feature upgrades".
+
 The proposals are grouped by what an engineer is trying to do, ranked within each
 group, and summarised in a priority table at the end. Each item says what the tool
 does today, what is missing, and roughly what it would take.
