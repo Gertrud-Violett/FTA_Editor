@@ -39,7 +39,8 @@ a lockfile. `pyproject.toml` has no `[build-system]` table — see its closing
 comment for why — so `pip install .` does not work here; `-r requirements.txt`
 is the pip path, not `pip install`.
 
-Verified with PyInstaller 6.22.2 on CPython 3.10.
+Verified with PyInstaller 6.22.2 on CPython 3.10 (Linux) and PyInstaller 6.22.3
+on CPython 3.14 (Windows 11).
 
 The first command matters more than it looks. **The build machine's installed
 packages decide the built app's feature set**, because the optional ones are
@@ -180,16 +181,33 @@ a current Ubuntu will not start on an older one (`GLIBC_2.xx not found`).
 
 ### Windows
 
-Out of scope for the current build; the command is identical apart from the
-interpreter:
+Verified for 1.6.3 on Windows 11 with PyInstaller 6.22.3 and CPython 3.14: the
+bundle is about **62 MB, 528 files** with all three AI SDKs and `openpyxl`, and
+every check in [How to verify a build](#how-to-verify-a-build) passes against
+`build\dist\fta_editor\fta_editor.exe`. The command is the same as on Linux:
 
 ```
-py -m PyInstaller --clean --noconfirm ^
-    --distpath build\dist --workpath build\build ^
-    build\fta_editor.spec
+uv sync --extra all --extra build
+uv run python -m PyInstaller --clean --noconfirm --distpath build/dist --workpath build/build build/fta_editor.spec
 ```
 
-Known differences to expect when someone does it:
+(Without uv: `py -m PyInstaller ...` with the same arguments.)
+
+> **Do not build from a `.venv` that a sync client is touching.** If the repo
+> lives in Dropbox/OneDrive, the client can lock files while `uv sync` replaces
+> them (`os error 32`), leaving packages half-installed. The build then
+> *succeeds* and the exe crashes at startup — seen for real as
+> `AttributeError: module 'colorama' has no attribute 'AnsiToWin32'`, because a
+> gutted `colorama/` still imports as an empty namespace package. Pause the sync
+> client or exclude `.venv`, and repair with
+> `uv sync --extra all --extra build --reinstall`. Always launch the exe once
+> before shipping it.
+>
+> The verification commands below are written for a POSIX shell. In Git Bash,
+> arguments beginning with `/static/...` are rewritten into Windows paths; use
+> PowerShell's `Invoke-WebRequest` or set `MSYS_NO_PATHCONV=1`.
+
+Known differences from the Linux build:
 
 - **Unsigned executables get SmartScreen.** A fresh download shows "Windows
   protected your PC" until enough people run it. An Authenticode certificate and

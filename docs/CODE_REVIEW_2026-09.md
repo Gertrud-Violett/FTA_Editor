@@ -1,4 +1,4 @@
-# Code review — critical bugs (2026-09-19)
+# Code review — critical bugs (2026-09-19, status updated 2026-09-20)
 
 **Scope:** the whole repository as of `main` at `fd44067` (PR #8 merged), reviewed in
 three independent passes — web backend (`fta_web/*.py`, `fta_web/routes/`,
@@ -15,17 +15,38 @@ say what would confirm them.
 **Companion:** [`ROADMAP_MECHANICAL_ENGINEERS.md`](ROADMAP_MECHANICAL_ENGINEERS.md)
 references findings here by their IDs (B-n backend, F-n frontend, D-n desktop, R-n repo).
 
-**Status (2026-09-19, same branch):** every web-app finding below — all B-*, F-* and
-R-* items — has been **fixed** on this branch; see the `[Unreleased] → Fixed` entry in
-`CHANGELOG.md` and divergences D13–D20 in `fta_web/core/DIVERGENCE.md`. The D-* items
-(legacy desktop app) are deliberately **not** fixed: `desktop/src/` is hash-pinned and
-frozen, and `desktop/README.md` lists them for anyone using the fallback. After the
-fixes: `pytest` → 618 passed, 6 skipped (the R-3 POSIX-only tests, now skipped on
-Windows), 0 failed.
+## Status (updated 2026-09-20)
 
-**Test status before the fixes (Windows 11, Japanese locale):** `pytest` → 551 passed,
-6 failed; all six failures were environmental (R-3 below). The frozen desktop suite
-passes 6/6 from its new location.
+Every web-app finding below — all B-*, F-*, R-* items and F-11 — is **fixed and merged
+to `main`** via PR #11 (merge commit `6f93d61`, which also folds in the 1.6.2 release).
+Released as **1.6.3**. See the `[1.6.3] → Fixed` entry in `CHANGELOG.md` and divergences D13–D20 in
+`fta_web/core/DIVERGENCE.md`. The D-* items (legacy desktop app) are deliberately **not**
+fixed: `desktop/src/` is hash-pinned and frozen, and `desktop/README.md` lists them for
+anyone using the fallback.
+
+**Latest test run — `main` at `6f93d61`:**
+
+| Where | Result |
+|---|---|
+| Local, Windows 11 (Japanese locale), Python 3.14, `uv run --frozen … pytest` | **622 passed, 6 skipped, 0 failed** (12 s) |
+| — of which `fta_web/tests/` | 587 passed, 6 skipped |
+| — of which `desktop/tests/` (frozen suite, unchanged) | 35 passed |
+| GitHub Actions `tests` workflow (ubuntu 3.10, ubuntu 3.13, windows 3.13) | **success** on `6f93d61` |
+
+The 6 skips are the R-3 tests: five symlink tests (Windows needs
+`SeCreateSymbolicLinkPrivilege` / Developer Mode) and one POSIX mode-bit test; they
+run on the Linux CI jobs. The 4 warnings are `PytestReturnNotNoneWarning` from two
+frozen desktop tests that `return True` instead of asserting — harmless and not fixable
+without editing the pinned tree. Nothing failed, and no test was disabled to get there.
+
+**Test status before the fixes (same machine):** 551 passed, 6 failed; all six
+failures were environmental (R-3 below). Net change: +71 tests
+(`test_core_fixes.py` 33, `test_backend_fixes.py` 23, MIME/appearance/render tests
+from 1.6.2 and the review fixes).
+
+**Still open after this round** (minor, listed in "Also noticed" below): the action
+bar is clickable for ~1 s before the panel modules finish loading. Everything else
+in the tables is closed or explicitly deferred to the desktop known-defect list.
 
 ---
 
@@ -285,21 +306,86 @@ PR #8, worth watching for.
 
 ---
 
-## Recommended fix order
+## Fix order — as recommended, and what was done
 
-1. **B-1/F-2/F-3** escape node names in `node_label` + sanitise the imported SVG. Small,
-   closes the only injection path and the "diagram disappears" bug.
-2. **B-2** remove engine rounding (+ display formatting). Small change, large correctness
-   impact; blocks the failure-rate work in the roadmap.
-3. **F-1** use `change.index`. One line; stops applying unseen AI edits.
-4. **B-3, B-4, B-8** id hygiene: uniqueness on load, no id reuse, canonical root id.
-   These three share one validation pass in `load_from_json`.
-5. **B-6** normalise AI updates; **B-5** link-cycle fallback.
-6. **F-4/F-9** serialise and await details commits before save/export.
-7. **F-5, F-6, F-7, F-8, F-10** frontend usability; **B-7** i18n of errors.
-8. **R-3** skip POSIX-only tests on Windows.
-9. Desktop items only if the fallback is actually shipped to users: at minimum D-C3
-   (Ctrl+D in text fields), D-C4 (close prompt) and D-H2 (exit code), since those lose
-   data — but note every desktop edit requires re-pinning `desktop/src/`, which the
-   freeze policy currently forbids. The pragmatic route is to point fallback users at
-   `desktop/README.md`'s known-defect list and fix nothing there.
+| # | Items | Status | Where |
+|---|---|---|---|
+| 1 | **B-1/F-2/F-3** escape node names, sanitise imported SVG | ✅ done | D14 (`html.escape` in `node_label`), `diagram.js` `sanitizeSvg`, tests in `test_core_fixes.py` |
+| 2 | **B-2** remove engine rounding | ✅ done | D15 `_tidy` (12 significant figures, display rounds), `test_core_fixes.py` |
+| 3 | **F-1** use `change.index` | ✅ done | `chat.js`; pending list re-rendered after Analyze |
+| 4 | **B-3, B-4, B-8** id hygiene | ✅ done | D16 `_dedupe_node_ids` + `last_load_warnings`, D17 `_canonicalize_root_id`/`ROOT_ID`, whole-tree `next_child_id`, `strip_links_to` → `removedLinks`; `warnings` returned by open |
+| 5 | **B-6** normalise AI updates; **B-5** link cycles | ✅ done | `routes/ai.py` `_normalize_node` before `set_data`; D18 cycle fallback returns last computed / children-only value |
+| 6 | **F-4/F-9** await details commits before save/export | ✅ done | `fta:flush` event collects promises; `flushPendingEdits` awaits them |
+| 7 | **F-5…F-8, F-10** frontend; **B-7** i18n of errors | ✅ done | `is-zero` on `<li>`, hidden rows excluded from navigation; `t()` in `details.js`/`dialogs.js`; `confirmLabel||okLabel`; single toast host; `restoreFocus`; `api_error_response` localised |
+| 8 | **R-3** skip POSIX-only tests on Windows | ✅ done | `requires_symlinks`, `posix_permissions` markers |
+| — | **B-9, B-10, B-11, R-1, R-2, R-4, F-11** | ✅ done | undo pushed after apply; credentials 0o700/0o600 (D20); SDK probe outside lock; D12 + LF-normalised hashing; `PYTHONUTF8=1` documented; tree hint moved below rows |
+| 9 | **D-C1…D-M7** desktop fallback | ⏸ deferred by policy | `desktop/src/` frozen; listed in `desktop/README.md` for fallback users |
+
+---
+
+## Recommended feature upgrades
+
+These are the upgrades proposed for the web app now that the correctness items above
+are closed. The full write-up — what each does today, what is missing, effort and the
+standards they follow — is in
+[`ROADMAP_MECHANICAL_ENGINEERS.md`](ROADMAP_MECHANICAL_ENGINEERS.md); this section is the
+short list and its dependency on the review.
+
+**Unblocked by this review.** Items that could not be built on the old engine and can
+now: failure-rate inputs (needed B-2, done), cut sets (needed unique ids and cycle
+handling, B-4/B-5, done), AI-grounded proposals (needed F-1, done), and any UI that
+prints a probability (needed number formatting decoupled from the engine, done).
+
+### P0 — do first
+
+| Item | What it gives an engineer | Effort |
+|---|---|---|
+| **3.4 Number formatting** — scientific notation with user-chosen significant figures everywhere (details panel, diagram `P:`, tree, exports) | Values like 2.3E-7 readable and consistent; engine already stores full precision | S |
+| **1.3 Failure-rate inputs with mission time** — per basic event choose fixed q, λ·T (1−e^−λT), periodically tested λτ/2, repairable λ/(λ+μ); document-level default mission time and unit; free-text *source* field | Enter the data engineers actually have (OREDA/NPRD/vendor λ), keep provenance in the file; `probability` stays derived for desktop compatibility | M |
+| **1.1 Minimal cut sets** — MOCUS, ranked by probability with contribution, panel beside the diagram, click-to-highlight, Excel/JSON export | The primary FTA output (IEC 61025); also fixes over-counting of repeated (linked) events | M |
+| **1.4 Standard gate types** — k-out-of-n, house, undeveloped first; XOR / INHIBIT / PAND / transfer next | Redundant trains (2oo3), scenario switches, visibly incomplete branches | M–L |
+| **3.1 Standard FTA symbols + top-down layout** — event/gate/basic/undeveloped/house/transfer shapes, legend; keep today's table style as "compact" | Diagrams reviewers and regulators recognise | M |
+
+### P1 — next
+
+- **1.2 Importance measures** (Fussell–Vesely, Birnbaum, RAW, RRW) on top of cut sets; colour the tree by FV. (S after 1.1)
+- **1.5 Common-cause failure groups** with β-factor / MGL. (M)
+- **1.7 Sensitivity and scenario compare** — live ±factor on a basic event; diff of two files. (M)
+- **1.8 ETA** — success/failure pivots summing to 1, consequence categories, end-state frequency table, bow-tie view. (M–L)
+- **2.1 FMEA import/link** — CSV/XLSX rows become candidate basic events, row ID kept for traceability, re-import updates in place. (M)
+- **2.3 Traceability fields** — requirement ID, test reference, owner, status, evidence link, tags; searchable. (S)
+- **2.5 Report export** — PDF/DOCX with diagram, assumptions, event table, cut sets, importance; flat "event table" sheet in Excel. (M)
+- **3.2 Large-tree navigation** — collapse in the diagram, focus mode, minimap, search highlight. (M)
+- **3.3 Grid view** of basic events with paste-from-Excel. (M)
+- **3.5 Lint panel** — single-input gates, events left at 1.0, undeveloped, dangling/cyclic links, duplicate ids (the load warnings from D16 are the first source), ETA branches not summing to 1, parent probability ignored. (S–M)
+
+### P2 — when demanded
+
+Uncertainty propagation (Monte Carlo, 1.6), component library (2.2), revisions and
+review comments with diff (2.4), a headless CLI for batch re-quantification (2.6),
+editing ergonomics and in-app help on the link/gate semantics (3.6, 3.7), and
+completing the Japanese localisation of any new panels (F-6 closed the existing gap).
+
+### AI assistant
+
+Grounded proposals (rate range + source class on each proposed event), narratives built
+from the cut-set and importance tables instead of the raw JSON, and an "audit this
+tree" action that runs the lint rules and asks the model only about what rules cannot
+decide. F-1 is fixed, so extending this area is safe now.
+
+### Small items surfaced by the fixes themselves
+
+- **Disable the action bar until `loadPanels()` resolves** (the open minor item above). S.
+- **Surface `warnings` from open and `removedLinks` from delete more prominently** —
+  they are toasts today; the lint panel (3.5) is their natural home.
+- **Promote `last_load_warnings` (duplicate ids, root renamed) to a file-level notice**
+  that is saved with the file, so a reviewer sees that the source was repaired.
+
+### Suggested order
+
+1. 3.4 + 1.3 together (formatting, rates, mission time) — the change existing users notice first.
+2. 1.1 cut sets, then 1.2 importance.
+3. 1.4 gates and 3.1 symbols together, since every new gate needs a symbol.
+4. 3.5 lint panel, folding in the load/delete warnings.
+5. 2.5 reporting once cut sets and importance exist.
+6. The rest by demand. Nothing is back-ported to `desktop/`, which stays frozen.
