@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-09-22
+
+Single-defect release for the web app: **click-to-select in the diagram panel
+was dead in every Chromium-based browser** -- Chrome, Edge, Brave and the
+packaged build's default browser -- which is the one interaction spec 6.8 calls
+"the main payoff of choosing SVG over PNG". Nothing else changed; the 1.6.3
+bundle is otherwise byte-for-byte what this one freezes.
+
 ### Fixed
 
 - **Clicking a node in the diagram now selects it in the tree and node details
