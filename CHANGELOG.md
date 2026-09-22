@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-09-22
+
+Single-defect release for the web app: **click-to-select in the diagram panel
+was dead in every Chromium-based browser** -- Chrome, Edge, Brave and the
+packaged build's default browser -- which is the one interaction spec 6.8 calls
+"the main payoff of choosing SVG over PNG". Nothing else changed; the 1.6.3
+bundle is otherwise byte-for-byte what this one freezes.
+
+### Fixed
+
+- **Clicking a node in the diagram now selects it in the tree and node details
+  again.** The panel took pointer capture on `pointerdown` so it could pan on
+  drag; Chromium-based browsers then retarget the follow-up `click` at the
+  stage container, so `diagram.js` never found the `<g class="node">` that was
+  pressed and the selection never moved (spec 6.8 "click a node in the diagram
+  -> selects it in the tree"). Capture is now taken only once the pointer has
+  moved past a 4 px slop, i.e. when the gesture really is a pan, and the node
+  under `pointerdown` is remembered as the fallback answer to "which node?".
+  A drag that pans still leaves the selection alone.
+  Pinned by `fta_web/tests/test_diagram_click_select.py`.
+
 ## [1.6.3] - 2026-09-21
 
 Correctness release for the web app, which is now the primary path. Every

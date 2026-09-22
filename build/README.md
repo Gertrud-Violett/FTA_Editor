@@ -179,6 +179,16 @@ The command above. The bundle links against the glibc of the build machine, so
 build on the **oldest** distribution you intend to support — a bundle built on
 a current Ubuntu will not start on an older one (`GLIBC_2.xx not found`).
 
+Verified for 1.6.4 on Ubuntu (glibc 2.39, kernel 6.18) with PyInstaller 6.22.3
+and CPython 3.11: the bundle is about **65 MB, 540 files** with all three AI
+SDKs and `openpyxl`, and every check in
+[How to verify a build](#how-to-verify-a-build) passes against
+`build/dist/fta_editor/fta_editor` — including the `.xlsx` export and the four
+`core/` files matching the checkout byte for byte. Because of the glibc note
+above, a bundle built on a distribution this current is **not** a general-purpose
+Linux release; treat it as a build verification unless you built it on the
+oldest glibc you support.
+
 ### Windows
 
 Verified for 1.6.3 on Windows 11 with PyInstaller 6.22.3 and CPython 3.14: the

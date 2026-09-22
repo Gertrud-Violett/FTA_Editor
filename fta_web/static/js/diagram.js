@@ -26,6 +26,7 @@ const RENDER_DEBOUNCE_MS = 150; // config.RENDER_DEBOUNCE_MS
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 8;
 const ZOOM_STEP = 1.1;
+const PAN_SLOP_PX = 4; // movement below this is a click, not a pan
 
 /** Single WASM instance. It is ~1.1 MB -- never build one per render. */
 let vizPromise = null;
@@ -557,31 +558,58 @@ export function initDiagram(container) {
   }
 
   // ---- pan ---------------------------------------------------------------
-  let dragging = false;
+  // Pointer capture is taken only once the pointer has actually MOVED past
+  // PAN_SLOP_PX. Capturing on pointerdown -- which is what this did until
+  // 1.6.4 -- retargets the compatibility mouse events, so the `click` that
+  // follows is dispatched at the stage <div> instead of the <g class="node">
+  // that was pressed, and click-to-select below could never find a node.
+  let pressing = false;   // left button is down inside the stage
+  let dragging = false;   // ...and it has moved far enough to be a pan
   let dragX = 0;
   let dragY = 0;
+  let pressX = 0;
+  let pressY = 0;
+  let pressNode = null;   // the <g class="node"> under pointerdown, if any
   stage.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
-    dragging = true;
+    pressing = true;
+    dragging = false;
+    pressX = ev.clientX;
+    pressY = ev.clientY;
     dragX = ev.clientX - tx;
     dragY = ev.clientY - ty;
-    stage.setPointerCapture(ev.pointerId);
-    stage.classList.add('is-panning');
+    // Remembered here because the click event may be retargeted (a capture
+    // taken mid-gesture, or a press on a node that scrolls out from under the
+    // pointer); the press target is the honest answer to "which node?".
+    pressNode = (ev.target.closest && ev.target.closest('g.node')) || null;
   });
   stage.addEventListener('pointermove', (ev) => {
-    if (!dragging) return;
+    if (!pressing) return;
+    if (!dragging) {
+      if (Math.abs(ev.clientX - pressX) < PAN_SLOP_PX
+        && Math.abs(ev.clientY - pressY) < PAN_SLOP_PX) return;
+      dragging = true;
+      pressNode = null; // a drag is a pan, never a selection
+      try { stage.setPointerCapture(ev.pointerId); } catch (_) { /* not capturable */ }
+      stage.classList.add('is-panning');
+    }
     tx = ev.clientX - dragX;
     ty = ev.clientY - dragY;
     applyTransform();
   });
   const endPan = (ev) => {
+    if (!pressing) return;
+    pressing = false;
     if (!dragging) return;
     dragging = false;
     try { stage.releasePointerCapture(ev.pointerId); } catch (_) { /* already released */ }
     stage.classList.remove('is-panning');
   };
   stage.addEventListener('pointerup', endPan);
-  stage.addEventListener('pointercancel', endPan);
+  stage.addEventListener('pointercancel', (ev) => {
+    pressNode = null;
+    endPan(ev);
+  });
 
   stage.addEventListener('wheel', (ev) => {
     if (!ev.ctrlKey && !ev.metaKey) return; // plain wheel scrolls the panel
@@ -602,8 +630,9 @@ export function initDiagram(container) {
     // from the editor is never what a click on the diagram means.
     const anchor = ev.target.closest && ev.target.closest('a');
     if (anchor && stage.contains(anchor)) ev.preventDefault();
+    const g = (ev.target.closest && ev.target.closest('g.node')) || pressNode;
+    pressNode = null;
     if (!svgEl) return;
-    const g = ev.target.closest && ev.target.closest('g.node');
     if (!g) return;
     const title = g.querySelector('title');
     if (!title) return;
