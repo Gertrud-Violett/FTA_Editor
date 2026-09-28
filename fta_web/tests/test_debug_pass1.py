@@ -3,6 +3,7 @@ Regression tests for the 1.7.0 backend debugging pass (pass 1: correctness
 and robustness). Each test names the defect it pins; see the commit messages
 for the root cause.
 """
+import importlib
 import json
 import math
 import os
@@ -189,6 +190,11 @@ def app_client(tmp_path):
     app = create_app(fs_root=tmp_path)
     app.config.update(TESTING=True)
     get_state().fs_root = tmp_path
+    # create_app() imports the blueprints by bare module name, so the app's
+    # AppState singleton is the bare ``state`` module's: reset that one too.
+    bare_state = importlib.import_module("state")
+    bare_state.reset_state()
+    bare_state.get_state().fs_root = tmp_path
     with app.test_client() as client:
         yield client
 
@@ -236,6 +242,86 @@ def test_fmea_import_with_a_non_string_lambda_unit_is_a_400(app_client):
         assert response.status_code == 400
         assert strict_loads(response.get_data(as_text=True))["error"]["detail"]["field"] \
             == "lambdaUnit"
+
+
+# ---- a deleted transfer target's id is handed out again --------------------------------
+# DELETE strips links into the deleted subtree precisely because
+# next_child_id may reuse a deleted id -- but a TRANSFER's transferTo was
+# left pointing at the deleted id, so the next Add silently re-targeted the
+# transfer at a new, unrelated node.
+
+
+def api_json(response):
+    assert response.status_code == 200, response.get_data(as_text=True)
+    return strict_loads(response.get_data(as_text=True))
+
+
+def test_deleting_a_transfer_target_clears_the_transfer(app_client):
+    c = app_client
+    target = api_json(c.post("/api/nodes", json={"parentId": "root", "name": "A",
+                                                 "probability": 0.1}))["nodeId"]
+    transfer = api_json(c.post("/api/nodes", json={"parentId": "root", "name": "T"}))["nodeId"]
+    api_json(c.patch("/api/nodes/%s" % transfer,
+                     json={"gateType": "TRANSFER", "transferTo": target}))
+
+    deleted = api_json(c.delete("/api/nodes/%s" % target))
+    assert {"nodeId": transfer, "targetId": target, "relation": "TRANSFER"} \
+        in deleted["removedLinks"]
+    assert any(w["code"] == "LINKS_REMOVED" and w["nodeId"] == transfer
+               for w in deleted["sessionWarnings"])
+
+    reused = api_json(c.post("/api/nodes", json={"parentId": "root", "name": "Unrelated",
+                                                 "probability": 0.9}))
+    node = api_json(c.get("/api/nodes/%s" % transfer))["node"]
+    assert node["gateType"] == "TRANSFER" and node["transferTo"] is None
+    # The transfer is dangling (0 and TRANSFER_MISSING), not the new node's 0.9.
+    by_id = {n["id"]: n for n in reused["tree"]["children"]}
+    assert by_id[transfer]["calculatedProbability"] == 0.0
+    # Undo restores both the node and the transfer.
+    api_json(c.post("/api/undo"))
+    undone = api_json(c.post("/api/undo"))
+    by_id = {n["id"]: n for n in undone["tree"]["children"]}
+    assert by_id[transfer]["transferTo"] == target
+
+
+def test_ai_delete_strips_links_and_transfers_to_the_removed_nodes(
+        app_client, monkeypatch):
+    """The AI 'delete' change goes through the vendored handler, which removes
+    the node and nothing else: links and transfers kept pointing at the id."""
+    ai_routes = importlib.import_module("routes.ai")  # the app's own module
+    get_state = importlib.import_module("state").get_state
+
+    c = app_client
+    a = api_json(c.post("/api/nodes", json={"parentId": "root", "name": "A",
+                                            "probability": 0.1}))["nodeId"]
+    b = api_json(c.post("/api/nodes", json={"parentId": "root", "name": "B",
+                                            "probability": 0.2,
+                                            "links": [{"target_id": a, "relation": "AND"}]}))
+    b = b["nodeId"]
+    t = api_json(c.post("/api/nodes", json={"parentId": "root", "name": "T",
+                                            "gateType": "TRANSFER", "transferTo": a}))["nodeId"]
+
+    class Change:
+        change_type = "delete"
+        target_id = a
+
+    class Handler:
+        pending_changes = [Change()]
+
+        def apply_change_to_fta(self, core, change):
+            core.delete_node_from_data(change.target_id)
+            return True, "deleted"
+
+    monkeypatch.setattr(ai_routes, "_require_configured", lambda: None)
+    monkeypatch.setattr(ai_routes.ai_bridge, "get_handler", lambda: Handler())
+    monkeypatch.setattr(ai_routes.ai_bridge, "change_view",
+                        lambda change, index: {"index": index})
+    payload = api_json(c.post("/api/ai/changes/apply", json={"indices": [0]}))
+    by_id = {n["id"]: n for n in payload["tree"]["children"]}
+    assert by_id[b]["links"] == []
+    assert "transferTo" not in by_id[t]
+    codes = [(w["code"], w["nodeId"]) for w in get_state().session_warnings]
+    assert ("LINKS_REMOVED", b) in codes and ("LINKS_REMOVED", t) in codes
 
 
 # ---- filesystem sandbox: Windows path forms ---------------------------------------------

@@ -84,7 +84,8 @@ try:  # normal package import: ``import fta_web.routes.ai``
         ok_response,
     )
     from ..node_schema import merge_back_node_keys, reconcile_gate_types
-    from ..state import get_state, load_warning_issues
+    from ..state import get_state, load_warning_issues, removed_link_issues
+    from ..tree_ops import all_ids, strip_references_to
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import ai_bridge  # type: ignore[no-redef]
     from errors import (  # type: ignore[no-redef]
@@ -96,7 +97,8 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ok_response,
     )
     from node_schema import merge_back_node_keys, reconcile_gate_types  # type: ignore[no-redef]
-    from state import get_state, load_warning_issues  # type: ignore[no-redef]
+    from state import get_state, load_warning_issues, removed_link_issues  # type: ignore[no-redef]
+    from tree_ops import all_ids, strip_references_to  # type: ignore[no-redef]
 
 log = logging.getLogger(__name__)
 
@@ -222,6 +224,31 @@ def _document_snapshot() -> Tuple[Dict[str, Any], str, str]:
             state.core.mode,
             state.core.title,
         )
+
+
+class _TreeHolder:
+    """The ``get_data()`` a tree_ops helper wants, over a bare tree."""
+
+    def __init__(self, tree: Any):
+        self._tree = tree
+
+    def get_data(self) -> Any:
+        return self._tree
+
+
+def _strip_references_to_removed(state, old_tree: Any) -> None:
+    """Links/transfers into ids that ``old_tree`` had and the live tree has
+    lost, removed and reported as ``LINKS_REMOVED`` session notices (as
+    DELETE /api/nodes does). Caller holds the lock."""
+    gone = all_ids(_TreeHolder(old_tree)) - all_ids(state.core)
+    if not gone:
+        return
+    removed = strip_references_to(state.core, gone)
+    if removed:
+        issues = []
+        for entry in removed:
+            issues.extend(removed_link_issues([entry], entry["targetId"]))
+        state.add_session_warnings(issues)
 
 
 def _mutation_payload(state) -> Dict[str, Any]:
@@ -550,6 +577,10 @@ def post_apply_changes():
         resets = reconcile_gate_types(state.core.get_data(), cause="ai")
         if resets:
             state.add_edit_warnings(load_warning_issues(resets))
+        # The handler's 'delete' removes the node and nothing else. As for
+        # DELETE /api/nodes, links and transfers into the removed ids go too:
+        # the next Add may be handed one of those ids back.
+        _strip_references_to_removed(state, before.get("tree"))
         state.core.recalculate_probabilities()
         state.mark_dirty()
 
@@ -639,10 +670,12 @@ def post_update():
         # AND/OR the model wrote wins (as on load), and the Validation tab
         # says so.
         resets = reconcile_gate_types(new_tree, cause="ai")
+        old_tree = state.core.get_data()
         state.core.set_data(new_tree)
         if resets:
             # An edit notice, not a session one: undoing the update removes it.
             state.add_edit_warnings(load_warning_issues(resets))
+        _strip_references_to_removed(state, old_tree)
         state.core.recalculate_probabilities()
         state.mark_dirty()
 

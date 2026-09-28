@@ -161,6 +161,53 @@ def strip_links_to(core, target_ids) -> List[Dict[str, Any]]:
     return removed
 
 
+def strip_transfers_to(core, target_ids) -> List[Dict[str, Any]]:
+    """Remove every ``transferTo`` whose target is in ``target_ids``.
+
+    The transfer counterpart of :func:`strip_links_to`, for the same reason:
+    ``next_child_id`` may hand a deleted id out again, and a transfer still
+    naming it would silently start transferring an unrelated new node. The
+    node keeps ``gateType: TRANSFER`` (a dangling transfer is 0 and a
+    ``TRANSFER_MISSING`` lint). Returns ``[{"nodeId", "targetId",
+    "relation": "TRANSFER"}]`` in pre-order; nodes inside the deleted set are
+    skipped (they are gone).
+    """
+    targets = {str(t) for t in target_ids}
+    removed: List[Dict[str, Any]] = []
+
+    def walk(node: Dict[str, Any]) -> None:
+        target = node.get("transferTo")
+        if (target not in (None, "") and str(target) in targets
+                and str(node.get("id")) not in targets):
+            node.pop("transferTo", None)
+            removed.append({"nodeId": str(node.get("id")), "targetId": str(target),
+                            "relation": "TRANSFER"})
+        for child in _children(node):
+            walk(child)
+
+    data = core.get_data()
+    if isinstance(data, dict):
+        walk(data)
+    return removed
+
+
+def strip_references_to(core, target_ids) -> List[Dict[str, Any]]:
+    """Links, then transfers, into ``target_ids`` removed (see both helpers)."""
+    return strip_links_to(core, target_ids) + strip_transfers_to(core, target_ids)
+
+
+def all_ids(core) -> set:
+    """Every node id in the tree, as strings."""
+    ids = set()
+    stack = [core.get_data()] if isinstance(core.get_data(), dict) else []
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            ids.add(str(node.get("id")))
+            stack.extend(_children(node))
+    return ids
+
+
 def depth_of(core, node_id: str) -> int:
     """Depth of a node below the root. Root is 0; -1 if the node is not found.
 
