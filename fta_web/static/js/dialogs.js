@@ -23,6 +23,8 @@
  * imports from them.
  */
 import { api, ApiError } from './api.js';
+import { formatProb, getSigFigs } from './numfmt.js';
+import { BASIC_GATES } from './schema.js';
 
 /* ----------------------------------------------------------------- i18n ---- */
 
@@ -550,7 +552,8 @@ export function showNotice(message) {
 
 /* ------------------------------------------------------------- validation ---- */
 
-export const GATES = ['AND', 'OR'];
+/** AND/OR only: link relations and the basic gate select. See schema.js. */
+export const GATES = BASIC_GATES;
 
 /**
  * Normalise a stored gate for display. Empty/missing means OR, matching
@@ -596,11 +599,12 @@ export function sanitizeName(value) {
     .trim();
 }
 
-/** Round for display the way the engine rounds internally (6 decimals). */
+/**
+ * Display form of a probability at the user's significant-figure preference
+ * (numfmt.js). Rounding to six decimals used to show 1e-7 as "0".
+ */
 export function formatProbability(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
-  return String(Math.round(number * 1e6) / 1e6);
+  return formatProb(value, getSigFigs());
 }
 
 /** `Name (id)`, exactly as the desktop dialog renders a link target. */

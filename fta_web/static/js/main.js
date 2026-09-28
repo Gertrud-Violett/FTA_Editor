@@ -97,6 +97,19 @@
  *                                    flips (CSS already hides .is-zero rows)
  *   fta:language  {language}      -> dispatched when EN/JA is switched
  *   fta:session-invalid           -> from api.js; raises the blocking screen
+ *   fta:advanced  {advanced}      -> dispatched when the Advanced switch flips
+ *   fta:sigfigs   {sigFigs}       -> from numfmt.setSigFigs; the shell
+ *                                    re-renders the headline and store.touch()es
+ *
+ * 1.7 SHELL
+ * ---------
+ *   * The bottom panel is a tab strip (tabs/host.js); see buildTabContext()
+ *     for the ctx each tab module receives.
+ *   * Feature string catalogs live in static/js/i18n/*.js and are merged by
+ *     registerStrings() before the first paint (CATALOGS below).
+ *   * <html data-booting> (set by the pre-paint script) blocks the action bar
+ *     and shortcuts until loadPanels() settles; <html data-advanced="0|1">
+ *     mirrors the Advanced switch and hides [data-advanced-only] in CSS.
  */
 
 import {
@@ -110,6 +123,7 @@ import {
   TOKEN_HEADER,
 } from './api.js';
 import { store } from './store.js';
+import { formatProb, getSigFigs, setSigFigs, SIG_FIGS_EVENT } from './numfmt.js';
 
 // ---------------------------------------------------------------------------
 // tiny helpers
@@ -996,6 +1010,7 @@ function applyLanguage() {
   const code = $('#lang-code');
   if (code) code.textContent = language.toUpperCase();
   applyThemeLabel();
+  renderHeadline();
   if (store.state) renderShell(store.state);
 }
 
@@ -1004,6 +1019,106 @@ function setLanguage(next) {
   writeLocal('fta.language', language);
   applyLanguage();
   window.dispatchEvent(new CustomEvent('fta:language', { detail: { language } }));
+}
+
+/**
+ * Merge a feature catalog `{en: {...}, ja: {...}}` into STRINGS, so t()
+ * resolves its keys like any other. A key that already exists is kept (first
+ * registration wins) and reported: test_catalog_parity.py rejects duplicates
+ * across catalogs, so this only fires during development.
+ */
+function registerStrings(table) {
+  if (!table || typeof table !== 'object') return;
+  for (const lang of ['en', 'ja']) {
+    const entries = table[lang];
+    if (!entries || typeof entries !== 'object') continue;
+    for (const [key, value] of Object.entries(entries)) {
+      if (Object.prototype.hasOwnProperty.call(STRINGS[lang], key)) {
+        if (STRINGS[lang][key] !== value) {
+          // eslint-disable-next-line no-console
+          console.warn('[fta] duplicate i18n key ignored: ' + lang + ':' + key);
+        }
+        continue;
+      }
+      STRINGS[lang][key] = String(value);
+    }
+  }
+}
+
+/**
+ * Feature catalogs under static/js/i18n/, loaded before the first
+ * applyLanguage() so no key ever flashes on screen. Each exports
+ * `default {en: {...}, ja: {...}}`. A workstream adds its file here.
+ */
+const CATALOGS = ['./i18n/shell17.js'];
+
+async function loadCatalogs() {
+  await Promise.all(
+    CATALOGS.map(async (spec) => {
+      try {
+        const module = await import(spec);
+        registerStrings(module && (module.default || module.strings));
+      } catch (err) {
+        // A broken catalog costs its strings (keys show as themselves), not
+        // the editor.
+        // eslint-disable-next-line no-console
+        console.error('[fta] could not load catalog ' + spec, err);
+      }
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 1.7 display preferences: Advanced switch, significant figures, headline
+// ---------------------------------------------------------------------------
+
+let advanced = readLocal('fta.advanced') === '1';
+
+/** Basic vs advanced UI. Calculations, files and the API are identical. */
+function setAdvanced(on) {
+  const next = Boolean(on);
+  const changed = next !== advanced;
+  advanced = next;
+  document.documentElement.setAttribute('data-advanced', advanced ? '1' : '0');
+  writeLocal('fta.advanced', advanced ? '1' : '0');
+  const toggle = $('#advanced-toggle');
+  if (toggle && toggle.checked !== advanced) toggle.checked = advanced;
+  renderHeadline();
+  if (changed) {
+    window.dispatchEvent(new CustomEvent('fta:advanced', { detail: { advanced } }));
+  }
+  return advanced;
+}
+
+/** Last value handed to setHeadline, re-rendered on sig-fig / language change. */
+let headline = null;
+
+/**
+ * Paint the top-bar headline. `value` is the top-event probability, `method`
+ * 'mcub' | 'treeWalk' (anything else is treated as the tree walk), `alt` the
+ * other method's value, shown in the MCUB badge's tooltip. null clears it.
+ */
+function setHeadline(next) {
+  headline = next && typeof next === 'object' ? { ...next } : null;
+  renderHeadline();
+}
+
+function renderHeadline() {
+  const valueEl = $('#headline-value');
+  const badge = $('#headline-badge');
+  if (!valueEl || !badge) return;
+  const value = headline ? headline.value : null;
+  valueEl.textContent =
+    value === null || value === undefined ? '—' : formatProb(value, getSigFigs());
+  const mcub = Boolean(headline) && headline.method === 'mcub';
+  badge.hidden = !(mcub && advanced);
+  if (mcub) {
+    const alt =
+      headline.alt === null || headline.alt === undefined ? '—' : formatProb(headline.alt, getSigFigs());
+    badge.title = t('headline.mcubTitle', { alt });
+  } else {
+    badge.removeAttribute('title');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1270,7 +1385,17 @@ function onSessionInvalid() {
 // sibling modules
 // ---------------------------------------------------------------------------
 
-const modules = { tree: null, details: null, dialogs: null, filedialog: null, aisettings: null };
+const modules = {
+  tree: null,
+  details: null,
+  dialogs: null,
+  filedialog: null,
+  aisettings: null,
+  tabs: null,
+};
+
+/** The bottom panel's tab host (tabs/host.js), once loaded. */
+let tabHost = null;
 
 function renderModuleFallback(host, name, err) {
   if (!host) return;
@@ -1304,6 +1429,7 @@ async function loadPanels() {
     ['capabilities', './capabilities.js'],
     ['chat', './chat.js'],
     ['aisettings', './aisettings.js'],
+    ['tabs', './tabs/host.js'],
   ];
   await Promise.all(
     specs.map(async ([name, spec]) => {
@@ -1338,6 +1464,83 @@ async function loadPanels() {
   if (modules.dialogs) {
     callInit(modules.dialogs, ['initDialogs', 'init'], document.body, 'dialogs', true);
   }
+
+  // The tab strip last: the Details tab wraps #details-root, which must
+  // already be initialised above. Without the host the Details tab still
+  // shows (it is the static default); only the other tabs are lost.
+  if (modules.tabs && typeof modules.tabs.initTabHost === 'function') {
+    try {
+      tabHost = modules.tabs.initTabHost({ strip: $('#bottom-tabs'), ctx: buildTabContext() });
+    } catch (err) {
+      tabHost = null;
+      showError(err);
+    }
+  }
+}
+
+/**
+ * The context every tab module's mount(panel, ctx) receives. Frozen in
+ * Phase 0; see tabs/host.js for the full contract.
+ */
+function buildTabContext() {
+  const listen = (name, pick) => (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const handler = (event) => {
+      try {
+        cb(pick(event));
+      } catch (err) {
+        showError(err);
+      }
+    };
+    window.addEventListener(name, handler);
+    return () => window.removeEventListener(name, handler);
+  };
+  return Object.freeze({
+    store,
+    api,
+    t,
+    toast,
+    showError,
+    fmt: Object.freeze({
+      prob: (value) => formatProb(value, getSigFigs()),
+      sigFigs: () => getSigFigs(),
+    }),
+    onSigFigs: listen(SIG_FIGS_EVENT, () => getSigFigs()),
+    advanced: () => advanced,
+    onAdvanced: listen('fta:advanced', () => advanced),
+    highlight: (ids, source) => store.setHighlight({ ids, source }),
+    clearHighlight: (source) => store.clearHighlight(source),
+    setOverlay: (overlay) => store.setOverlay(overlay),
+    jumpTo: (nodeId) => store.jumpTo(nodeId),
+    capabilities: () => {
+      const caps = store.state && store.state.capabilities;
+      return caps && typeof caps === 'object' ? { ...caps } : {};
+    },
+    pickPath: (opts) => pickPath(opts),
+    diagramPng: () => diagramPng(),
+  });
+}
+
+/**
+ * The diagram preview as a PNG Blob (browser canvas), or null when the
+ * diagram panel is missing or has nothing rendered. Never downloads.
+ */
+async function diagramPng() {
+  if (!diagramPanel || typeof diagramPanel.toPngBlob !== 'function') return null;
+  try {
+    return (await diagramPanel.toPngBlob()) || null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[fta] diagram PNG failed', err);
+    return null;
+  }
+}
+
+/** Show a bottom-panel tab. @returns {boolean} false when it is not available. */
+function openTab(id) {
+  if (!tabHost) return String(id) === 'details';
+  const shown = tabHost.select(String(id));
+  return shown === String(id);
 }
 
 function callInit(module, names, host, label, optional = false) {
@@ -1579,6 +1782,7 @@ async function actionEdit() {
     return;
   }
   // details.js edits in place, so this is a pointer rather than a failure.
+  openTab('details');
   const host = $('#details-root');
   if (host) {
     host.focus();
@@ -1702,8 +1906,17 @@ function exportFilename(extension) {
   return documentStem() + '.' + extension;
 }
 
-/** Ask filedialog.js for a path. Resolves null when cancelled or unavailable. */
-async function pickPath(mode) {
+/**
+ * Ask filedialog.js for a path. Resolves null when cancelled or unavailable.
+ *
+ * `request` is either a mode string ('open' | 'save', the JSON document
+ * picker) or an options object `{mode, extensions, filename, startDir,
+ * title}` for other files (FMEA .xlsx, report .docx...). Omitted options
+ * default to the document picker's behaviour.
+ */
+async function pickPath(request) {
+  const opts = request && typeof request === 'object' ? request : { mode: request };
+  const mode = opts.mode === 'save' ? 'save' : 'open';
   const module = modules.filedialog;
   const open = module && (module.openFileDialog || module.default);
   if (typeof open !== 'function') {
@@ -1711,18 +1924,21 @@ async function pickPath(mode) {
     return null;
   }
   const current = (store.state && store.state.currentPath) || '';
+  const extensions =
+    Array.isArray(opts.extensions) && opts.extensions.length ? opts.extensions : ['.json'];
+  let filename = null;
+  if (opts.filename !== undefined) filename = opts.filename;
+  else if (mode === 'save') filename = current ? pathBaseName(current) : exportFilename('json');
   try {
-    const chosen = await open({
+    const options = {
       mode,
-      startDir: current ? pathDirName(current) : null,
-      filename:
-        mode === 'save'
-          ? current
-            ? pathBaseName(current)
-            : exportFilename('json')
-          : null,
-      extensions: ['.json'],
-    });
+      startDir:
+        opts.startDir !== undefined ? opts.startDir : current ? pathDirName(current) : null,
+      filename,
+      extensions,
+    };
+    if (opts.title !== undefined) options.title = opts.title;
+    const chosen = await open(options);
     return chosen || null;
   } catch (err) {
     showError(err);
@@ -2142,6 +2358,9 @@ const ACTIONS = {
 function wireActionBar() {
   for (const button of document.querySelectorAll('[data-action]')) {
     button.addEventListener('click', () => {
+      // Boot gate: CSS already blocks pointer input; this catches Enter/Space
+      // on a button that had focus before the panels finished loading.
+      if (isBooting()) return;
       if (button.getAttribute('aria-disabled') === 'true') {
         explainDisabled(button);
         return;
@@ -2154,8 +2373,12 @@ function wireActionBar() {
     event.preventDefault();
     actionAiSettings();
   });
-  $('#btn-undo').addEventListener('click', () => actionHistory('undo'));
-  $('#btn-redo').addEventListener('click', () => actionHistory('redo'));
+  $('#btn-undo').addEventListener('click', () => {
+    if (!isBooting()) actionHistory('undo');
+  });
+  $('#btn-redo').addEventListener('click', () => {
+    if (!isBooting()) actionHistory('redo');
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2185,6 +2408,43 @@ function wireTopbar() {
 
   $('#btn-theme').addEventListener('click', cycleTheme);
   $('#btn-lang').addEventListener('click', () => setLanguage(language === 'en' ? 'ja' : 'en'));
+
+  const advancedToggle = $('#advanced-toggle');
+  if (advancedToggle) {
+    advancedToggle.checked = advanced;
+    setAdvanced(advanced);
+    advancedToggle.addEventListener('change', () => setAdvanced(advancedToggle.checked));
+  }
+
+  const sigFigs = $('#sigfig-select');
+  if (sigFigs) {
+    sigFigs.value = String(getSigFigs());
+    sigFigs.addEventListener('change', () => setSigFigs(Number(sigFigs.value)));
+  }
+  // Every probability on screen is formatted at render time, so a new
+  // precision is a re-render: the headline here, details.js (and every other
+  // store subscriber) through store.touch(), tabs through ctx.onSigFigs.
+  window.addEventListener(SIG_FIGS_EVENT, () => {
+    const select = $('#sigfig-select');
+    const value = String(getSigFigs());
+    if (select && select.value !== value) select.value = value;
+    renderHeadline();
+    if (store.state) store.touch();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// boot gate: <html data-booting> is set by the pre-paint script
+// ---------------------------------------------------------------------------
+
+function isBooting() {
+  return document.documentElement.hasAttribute('data-booting');
+}
+
+function endBoot() {
+  document.documentElement.removeAttribute('data-booting');
+  const bar = document.querySelector('.actionbar');
+  if (bar) bar.removeAttribute('aria-busy');
 }
 
 // ---------------------------------------------------------------------------
@@ -2260,6 +2520,9 @@ function onKeyDown(event) {
   }
 
   if (sessionLost) return;
+  // Boot gate: no shortcut may act before every panel has loaded. Escape
+  // (above) stays live so a toast can still be dismissed.
+  if (isBooting()) return;
   if (modalOpen()) return;
 
   const ctrl = event.ctrlKey || event.metaKey;
@@ -2345,6 +2608,8 @@ function onKeyDown(event) {
 // ---------------------------------------------------------------------------
 
 async function boot() {
+  // Feature catalogs first, so applyLanguage() never paints a raw key.
+  await loadCatalogs();
   loadLayout();
   applyLayout();
   applyTheme();
@@ -2416,7 +2681,14 @@ async function boot() {
   // Done before the panels load so the top bar is correct while they arrive.
   store.subscribe(renderShell);
 
-  await loadPanels();
+  // Boot gate: the action bar and shortcuts come alive only once every panel
+  // (and dialogs.js, which several actions need) has loaded -- or failed to,
+  // in which case each panel shows its own fallback and the bar still works.
+  try {
+    await loadPanels();
+  } finally {
+    endBoot();
+  }
 }
 
 /**
@@ -2440,6 +2712,30 @@ window.ftaShell = {
     store.setState(state);
     return state;
   },
+
+  // ---- 1.7 ---------------------------------------------------------------
+  /** Merge a `{en, ja}` catalog into the string table (see registerStrings). */
+  registerStrings,
+  /** @returns {boolean} true when the Advanced switch is on. */
+  advanced() {
+    return advanced;
+  },
+  /** Turn advanced mode on/off; dispatches `fta:advanced` {advanced}. */
+  setAdvanced,
+  /** @returns {number} significant figures for displayed probabilities (1..6). */
+  sigFigs() {
+    return getSigFigs();
+  },
+  /** Change the significant-figure preference; dispatches `fta:sigfigs`. */
+  setSigFigs,
+  /** Server-side path picker: pickPath('open'|'save') or pickPath({mode, extensions, filename, startDir, title}). */
+  pickPath,
+  /** @returns {Promise<Blob|null>} the diagram preview as a PNG, without downloading. */
+  diagramPng,
+  /** Top-bar headline: setHeadline({value, method: 'mcub'|'treeWalk', alt}) or null. */
+  setHeadline,
+  /** Show a bottom-panel tab by id. @returns {boolean} false if hidden/unknown. */
+  openTab,
 };
 
 boot().catch((err) => {
