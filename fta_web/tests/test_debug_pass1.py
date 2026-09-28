@@ -166,6 +166,78 @@ def test_repairable_sample_at_the_overflow_edge_is_one_not_zero():
     assert out["p95"] == 1.0
 
 
+# ---- responses are strict JSON ------------------------------------------------------------
+# Python's json accepts NaN/Infinity (in a request body and in a file), and
+# Flask echoed them back verbatim -- in an error's detail.value, or in the
+# tree of a loaded file. The browser's JSON.parse rejects those tokens, so the
+# frontend saw an unparseable response instead of the error / document.
+
+
+def strict_loads(text):
+    def refuse(token):
+        raise ValueError("non-standard JSON token %s" % token)
+
+    return json.loads(text, parse_constant=refuse)
+
+
+@pytest.fixture
+def app_client(tmp_path):
+    from fta_web.app import create_app
+    from fta_web.state import get_state, reset_state
+
+    reset_state()
+    app = create_app(fs_root=tmp_path)
+    app.config.update(TESTING=True)
+    get_state().fs_root = tmp_path
+    with app.test_client() as client:
+        yield client
+
+
+def test_an_error_echoing_nan_is_strict_json(app_client):
+    node = strict_loads(app_client.post("/api/nodes", json={
+        "parentId": "root", "name": "a"}).get_data(as_text=True))["nodeId"]
+    for raw in ('{"quant": {"model": "rate", "lambda": NaN}}',
+                '{"quant": {"model": "rate", "lambda": Infinity}}',
+                '{"probability": -Infinity}'):
+        response = app_client.patch("/api/nodes/%s" % node, data=raw,
+                                    content_type="application/json")
+        assert response.status_code == 400
+        payload = strict_loads(response.get_data(as_text=True))
+        assert payload["error"]["code"] == "INVALID_FIELD"
+    response = app_client.post("/api/analysis/uncertainty", data='{"timeLimit": NaN}',
+                               content_type="application/json")
+    assert strict_loads(response.get_data(as_text=True))["error"]["detail"]["value"] is None
+
+
+def test_a_file_with_non_finite_numbers_opens_as_strict_json(app_client, tmp_path):
+    doc = {"title": "t", "date": "", "mode": "FTA", "tree": {
+        "id": "root", "name": "Top", "type": "Event", "probability": 1.0, "logicGate": "OR",
+        "notes": "", "links": [], "children": [
+            {"id": "root_0", "name": "A", "type": "Event", "probability": float("nan"),
+             "logicGate": "", "notes": "", "links": [], "children": [],
+             "quant": {"model": "rate", "lambda": float("inf")}},
+        ]}}
+    target = tmp_path / "nan.json"
+    target.write_text(json.dumps(doc), encoding="utf-8")  # writes NaN / Infinity
+    for response in (app_client.post("/api/file/open", json={"path": str(target)}),
+                     app_client.get("/api/state"),
+                     app_client.get("/api/nodes/root_0"),
+                     app_client.get("/api/analysis/summary")):
+        assert response.status_code == 200
+        strict_loads(response.get_data(as_text=True))
+
+
+def test_fmea_import_with_a_non_string_lambda_unit_is_a_400(app_client):
+    """``lambda_unit not in LAMBDA_UNITS`` (a dict) raised TypeError -> 500
+    for a list or object value."""
+    for unit in (["h"], {"h": 1}):
+        response = app_client.post("/api/fmea/import", json={
+            "path": "x.csv", "mapping": {}, "parentId": "root", "lambdaUnit": unit})
+        assert response.status_code == 400
+        assert strict_loads(response.get_data(as_text=True))["error"]["detail"]["field"] \
+            == "lambdaUnit"
+
+
 # ---- filesystem sandbox: Windows path forms ---------------------------------------------
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows path semantics")

@@ -274,7 +274,9 @@ def post_import():
 
     mapping = _mapping_arg(payload)
     lambda_unit = payload.get("lambdaUnit", "h") or "h"
-    if lambda_unit not in fmea_import.LAMBDA_UNITS:
+    # isinstance first: LAMBDA_UNITS is a dict, and a list/object value is
+    # unhashable (TypeError -> 500) in the membership test.
+    if not isinstance(lambda_unit, str) or lambda_unit not in fmea_import.LAMBDA_UNITS:
         raise ApiError(INVALID_FIELD, "'lambdaUnit' must be one of h, y, FIT.", 400,
                        {"field": "lambdaUnit", "value": lambda_unit})
     update = payload.get("update", True)
