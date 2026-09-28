@@ -213,10 +213,14 @@ oldest glibc you support.
 
 ### Windows
 
-Verified for 1.6.3 on Windows 11 with PyInstaller 6.22.3 and CPython 3.14: the
-bundle is about **62 MB, 528 files** with all three AI SDKs and `openpyxl`, and
-every check in [How to verify a build](#how-to-verify-a-build) passes against
-`build\dist\fta_editor\fta_editor.exe`. The command is the same as on Linux:
+Verified for 1.7.0 on Windows 11 with PyInstaller 6.22.3 and CPython 3.14: the
+bundle is about **72 MB, 594 files** with all three AI SDKs, `openpyxl` and
+`python-docx` (1.6.3 was 62 MB, 528 files; python-docx and its `lxml` account
+for most of the difference), and every check in
+[How to verify a build](#how-to-verify-a-build) passes against
+`build\dist\fta_editor\fta_editor.exe`, as do the CLI subcommands and a DOCX
+report generated both over HTTP and by `fta_editor.exe report`. The command is
+the same as on Linux:
 
 ```
 uv sync --extra all --extra build
