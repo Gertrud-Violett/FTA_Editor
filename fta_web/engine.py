@@ -376,7 +376,7 @@ def kofn_probability(probs: List[float], k: int) -> float:
         for j in range(i, 0, -1):
             dist[j] = dist[j] * (1.0 - p) + dist[j - 1] * p
         dist[0] *= (1.0 - p)
-    return min(1.0, max(0.0, sum(dist[k:])))
+    return min(1.0, max(0.0, math.fsum(dist[k:])))
 
 
 def pand_divide(product: float, n: int) -> float:

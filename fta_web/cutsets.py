@@ -267,7 +267,7 @@ def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
             rest ^= low
         rows.append((p, len(indices), indices))
     rows.sort(key=lambda r: (-r[0], r[1], [s.events[i]["name"] for i in r[2]]))
-    rare = sum(r[0] for r in rows)
+    rare = math.fsum(r[0] for r in rows)
     mcub = mcub_of(r[0] for r in rows)
 
     cut_sets = []

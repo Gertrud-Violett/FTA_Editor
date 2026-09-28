@@ -379,7 +379,7 @@ def _eta_rules(nodes, add) -> None:
         children = [c for c in (node.get("children") or []) if isinstance(c, dict)]
         if not children:
             continue
-        total = sum(_float(c.get("probability", 1.0), 1.0) for c in children)
+        total = math.fsum(_float(c.get("probability", 1.0), 1.0) for c in children)
         if abs(total - 1.0) > 1e-6:
             add("ETA_BRANCH_SUM", node, {"sum": total, "n": len(children)})
 

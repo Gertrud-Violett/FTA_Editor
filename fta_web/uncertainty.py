@@ -343,9 +343,11 @@ def run(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
 
     completed = len(samples)
     ordered = sorted(samples)
-    mean = sum(samples) / completed if completed else None
+    # math.fsum, not sum(): only 3.12+ compensates a float sum(), and the
+    # mean/std of constant samples must be exact on every supported Python.
+    mean = math.fsum(samples) / completed if completed else None
     if completed > 1:
-        var = sum((v - mean) ** 2 for v in samples) / (completed - 1)
+        var = math.fsum((v - mean) ** 2 for v in samples) / (completed - 1)
         std = math.sqrt(max(0.0, var))
     else:
         std = 0.0 if completed else None
