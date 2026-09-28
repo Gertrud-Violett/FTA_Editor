@@ -59,13 +59,20 @@ def fake_importance(result):
 
 
 def fake_uncertainty(tree, analysis, n=None, seed=None, time_limit=30, bins=40):
+    """The shape of uncertainty.run: ``completed`` is a sample count and a
+    time-capped run says so in ``truncatedByTime``."""
     fake_uncertainty.calls.append(n)
+    fake_uncertainty.time_limits.append(time_limit)
+    completed = fake_uncertainty.completed if fake_uncertainty.completed is not None else n
     return {"mean": 1.5e-3, "median": 1.2e-3, "p05": 4e-4, "p95": 3.3e-3, "std": 1e-3,
             "pointEstimate": 1.3e-3, "histogram": {"edges": [0, 1e-3, 2e-3], "counts": [7, 3]},
-            "completed": True, "seed": 42, "method": "engine", "n": n}
+            "requested": n, "completed": completed, "truncatedByTime": completed != n,
+            "seed": 42, "method": "tree"}
 
 
 fake_uncertainty.calls = []
+fake_uncertainty.time_limits = []
+fake_uncertainty.completed = None
 
 
 def fake_lint(tree, analysis, session_warnings=(), mode="FTA", extra=None):
@@ -98,6 +105,8 @@ def fakes(monkeypatch):
     monkeypatch.setattr(fta_web.lint, "run", fake_lint, raising=False)
     monkeypatch.setattr(fta_web.engine, "summary", fake_summary)
     fake_uncertainty.calls = []
+    fake_uncertainty.time_limits = []
+    fake_uncertainty.completed = None
 
 
 ALL = list(report_docx.SECTIONS)
@@ -254,6 +263,75 @@ def test_docx_in_eta_mode_skips_analysis(fakes):
     text = text_of(doc)
     assert "Event tree (ETA) mode" in text
     assert "Sensor | 1" not in text
+
+
+def test_docx_uncertainty_shows_samples_and_a_partial_run(fakes):
+    """A time-capped run is flagged, and the sample count is shown."""
+    fake_uncertainty.completed = 1200
+    text = text_of(build({"sections": ["uncertainty"], "runUncertainty": True,
+                          "uncertaintyN": 5000}))
+    assert "Time limit reached" in text
+    assert "Samples | 1200 / 5000" in text
+    assert "Seed | 42" in text
+
+
+def test_docx_uncertainty_complete_run_is_not_flagged(fakes):
+    text = text_of(build({"sections": ["uncertainty"], "runUncertainty": True,
+                          "uncertaintyN": 300}))
+    assert "Time limit reached" not in text
+    assert "Samples | 300" in text
+
+
+def test_report_time_limit_is_passed_and_capped(fakes):
+    report_docx.collect_report_data(make_core(), [], {
+        "sections": ["uncertainty"], "runUncertainty": True, "uncertaintyTimeLimit": 5})
+    report_docx.collect_report_data(make_core(), [], {
+        "sections": ["uncertainty"], "runUncertainty": True, "uncertaintyTimeLimit": 10 ** 6})
+    report_docx.collect_report_data(make_core(), [], {
+        "sections": ["uncertainty"], "runUncertainty": True, "uncertaintyTimeLimit": -1})
+    assert fake_uncertainty.time_limits == [5.0, report_docx.MAX_REPORT_MC_SECONDS,
+                                            report_docx.DEFAULT_REPORT_MC_SECONDS]
+
+
+def test_docx_cutsets_show_mcub_and_rare_event(fakes):
+    text = text_of(build({"sections": ["cutsets"], "sigFigs": 3}))
+    assert "MCUB (all cut sets): 0.0124" in text
+    assert "rare-event approximation: 0.0125" in text
+
+
+def test_docx_infinite_rrw_is_shown_as_infinity(fakes, monkeypatch):
+    import fta_web.importance
+
+    def infinite(result):
+        return [{"id": "c", "name": "Sensor", "q": 1.0, "fv": 1.0, "birnbaum": 1.0, "raw": 1.0,
+                 "rrw": None, "rrwInfinite": True, "cutSetCount": 1}]
+
+    monkeypatch.setattr(fta_web.importance, "compute", infinite)
+    rows = [[c.text for c in r.cells] for r in build({"sections": ["importance"]}).tables[-1].rows]
+    assert rows[1][6] == "∞"
+
+
+def test_real_uncertainty_result_has_the_keys_the_report_reads():
+    """Contract with uncertainty.run: the fakes above must not drift from it."""
+    from fta_web import uncertainty
+
+    tree = {"id": "root", "name": "t", "logicGate": "OR", "links": [], "children": [
+        {"id": "a", "name": "A", "probability": 1e-3, "children": [], "links": [],
+         "quant": {"model": "fixed", "unc": {"dist": "lognormal", "median": 1e-3, "ef": 3}}}]}
+    result = uncertainty.run(tree, None, n=50, seed=1)
+    for key in ("requested", "completed", "truncatedByTime", "seed", "method",
+                "pointEstimate", "mean", "median", "p05", "p95", "std", "histogram"):
+        assert key in result, key
+    assert result["completed"] == 50 and result["truncatedByTime"] is False
+
+
+def test_real_importance_result_has_rrw_infinite():
+    from fta_web import cutsets, importance
+
+    tree = {"id": "root", "name": "t", "logicGate": "OR", "links": [], "children": [
+        {"id": "a", "name": "A", "probability": 1e-3, "children": [], "links": []}]}
+    rows = importance.compute(cutsets.compute(tree, None))
+    assert rows[0]["rrwInfinite"] is True and rows[0]["rrw"] is None
 
 
 # ---- the route -------------------------------------------------------------------------------

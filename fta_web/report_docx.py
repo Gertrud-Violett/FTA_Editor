@@ -54,6 +54,8 @@ DEFAULT_TOP_CUTSETS = 50
 DEFAULT_TOP_IMPORTANCE = 30
 MAX_TOP_N = 10000
 MAX_REPORT_MC_N = 5000
+DEFAULT_REPORT_MC_SECONDS = 30.0
+MAX_REPORT_MC_SECONDS = 60.0  # same cap as POST /api/analysis/uncertainty
 MAX_DIAGRAM_BYTES = 8 * 1024 * 1024
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -139,6 +141,19 @@ def _int_in(value: Any, lo: int, hi: int, default: int) -> int:
     return max(lo, min(hi, number))
 
 
+def _time_limit(value: Any) -> float:
+    """The report's Monte Carlo time cap in seconds: (0, MAX], default 30."""
+    if isinstance(value, bool) or value is None:
+        return DEFAULT_REPORT_MC_SECONDS
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return DEFAULT_REPORT_MC_SECONDS
+    if not number > 0 or number != number:  # also rejects NaN
+        return DEFAULT_REPORT_MC_SECONDS
+    return min(number, MAX_REPORT_MC_SECONDS)
+
+
 def normalize_options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Defaults applied, unknown sections dropped, numbers clamped."""
     raw = raw or {}
@@ -161,6 +176,7 @@ def normalize_options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
                                  DEFAULT_TOP_IMPORTANCE),
         "runUncertainty": run_mc,
         "uncertaintyN": _int_in(raw.get("uncertaintyN"), 1, MAX_REPORT_MC_N, MAX_REPORT_MC_N),
+        "uncertaintyTimeLimit": _time_limit(raw.get("uncertaintyTimeLimit")),
         "uncertainty": raw.get("uncertainty") if isinstance(raw.get("uncertainty"), dict) else None,
         "limits": raw.get("limits") if isinstance(raw.get("limits"), dict) else None,
         "diagramPng": raw.get("diagramPng") if isinstance(raw.get("diagramPng"), (bytes, bytearray)) else None,
@@ -286,7 +302,8 @@ def collect_report_data(core, session_warnings: Optional[List[Dict[str, Any]]] =
             result, reason = try_call(
                 "uncertainty", "run", tree, analysis,
                 n=min(int(opts.get("uncertaintyN") or MAX_REPORT_MC_N), MAX_REPORT_MC_N),
-                seed=mc.get("seed"), time_limit=30,
+                seed=mc.get("seed"),
+                time_limit=opts.get("uncertaintyTimeLimit") or DEFAULT_REPORT_MC_SECONDS,
             )
         if result is None:
             data["unavailable"]["uncertainty"] = reason or "notRun"
@@ -356,6 +373,7 @@ L10N: Dict[str, Dict[str, str]] = {
         "eventTable": "Basic events",
         "cutsets": "Minimal cut sets",
         "cutsets.summary": "Showing {shown} of {total} cut sets.",
+        "cutsets.totals": "MCUB (all cut sets): {mcub}; rare-event approximation: {rare}.",
         "cutsets.truncated": "The cut-set list was truncated ({by}).",
         "importance": "Importance measures",
         "importance.summary": "Showing {shown} of {total} events, by Fussell-Vesely.",
@@ -410,6 +428,7 @@ L10N: Dict[str, Dict[str, str]] = {
         "eventTable": "基本事象",
         "cutsets": "ミニマルカットセット",
         "cutsets.summary": "{total} 件中 {shown} 件を表示。",
+        "cutsets.totals": "MCUB(全カットセット): {mcub}、レアイベント近似: {rare}。",
         "cutsets.truncated": "カットセットの一覧は打ち切られています({by})。",
         "importance": "重要度",
         "importance.summary": "{total} 事象中 {shown} 件を FV 順に表示。",
@@ -657,6 +676,9 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
         cs = doc_data.get("cutsets")
         if not unavailable_note("cutsets") and cs:
             doc.add_paragraph(t("cutsets.summary", shown=cs.get("shown"), total=cs.get("total")))
+            if cs.get("mcub") is not None or cs.get("rareEvent") is not None:
+                doc.add_paragraph(t("cutsets.totals", mcub=fp(cs.get("mcub")),
+                                    rare=fp(cs.get("rareEvent"))))
             if cs.get("truncated"):
                 by = cs.get("truncatedBy")
                 by = ", ".join(map(str, by)) if isinstance(by, (list, tuple)) else (by or "")
@@ -677,8 +699,11 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
         if not unavailable_note("importance") and imp:
             doc.add_paragraph(t("importance.summary", shown=len(imp.get("rows") or []),
                                 total=imp.get("total")))
+            # RRW is null with rrwInfinite when removing the event makes the
+            # top event impossible: that is ∞, not "missing".
             rows = [[m.get("id"), m.get("name"), fp(m.get("q")), fp(m.get("fv")),
-                     fp(m.get("birnbaum")), fp(m.get("raw")), fp(m.get("rrw")),
+                     fp(m.get("birnbaum")), fp(m.get("raw")),
+                     "∞" if m.get("rrwInfinite") and m.get("rrw") is None else fp(m.get("rrw")),
                      m.get("cutSetCount")] for m in imp.get("rows") or []]
             _table(doc, [t("col.id"), t("col.name"), t("col.q"), t("col.fv"), t("col.birnbaum"),
                          t("col.raw"), t("col.rrw"), t("col.count")], rows)
@@ -688,13 +713,21 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
         doc.add_heading(t("uncertainty"), 1)
         unc = doc_data.get("uncertainty")
         if not unavailable_note("uncertainty") and unc:
-            if unc.get("completed") is False:
+            # uncertainty.run reports a time-capped run through truncatedByTime;
+            # ``completed`` is the sample count, not a flag.
+            if unc.get("truncatedByTime"):
                 _note(doc, t("uncertainty.partial"))
             rows = []
             for key in ("pointEstimate", "mean", "median", "p05", "p95", "std"):
                 if key in unc:
                     rows.append([t("stat." + key), fp(unc.get(key))])
-            for key in ("n", "seed", "method"):
+            completed, requested = unc.get("completed"), unc.get("requested")
+            if completed is not None:
+                samples = str(completed)
+                if requested is not None and requested != completed:
+                    samples = "%s / %s" % (completed, requested)
+                rows.append([t("stat.n"), samples])
+            for key in ("seed", "method"):
                 if unc.get(key) is not None:
                     rows.append([t("stat." + key), str(unc.get(key))])
             _table(doc, [t("col.stat"), t("col.value")], rows)
