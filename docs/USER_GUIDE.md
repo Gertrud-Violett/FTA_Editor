@@ -1062,13 +1062,13 @@ Options:
 | Option | Commands | Meaning |
 |---|---|---|
 | `--json` / `--csv` | all | Machine-readable output instead of a text table (mutually exclusive). With several files, `--json` gives a list. |
-| `--out PATH` | all | Write to PATH instead of stdout. With several files, give a directory; each file then gets `<stem>.<command>.<ext>`. `report` defaults to `<stem>_report.docx` beside the input. |
+| `--out PATH` | all | Write to PATH instead of stdout. With several files, give a directory; each file then gets `<stem>.<command>.<ext>`. A path that exists as a directory or ends in `/` or `\` is a directory. `report` defaults to `<stem>_report.docx` beside the input; for `report`, any `--out` that does not end in `.docx` is a directory. |
 | `--sig-figs N` | all | Significant figures in text tables, 1–6, default 3. JSON and CSV carry full precision. |
 | `--mission-time H` | all | Override the document's mission time, in hours. |
 | `--max-order N`, `--max-count N`, `--cutoff P` | cutsets, importance, report | Override the cut-set limits. |
-| `--top N` | cutsets, importance | Show only the first N rows. |
+| `--top N` | cutsets, importance | Show only the first N rows (N ≥ 1). |
 | `--n N`, `--seed S` | mc, report | Monte Carlo samples and seed. |
-| `--time-limit SEC` | mc, report | Monte Carlo time cap, default 30. |
+| `--time-limit SEC` | mc, report | Monte Carlo time cap in seconds, > 0, default 30. For `report` it is capped at 60. |
 | `--strict` | validate | Warnings also fail (exit 1). |
 | `--sections LIST`, `--lang en\|ja`, `--uncertainty` | report | Comma-separated sections, the report language, and whether to run Monte Carlo (n ≤ 5,000) and include it. |
 

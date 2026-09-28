@@ -334,7 +334,9 @@ Body (every key optional):
   - Without it, the diagram is rendered server-side in the compact style when
     a native `dot` exists. Otherwise the report says it is unavailable.
 - `topN` values are clamped to 1–10,000.
-- `runUncertainty` runs Monte Carlo for the report: n ≤ 5,000 and 30 s.
+- `runUncertainty` runs Monte Carlo for the report. `uncertaintyN` sets the
+  samples (1–5,000, default 5,000) and `uncertaintyTimeLimit` the time cap in
+  seconds (default 30, at most 60). The seed is `analysis.mc.seed`.
 
 The response is the `.docx` bytes as an attachment, `<document>_report.docx`,
 with MIME type

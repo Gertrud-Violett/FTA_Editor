@@ -203,6 +203,26 @@ pinned hashes, and no divergence was added. All new behaviour lives in
   (with its `k`/`transferTo`) and reported as `LOAD_REPAIR`
   (`gate_type_reset`). An AI update also no longer restores a `transferTo`
   whose transfer gate it dropped.
+- **The report's Monte Carlo section never said when a run was cut short**,
+  and never showed the sample count: it read `completed` as a flag and a
+  key `n` that `uncertainty.run` does not return. It now notes a time-capped
+  run (`truncatedByTime`) and shows *completed / requested* samples.
+- **The report's cut-set section lacked the MCUB and rare-event values** the
+  User Guide lists; they are now shown. An infinite RRW is shown as `∞`
+  rather than `—`.
+- **`report --time-limit` was ignored** (the report always used 30 s). It is
+  now honoured, capped at 60 s.
+- **`report x.json --out reports`** wrote a file literally named `reports`
+  when that folder did not exist yet. For `report`, an `--out` that does not
+  end in `.docx` is now a folder.
+- **`--top 0`** silently showed every row, and `--time-limit 0` was
+  accepted; both are now usage errors (exit 2). A mistyped command
+  (`fta_editor qunatify x.json`) now names the valid commands instead of
+  argparse's "unrecognized arguments".
+- **Excel export**: a NaN or infinite number in a hand-edited file was
+  written as an empty numeric cell (malformed for Excel); it is now left
+  blank. On the Analysis sheet only probabilities use the scientific format
+  (mission time reads `8760`, not `8.76E+03`).
 
 ### Compatibility
 
