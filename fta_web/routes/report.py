@@ -9,7 +9,12 @@ Body (every key optional)::
      sigFigs?: 1..6, lang?: "en"|"ja",
      diagramPng?: base64 PNG (<= 8 MB decoded, PNG signature required),
      topN?: {cutsets?: int, importance?: int},
-     runUncertainty?: bool}
+     runUncertainty?: bool,
+     limits?: {maxOrder?, maxCount?, cutoff?},   # as analysis.cutsets
+     uncertaintyN?: 1..MAX_REPORT_MC_N, uncertaintyTimeLimit?: (0, 60] s}
+
+Any other key is ignored (never passed to the report builder); a bad value
+of a listed key is 400 ``INVALID_FIELD``.
 
 The response is the ``.docx`` bytes as an attachment named
 ``<document>_report.docx``. 503 ``EXPORT_UNAVAILABLE`` (``detail.format:
@@ -35,7 +40,7 @@ from typing import Any, Dict
 from flask import Blueprint, request, send_file
 
 try:  # normal package import: ``import fta_web.routes.report``
-    from .. import fsbrowser
+    from .. import engine, fsbrowser
     from .. import report_docx
     from ..errors import (
         EXPORT_UNAVAILABLE,
@@ -47,6 +52,7 @@ try:  # normal package import: ``import fta_web.routes.report``
     from ..i18n import request_language
     from ..state import get_state
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import engine  # type: ignore[no-redef]
     import fsbrowser  # type: ignore[no-redef]
     import report_docx  # type: ignore[no-redef]
     from errors import (  # type: ignore[no-redef]
@@ -150,12 +156,61 @@ def _options(payload: Dict[str, Any]) -> Dict[str, Any]:
     lang = payload.get("lang")
     if lang is not None and lang not in ("en", "ja"):
         raise _bad("lang", "'lang' must be 'en' or 'ja'.")
-    raw = dict(payload)
+    # Only the documented keys reach normalize_options: nothing else in the
+    # body (a forged 'generated' stamp, precomputed 'uncertainty' results)
+    # is trusted, and the numeric ones are validated here, not just clamped.
+    raw: Dict[str, Any] = {k: payload[k] for k in _PASSTHROUGH if k in payload}
     raw["lang"] = lang or request_language()
     raw["diagramPng"] = decode_png(payload["diagramPng"]) if payload.get("diagramPng") else None
     raw["runUncertainty"] = payload.get("runUncertainty") is True
-    raw.pop("uncertainty", None)  # results are computed here, never trusted from the client
+    if payload.get("limits") is not None:
+        raw["limits"] = _limits(payload["limits"])
+    if payload.get("uncertaintyN") is not None:
+        raw["uncertaintyN"] = _report_int(payload["uncertaintyN"], "uncertaintyN", 1,
+                                          report_docx.MAX_REPORT_MC_N)
+    if payload.get("uncertaintyTimeLimit") is not None:
+        raw["uncertaintyTimeLimit"] = _time_limit(payload["uncertaintyTimeLimit"])
     return report_docx.normalize_options(raw)
+
+
+#: Body keys handed to normalize_options as given (it clamps/filters them).
+_PASSTHROUGH = ("sections", "sigFigs", "topN", "topCutsets", "topImportance")
+#: The report's own Monte Carlo cap, as for POST /api/analysis/uncertainty.
+MAX_REPORT_MC_SECONDS = 60.0
+
+
+def _report_int(value: Any, field: str, lo: int, hi: int) -> int:
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or not lo <= value <= hi:
+        raise _bad(field, "'%s' must be an integer between %d and %d." % (field, lo, hi), value)
+    return value
+
+
+def _time_limit(value: Any) -> float:
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not 0 < value <= MAX_REPORT_MC_SECONDS):
+        raise _bad("uncertaintyTimeLimit",
+                   "'uncertaintyTimeLimit' must be a number of seconds in (0, %g]."
+                   % MAX_REPORT_MC_SECONDS, value)
+    return float(value)
+
+
+def _limits(value: Any) -> Dict[str, Any]:
+    """``{maxOrder?, maxCount?, cutoff?}`` validated exactly like the
+    ``analysis.cutsets`` settings (and /api/analysis/cutsets). No time budget:
+    the report keeps cutsets.compute's own."""
+    if not isinstance(value, dict):
+        raise _bad("limits", "'limits' must be an object {maxOrder, maxCount, cutoff}.")
+    unknown = sorted(str(k) for k in value if k not in ("maxOrder", "maxCount", "cutoff"))
+    if unknown:
+        raise _bad("limits", "Unsupported key(s) in 'limits': %s." % ", ".join(unknown))
+    partial = {k: v for k, v in value.items() if v is not None}
+    try:
+        merged = engine.merge_analysis(engine.default_analysis(), {"cutsets": partial})
+    except engine.AnalysisError as exc:
+        raise _bad("limits." + exc.field.split(".")[-1], str(exc), exc.value)
+    return {k: merged["cutsets"][k] for k in partial}
 
 
 def _stem(state) -> str:

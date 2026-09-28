@@ -324,6 +324,72 @@ def test_ai_delete_strips_links_and_transfers_to_the_removed_nodes(
     assert ("LINKS_REMOVED", b) in codes and ("LINKS_REMOVED", t) in codes
 
 
+# ---- report options: whitelisted and validated -------------------------------------------
+# routes/report.py handed the whole request body to normalize_options, so
+# client 'limits' reached cutsets.compute unvalidated (maxOrder 999, a huge
+# timeBudgetS) and 'generated' / anything else passed straight through.
+
+
+@pytest.fixture
+def report_client(tmp_path, monkeypatch):
+    import flask
+
+    from fta_web.routes import report as report_routes
+    from fta_web.routes.report import report_bp
+    from fta_web.state import get_state, reset_state
+
+    reset_state()
+    get_state().fs_root = tmp_path
+    seen = {}
+
+    def capture(snapshot, warnings, options):
+        seen["options"] = options
+        return {"captured": True}
+
+    monkeypatch.setattr(report_routes.report_docx, "collect_report_data", capture)
+    monkeypatch.setattr(report_routes.report_docx, "build_report", lambda data, options: b"PK")
+    monkeypatch.setattr(report_routes, "docx_available", lambda: True)
+    app = flask.Flask(__name__)
+    app.register_blueprint(report_bp)
+    app.config.update(TESTING=True)
+    with app.test_client() as client:
+        yield client, seen
+
+
+@pytest.mark.parametrize("body, field", [
+    ({"limits": {"maxOrder": 999}}, "limits.maxOrder"),
+    ({"limits": {"maxCount": 0}}, "limits.maxCount"),
+    ({"limits": {"cutoff": 2}}, "limits.cutoff"),
+    ({"limits": {"timeBudgetS": 1e9}}, "limits"),
+    ({"limits": "all"}, "limits"),
+    ({"uncertaintyN": 10 ** 9}, "uncertaintyN"),
+    ({"uncertaintyN": "5"}, "uncertaintyN"),
+    ({"uncertaintyTimeLimit": 3600}, "uncertaintyTimeLimit"),
+    ({"uncertaintyTimeLimit": 0}, "uncertaintyTimeLimit"),
+])
+def test_report_rejects_unvalidated_limits(report_client, body, field):
+    client, seen = report_client
+    response = client.post("/api/report/docx", json=dict(body, sections=["cutsets"]))
+    assert response.status_code == 400, response.get_data(as_text=True)
+    error = json.loads(response.get_data(as_text=True))["error"]
+    assert error["code"] == "INVALID_FIELD" and error["detail"]["field"] == field
+    assert "options" not in seen
+
+
+def test_report_passes_only_whitelisted_options(report_client):
+    client, seen = report_client
+    response = client.post("/api/report/docx", json={
+        "sections": ["cutsets", "uncertainty"], "limits": {"maxOrder": 3, "cutoff": 0},
+        "uncertaintyN": 100, "uncertaintyTimeLimit": 5, "generated": "1970-01-01 forged",
+        "uncertainty": {"mean": 0.5}, "runUncertainty": True, "bogus": 1})
+    assert response.status_code == 200, response.get_data(as_text=True)
+    options = seen["options"]
+    assert options["limits"] == {"maxOrder": 3, "cutoff": 0.0}
+    assert options["uncertaintyN"] == 100
+    assert options.get("generated") is None
+    assert options["uncertainty"] is None
+
+
 # ---- filesystem sandbox: Windows path forms ---------------------------------------------
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows path semantics")
