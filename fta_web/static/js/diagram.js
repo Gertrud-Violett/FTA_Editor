@@ -17,10 +17,42 @@
  * it is not, everything happens here. The panel always states which engine
  * produced what is on screen, because a user comparing output against the
  * desktop app needs to know whether it is even the same engine (spec 6.8).
+ *
+ * 1.7 (workstream B)
+ * ------------------
+ *   * Style (Compact boxes | Standard symbols) and Layout (LR | TB) live in the
+ *     Aa popover and persist in `fta.diagram.settings`; both are display-only.
+ *     They travel to /api/dot and /api/render with the sig-fig preference.
+ *   * In the symbols style the Graphviz approximations are replaced with true
+ *     IEC 61025 / NUREG-0492 symbols by fta_symbols.js after sanitizeSvg().
+ *     Export (SVG, canvas PNG, ftaShell.diagramPng) uses that processed SVG.
+ *   * Click-to-select resolves a node's <title> through the response `idMap`
+ *     (every DOT name -> node id, gate/event symbol nodes included) and falls
+ *     back to the sanitizeId mirror below.
+ *   * store.onHighlight outlines the matching nodes (`is-highlighted`),
+ *     store.onOverlay({kind:'fv', values}) fills events on a sequential scale
+ *     with a legend, and `fta:jump` {id} centres a node.
  */
 import { api, ApiError } from './api.js';
 import { store } from './store.js';
 import { el, clear, injectStyles } from './dialogs.js';
+import { formatProb, getSigFigs } from './numfmt.js';
+import { replaceGateShapes } from './fta_symbols.js';
+import diagramCatalog from './i18n/diagram.js';
+
+function registerCatalog() {
+  try {
+    if (window.ftaShell && typeof window.ftaShell.registerStrings === 'function') {
+      window.ftaShell.registerStrings(diagramCatalog);
+    }
+  } catch (_err) {
+    /* t() below falls back to the catalog itself */
+  }
+}
+registerCatalog();
+
+const DIAGRAM_STYLES = ['compact', 'symbols'];
+const DIAGRAM_RANKDIRS = ['LR', 'TB'];
 
 const RENDER_DEBOUNCE_MS = 150; // config.RENDER_DEBOUNCE_MS
 const ZOOM_MIN = 0.1;
@@ -44,9 +76,21 @@ function getViz() {
 
 function t(key, fallback) {
   const fn = window.ftaShell && window.ftaShell.t;
-  if (typeof fn !== 'function') return fallback;
-  const out = fn(key);
-  return out === key ? fallback : out;
+  const out = typeof fn === 'function' ? fn(key) : key;
+  if (out !== key) return out;
+  const lang = window.ftaShell && window.ftaShell.language === 'ja' ? 'ja' : 'en';
+  const own = (diagramCatalog[lang] && diagramCatalog[lang][key]) || (diagramCatalog.en && diagramCatalog.en[key]);
+  return own || fallback;
+}
+
+/** The user's significant-figure preference, through the shell when present. */
+function currentSigFigs() {
+  try {
+    if (window.ftaShell && typeof window.ftaShell.sigFigs === 'function') return window.ftaShell.sigFigs();
+  } catch (_err) {
+    /* fall through */
+  }
+  return getSigFigs();
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +146,10 @@ function readDiagramSettings() {
   }
   // fontChoice '' means "auto-detect"; popoverLeft/Top null means "not moved
   // yet, use the default lower-right pin".
-  const out = { fontChoice: '', scale: SCALE_DEFAULT, popoverLeft: null, popoverTop: null };
+  const out = {
+    fontChoice: '', scale: SCALE_DEFAULT, popoverLeft: null, popoverTop: null,
+    style: 'compact', rankdir: 'LR',
+  };
   if (!raw) return out;
   try {
     const parsed = JSON.parse(raw);
@@ -113,6 +160,8 @@ function readDiagramSettings() {
     const top = Number(parsed && parsed.popoverTop);
     if (Number.isFinite(left)) out.popoverLeft = left;
     if (Number.isFinite(top)) out.popoverTop = top;
+    if (parsed && DIAGRAM_STYLES.indexOf(parsed.style) !== -1) out.style = parsed.style;
+    if (parsed && DIAGRAM_RANKDIRS.indexOf(parsed.rankdir) !== -1) out.rankdir = parsed.rankdir;
   } catch (_err) {
     /* corrupt entry: keep the defaults */
   }
@@ -275,8 +324,33 @@ function buildIdMap(flat) {
   return map;
 }
 
+/** Light -> strong orange; black label text stays readable at both ends. */
+const SCALE_LOW = [255, 244, 229];
+const SCALE_HIGH = [230, 85, 13];
+function scaleColor(fraction) {
+  const f = Math.min(1, Math.max(0, Number(fraction) || 0));
+  const c = SCALE_LOW.map((lo, i) => Math.round(lo + (SCALE_HIGH[i] - lo) * f));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+/** The node's main shape: the event box / table background, never a symbol. */
+function isMainGroup(g) {
+  const cls = g.getAttribute('class') || '';
+  if (/\bfta-event-conditioning\b/.test(cls)) return true;
+  return !/\bfta-(gate|event)\b/.test(cls);
+}
+
+function mainShape(g) {
+  for (const child of Array.from(g.children)) {
+    const tag = child.localName || child.nodeName;
+    if (tag === 'polygon' || tag === 'ellipse' || tag === 'path') return child;
+  }
+  return null;
+}
+
 export function initDiagram(container) {
   if (!container) throw new Error('initDiagram(container): container is required');
+  registerCatalog();
 
   injectStyles('fta-diagram-styles', STYLES);
   clear(container);
@@ -315,6 +389,26 @@ export function initDiagram(container) {
 
   const fontDetectedNote = el('span', { class: 'diagram__fontnote' });
 
+  const styleSelect = el('select', { 'aria-label': 'Diagram style' });
+  const layoutSelect = el('select', { 'aria-label': 'Diagram layout' });
+  const styleLabel = el('span');
+  const layoutLabel = el('span');
+  function relabelLayoutControls() {
+    clear(styleSelect);
+    styleSelect.appendChild(el('option', { value: 'compact', text: t('diagram17.styleCompact', 'Compact boxes') }));
+    styleSelect.appendChild(el('option', { value: 'symbols', text: t('diagram17.styleSymbols', 'Standard symbols') }));
+    styleSelect.value = boxSettings.style;
+    clear(layoutSelect);
+    layoutSelect.appendChild(el('option', { value: 'LR', text: t('diagram17.layoutLR', 'Left → right') }));
+    layoutSelect.appendChild(el('option', { value: 'TB', text: t('diagram17.layoutTB', 'Top → down') }));
+    layoutSelect.value = boxSettings.rankdir;
+    styleLabel.textContent = t('diagram17.style', 'Style');
+    layoutLabel.textContent = t('diagram17.layout', 'Layout');
+    styleSelect.setAttribute('aria-label', t('diagram17.style', 'Style'));
+    layoutSelect.setAttribute('aria-label', t('diagram17.layout', 'Layout'));
+  }
+  relabelLayoutControls();
+
   function refreshFontNote() {
     const active = boxSettings.fontChoice ? boxSettings.fontChoice : detectFont();
     fontDetectedNote.textContent = boxSettings.fontChoice
@@ -339,6 +433,8 @@ export function initDiagram(container) {
     { class: 'diagram__popover', hidden: true },
     [
       popoverHead,
+      el('label', { class: 'diagram__popoverRow' }, [styleLabel, styleSelect]),
+      el('label', { class: 'diagram__popoverRow' }, [layoutLabel, layoutSelect]),
       el('label', { class: 'diagram__popoverRow' }, [
         el('span', { text: t('diagram.fontLabel', 'Font') }),
         fontSelect,
@@ -450,6 +546,18 @@ export function initDiagram(container) {
     refreshFontNote();
     schedule();
   });
+  styleSelect.addEventListener('change', () => {
+    boxSettings.style = DIAGRAM_STYLES.indexOf(styleSelect.value) !== -1 ? styleSelect.value : 'compact';
+    writeDiagramSettings(boxSettings);
+    resetView = true;
+    schedule();
+  });
+  layoutSelect.addEventListener('change', () => {
+    boxSettings.rankdir = DIAGRAM_RANKDIRS.indexOf(layoutSelect.value) !== -1 ? layoutSelect.value : 'LR';
+    writeDiagramSettings(boxSettings);
+    resetView = true;
+    schedule();
+  });
   scaleInput.addEventListener('change', () => {
     const value = Math.round(Number(scaleInput.value));
     boxSettings.scale = Number.isFinite(value)
@@ -506,6 +614,9 @@ export function initDiagram(container) {
       font: boxSettings.fontChoice || detectFont(),
       scale: boxSettings.scale,
       dark: isDarkMode(),
+      style: boxSettings.style,
+      rankdir: boxSettings.rankdir,
+      sigFigs: currentSigFigs(),
     };
   }
 
@@ -514,6 +625,13 @@ export function initDiagram(container) {
   let ty = 0;
   let svgEl = null;
   let lastSvgText = '';
+  // What export uses: the raw Graphviz SVG for compact, the symbol-processed
+  // one for the symbols style (so exports show the true symbols).
+  let exportSvgText = '';
+  let dotIdMap = new Map();      // DOT node name -> node id, from /api/dot
+  let fallbackIdMap = null;      // sanitizeId mirror, built lazily per render
+  let resetView = false;         // re-fit after a style/layout switch
+  let pendingJump = null;
   let renderer = 'wasm';
   let timer = null;
   let generation = 0;
@@ -636,19 +754,109 @@ export function initDiagram(container) {
     if (!g) return;
     const title = g.querySelector('title');
     if (!title) return;
-    const map = buildIdMap(store.flat ? store.flat() : []);
-    const real = map.get(title.textContent.trim());
+    // A gate or event symbol resolves (through idMap) to its event node.
+    const real = resolveNodeId(title.textContent.trim());
     if (real) store.select(real);
   });
 
-  function markSelection() {
-    if (!svgEl) return;
-    const selected = store.selectedId ? sanitizeId(store.selectedId) : null;
+  /** DOT node name -> tree node id: the server's idMap, else the sanitizeId mirror. */
+  function resolveNodeId(name) {
+    if (dotIdMap.has(name)) return dotIdMap.get(name);
+    if (!fallbackIdMap) fallbackIdMap = buildIdMap(store.flat ? store.flat() : []);
+    return fallbackIdMap.get(name) || null;
+  }
+
+  /** [{g, id}] for every rendered node group. */
+  function nodeGroups() {
+    if (!svgEl) return [];
+    const out = [];
     svgEl.querySelectorAll('g.node').forEach((g) => {
       const title = g.querySelector('title');
-      const isSel = !!(title && selected && title.textContent.trim() === selected);
-      g.classList.toggle('is-selected', isSel);
+      const id = title ? resolveNodeId(title.textContent.trim()) : null;
+      if (id !== null && id !== undefined) out.push({ g, id: String(id) });
     });
+    return out;
+  }
+
+  function markSelection() {
+    if (!svgEl) return;
+    fallbackIdMap = null; // the tree may have changed since the last lookup
+    const selected = store.selectedId ? String(store.selectedId) : null;
+    for (const { g, id } of nodeGroups()) g.classList.toggle('is-selected', !!selected && id === selected);
+  }
+
+  // ---- highlight / overlay / jump ----------------------------------------
+  let highlight = store.highlight || { ids: [], source: null };
+  let overlay = store.overlay || null;
+
+  const legendTitle = el('span', { class: 'diagram__legendTitle' });
+  const legendLow = el('span');
+  const legendHigh = el('span');
+  const legend = el('div', { class: 'diagram__legend', hidden: true }, [
+    legendTitle,
+    el('span', { class: 'diagram__legendBar' }),
+    el('div', { class: 'diagram__legendScale' }, [legendLow, legendHigh]),
+  ]);
+  stage.appendChild(legend);
+
+  function applyHighlight() {
+    const ids = new Set((highlight && highlight.ids) || []);
+    for (const { g, id } of nodeGroups()) g.classList.toggle('is-highlighted', ids.has(id));
+  }
+
+  function applyOverlay() {
+    const values = overlay && overlay.values && typeof overlay.values === 'object' ? overlay.values : null;
+    let max = 0;
+    if (values) {
+      for (const key of Object.keys(values)) {
+        const v = Number(values[key]);
+        if (Number.isFinite(v) && v > max) max = v;
+      }
+    }
+    for (const { g, id } of nodeGroups()) {
+      if (!isMainGroup(g)) continue;
+      const shape = mainShape(g);
+      if (!shape) continue;
+      const v = values ? Number(values[id]) : NaN;
+      if (values && Number.isFinite(v)) {
+        shape.style.fill = scaleColor(max > 0 ? v / max : 0);
+        g.classList.add('has-overlay');
+      } else {
+        shape.style.removeProperty('fill');
+        g.classList.remove('has-overlay');
+      }
+    }
+    legend.hidden = !values;
+    if (values) {
+      const kind = String((overlay && overlay.kind) || '');
+      legendTitle.textContent = kind === 'fv'
+        ? t('diagram17.legendFv', 'Fussell-Vesely importance')
+        : kind.toUpperCase();
+      legendLow.textContent = t('diagram17.legendLow', 'low') + ' 0';
+      legendHigh.textContent = formatProb(max, currentSigFigs()) + ' ' + t('diagram17.legendHigh', 'high');
+    }
+  }
+
+  /** Centre node `id` in the stage without changing the zoom. */
+  function jumpTo(id) {
+    if (!svgEl) {
+      pendingJump = id;
+      return;
+    }
+    const wanted = String(id);
+    const found = nodeGroups().find(({ g, id: gid }) => gid === wanted && isMainGroup(g));
+    if (!found) return;
+    const box = found.g.getBoundingClientRect();
+    const view = stage.getBoundingClientRect();
+    tx += view.left + view.width / 2 - (box.left + box.width / 2);
+    ty += view.top + view.height / 2 - (box.top + box.height / 2);
+    applyTransform();
+  }
+
+  function decorate() {
+    markSelection();
+    applyHighlight();
+    applyOverlay();
   }
 
   function setStatusMessage(text, kind) {
@@ -667,10 +875,18 @@ export function initDiagram(container) {
       const box = effectiveBoxSettings();
       const payload = await api.get(
         `/dot?hideZero=${hideZero ? 'true' : 'false'}&font=${encodeURIComponent(box.font)}` +
-        `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}`
+        `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}` +
+        `&style=${encodeURIComponent(box.style)}&rankdir=${encodeURIComponent(box.rankdir)}` +
+        `&sigFigs=${encodeURIComponent(box.sigFigs)}`
       );
       if (mine !== generation || destroyed) return; // a newer render superseded this one
       renderer = payload.renderer || 'wasm';
+      const idMap = new Map();
+      if (payload.idMap && typeof payload.idMap === 'object') {
+        for (const key of Object.keys(payload.idMap)) idMap.set(key, String(payload.idMap[key]));
+      }
+      const renderedStyle = payload.style || box.style;
+      const renderedRankdir = payload.rankdir || box.rankdir;
 
       const viz = await getViz();
       if (mine !== generation || destroyed) return;
@@ -683,6 +899,10 @@ export function initDiagram(container) {
       const parsed = doc.documentElement;
       if (!parsed || parsed.nodeName === 'parsererror') throw new Error('Graphviz returned invalid SVG.');
       sanitizeSvg(parsed);
+      // After sanitizing: the symbol paths are built from numbers only.
+      if (renderedStyle === 'symbols') replaceGateShapes(parsed, renderedRankdir);
+      dotIdMap = idMap;
+      fallbackIdMap = null;
       svgEl = document.importNode(parsed, true);
       // Give the SVG real intrinsic pixel size from its own viewBox rather
       // than stripping width/height outright. .diagram__canvas is
@@ -705,9 +925,20 @@ export function initDiagram(container) {
         svgEl.removeAttribute('height');
       }
       canvas.appendChild(svgEl);
+      exportSvgText = renderedStyle === 'symbols'
+        ? new XMLSerializer().serializeToString(svgEl)
+        : svgText;
 
-      markSelection();
-      if (scale === 1 && tx === 0 && ty === 0) fit();
+      decorate();
+      if (resetView || (scale === 1 && tx === 0 && ty === 0)) {
+        resetView = false;
+        fit();
+      }
+      if (pendingJump !== null) {
+        const id = pendingJump;
+        pendingJump = null;
+        jumpTo(id);
+      }
       setStatusMessage('');
       setMeta(
         renderer === 'native'
@@ -717,6 +948,7 @@ export function initDiagram(container) {
     } catch (err) {
       if (mine !== generation || destroyed) return;
       svgEl = null;
+      exportSvgText = '';
       clear(canvas);
       const msg = err instanceof ApiError ? err.message : String((err && err.message) || err);
       setStatusMessage(t('diagram.error', 'Could not render the diagram: ') + msg, 'error');
@@ -740,11 +972,11 @@ export function initDiagram(container) {
   }
 
   function exportSvg() {
-    if (!lastSvgText) {
+    if (!exportSvgText) {
       setStatusMessage(t('diagram.nothingToExport', 'Nothing to export yet.'), 'error');
       return;
     }
-    download(new Blob([lastSvgText], { type: 'image/svg+xml;charset=utf-8' }), 'fta_diagram.svg');
+    download(new Blob([exportSvgText], { type: 'image/svg+xml;charset=utf-8' }), 'fta_diagram.svg');
   }
 
   async function exportPng() {
@@ -764,6 +996,9 @@ export function initDiagram(container) {
           font: box.font,
           scale: box.scale,
           dark: box.dark,
+          style: box.style,
+          rankdir: box.rankdir,
+          sigFigs: box.sigFigs,
         });
         const bin = atob(res.data);
         const bytes = new Uint8Array(bin.length);
@@ -791,7 +1026,7 @@ export function initDiagram(container) {
    */
   function toPngBlob() {
     return new Promise((resolve) => {
-      if (!lastSvgText) {
+      if (!exportSvgText) {
         resolve(null);
         return;
       }
@@ -800,7 +1035,7 @@ export function initDiagram(container) {
       const w = (box && box.width) || 1200;
       const h = (box && box.height) || 800;
       const img = new Image();
-      const svgBlob = new Blob([lastSvgText], { type: 'image/svg+xml;charset=utf-8' });
+      const svgBlob = new Blob([exportSvgText], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(svgBlob);
       img.onload = () => {
         const c = document.createElement('canvas');
@@ -823,6 +1058,19 @@ export function initDiagram(container) {
 
   // ---- wiring ------------------------------------------------------------
   const unsubscribe = store.subscribe(() => { markSelection(); schedule(); });
+  const unsubscribeHighlight = typeof store.onHighlight === 'function'
+    ? store.onHighlight((next) => { highlight = next || { ids: [], source: null }; applyHighlight(); })
+    : null;
+  const unsubscribeOverlay = typeof store.onOverlay === 'function'
+    ? store.onOverlay((next) => { overlay = next || null; applyOverlay(); })
+    : null;
+  const onJump = (ev) => {
+    const id = ev && ev.detail && ev.detail.id;
+    if (id !== undefined && id !== null && id !== '') jumpTo(id);
+  };
+  window.addEventListener('fta:jump', onJump);
+  const onSigFigs = () => schedule();
+  window.addEventListener('fta:sigfigs', onSigFigs);
   const onHideZero = () => schedule();
   window.addEventListener('fta:hide-zero', onHideZero);
   // The toolbar buttons carry glyphs, not words, so a sighted user sees nothing
@@ -830,7 +1078,7 @@ export function initDiagram(container) {
   // screen-reader user switching mid-session would otherwise hear the old
   // language. Re-render on the next diagram update picks up the meta line for
   // free; the toolbar needs this.
-  const onLanguage = () => { retitleToolbar(); refreshFontNote(); schedule(); };
+  const onLanguage = () => { retitleToolbar(); refreshFontNote(); relabelLayoutControls(); schedule(); };
   window.addEventListener('fta:language', onLanguage);
 
   // Explicit light/dark from the theme toggle...
@@ -855,10 +1103,15 @@ export function initDiagram(container) {
     exportPng,
     toPngBlob,
     getBoxSettings: effectiveBoxSettings,
+    jumpTo,
     destroy() {
       destroyed = true;
       if (timer) clearTimeout(timer);
       window.removeEventListener('fta:hide-zero', onHideZero);
+      window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:sigfigs', onSigFigs);
+      if (typeof unsubscribeHighlight === 'function') unsubscribeHighlight();
+      if (typeof unsubscribeOverlay === 'function') unsubscribeOverlay();
       window.removeEventListener('fta:language', onLanguage);
       window.removeEventListener('fta:theme', onThemeChange);
       if (darkMediaQuery) darkMediaQuery.removeEventListener('change', onThemeChange);
@@ -892,6 +1145,22 @@ const STYLES = `
 .diagram__canvas g.node.is-selected > path,
 .diagram__canvas g.node.is-selected > ellipse {
   stroke: var(--fta-accent, #14507d); stroke-width:2.5px; }
+.diagram__canvas g.node.is-highlighted > polygon,
+.diagram__canvas g.node.is-highlighted > path,
+.diagram__canvas g.node.is-highlighted > ellipse {
+  stroke: var(--fta-accent, #14507d); stroke-width:4.5px; }
+.diagram__canvas g.node.is-highlighted { filter: drop-shadow(0 0 3px var(--fta-accent, #14507d)); }
+.diagram__legend { position:absolute; left:8px; bottom:8px; z-index:2; display:flex; flex-direction:column;
+  gap:2px; padding:6px 8px; font-size:11px; border-radius:4px; pointer-events:none;
+  background: var(--fta-surface, #fff); color: var(--fta-fg, #10151c);
+  border:1px solid var(--fta-border, #d7dde5); box-shadow: 0 2px 6px rgba(16,20,24,0.15); }
+.diagram__legend[hidden] { display:none; }
+.diagram__legendTitle { font-weight:600; }
+.diagram__legendBar { display:block; width:9rem; height:8px; border-radius:2px;
+  border:1px solid var(--fta-border, #d7dde5);
+  background: linear-gradient(to right, rgb(255,244,229), rgb(230,85,13)); }
+.diagram__legendScale { display:flex; justify-content:space-between; gap:8px;
+  color: var(--fta-muted-fg, #5d6a78); font-variant-numeric: tabular-nums; }
 .diagram__status { flex:0 0 auto; padding:4px 8px; font-size:12px; min-height:0;
   color: var(--fta-fg, #10151c); }
 .diagram__status--error { color: var(--fta-danger-fg, #a8321c); }
