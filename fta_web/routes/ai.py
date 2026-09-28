@@ -543,6 +543,13 @@ def post_apply_changes():
 
         # One entry for the whole batch, so one Ctrl-Z reverses all of it.
         state.push_undo(before)
+        # The handler's 'edit' writes only logicGate. On a node with a
+        # gateType that no longer projects to it (a KOFN the AI made an AND)
+        # the engine would follow the stale gateType and silently ignore the
+        # applied edit -- so the AI's logicGate wins, as on /update and load.
+        resets = reconcile_gate_types(state.core.get_data(), cause="ai")
+        if resets:
+            state.add_edit_warnings(load_warning_issues(resets))
         state.core.recalculate_probabilities()
         state.mark_dirty()
 
@@ -631,10 +638,11 @@ def post_update():
         # A gateType the model kept while changing logicGate is stale: the
         # AND/OR the model wrote wins (as on load), and the Validation tab
         # says so.
-        resets = reconcile_gate_types(new_tree)
-        if resets:
-            state.add_session_warnings(load_warning_issues(resets))
+        resets = reconcile_gate_types(new_tree, cause="ai")
         state.core.set_data(new_tree)
+        if resets:
+            # An edit notice, not a session one: undoing the update removes it.
+            state.add_edit_warnings(load_warning_issues(resets))
         state.core.recalculate_probabilities()
         state.mark_dirty()
 
