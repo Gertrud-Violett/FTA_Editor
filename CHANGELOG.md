@@ -184,6 +184,15 @@ pinned hashes, and no divergence was added. All new behaviour lives in
 
 ### Fixed
 
+- **Diagram labels spilled past their boxes or sat off-centre.** Graphviz
+  sizes and places label text with its own font metrics, which run 20–25%
+  narrower than the fonts the page draws with. The preview now centres each
+  label in its box and, only if it would still overflow, squeezes it to fit.
+  Browser SVG/PNG exports use the same fitted labels. Server-side padding
+  grows with the row's length and is split evenly around the text, so native
+  Graphviz exports are centred too. Box scale 0 no longer spills.
+- **The top-bar date field was clipped** (`2026-09-2`) by the new 1.7
+  controls; it now always has room for a full date.
 - **The node details showed small probabilities as `0`.**
   `dialogs.formatProbability` rounded to six decimals, so 1e-7 displayed as
   `0` even though the stored value was right. It now uses
