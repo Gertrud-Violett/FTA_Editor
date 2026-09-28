@@ -378,10 +378,11 @@ MERGE_BACK_KEYS = (
 )
 
 
-def reconcile_gate_types(tree: Any) -> List[Dict[str, Any]]:
+def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, Any]]:
     """Drop every ``gateType`` that no longer projects to its node's
     ``logicGate``. Mutates ``tree``; returns load warnings
-    (``kind: "gate_type_reset"``).
+    (``kind: "gate_type_reset"``, ``cause``: ``desktop`` for a loaded file,
+    ``ai`` for an AI edit -- it picks the message).
 
     The 1.6 desktop app edits only ``logicGate`` and keeps unknown keys, so a
     file edited there can carry a stale ``gateType`` (a KOFN whose gate the
@@ -411,6 +412,8 @@ def reconcile_gate_types(tree: Any) -> List[Dict[str, Any]]:
                 node.pop(key)
                 dropped.append(key)
         node_id = str(node.get("id"))
+        where = ("set by the AI assistant" if cause == "ai"
+                 else "probably changed in the desktop editor")
         warnings.append({
             "kind": "gate_type_reset",
             "old_id": node_id,
@@ -419,9 +422,10 @@ def reconcile_gate_types(tree: Any) -> List[Dict[str, Any]]:
             "gateType": gate_type,
             "logicGate": logic,
             "dropped": dropped,
-            "message": "Node %r: its gate is %s (probably changed in the desktop editor) but the "
+            "cause": cause,
+            "message": "Node %r: its gate is %s (%s) but the "
                        "stored gate type was %s; the gate type was dropped and %s is used."
-                       % (node_id, logic, str(gate_type), logic),
+                       % (node_id, logic, where, str(gate_type), logic),
         })
     return warnings
 

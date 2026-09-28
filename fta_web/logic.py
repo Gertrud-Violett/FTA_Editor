@@ -169,7 +169,7 @@ def eval_op(op: tuple, vals: List[float], qs: List[float]) -> float:
         result = 1.0
         for r in op[1]:
             result *= vals[r]
-        return result / math.factorial(len(op[1]))
+        return engine.pand_divide(result, len(op[1]))
     raise ValueError("unknown op %r" % (kind,))
 
 

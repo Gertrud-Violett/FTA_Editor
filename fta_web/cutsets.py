@@ -235,7 +235,9 @@ def mcub_of(probs) -> float:
             return 1.0
         if p > 0.0:
             acc += math.log1p(-p)
-    return -math.expm1(acc)
+    # ``0.0 -`` rather than unary minus: no cut sets must be 0.0, not -0.0
+    # (which JSON would carry as "-0.0").
+    return 0.0 - math.expm1(acc)
 
 
 def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
@@ -265,7 +267,7 @@ def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
             rest ^= low
         rows.append((p, len(indices), indices))
     rows.sort(key=lambda r: (-r[0], r[1], [s.events[i]["name"] for i in r[2]]))
-    rare = sum(r[0] for r in rows)
+    rare = math.fsum(r[0] for r in rows)
     mcub = mcub_of(r[0] for r in rows)
 
     cut_sets = []

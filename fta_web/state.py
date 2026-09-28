@@ -201,7 +201,13 @@ class AppState:
         # Load repairs and removed links, for the Validation tab. Session
         # facts, not document state: deliberately NOT part of undo/redo, and
         # cleared by reset() (new/open/import).
-        self.session_warnings: List[Dict[str, Any]] = []
+        self._session_warnings: List[Dict[str, Any]] = []
+        # Notices raised *by an edit* about what that edit did to the
+        # document (an AI rewrite whose stale gateType was dropped). They
+        # describe document state, so they ARE part of undo/redo: undoing the
+        # AI update removes its notice, redoing it brings the notice back.
+        # Reported after the session notices in ``session_warnings``.
+        self._edit_warnings: List[Dict[str, Any]] = []
         self.language: str = config.DEFAULT_LANGUAGE
         self.fs_root: Path = Path(config.DEFAULT_FS_ROOT)
         self._undo: Deque[Dict[str, Any]] = deque(maxlen=config.UNDO_DEPTH)
@@ -221,6 +227,7 @@ class AppState:
                 "date": self.core.date,
                 "mode": self.core.mode,
                 "analysis": copy.deepcopy(getattr(self.core, "analysis", None)),
+                "editWarnings": copy.deepcopy(self._edit_warnings),
             }
 
     def restore(self, snap: Dict[str, Any]) -> None:
@@ -240,6 +247,7 @@ class AppState:
             self.core.mode = snap.get("mode", self.core.mode)
             if snap.get("analysis") is not None:
                 self.core.analysis = copy.deepcopy(snap["analysis"])
+            self._edit_warnings = copy.deepcopy(snap.get("editWarnings") or [])
 
     def push_undo(self, snap: Optional[Dict[str, Any]] = None) -> None:
         """Record the pre-mutation state. Call this *before* mutating.
@@ -292,7 +300,8 @@ class AppState:
         """Start a new, empty document. Clears history, path and dirty flag."""
         with self.lock:
             self.core = WebCore()
-            self.session_warnings = []
+            self._session_warnings = []
+            self._edit_warnings = []
             self._undo.clear()
             self._redo.clear()
             self.current_path = None
@@ -301,12 +310,37 @@ class AppState:
 
     # ---- session warnings -------------------------------------------------
 
-    def add_session_warnings(self, issues: List[Dict[str, Any]]) -> None:
-        """Append issue-shaped warnings (see :func:`load_warning_issues`)."""
+    #: Bound on each warning list: a long session of deletes must not grow
+    #: without limit.
+    MAX_SESSION_WARNINGS = 500
+
+    @property
+    def session_warnings(self) -> List[Dict[str, Any]]:
+        """Every current notice: the session notices, then the notices of
+        the edits currently applied (a new list; the dicts are shared, so
+        callers that hand them on deep-copy them, as they always did)."""
         with self.lock:
-            self.session_warnings.extend(copy.deepcopy(issues))
-            # Bounded: a long session of deletes must not grow without limit.
-            del self.session_warnings[:-500]
+            combined = self._session_warnings + self._edit_warnings
+            return combined[-self.MAX_SESSION_WARNINGS:]
+
+    @session_warnings.setter
+    def session_warnings(self, value: List[Dict[str, Any]]) -> None:
+        with self.lock:
+            self._session_warnings = list(value or [])
+
+    def add_session_warnings(self, issues: List[Dict[str, Any]]) -> None:
+        """Append issue-shaped session notices (see :func:`load_warning_issues`).
+        Not undone: they describe what happened in this session."""
+        with self.lock:
+            self._session_warnings.extend(copy.deepcopy(issues))
+            del self._session_warnings[:-self.MAX_SESSION_WARNINGS]
+
+    def add_edit_warnings(self, issues: List[Dict[str, Any]]) -> None:
+        """Append notices that belong to the edit being made -- call it after
+        ``push_undo()``, so undo drops them and redo restores them."""
+        with self.lock:
+            self._edit_warnings.extend(copy.deepcopy(issues))
+            del self._edit_warnings[:-self.MAX_SESSION_WARNINGS]
 
     # ---- serialization ---------------------------------------------------
 

@@ -896,6 +896,38 @@ class TestApplyChanges:
         assert response.status_code == 400
         assert error_code(response) == "INVALID_FIELD"
 
+    def test_an_ai_edit_of_logic_gate_is_not_overruled_by_a_stale_gate_type(
+        self, configured, provider, monkeypatch
+    ):
+        """Debug pass 1: the vendored handler's 'edit' writes only logicGate,
+        so a KOFN node the AI switched to AND kept gateType KOFN -- and the
+        engine, which follows gateType, silently ignored the applied edit."""
+        vote = body(configured.post("/api/nodes", json={
+            "parentId": "root", "name": "vote", "gateType": "KOFN", "k": 2}))["nodeId"]
+        for name, p in (("a", 0.1), ("b", 0.2), ("c", 0.3)):
+            configured.post("/api/nodes", json={"parentId": vote, "name": name,
+                                                "probability": p})
+        reply = ("SUGGESTION: Make it an AND\nDESCRIPTION: all three are needed.\n"
+                 "ACTION: edit\nTARGET: %s\nDATA: {\"id\": \"%s\", \"name\": \"vote\", "
+                 "\"logicGate\": \"AND\"}\n" % (vote, vote))
+        monkeypatch.setattr(provider, "send_message", replies(reply))
+        configured.post("/api/ai/chat", json={"message": "suggest"})
+
+        response = configured.post("/api/ai/changes/apply", json={"indices": [0]})
+
+        assert response.status_code == 200, body(response)
+        payload = body(response)
+        node = payload["tree"]["children"][0]
+        assert node["logicGate"] == "AND" and "gateType" not in node and "k" not in node
+        assert node["calculatedProbability"] == pytest.approx(0.1 * 0.2 * 0.3)
+        assert any(w["params"].get("kind") == "gate_type_reset"
+                   for w in payload["sessionWarnings"])
+        # One Ctrl-Z restores the KOFN and removes the notice.
+        undone = body(configured.post("/api/undo"))
+        assert undone["tree"]["children"][0]["gateType"] == "KOFN"
+        assert not any(w["params"].get("kind") == "gate_type_reset"
+                       for w in undone["sessionWarnings"])
+
     def test_an_out_of_range_index_says_how_many_there_are(self, proposed):
         response = proposed.post("/api/ai/changes/apply", json={"indices": [7]})
 
@@ -938,6 +970,26 @@ class TestUpdate:
         warnings = body(configured.get("/api/state"))["sessionWarnings"]
         assert any(w["code"] == "LOAD_REPAIR" and w["params"]["kind"] == "gate_type_reset"
                    for w in warnings)
+
+    def test_undo_of_an_update_drops_its_gate_type_notice_and_redo_restores_it(
+        self, configured, provider, monkeypatch
+    ):
+        """Debug pass 1: the gate_type_reset notice describes what the AI
+        update did; after undoing the update it described nothing."""
+        update = json.loads(json.dumps(VALID_UPDATE))
+        update["logicGate"] = "AND"
+        update["gateType"] = "KOFN"
+        update["k"] = 1
+        monkeypatch.setattr(provider, "send_message", replies(json.dumps(update)))
+
+        def resets(payload):
+            return [w for w in payload["sessionWarnings"]
+                    if w["params"].get("kind") == "gate_type_reset"]
+
+        assert len(resets(body(configured.post("/api/ai/update", json={})))) == 1
+        assert resets(body(configured.post("/api/undo"))) == []
+        assert resets(body(configured.get("/api/state"))) == []
+        assert len(resets(body(configured.post("/api/redo")))) == 1
 
     def test_a_code_fenced_tree_is_accepted(self, configured, provider, monkeypatch):
         """The handler strips fences; this pins that the route relies on it."""

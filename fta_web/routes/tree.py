@@ -67,7 +67,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         find_parent_id,
         move_node,
         next_child_id,
-        strip_links_to,
+        strip_references_to,
         subtree_ids,
         top_level_id,
         would_create_cycle,
@@ -97,7 +97,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         find_parent_id,
         move_node,
         next_child_id,
-        strip_links_to,
+        strip_references_to,
         subtree_ids,
         top_level_id,
         would_create_cycle,
@@ -668,7 +668,9 @@ def delete_node(node_id: str):
     """Delete a node and its subtree. The root is not deletable.
 
     Every link anywhere in the tree that targets the deleted subtree is
-    removed too and reported as ``removedLinks``. The desktop editor leaves
+    removed too and reported as ``removedLinks`` -- and so is every
+    ``transferTo`` naming a deleted node (``relation: "TRANSFER"``; the node
+    stays a dangling TRANSFER). The desktop editor leaves
     such links dangling; here that is unsafe because a later Add under the
     same parent can be given the deleted id back (see ``next_child_id``), and
     a dangling link would then silently re-target the new, unrelated node.
@@ -683,7 +685,7 @@ def delete_node(node_id: str):
         state.push_undo()
         doomed = subtree_ids(core, node_id)
         core.delete_node_from_data(node_id)
-        removed_links = strip_links_to(core, doomed)
+        removed_links = strip_references_to(core, doomed)
         state.add_session_warnings(removed_link_issues(removed_links, node_id))
         core.recalculate_probabilities()
         state.mark_dirty()

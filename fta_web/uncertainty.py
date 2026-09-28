@@ -54,6 +54,8 @@ MAX_CUTSETS = 2000
 COVERAGE = 0.9999
 DEFAULT_N = 10000
 DEFAULT_TIME_LIMIT = 30.0
+#: Largest log of a sampled parameter (exp(700) ~ 1e304, below the float max).
+_MAX_LOG = 700.0
 
 
 # ---- parameters ----------------------------------------------------------------------
@@ -135,8 +137,9 @@ def _tree_chunk(structure, plan, event_cols, m):
             vals[i] = _col_or([vals[r] for r in op[1]]) if op[1] else [0.0] * m
         elif kind == "pand":
             if op[1]:
-                f = 1.0 / math.factorial(len(op[1]))
-                vals[i] = [v * f for v in _col_and([vals[r] for r in op[1]])]
+                n_in = len(op[1])
+                vals[i] = [engine.pand_divide(v, n_in)
+                           for v in _col_and([vals[r] for r in op[1]])]
             else:
                 vals[i] = [1.0] * m
         elif kind == "kofn":
@@ -312,8 +315,20 @@ def run(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
             if i in samplers:
                 med, sig, fn = samplers[i]
                 gauss = rng.gauss
-                exp = math.exp
-                event_cols[i] = [_clamp(fn(med * exp(sig * gauss(0.0, 1.0)))) for _ in range(m)]
+                if med > 0.0:
+                    # In log space, clamped below the float ceiling: an
+                    # extreme error factor (EF is only bounded below) must
+                    # give a huge sample, not an OverflowError.
+                    log_med = math.log(med)
+                    exp = math.exp
+                    event_cols[i] = [
+                        _clamp(fn(exp(min(_MAX_LOG, log_med + sig * gauss(0.0, 1.0)))))
+                        for _ in range(m)
+                    ]
+                else:  # a mean so spread out its median underflowed to 0
+                    for _ in range(m):
+                        gauss(0.0, 1.0)  # keep the stream aligned for the seed
+                    event_cols[i] = [_clamp(fn(0.0))] * m
             elif s.reachable[s.events[i]["op"]]:
                 event_cols[i] = [base_q[i]] * m
         if method == "tree":
@@ -328,9 +343,11 @@ def run(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
 
     completed = len(samples)
     ordered = sorted(samples)
-    mean = sum(samples) / completed if completed else None
+    # math.fsum, not sum(): only 3.12+ compensates a float sum(), and the
+    # mean/std of constant samples must be exact on every supported Python.
+    mean = math.fsum(samples) / completed if completed else None
     if completed > 1:
-        var = sum((v - mean) ** 2 for v in samples) / (completed - 1)
+        var = math.fsum((v - mean) ** 2 for v in samples) / (completed - 1)
         std = math.sqrt(max(0.0, var))
     else:
         std = 0.0 if completed else None

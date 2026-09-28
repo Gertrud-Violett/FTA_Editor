@@ -450,7 +450,9 @@ def test_summary_stub_shape():
                             engine.default_analysis())
     assert set(result) == {"treeWalk", "mcub", "rareEvent", "headline", "headlineMethod",
                            "repeatedEvents", "nonCoherent", "approximations", "truncated",
-                           "elapsedMs"}
+                           "elapsedMs",
+                           # additive (debug pass 1): document truncation vs summary cap
+                           "truncatedBy", "capped"}
     assert result["treeWalk"] == result["headline"] == 0.1
     assert result["headlineMethod"] == "treeWalk"
     assert result["mcub"] == pytest.approx(0.1) and result["truncated"] is False
