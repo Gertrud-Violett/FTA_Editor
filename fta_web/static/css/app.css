@@ -1126,3 +1126,35 @@ html[data-booting] .tabstrip { pointer-events: none; }
   .topbar { padding-left: var(--s-4); padding-right: var(--s-4); }
   .headline { order: 10; }
 }
+
+/* ---- 1.7 integration: Validation tab badge, toast action ------------------ */
+.tabstrip__badge {
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid currentColor;
+}
+.tabstrip__badge[data-kind="error"] { color: var(--danger); background: var(--danger-soft); }
+.tabstrip__badge[data-kind="warn"] { color: var(--warn); background: var(--warn-soft); }
+.tabstrip__badge[hidden] { display: none; }
+
+.toast__action {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast__action:hover { background: var(--surface-hover); }
+.toast__action:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }

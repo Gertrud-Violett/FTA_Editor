@@ -1011,6 +1011,8 @@ function applyLanguage() {
   if (code) code.textContent = language.toUpperCase();
   applyThemeLabel();
   renderHeadline();
+  // applyLanguage rewrote the tab label's textContent, dropping the badge.
+  renderValidationBadge();
   if (store.state) renderShell(store.state);
 }
 
@@ -1050,7 +1052,19 @@ function registerStrings(table) {
  * applyLanguage() so no key ever flashes on screen. Each exports
  * `default {en: {...}, ja: {...}}`. A workstream adds its file here.
  */
-const CATALOGS = ['./i18n/shell17.js'];
+const CATALOGS = [
+  './i18n/shell17.js',
+  './i18n/val.js',
+  './i18n/gate.js',
+  './i18n/diagram.js',
+  './i18n/trace.js',
+  './i18n/fmea.js',
+  './i18n/quant.js',
+  './i18n/cutsets.js',
+  './i18n/imp.js',
+  './i18n/unc.js',
+  './i18n/report.js',
+];
 
 async function loadCatalogs() {
   await Promise.all(
@@ -1119,6 +1133,145 @@ function renderHeadline() {
   } else {
     badge.removeAttribute('title');
   }
+}
+
+// ---------------------------------------------------------------------------
+// live headline + Validation badge (1.7 integration)
+// ---------------------------------------------------------------------------
+//
+// Both are refreshed from the server a short while after the document changed
+// (any new `tree`, `analysis` or mode -- which covers edits, open, import,
+// undo and redo, all of which land in the store). Debounced so rapid edits
+// cost one request, sequence-numbered so a slow stale answer never overwrites
+// a newer one.
+
+const HEADLINE_DEBOUNCE_MS = 400;
+const VALIDATION_DEBOUNCE_MS = 600;
+
+let liveSeen = { tree: undefined, analysis: undefined, mode: undefined, warnings: undefined };
+let headlineTimer = null;
+let headlineSeq = 0;
+let validationTimer = null;
+let validationSeq = 0;
+/** Last {errors, warnings} from /analysis/validate, or null before the first. */
+let validationCounts = null;
+
+function rootCalculated() {
+  const tree = store.state && store.state.tree;
+  if (!tree || typeof tree !== 'object') return null;
+  const value = tree.calculatedProbability;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function isEtaMode() {
+  const meta = store.state && store.state.metadata;
+  return Boolean(meta) && meta.mode === 'ETA';
+}
+
+/** Store subscriber: schedule refreshes when the document itself changed. */
+function onDocumentMaybeChanged(state) {
+  if (!state) return;
+  const next = {
+    tree: state.tree,
+    analysis: state.analysis,
+    mode: state.metadata ? state.metadata.mode : undefined,
+    warnings: state.sessionWarnings,
+  };
+  const docChanged =
+    next.tree !== liveSeen.tree || next.analysis !== liveSeen.analysis || next.mode !== liveSeen.mode;
+  const warnChanged = next.warnings !== liveSeen.warnings;
+  liveSeen = next;
+  if (docChanged) scheduleHeadline();
+  if (docChanged || warnChanged) scheduleValidationBadge();
+}
+
+function scheduleHeadline() {
+  if (headlineTimer) window.clearTimeout(headlineTimer);
+  // Before the first server answer (and in ETA mode) show the tree-walk value
+  // at once; afterwards the previous figure stays until the new one arrives.
+  if (!headline || isEtaMode()) setHeadline({ value: rootCalculated(), method: 'treeWalk' });
+  headlineTimer = window.setTimeout(refreshHeadline, HEADLINE_DEBOUNCE_MS);
+}
+
+async function refreshHeadline() {
+  headlineTimer = null;
+  const seq = ++headlineSeq;
+  if (sessionLost || !store.state) return;
+  if (isEtaMode()) {
+    // An event tree has no cut sets: show the root's calculated value, no badge.
+    setHeadline({ value: rootCalculated(), method: 'treeWalk' });
+    return;
+  }
+  try {
+    const res = await api.get('/analysis/summary');
+    if (seq !== headlineSeq) return; // a newer request superseded this one
+    const value = typeof res.headline === 'number' ? res.headline : rootCalculated();
+    const method = res.headlineMethod === 'mcub' ? 'mcub' : 'treeWalk';
+    setHeadline({
+      value,
+      method,
+      alt: method === 'mcub' ? res.treeWalk : null,
+      truncated: Boolean(res.truncated),
+    });
+  } catch (_err) {
+    if (seq !== headlineSeq) return;
+    // Silent fallback: the headline is a convenience, not worth a toast.
+    setHeadline({ value: rootCalculated(), method: 'treeWalk' });
+  }
+}
+
+function scheduleValidationBadge() {
+  if (validationTimer) window.clearTimeout(validationTimer);
+  validationTimer = window.setTimeout(refreshValidationBadge, VALIDATION_DEBOUNCE_MS);
+}
+
+async function refreshValidationBadge() {
+  validationTimer = null;
+  const seq = ++validationSeq;
+  if (sessionLost || !store.state) return;
+  try {
+    const res = await api.get('/analysis/validate');
+    if (seq !== validationSeq) return;
+    const counts = (res && res.counts) || {};
+    validationCounts = {
+      errors: Number(counts.error) || 0,
+      warnings: Number(counts.warning) || 0,
+    };
+  } catch (_err) {
+    if (seq !== validationSeq) return;
+    validationCounts = null;
+  }
+  renderValidationBadge();
+}
+
+/** The count badge on the Validation tab (errors red; else warnings amber). */
+function renderValidationBadge() {
+  const button = $('#tab-validation');
+  if (!button) return;
+  let badge = button.querySelector('.tabstrip__badge');
+  const counts = validationCounts;
+  const kind = counts && counts.errors ? 'error' : counts && counts.warnings ? 'warn' : null;
+  if (!kind) {
+    if (badge) badge.hidden = true;
+    button.removeAttribute('aria-label');
+    return;
+  }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'tabstrip__badge';
+    badge.setAttribute('aria-hidden', 'true');
+    button.appendChild(badge);
+  }
+  const n = kind === 'error' ? counts.errors : counts.warnings;
+  badge.hidden = false;
+  badge.dataset.kind = kind;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  const text = t(kind === 'error' ? 'tab.badgeErrors' : 'tab.badgeWarnings', {
+    tab: t('tab.validation'),
+    n,
+  });
+  button.setAttribute('aria-label', text);
+  badge.title = text;
 }
 
 // ---------------------------------------------------------------------------
@@ -1291,7 +1444,11 @@ function setStatus(message, kind = 'info') {
   el.dataset.kind = kind;
 }
 
-function toast(message, kind = 'info', code = null) {
+/**
+ * toast(message, kind?, code?, options?) -- `options.action = {label, onClick}`
+ * adds a button that dismisses the toast and runs onClick.
+ */
+function toast(message, kind = 'info', code = null, options = null) {
   setStatus(message, kind);
   const host = $('#toasts');
   if (!host) return;
@@ -1317,6 +1474,25 @@ function toast(message, kind = 'info', code = null) {
   close.textContent = '×';
   close.addEventListener('click', () => node.remove());
 
+  const action = options && options.action;
+  if (action && action.label && typeof action.onClick === 'function') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast__action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      node.remove();
+      try {
+        action.onClick();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[fta] toast action failed', err);
+      }
+    });
+    body.appendChild(document.createElement('br'));
+    body.appendChild(btn);
+  }
+
   node.append(body, close);
   host.appendChild(node);
 
@@ -1329,6 +1505,11 @@ function toast(message, kind = 'info', code = null) {
  * The single funnel for anything that went wrong. Every catch block in this
  * file ends here; nothing is logged and left invisible.
  */
+/** Toast options for a warning whose details live in the Validation tab. */
+function showInValidation() {
+  return { action: { label: t('toast.showValidation'), onClick: () => openTab('validation') } };
+}
+
 function showError(err) {
   // eslint-disable-next-line no-console
   console.error('[fta]', err);
@@ -1835,7 +2016,9 @@ async function actionDelete() {
     // Links from surviving nodes into the deleted subtree go with it; say so,
     // since those nodes were never selected.
     const removedLinks = Array.isArray(result.removedLinks) ? result.removedLinks : [];
-    if (removedLinks.length) toast(t('msg.removedLinks', { n: removedLinks.length }), 'warn');
+    if (removedLinks.length) {
+      toast(t('msg.removedLinks', { n: removedLinks.length }), 'warn', null, showInValidation());
+    }
   } catch (err) {
     showError(err);
   }
@@ -2006,7 +2189,7 @@ async function actionLoad() {
     const warnings = Array.isArray(payload && payload.warnings) ? payload.warnings : [];
     if (warnings.length) {
       const text = warnings.map((w) => String((w && w.message) || '')).filter(Boolean).join(' ');
-      toast(t('msg.openWarnings', { n: warnings.length, text }), 'warn');
+      toast(t('msg.openWarnings', { n: warnings.length, text }), 'warn', null, showInValidation());
     }
   } catch (err) {
     showError(err);
@@ -2626,7 +2809,10 @@ async function boot() {
   });
   window.addEventListener('fta:toast', (event) => {
     const detail = (event && event.detail) || {};
-    toast(detail.message || '', detail.kind || 'info', detail.code || null);
+    // detail.showValidation: the details are in the Validation tab (FMEA
+    // import repairs and the like) -- offer a link there.
+    toast(detail.message || '', detail.kind || 'info', detail.code || null,
+      detail.showValidation ? showInValidation() : null);
   });
   window.addEventListener('fta:ai-settings', (event) => {
     // preventDefault is how the asker (chat.js) learns the shell has this; an
@@ -2680,6 +2866,7 @@ async function boot() {
   // the current state, so the shell paints once here and on every change after.
   // Done before the panels load so the top bar is correct while they arrive.
   store.subscribe(renderShell);
+  store.subscribe(onDocumentMaybeChanged);
 
   // Boot gate: the action bar and shortcuts come alive only once every panel
   // (and dialogs.js, which several actions need) has loaded -- or failed to,

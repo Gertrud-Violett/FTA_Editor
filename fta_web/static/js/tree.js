@@ -103,6 +103,8 @@ import {
   uid,
 } from './dialogs.js';
 import traceStrings from './i18n/trace.js';
+import { formatProb, getSigFigs } from './numfmt.js';
+import { scaleColor, overlayMax } from './overlay_scale.js';
 
 const STORAGE_KEY = 'fta.tree.expanded.v1';
 const MARK = '✖';
@@ -261,6 +263,20 @@ const TREE_CSS = `
   font-size: 0.8em;
 }
 .fta-tree-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.fta-tree-fv {
+  /* Overlay (e.g. FV importance) bar, same colour scale as the diagram. */
+  flex: 0 0 34px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fta-tree-fv-track, rgba(127, 127, 127, 0.18));
+  overflow: hidden;
+}
+.fta-tree-fv > span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+}
 .fta-tree-mark {
   flex: 0 0 var(--fta-tree-mark-width);
   text-align: center;
@@ -475,6 +491,18 @@ function say(message, kind) {
   window.dispatchEvent(
     new CustomEvent('fta:toast', { detail: { message: message, kind: kind || 'info' } })
   );
+}
+
+/** A warning toast with a "Show in Validation" action (1.7). */
+function sayShowValidation(message) {
+  const shell = window.ftaShell;
+  if (shell && typeof shell.toast === 'function' && typeof shell.openTab === 'function') {
+    shell.toast(message, 'warn', null, {
+      action: { label: t('toast.showValidation'), onClick: () => shell.openTab('validation') },
+    });
+    return;
+  }
+  say(message, 'warn');
 }
 
 /**
@@ -745,6 +773,9 @@ export function initTree(container) {
 
   /** Ids the highlight bus currently marks (store.onHighlight). */
   let highlighted = new Set();
+  /** Current overlay ({kind, values}) and its max, for the per-row bar. */
+  let overlayState = null;
+  let overlayPeak = 0;
 
   function isExpanded(id) {
     return expanded ? expanded.has(String(id)) : true;
@@ -927,6 +958,7 @@ export function initTree(container) {
     // The zero mark sits on the <li> so "Hide Zero" removes the whole item
     // (row and children) as the diagram does, not just the header row.
     const isHighlighted = highlighted.has(id);
+    const fvBar = overlayBar(id);
     const item = el('li', {
       class: 'fta-tree-item' + (isZero ? ' is-zero' : '') + (isHighlighted ? ' is-highlighted' : ''),
       role: 'treeitem',
@@ -968,6 +1000,7 @@ export function initTree(container) {
           text: hasChildren ? (open ? '▾' : '▸') : '',
         }),
         label,
+        fvBar,
         el('span', {
           class: 'fta-tree-mark',
           'aria-hidden': 'true',
@@ -1562,9 +1595,12 @@ export function initTree(container) {
     // N undo steps, not one, and the message says so rather than letting the
     // user discover it at the third Ctrl+Z.
     let done = 0;
+    let removedLinks = 0;
     for (const id of ids) {
       try {
-        store.applyMutation(await api.del('/nodes/' + encodeURIComponent(id)));
+        const result = await api.del('/nodes/' + encodeURIComponent(id));
+        store.applyMutation(result);
+        if (result && Array.isArray(result.removedLinks)) removedLinks += result.removedLinks.length;
         done += 1;
       } catch (err) {
         fail(err);
@@ -1576,6 +1612,8 @@ export function initTree(container) {
     if (done !== ids.length) say(t('tree.deletePartial', { done: done, total: ids.length }), 'warn');
     else if (only) say(t('msg.deleted', { name: only }), 'ok');
     else say(t('tree.deletedMany', { n: done }), 'ok');
+    // Links from surviving nodes into the deleted subtrees went with them.
+    if (removedLinks) sayShowValidation(t('msg.removedLinks', { n: removedLinks }));
   }
 
   function onAction(event) {
@@ -1883,6 +1921,32 @@ export function initTree(container) {
 
   /* ---- highlight bus + jump (1.7) ---- */
 
+  function overlayBar(id) {
+    const values = overlayState && overlayState.values;
+    if (!values) return null;
+    const v = Number(values[id]);
+    if (!Number.isFinite(v)) return null;
+    const fraction = overlayPeak > 0 ? v / overlayPeak : 0;
+    const kind = String(overlayState.kind || '').toUpperCase();
+    const text = kind + ' ' + formatProb(v, getSigFigs());
+    return el('span', { class: 'fta-tree-fv', title: text, 'aria-label': text, role: 'img' }, [
+      el('span', {
+        style: 'width:' + Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%;background:' +
+          scaleColor(fraction),
+      }),
+    ]);
+  }
+  let overlayPrimed = false;
+  const unOverlay =
+    typeof store.onOverlay === 'function'
+      ? store.onOverlay((next) => {
+          overlayState = next && next.values ? next : null;
+          overlayPeak = overlayState ? overlayMax(overlayState.values) : 0;
+          if (overlayPrimed) render();
+        })
+      : null;
+  overlayPrimed = true;
+
   let busPrimed = false;
   const unHighlight =
     typeof store.onHighlight === 'function'
@@ -1942,6 +2006,7 @@ export function initTree(container) {
       window.removeEventListener('fta:flush', onFlush);
       window.removeEventListener('fta:jump', onJump);
       if (typeof unHighlight === 'function') unHighlight();
+      if (typeof unOverlay === 'function') unOverlay();
       if (searchTimer) window.clearTimeout(searchTimer);
       clearHoverTimer();
       clear(panel);

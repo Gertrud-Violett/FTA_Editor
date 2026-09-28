@@ -39,6 +39,7 @@ import { el, clear, injectStyles } from './dialogs.js';
 import { formatProb, getSigFigs } from './numfmt.js';
 import { replaceGateShapes } from './fta_symbols.js';
 import diagramCatalog from './i18n/diagram.js';
+import { scaleColor, overlayMax } from './overlay_scale.js';
 
 function registerCatalog() {
   try {
@@ -324,14 +325,6 @@ function buildIdMap(flat) {
   return map;
 }
 
-/** Light -> strong orange; black label text stays readable at both ends. */
-const SCALE_LOW = [255, 244, 229];
-const SCALE_HIGH = [230, 85, 13];
-function scaleColor(fraction) {
-  const f = Math.min(1, Math.max(0, Number(fraction) || 0));
-  const c = SCALE_LOW.map((lo, i) => Math.round(lo + (SCALE_HIGH[i] - lo) * f));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
 
 /** The node's main shape: the event box / table background, never a symbol. */
 function isMainGroup(g) {
@@ -806,13 +799,7 @@ export function initDiagram(container) {
 
   function applyOverlay() {
     const values = overlay && overlay.values && typeof overlay.values === 'object' ? overlay.values : null;
-    let max = 0;
-    if (values) {
-      for (const key of Object.keys(values)) {
-        const v = Number(values[key]);
-        if (Number.isFinite(v) && v > max) max = v;
-      }
-    }
+    const max = overlayMax(values);
     for (const { g, id } of nodeGroups()) {
       if (!isMainGroup(g)) continue;
       const shape = mainShape(g);

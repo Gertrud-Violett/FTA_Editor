@@ -38,6 +38,10 @@ export default {
     'headline.mcubTitle': 'Min-cut upper bound, used because the tree has repeated events. Tree walk: {alt}',
 
     'boot.busy': 'Loading the editor panels…',
+
+    'tab.badgeErrors': '{tab}, {n} error(s)',
+    'tab.badgeWarnings': '{tab}, {n} warning(s)',
+    'toast.showValidation': 'Show in Validation',
   },
   ja: {
     'panel.bottom': '詳細と解析',
@@ -69,5 +73,9 @@ export default {
     'headline.mcubTitle': '重複事象があるため最小カット上限を使用しています。ツリー計算値: {alt}',
 
     'boot.busy': 'エディターのパネルを読み込んでいます…',
+
+    'tab.badgeErrors': '{tab}、エラー {n} 件',
+    'tab.badgeWarnings': '{tab}、警告 {n} 件',
+    'toast.showValidation': '検証タブで表示',
   },
 };
