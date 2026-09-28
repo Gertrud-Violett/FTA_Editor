@@ -15,6 +15,8 @@ export default {
     'diagram17.legendFv': 'Fussell-Vesely importance',
     'diagram17.legendLow': 'low',
     'diagram17.legendHigh': 'high',
+    'diagram17.fontAuto': 'Auto-detect',
+    'diagram17.fontSystem': 'System default',
   },
   ja: {
     'diagram17.style': '表示形式',
@@ -27,5 +29,7 @@ export default {
     'diagram17.legendFv': 'Fussell-Vesely 重要度',
     'diagram17.legendLow': '低',
     'diagram17.legendHigh': '高',
+    'diagram17.fontAuto': '自動検出',
+    'diagram17.fontSystem': 'システムの既定',
   },
 };

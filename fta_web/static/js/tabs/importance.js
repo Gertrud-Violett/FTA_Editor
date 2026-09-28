@@ -63,6 +63,7 @@ export function mount(panel, ctx) {
   let seq = 0;
   let hasRun = false;
   let stale = false;
+  let justActivated = false;
   let sortKey = 'fv';
   let sortDesc = true;
   let overlayOn = readOverlayPref();
@@ -262,6 +263,19 @@ export function mount(panel, ctx) {
 
   const repaint = () => paint();
   window.addEventListener('fta:language', repaint);
+  // New / Open: never colour the new tree with the old document's values.
+  const onDocument = () => {
+    runSoon.cancel();
+    seq += 1;
+    running = false;
+    result = null;
+    hasRun = false;
+    stale = false;
+    ctx.setOverlay(null);
+    if (active) run();
+    else paint();
+  };
+  window.addEventListener('fta:document', onDocument);
   const unSig = ctx.onSigFigs(repaint);
 
   paint();
@@ -269,6 +283,12 @@ export function mount(panel, ctx) {
   return {
     activate() {
       active = true;
+      // host.js calls onStale() synchronously right after activate() for a
+      // tab that went stale in the background: re-run at once then, rather
+      // than showing the old (possibly previous-document) results for the
+      // debounce delay.
+      justActivated = true;
+      Promise.resolve().then(() => { justActivated = false; });
       if (!hasRun && !running) run();
       else {
         paint();
@@ -284,11 +304,16 @@ export function mount(panel, ctx) {
       if (!hasRun) return;
       stale = true;
       paint();
-      if (active) runSoon();
+      if (active && justActivated) {
+        runSoon.cancel();
+        ctx.setOverlay(null); // old values must not colour the changed tree
+        run();
+      } else if (active) runSoon();
     },
     dispose() {
       runSoon.cancel();
       window.removeEventListener('fta:language', repaint);
+      window.removeEventListener('fta:document', onDocument);
       if (typeof unSig === 'function') unSig();
       ctx.setOverlay(null);
       root.remove();

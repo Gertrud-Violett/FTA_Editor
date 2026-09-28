@@ -29,6 +29,7 @@ export default {
     'unc.point': 'point estimate',
     'unc.notRun': 'Set the number of samples and press Run. Events get their spread from the lognormal uncertainty in the Quantification tab.',
     'unc.staleNote': 'The tree has changed since this run. Press Run to update.',
+    'unc.runMax': 'One run in the editor takes at most {max} samples. Enter a smaller number to run here; larger values can still be saved for the command line.',
   },
   ja: {
     'unc.n': 'サンプル数',
@@ -56,5 +57,6 @@ export default {
     'unc.point': '点推定値',
     'unc.notRun': 'サンプル数を設定して「実行」を押してください。各事象のばらつきは「定量化」タブの対数正規分布の設定から与えられます。',
     'unc.staleNote': 'この計算の後にツリーが変更されました。「実行」を押すと更新します。',
+    'unc.runMax': 'エディタでの 1 回の実行は最大 {max} サンプルです。ここで実行するには小さい値を入力してください。大きい値はコマンドライン用に保存できます。',
   },
 };

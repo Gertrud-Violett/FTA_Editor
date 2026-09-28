@@ -301,9 +301,27 @@ export function initCapabilities(host) {
       // Re-read on open: cheap, and it means a state refresh between boot and
       // the click is never shown stale.
       render();
+      placePanel();
       document.addEventListener('pointerdown', onOutside, true);
     } else {
       document.removeEventListener('pointerdown', onOutside, true);
+    }
+  }
+
+  /** Keep the floating panel on screen: open to the left of a chip near the right edge. */
+  function placePanel() {
+    panel.style.left = '';
+    panel.style.right = '';
+    const margin = 8;
+    const rect = panel.getBoundingClientRect();
+    if (rect.right > window.innerWidth - margin) {
+      panel.style.left = 'auto';
+      panel.style.right = '0';
+      if (panel.getBoundingClientRect().left < margin) {
+        // Neither side fits (narrow window): pin it to the viewport margin.
+        panel.style.right = '';
+        panel.style.left = margin - host.getBoundingClientRect().left + 'px';
+      }
     }
   }
 
