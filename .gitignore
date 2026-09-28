@@ -157,3 +157,6 @@ temp/
 debug_test.py
 test_data.json
 test_output.png
+
+# Claude Code agent worktrees and local session scratch (never committed)
+.claude/worktrees/
