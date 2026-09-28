@@ -407,10 +407,11 @@ def test_summary_stub_shape():
     result = engine.summary(gate("root", "AND", [leaf("a", 0.5), leaf("b", 0.2)]),
                             engine.default_analysis())
     assert set(result) == {"treeWalk", "mcub", "rareEvent", "headline", "headlineMethod",
-                           "repeatedEvents", "nonCoherent", "approximations", "truncated"}
+                           "repeatedEvents", "nonCoherent", "approximations", "truncated",
+                           "elapsedMs"}
     assert result["treeWalk"] == result["headline"] == 0.1
     assert result["headlineMethod"] == "treeWalk"
-    assert result["mcub"] is None and result["truncated"] is False
+    assert result["mcub"] == pytest.approx(0.1) and result["truncated"] is False
 
 
 # ---- analysis in undo/redo (through the app state) ---------------------------------------

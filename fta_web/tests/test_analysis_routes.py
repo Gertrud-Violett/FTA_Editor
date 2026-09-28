@@ -141,17 +141,6 @@ def test_eta_mode_is_409(client, method, url):
     assert any(ord(c) > 0x3000 for c in body(ja)["error"]["message"])
 
 
-@pytest.mark.parametrize("url", [
-    "/api/analysis/cutsets",
-    "/api/analysis/importance",
-    "/api/analysis/uncertainty",
-])
-def test_stubs_are_501(client, url):
-    response = api(client, "POST", url, json={})
-    assert response.status_code == 501
-    assert body(response)["error"]["code"] == "NOT_IMPLEMENTED"
-
-
 def test_report_is_503_without_python_docx(client, monkeypatch):
     from fta_web.routes import report
 
