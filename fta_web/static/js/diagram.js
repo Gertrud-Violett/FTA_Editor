@@ -364,10 +364,12 @@ export function initDiagram(container) {
   // ---- box-sizing popover (font auto-detect + manual scale) --------------
   const boxSettings = readDiagramSettings();
 
-  const fontSelect = el('select', { 'aria-label': 'Diagram font' }, [
-    el('option', { value: '', text: 'Auto-detect' }),
+  const fontAutoOption = el('option', { value: '', text: t('diagram17.fontAuto', 'Auto-detect') });
+  const fontSystemOption = el('option', { value: 'sans-serif', text: t('diagram17.fontSystem', 'System default') });
+  const fontSelect = el('select', { 'aria-label': t('diagram.fontLabel', 'Font') }, [
+    fontAutoOption,
     ...FONT_CANDIDATES.filter((n) => n !== 'sans-serif').map((n) => el('option', { value: n, text: n })),
-    el('option', { value: 'sans-serif', text: 'System default' }),
+    fontSystemOption,
   ]);
   fontSelect.value = boxSettings.fontChoice;
 
@@ -376,7 +378,7 @@ export function initDiagram(container) {
     min: String(SCALE_MIN),
     max: String(SCALE_MAX),
     step: '1',
-    'aria-label': 'Diagram box scale',
+    'aria-label': t('diagram.scaleLabel', 'Box scale'),
     value: String(boxSettings.scale),
   });
 
@@ -416,8 +418,26 @@ export function initDiagram(container) {
     text: '×',
     onclick: () => closePopover(),
   });
+  const popoverTitle = el('span', { text: t('diagram.fontSettings', 'Font & box size') });
+  const fontLabel = el('span', { text: t('diagram.fontLabel', 'Font') });
+  const scaleLabel = el('span', { text: t('diagram.scaleLabel', 'Box scale') });
+  const scaleHint = el('p', { class: 'diagram__popoverHint' }, [
+    t('diagram.scaleHint', 'If text still spills out of the boxes after auto-detect, raise the scale.'),
+  ]);
+  /** The popover's fixed texts, again after a language switch. */
+  function relabelPopover() {
+    popoverTitle.textContent = t('diagram.fontSettings', 'Font & box size');
+    popoverCloseBtn.setAttribute('aria-label', t('diagram.fontSettingsClose', 'Close'));
+    fontLabel.textContent = t('diagram.fontLabel', 'Font');
+    scaleLabel.textContent = t('diagram.scaleLabel', 'Box scale');
+    scaleHint.textContent = t('diagram.scaleHint', 'If text still spills out of the boxes after auto-detect, raise the scale.');
+    fontAutoOption.textContent = t('diagram17.fontAuto', 'Auto-detect');
+    fontSystemOption.textContent = t('diagram17.fontSystem', 'System default');
+    fontSelect.setAttribute('aria-label', t('diagram.fontLabel', 'Font'));
+    scaleInput.setAttribute('aria-label', t('diagram.scaleLabel', 'Box scale'));
+  }
   const popoverHead = el('div', { class: 'diagram__popoverHead' }, [
-    el('span', { text: t('diagram.fontSettings', 'Font & box size') }),
+    popoverTitle,
     popoverCloseBtn,
   ]);
 
@@ -428,21 +448,10 @@ export function initDiagram(container) {
       popoverHead,
       el('label', { class: 'diagram__popoverRow' }, [styleLabel, styleSelect]),
       el('label', { class: 'diagram__popoverRow' }, [layoutLabel, layoutSelect]),
-      el('label', { class: 'diagram__popoverRow' }, [
-        el('span', { text: t('diagram.fontLabel', 'Font') }),
-        fontSelect,
-      ]),
+      el('label', { class: 'diagram__popoverRow' }, [fontLabel, fontSelect]),
       fontDetectedNote,
-      el('label', { class: 'diagram__popoverRow' }, [
-        el('span', { text: t('diagram.scaleLabel', 'Box scale') }),
-        scaleInput,
-      ]),
-      el('p', { class: 'diagram__popoverHint' }, [
-        t(
-          'diagram.scaleHint',
-          'If text still spills out of the boxes after auto-detect, raise the scale.'
-        ),
-      ]),
+      el('label', { class: 'diagram__popoverRow' }, [scaleLabel, scaleInput]),
+      scaleHint,
     ]
   );
 
@@ -624,6 +633,10 @@ export function initDiagram(container) {
   let dotIdMap = new Map();      // DOT node name -> node id, from /api/dot
   let fallbackIdMap = null;      // sanitizeId mirror, built lazily per render
   let resetView = false;         // re-fit after a style/layout switch
+  // True until the user zooms, pans or jumps: each render then re-fits, so a
+  // diagram that grows from one box (fit at 400%) stays in view instead of
+  // spilling off the stage at the old zoom.
+  let autoFit = true;
   let pendingJump = null;
   let renderer = 'wasm';
   let timer = null;
@@ -639,6 +652,7 @@ export function initDiagram(container) {
 
   function zoomBy(factor, originX, originY) {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale * factor));
+    autoFit = false;
     if (next === scale) return;
     // Keep the point under the cursor fixed while zooming.
     if (typeof originX === 'number') {
@@ -662,6 +676,7 @@ export function initDiagram(container) {
       ? svgEl.viewBox.baseVal.height
       : svgEl.getBoundingClientRect().height / (scale || 1);
     if (!w || !h) return;
+    autoFit = true;
     scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min((rect.width - 24) / w, (rect.height - 24) / h)));
     tx = (rect.width - w * scale) / 2;
     ty = 12;
@@ -701,6 +716,7 @@ export function initDiagram(container) {
         && Math.abs(ev.clientY - pressY) < PAN_SLOP_PX) return;
       dragging = true;
       pressNode = null; // a drag is a pan, never a selection
+      autoFit = false;
       try { stage.setPointerCapture(ev.pointerId); } catch (_) { /* not capturable */ }
       stage.classList.add('is-panning');
     }
@@ -833,6 +849,7 @@ export function initDiagram(container) {
     const wanted = String(id);
     const found = nodeGroups().find(({ g, id: gid }) => gid === wanted && isMainGroup(g));
     if (!found) return;
+    autoFit = false;
     const box = found.g.getBoundingClientRect();
     const view = stage.getBoundingClientRect();
     tx += view.left + view.width / 2 - (box.left + box.width / 2);
@@ -917,7 +934,7 @@ export function initDiagram(container) {
         : svgText;
 
       decorate();
-      if (resetView || (scale === 1 && tx === 0 && ty === 0)) {
+      if (resetView || autoFit || (scale === 1 && tx === 0 && ty === 0)) {
         resetView = false;
         fit();
       }
@@ -972,7 +989,10 @@ export function initDiagram(container) {
       return;
     }
     const caps = (store.state && store.state.capabilities) || {};
-    if (caps.nativeDot) {
+    // The true gate symbols are drawn in the browser (fta_symbols.js); native
+    // `dot` only knows the placeholder polygons, so a symbols-style PNG must
+    // come from the processed preview, never from /api/render.
+    if (caps.nativeDot && effectiveBoxSettings().style !== 'symbols') {
       // A real `dot` rasterises at 300 dpi; prefer it over a canvas upscale.
       try {
         const box = effectiveBoxSettings();
@@ -1065,7 +1085,7 @@ export function initDiagram(container) {
   // screen-reader user switching mid-session would otherwise hear the old
   // language. Re-render on the next diagram update picks up the meta line for
   // free; the toolbar needs this.
-  const onLanguage = () => { retitleToolbar(); refreshFontNote(); relabelLayoutControls(); schedule(); };
+  const onLanguage = () => { retitleToolbar(); refreshFontNote(); relabelLayoutControls(); relabelPopover(); schedule(); };
   window.addEventListener('fta:language', onLanguage);
 
   // Explicit light/dark from the theme toggle...
@@ -1084,6 +1104,20 @@ export function initDiagram(container) {
   applyTransform();
   schedule();
 
+  // A resized stage (window, splitters, phone rotation) keeps a fitted
+  // diagram fitted; once the user has zoomed or panned, their view stays.
+  let resizeFrame = 0;
+  const stageObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => {
+      if (!autoFit || !svgEl || resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        if (autoFit && !destroyed) fit();
+      });
+    })
+    : null;
+  if (stageObserver) stageObserver.observe(stage);
+
   return {
     refresh: schedule,
     exportSvg,
@@ -1094,6 +1128,8 @@ export function initDiagram(container) {
     destroy() {
       destroyed = true;
       if (timer) clearTimeout(timer);
+      if (stageObserver) stageObserver.disconnect();
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
       window.removeEventListener('fta:hide-zero', onHideZero);
       window.removeEventListener('fta:jump', onJump);
       window.removeEventListener('fta:sigfigs', onSigFigs);

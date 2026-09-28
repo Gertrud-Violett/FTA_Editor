@@ -79,7 +79,7 @@
 
   --text: #1a2030;
   --text-dim: #566175;
-  --text-faint: #8a93a3;
+  --text-faint: #646d80;  /* 4.9:1 on panel headers (WCAG AA) */
   --text-on-accent: #ffffff;
 
   --accent: #2f6fd0;
@@ -157,7 +157,7 @@
 
     --text: #e4e8ef;
     --text-dim: #a0aabb;
-    --text-faint: #6f7a8c;
+    --text-faint: #8591a3;  /* 5.0:1 on dark panels (WCAG AA) */
     --text-on-accent: #ffffff;
 
     --accent: #5b9bf0;
@@ -225,7 +225,7 @@
 
   --text: #e4e8ef;
   --text-dim: #a0aabb;
-  --text-faint: #6f7a8c;
+  --text-faint: #8591a3;  /* 5.0:1 on dark panels (WCAG AA) */
   --text-on-accent: #ffffff;
 
   --accent: #5b9bf0;

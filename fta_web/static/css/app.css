@@ -1160,3 +1160,64 @@ html[data-booting] .tabstrip { pointer-events: none; }
 }
 .toast__action:hover { background: var(--surface-hover); }
 .toast__action:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* ---- feature-availability chip + panel (capabilities.js) -------------------
+   The markup shipped unstyled: a UA-grey button (4.3:1 in dark mode) whose
+   panel pushed the whole top bar down. A chip like the headline, and a
+   floating panel anchored under it. */
+#capabilities-host { position: relative; }
+.capbar__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--ctl-h);
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.capbar__button:hover { background: var(--surface-hover); }
+.capbar__button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.capbar__button[data-state="ok"] .capbar__glyph { color: var(--ok); }
+.capbar__button[data-state="warn"] { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
+.capbar__button[data-state="invite"] .capbar__glyph { color: var(--accent-hover); }
+.capbar__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-sm);
+  white-space: normal;
+}
+.capbar__panel[hidden] { display: none; }
+.capbar__title { margin: 0 0 8px; font-weight: 600; }
+.capbar__foot { margin: 8px 0 0; color: var(--text-dim); }
+.cap-row { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.cap-row__glyph { flex: 0 0 1.2em; text-align: center; font-weight: 700; }
+.cap-row[data-state="ok"] .cap-row__glyph { color: var(--ok); }
+.cap-row[data-state="warn"] .cap-row__glyph { color: var(--warn); }
+.cap-row[data-state="invite"] .cap-row__glyph { color: var(--accent-hover); }
+.cap-row__main { flex: 1 1 auto; min-width: 0; }
+.cap-row__head { display: flex; justify-content: space-between; gap: 8px; }
+.cap-row__name { font-weight: 600; }
+.cap-row__state { color: var(--text-dim); white-space: nowrap; }
+.cap-row__body, .cap-row__fix { margin: 2px 0 0; color: var(--text-dim); }
+.cap-row__cmd { display: block; margin-top: 4px; padding: 2px 6px; border-radius: var(--r-sm);
+  background: var(--surface-2); font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .capbar__panel { position: fixed; left: 16px; right: 16px; top: 56px; width: auto; }
+}
