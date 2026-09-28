@@ -244,16 +244,17 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
         head = "Gate: " + ctx.gate_text(node) + " | "
     else:
         head = ""
+    name_pad = _pad_for(str(name), ctx.pad)
+    meta_pad = _pad_for(f"{head}P:{p_str} | P_calc:{cp_str}", ctx.pad)
     name = html.escape(str(name), quote=False)
     head = html.escape(head, quote=False)
     meta_text = f"{head}P:{p_str} | P_calc:{cp_str}"
-    pad = ctx.pad
     font_size, small_font_size, cellpadding = 14, 9, 6
     name_height = max(1, round(font_size * 1.7))
     meta_height = max(1, round(small_font_size * 2.0))
     return f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="{cellpadding}" BGCOLOR="{_bgcolor(cp)}">
-        <TR><TD HEIGHT="{name_height}"><FONT POINT-SIZE="{font_size}">{name}{pad}</FONT></TD></TR>
-        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">{meta_text}{pad}</FONT></TD></TR>
+        <TR><TD HEIGHT="{name_height}"><FONT POINT-SIZE="{font_size}">{name}{name_pad}</FONT></TD></TR>
+        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">{meta_text}{meta_pad}</FONT></TD></TR>
     </TABLE>>'''
 
 
@@ -262,6 +263,7 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     name = node.get("name")
     if name is None:
         name = node.get("id", "")
+    name_pad = _pad_for(str(name), ctx.pad)
     name = html.escape(str(name), quote=False)
     extra = []
     if _gate_type(node) == "TRANSFER":
@@ -273,11 +275,30 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
                              ctx.prob(node.get("calculatedProbability")))
     if node.get("children") and _gate_type(node) != "TRANSFER":
         probs = "Q=%s" % ctx.prob(node.get("calculatedProbability"))
-    lines = [f'<FONT POINT-SIZE="12">{name}{ctx.pad}</FONT>']
+    lines = [f'<FONT POINT-SIZE="12">{name}{name_pad}</FONT>']
     for text in extra:
-        lines.append(f'<FONT POINT-SIZE="9">{text}{ctx.pad}</FONT>')
-    lines.append(f'<FONT POINT-SIZE="9">{html.escape(probs, quote=False)}{ctx.pad}</FONT>')
+        lines.append(f'<FONT POINT-SIZE="9">{text}{_pad_for(html.unescape(text), ctx.pad)}</FONT>')
+    lines.append(f'<FONT POINT-SIZE="9">{html.escape(probs, quote=False)}'
+                 f'{_pad_for(probs, ctx.pad)}</FONT>')
     return "<" + "<BR/>".join(lines) + ">"
+
+
+def _pad_for(plain: str, pad: str) -> str:
+    """Trailing padding for one label row.
+
+    Graphviz sizes a cell from its own font metrics, but the browser draws
+    the text with the real (usually wider) UI font, so a long row can run
+    past the box edge even with the fixed D12 padding. Measured in 1.7:
+    Graphviz (WASM, and native SVG when it cannot resolve the font) sizes
+    text with Times-like metrics, which run ~20-25% narrower than Meiryo
+    or Segoe UI, while a padding space is only ~0.25 em. The shortfall
+    grows with the row's length, so pad in proportion: the user's
+    box-scale spaces plus one space per two characters. A box scale of 0
+    still means no padding at all.
+    """
+    if not pad:
+        return ""
+    return pad + " " * ((len(plain) + 1) // 2)
 
 
 # ---- graph skeleton ------------------------------------------------------------

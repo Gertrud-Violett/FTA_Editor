@@ -111,7 +111,22 @@ def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
     old = build_dot_text(legacy)
     new, _ = build_dot_text2(legacy, sig_figs=2)
     strip = re.compile(r"P:[^ |<]+ \| P_calc:[^ <]+")
-    assert strip.sub("P", new) == strip.sub("P", old)
+    # Trailing padding differs on purpose (1.7 pads in proportion to the
+    # row's length so browser fonts do not overflow the box).
+    unpad = re.compile(r" +</FONT>")
+    assert (unpad.sub("</FONT>", strip.sub("P", new))
+            == unpad.sub("</FONT>", strip.sub("P", old)))
+
+
+def test_padding_grows_with_the_row_length_and_respects_scale_zero(legacy):
+    dot, _ = build_dot_text2(legacy, sig_figs=3)
+    rows = re.findall(r'POINT-SIZE="9">([^<]*?)( *)</FONT>', dot)
+    assert rows
+    for text, pad in rows:
+        # base box-scale padding (4) plus one space per two characters
+        assert len(pad) >= 4 + len(text.rstrip()) // 2
+    bare, _ = build_dot_text2(legacy, scale=0)
+    assert not re.search(r" +</FONT>", bare)
 
 
 def test_sig_figs_reach_the_labels(legacy):
