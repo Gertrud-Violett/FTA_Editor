@@ -929,3 +929,200 @@ html[data-hide-zero="1"] .fta-tree-item.is-zero { display: none; }
 @media (max-width: 1100px) {
   .actionbar .statusline { flex-basis: 100%; margin-left: 0; }
 }
+
+/* =========================================================================
+   1.7 shell: Advanced switch, significant figures, headline, boot gate and
+   the bottom panel's tab strip. Colours are theme tokens only, so every rule
+   here follows light/dark without a dark-mode block of its own.
+   ========================================================================= */
+
+/* ---- Advanced-only content ----------------------------------------------
+   <html data-advanced> is set by the pre-paint script and by main.js. */
+html[data-advanced="0"] [data-advanced-only] { display: none !important; }
+
+/* ---- boot gate ------------------------------------------------------------
+   Until every panel has loaded the action bar takes no pointer input and
+   reads as busy. Separate from aria-disabled, which applyCapabilityGates
+   owns; the keyboard side of the gate is in main.js onKeyDown. */
+html[data-booting] .actionbar {
+  pointer-events: none;
+  opacity: .55;
+  cursor: progress;
+}
+html[data-booting] .tabstrip { pointer-events: none; }
+
+/* ---- significant-figure select -------------------------------------------- */
+/* Room for one digit plus the native dropdown arrow (see #mode-select). */
+#sigfig-select { width: 7.5ch; min-width: 52px; }
+
+/* ---- Advanced switch ------------------------------------------------------ */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.switch__input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.switch__track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
+  transition: background var(--dur), border-color var(--dur);
+}
+.switch__thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur);
+}
+.switch__input:checked + .switch__track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch__input:checked + .switch__track .switch__thumb {
+  transform: translateX(13px);
+  background: var(--text-on-accent);
+}
+.switch__input:checked ~ .switch__label { color: var(--text); font-weight: 600; }
+.switch__input:focus-visible + .switch__track {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ---- headline ------------------------------------------------------------- */
+.headline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--ctl-h);
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.headline__label { color: var(--text-dim); font-weight: 600; }
+.headline__value {
+  color: var(--text);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.headline__badge {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  cursor: help;
+}
+.headline__badge[hidden] { display: none; }
+
+/* ---- bottom panel: tab strip + panels ------------------------------------- */
+.panel__head--tabs {
+  padding: 0 8px 0 4px;
+  gap: var(--s-2);
+  align-items: stretch;
+}
+.panel__head--tabs .panel__meta { align-self: center; margin-left: auto; }
+
+.tabstrip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  /* the focus ring must not be clipped by the scroller */
+  padding: 3px 3px 0;
+}
+.tabstrip__tab {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  min-height: 30px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur), color var(--dur);
+}
+.tabstrip__tab:hover { background: var(--surface-hover); color: var(--text); }
+.tabstrip__tab[aria-selected="true"] {
+  background: var(--panel);
+  color: var(--accent);
+  border-color: var(--border);
+}
+.tabstrip__tab[aria-selected="true"]::after {
+  /* an accent rule along the active tab's top edge */
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--accent);
+}
+.tabstrip__tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.tabstrip__tab[hidden] { display: none; }
+
+.panel--tabs .tabpanels {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tabpanel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.tabpanel[hidden] { display: none !important; }
+.tabpanel--details {
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.tabpanel--details > #details-root { flex: 1 1 auto; }
+.tabpanel .placeholder { min-height: 100px; }
+
+@media (max-width: 900px) {
+  .topbar { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .headline { order: 10; }
+}

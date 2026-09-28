@@ -13,6 +13,11 @@
  *   store.findNode(id)         -> node object | null
  *   store.flat()               -> [{id, name, depth, node}] in pre-order
  *   store.parentOf(id)         -> the PARENT NODE OBJECT | null
+ *   store.touch()              re-notify subscribers (display prefs changed)
+ *   store.setHighlight({ids, source}) / store.highlight / store.onHighlight(fn)
+ *   store.clearHighlight(source?)
+ *   store.setOverlay({kind, values}|null) / store.overlay / store.onOverlay(fn)
+ *   store.jumpTo(id)           select + dispatch `fta:jump` {id}
  *
  * TWO THINGS WORTH READING TWICE
  * ------------------------------
@@ -53,9 +58,54 @@ const MUTATION_KEYS = Object.freeze([
   'language',
   'nativeDot',
   'aiConfigured',
+  'analysis',
+  'sessionWarnings',
 ]);
 
 const listeners = new Set();
+
+/*
+ * Highlight / overlay bus (1.7). Separate from the state listeners on purpose:
+ * a cut-set click that lights up three nodes must not re-render the details
+ * form, and a store notify must not clear a highlight.
+ *
+ *   highlight: {ids: string[], source: string|null}  e.g. source 'cutsets'
+ *   overlay:   {kind: string, values: {nodeId: number}} | null  e.g. kind 'fv'
+ *
+ * Every change is also dispatched on window as `fta:highlight` / `fta:overlay`
+ * (detail = the new value) for modules that prefer events.
+ */
+const EMPTY_HIGHLIGHT = Object.freeze({ ids: Object.freeze([]), source: null });
+const highlightListeners = new Set();
+const overlayListeners = new Set();
+let currentHighlight = EMPTY_HIGHLIGHT;
+let currentOverlay = null;
+
+function fanOut(set, value, eventName) {
+  for (const fn of Array.from(set)) {
+    try {
+      fn(value);
+    } catch (err) {
+      reportListenerError(err);
+    }
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(eventName, { detail: value }));
+  } catch (_err) {
+    /* no window (tests) */
+  }
+}
+
+function addBusListener(set, fn, current) {
+  if (typeof fn !== 'function') throw new TypeError('expected a function');
+  set.add(fn);
+  try {
+    fn(current);
+  } catch (err) {
+    reportListenerError(err);
+  }
+  return () => set.delete(fn);
+}
 
 function childrenOf(node) {
   return node && Array.isArray(node.children) ? node.children : [];
@@ -246,9 +296,90 @@ export const store = {
     this.selectedId = root ? String(root.id) : null;
   },
 
+  /**
+   * Re-run every subscriber against the unchanged state. For display-only
+   * preferences (significant figures) that change how state is shown.
+   */
+  touch() {
+    notify();
+  },
+
+  // ---- highlight / overlay bus (see the note above `fanOut`) -------------
+
+  /** @returns {{ids: string[], source: string|null}} the current highlight. */
+  get highlight() {
+    return currentHighlight;
+  },
+
+  /** Replace the highlight. Empty or missing ids clears it. */
+  setHighlight({ ids, source } = {}) {
+    const list = Array.isArray(ids) ? ids.map(String) : [];
+    currentHighlight = list.length
+      ? Object.freeze({ ids: Object.freeze(list), source: source == null ? null : String(source) })
+      : EMPTY_HIGHLIGHT;
+    fanOut(highlightListeners, currentHighlight, 'fta:highlight');
+    return currentHighlight;
+  },
+
+  /**
+   * Clear the highlight. With a `source`, only when that source owns it, so
+   * one tab closing cannot wipe another tab's highlight.
+   */
+  clearHighlight(source) {
+    if (source != null && currentHighlight.source !== String(source)) return currentHighlight;
+    if (currentHighlight === EMPTY_HIGHLIGHT) return currentHighlight;
+    return this.setHighlight({ ids: [], source: null });
+  },
+
+  /** fn(highlight), called now and on every change. Returns unsubscribe. */
+  onHighlight(fn) {
+    return addBusListener(highlightListeners, fn, currentHighlight);
+  },
+
+  /** @returns {{kind: string, values: object}|null} the current overlay. */
+  get overlay() {
+    return currentOverlay;
+  },
+
+  /** Set a colour overlay ({kind, values: {nodeId: number}}) or null to clear. */
+  setOverlay(next) {
+    currentOverlay =
+      next && typeof next === 'object' && next.kind
+        ? Object.freeze({
+            kind: String(next.kind),
+            values: next.values && typeof next.values === 'object' ? { ...next.values } : {},
+          })
+        : null;
+    fanOut(overlayListeners, currentOverlay, 'fta:overlay');
+    return currentOverlay;
+  },
+
+  /** fn(overlay|null), called now and on every change. Returns unsubscribe. */
+  onOverlay(fn) {
+    return addBusListener(overlayListeners, fn, currentOverlay);
+  },
+
+  /**
+   * Select a node and ask the tree/diagram to bring it into view
+   * (`fta:jump` {id} on window).
+   */
+  jumpTo(id) {
+    if (id === null || id === undefined || id === '') return this.selectedId;
+    const wanted = String(id);
+    this.select(wanted);
+    try {
+      window.dispatchEvent(new CustomEvent('fta:jump', { detail: { id: wanted } }));
+    } catch (_err) {
+      /* no window (tests) */
+    }
+    return this.selectedId;
+  },
+
   /** Test/debug helper: drop every subscriber. */
   _resetListeners() {
     listeners.clear();
+    highlightListeners.clear();
+    overlayListeners.clear();
   },
 };
 

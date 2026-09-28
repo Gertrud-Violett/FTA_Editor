@@ -778,8 +778,23 @@ export function initDiagram(container) {
     await exportPngViaCanvas();
   }
 
-  function exportPngViaCanvas() {
+  async function exportPngViaCanvas() {
+    const blob = await toPngBlob();
+    if (blob) download(blob, 'fta_diagram.png');
+    else setStatusMessage(t('diagram.pngFailed', 'Could not rasterise the diagram to PNG.'), 'error');
+  }
+
+  /**
+   * Rasterise the current preview to a PNG Blob without downloading it.
+   * Resolves null when nothing is rendered yet or rasterising fails. Used by
+   * exportPngViaCanvas() and by window.ftaShell.diagramPng() (report export).
+   */
+  function toPngBlob() {
     return new Promise((resolve) => {
+      if (!lastSvgText) {
+        resolve(null);
+        return;
+      }
       const scaleUp = 2;
       const box = svgEl ? svgEl.viewBox.baseVal : null;
       const w = (box && box.width) || 1200;
@@ -796,15 +811,11 @@ export function initDiagram(container) {
         ctx.fillRect(0, 0, c.width, c.height);
         ctx.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
-        c.toBlob((blob) => {
-          if (blob) download(blob, 'fta_diagram.png');
-          resolve();
-        }, 'image/png');
+        c.toBlob((blob) => resolve(blob || null), 'image/png');
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        setStatusMessage(t('diagram.pngFailed', 'Could not rasterise the diagram to PNG.'), 'error');
-        resolve();
+        resolve(null);
       };
       img.src = url;
     });
@@ -842,6 +853,7 @@ export function initDiagram(container) {
     refresh: schedule,
     exportSvg,
     exportPng,
+    toPngBlob,
     getBoxSettings: effectiveBoxSettings,
     destroy() {
       destroyed = true;
