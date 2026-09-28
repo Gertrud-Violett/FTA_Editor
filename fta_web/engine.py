@@ -427,6 +427,8 @@ class WebCore(FTACore):
         self.analysis = default_analysis()
         ok, error = super().load_from_json(file_path)
         if not ok:
+            if error == _CORE_ENCODING_ERROR:
+                error = _diagnose_unreadable(file_path) or error
             return ok, error
         raw = _read_document(file_path)
         if isinstance(raw, dict) and "tree" in raw and "analysis" in raw:
@@ -611,6 +613,42 @@ class WebCore(FTACore):
     def node_warnings(self, node_id: str) -> List[Dict[str, Any]]:
         """The last recalculation's warnings for one node."""
         return [w for w in self.quant_warnings if w.get("nodeId") == str(node_id)]
+
+
+#: What ``FTACore.load_from_json`` says for *any* file it cannot parse --
+#: empty, truncated, or a JSON ``null`` -- not only for an encoding problem.
+_CORE_ENCODING_ERROR = "Failed to read file with common encodings"
+
+
+def _diagnose_unreadable(file_path) -> Optional[str]:
+    """The real reason the core could not parse ``file_path``, or None.
+
+    Decodes with the core's own encodings (in its order) and reports what
+    ``json.loads`` makes of the first decodable text: an empty file, invalid
+    JSON (with line and column), or valid JSON that is not an object.
+    """
+    try:
+        with open(file_path, "rb") as handle:
+            data = handle.read()
+    except OSError:
+        return None
+    for enc in ("utf-8-sig", "utf-8", "cp932", "shift_jis", "cp1252"):
+        try:
+            text = data.decode(enc).strip()
+        except UnicodeDecodeError:
+            continue
+        if not text:
+            return "The file is empty."
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError as exc:
+            return "The file is not valid JSON (line %d, column %d: %s)." % (
+                exc.lineno, exc.colno, exc.msg)
+        if not isinstance(value, dict):
+            return "JSON root must be an object (the file holds %s)." % (
+                "null" if value is None else type(value).__name__)
+        return None
+    return "The file is not text in a supported encoding (UTF-8, Shift_JIS, cp1252)."
 
 
 def _read_document(file_path) -> Any:

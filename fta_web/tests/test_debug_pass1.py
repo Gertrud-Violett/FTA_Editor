@@ -390,6 +390,36 @@ def test_report_passes_only_whitelisted_options(report_client):
     assert options["uncertainty"] is None
 
 
+# ---- load errors say what is wrong ----------------------------------------------------------
+# The core reports every unparseable file -- empty, truncated, 'null' -- as
+# "Failed to read file with common encodings", which sends the user hunting
+# for an encoding problem that is not there (reported by pass 3).
+
+
+@pytest.mark.parametrize("content, expected", [
+    (b"", "empty"),
+    (b"   \r\n\t ", "empty"),
+    (b'{"title": "x", "tree": {"id": "root", ', "not valid JSON"),
+    (b"{'single': 'quotes'}", "not valid JSON"),
+    (b"null", "must be an object"),
+])
+def test_unparseable_files_get_a_clear_load_error(tmp_path, content, expected):
+    target = tmp_path / "bad.json"
+    target.write_bytes(content)
+    ok, error = WebCore().load_from_json(str(target))
+    assert ok is False
+    assert expected in error and "encodings" not in error
+
+
+def test_open_route_reports_invalid_json_clearly(app_client, tmp_path):
+    target = tmp_path / "truncated.json"
+    target.write_text('{"tree": {"id": "root"', encoding="utf-8")
+    response = app_client.post("/api/file/open", json={"path": str(target)})
+    assert response.status_code == 400
+    message = strict_loads(response.get_data(as_text=True))["error"]["message"]
+    assert "not valid JSON" in message and "line 1" in message
+
+
 # ---- filesystem sandbox: Windows path forms ---------------------------------------------
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows path semantics")
