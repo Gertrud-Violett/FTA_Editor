@@ -168,12 +168,12 @@ def test_report_is_503_without_python_docx(client, monkeypatch):
     assert "python-docx" in ja and "openpyxl" not in ja
 
 
-def test_report_is_501_with_python_docx(client, monkeypatch):
-    from fta_web.routes import report
-
-    monkeypatch.setattr(report, "docx_available", lambda: True)
-    response = api(client, "POST", "/api/report/docx", json={})
-    assert response.status_code == 501
+def test_report_is_a_docx_with_python_docx(client):
+    # Workstream D implemented the route; full coverage is in test_report_docx.py.
+    pytest.importorskip("docx")
+    response = api(client, "POST", "/api/report/docx", json={"sections": ["metadata"]})
+    assert response.status_code == 200
+    assert response.mimetype.endswith("wordprocessingml.document")
 
 
 # ---- validate / session warnings ------------------------------------------------------------
