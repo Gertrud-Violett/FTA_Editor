@@ -1,8 +1,10 @@
 /**
  * tabs/cutsets.js -- the Cut Sets tab (1.7, workstream A).
  *
- * POST /api/analysis/cutsets with optional per-run limits (blank inputs use
- * the document's `analysis.cutsets`). Runs on first show and again, debounced,
+ * POST /api/analysis/cutsets with optional per-run limits. The limit inputs
+ * start from the document's `analysis.cutsets` (blank also means the document
+ * value); "Save as document defaults" writes them back through POST
+ * /api/analysis/settings (undoable), which Importance and the headline use. Runs on first show and again, debounced,
  * whenever the tree changes while the tab is visible. A row click lights its
  * events up in the tree and the diagram through ctx.highlight(ids,
  * 'cutsets'); leaving the tab clears that highlight.
@@ -55,9 +57,12 @@ export function mount(panel, ctx) {
   const lblCutoff = el('label', null, [el('span'), inCutoff]);
   const lblLimit = el('label', null, [el('span'), inLimit]);
   const copyBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'copy' } });
+  const saveBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'save-defaults' } });
+  // Inputs the user has typed in since they were last filled from the document.
+  const edited = new Set();
   const status = el('span', { class: 'anl-note', 'aria-live': 'polite' });
   const toolbar = el('div', { class: 'anl-toolbar' }, [
-    runBtn, lblOrder, lblCount, lblCutoff, lblLimit, el('span', { class: 'anl-grow' }), status, copyBtn,
+    runBtn, lblOrder, lblCount, lblCutoff, saveBtn, lblLimit, el('span', { class: 'anl-grow' }), status, copyBtn,
   ]);
   const summary = el('div', { class: 'anl-summary', 'aria-live': 'polite' });
   const warnings = el('ul', { class: 'anl-warnings' });
@@ -138,9 +143,34 @@ export function mount(panel, ctx) {
     return (analysis && analysis.cutsets) || {};
   }
 
+  /** Save the three limit inputs as `analysis.cutsets` (undoable). */
+  async function saveDefaults() {
+    const payload = limitsBody();
+    if (!payload) return;
+    const cut = {};
+    for (const key of ['maxOrder', 'maxCount', 'cutoff']) {
+      if (payload[key] !== undefined) cut[key] = payload[key];
+    }
+    if (!Object.keys(cut).length) return;
+    saveBtn.disabled = true;
+    try {
+      const res = await ctx.api.post('/analysis/settings', { cutsets: cut });
+      ctx.store.applyMutation(res);
+      edited.clear();
+      ctx.toast(t('cutsets.savedDefaults'), 'ok');
+    } catch (err) {
+      reportError(ctx, err);
+    } finally {
+      saveBtn.disabled = false;
+      paintToolbar();
+    }
+  }
+
   function paintToolbar() {
     runBtn.textContent = running ? t('anl.running') : t('anl.run');
     runBtn.disabled = running;
+    saveBtn.textContent = t('cutsets.saveDefaults');
+    saveBtn.title = t('cutsets.saveDefaultsTitle');
     copyBtn.textContent = t('cutsets.copyCsv');
     copyBtn.disabled = !result || !result.cutSets || !result.cutSets.length;
     const doc = docLimits();
@@ -153,6 +183,12 @@ export function mount(panel, ctx) {
       label.firstChild.textContent = t(key);
       const shown = value === undefined ? '' : String(value);
       input.placeholder = shown;
+      // Prefilled from the document until the user types (and again after an
+      // undo or a save changes the document value).
+      if (!edited.has(input) && document.activeElement !== input) {
+        input.value = shown;
+        input.classList.remove('anl-invalid');
+      }
       input.title = t('cutsets.docDefault', { value: shown });
     }
     lblLimit.firstChild.textContent = t('cutsets.limit');
@@ -190,6 +226,11 @@ export function mount(panel, ctx) {
     if (result.nonCoherent) summary.appendChild(badge(t('cutsets.nonCoherent'), 'warn'));
     const approx = result.approximations || [];
     if (approx.length) summary.appendChild(badge(t('cutsets.approx', { n: approx.length }), 'warn'));
+    if (approx.some((a) => a && a.code === 'PAND_APPROX')) {
+      // Cut sets expand PAND as plain AND (no 1/n!): conservative, and it is
+      // what the MCUB headline then uses.
+      summary.appendChild(badge(t('cutsets.pandAsAnd'), 'warn', t('cutsets.pandAsAndTitle')));
+    }
     if (stale) summary.appendChild(badge(t('anl.staleNote'), null));
   }
 
@@ -283,6 +324,10 @@ export function mount(panel, ctx) {
     runSoon.cancel();
     run();
   });
+  saveBtn.addEventListener('click', () => saveDefaults());
+  for (const input of [inOrder, inCount, inCutoff]) {
+    input.addEventListener('input', () => edited.add(input));
+  }
   for (const input of [inOrder, inCount, inCutoff, inLimit]) {
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -331,7 +376,10 @@ export function mount(panel, ctx) {
       for (const tr of tableWrap.querySelectorAll('tr.is-selected')) tr.classList.remove('is-selected');
     },
     onStale() {
-      if (!hasRun) return;
+      if (!hasRun) {
+        if (!isEta(ctx) && root.contains(toolbar)) paintToolbar(); // document limits may have changed
+        return;
+      }
       stale = true;
       paint();
       if (active) runSoon();

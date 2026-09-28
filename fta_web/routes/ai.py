@@ -83,8 +83,8 @@ try:  # normal package import: ``import fta_web.routes.ai``
         api_error_response,
         ok_response,
     )
-    from ..node_schema import merge_back_node_keys
-    from ..state import get_state
+    from ..node_schema import merge_back_node_keys, reconcile_gate_types
+    from ..state import get_state, load_warning_issues
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import ai_bridge  # type: ignore[no-redef]
     from errors import (  # type: ignore[no-redef]
@@ -95,8 +95,8 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         api_error_response,
         ok_response,
     )
-    from node_schema import merge_back_node_keys  # type: ignore[no-redef]
-    from state import get_state  # type: ignore[no-redef]
+    from node_schema import merge_back_node_keys, reconcile_gate_types  # type: ignore[no-redef]
+    from state import get_state, load_warning_issues  # type: ignore[no-redef]
 
 log = logging.getLogger(__name__)
 
@@ -628,6 +628,12 @@ def post_update():
         # knows, so a rewrite would silently drop every 1.7 key. Restore them
         # by node id from the tree being replaced, and say how many.
         merged = merge_back_node_keys(state.core.get_data(), new_tree)
+        # A gateType the model kept while changing logicGate is stale: the
+        # AND/OR the model wrote wins (as on load), and the Validation tab
+        # says so.
+        resets = reconcile_gate_types(new_tree)
+        if resets:
+            state.add_session_warnings(load_warning_issues(resets))
         state.core.set_data(new_tree)
         state.core.recalculate_probabilities()
         state.mark_dirty()

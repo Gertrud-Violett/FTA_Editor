@@ -7,6 +7,10 @@
  * one run at a time (409 BUSY otherwise). Results: summary statistics and an
  * inline SVG histogram (theme tokens only, so dark mode just works) with the
  * point estimate and the 5th/95th percentiles marked.
+ *
+ * The samples and seed inputs start from the document's `analysis.mc`;
+ * "Save as document defaults" writes them back through POST
+ * /api/analysis/settings (undoable). A blank seed saves "random".
  */
 import cat from '../i18n/unc.js';
 import {
@@ -58,8 +62,10 @@ export function mount(panel, ctx) {
   const lblN = el('label', null, [el('span'), inN]);
   const lblSeed = el('label', null, [el('span'), inSeed]);
   const lblTime = el('label', null, [el('span'), inTime]);
+  const saveBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'save-defaults' } });
+  const edited = new Set(); // inputs typed in since they were filled from the document
   const status = el('span', { class: 'anl-note', 'aria-live': 'polite' });
-  const toolbar = el('div', { class: 'anl-toolbar' }, [runBtn, lblN, lblSeed, lblTime, el('span', { class: 'anl-grow' }), status]);
+  const toolbar = el('div', { class: 'anl-toolbar' }, [runBtn, lblN, lblSeed, saveBtn, lblTime, el('span', { class: 'anl-grow' }), status]);
   const message = el('p', { class: 'anl-empty' });
   const stats = el('div', { class: 'anl-statgrid' });
   const meta = el('p', { class: 'anl-note' });
@@ -89,6 +95,31 @@ export function mount(panel, ctx) {
     else if (defaults().seed !== null && defaults().seed !== undefined) body.seed = defaults().seed;
     body.timeLimit = time === null ? 30 : time;
     return body;
+  }
+
+  /** Save samples and seed as `analysis.mc` (undoable). */
+  async function saveDefaults() {
+    const n = parseNumber(inN.value);
+    const seed = parseNumber(inSeed.value);
+    const badN = Number.isNaN(n) || (n !== null && (!Number.isInteger(n) || n < 1 || n > MAX_N));
+    const badSeed = Number.isNaN(seed) || (seed !== null && (!Number.isInteger(seed) || seed < 0));
+    inN.classList.toggle('anl-invalid', badN);
+    inSeed.classList.toggle('anl-invalid', badSeed);
+    if (badN || badSeed) return;
+    const mc = { seed }; // null = random (the default)
+    if (n !== null) mc.n = n;
+    saveBtn.disabled = true;
+    try {
+      const res = await ctx.api.post('/analysis/settings', { mc });
+      ctx.store.applyMutation(res);
+      edited.clear();
+      ctx.toast(t('unc.savedDefaults'), 'ok');
+    } catch (err) {
+      reportError(ctx, err);
+    } finally {
+      saveBtn.disabled = running;
+      paintToolbar();
+    }
   }
 
   function tick() {
@@ -127,13 +158,21 @@ export function mount(panel, ctx) {
     runBtn.disabled = running;
     runBtn.setAttribute('aria-busy', running ? 'true' : 'false');
     for (const input of [inN, inSeed, inTime]) input.disabled = running;
+    saveBtn.disabled = running;
+    saveBtn.textContent = t('unc.saveDefaults');
+    saveBtn.title = t('unc.saveDefaultsTitle');
     lblN.firstChild.textContent = t('unc.n');
     lblSeed.firstChild.textContent = t('unc.seed');
     lblSeed.title = t('unc.seedTitle');
     lblTime.firstChild.textContent = t('unc.timeLimit');
     const d = defaults();
     inN.placeholder = String(d.n);
-    inSeed.placeholder = d.seed === null || d.seed === undefined ? t('unc.seedPlaceholder') : String(d.seed);
+    const docSeed = d.seed === null || d.seed === undefined ? '' : String(d.seed);
+    inSeed.placeholder = docSeed || t('unc.seedPlaceholder');
+    // Prefilled from the document until the user types (and again after an
+    // undo or a save changes the document value).
+    if (!edited.has(inN) && document.activeElement !== inN) inN.value = String(d.n);
+    if (!edited.has(inSeed) && document.activeElement !== inSeed) inSeed.value = docSeed;
     if (!running) status.textContent = '';
   }
 
@@ -269,6 +308,8 @@ export function mount(panel, ctx) {
   }
 
   runBtn.addEventListener('click', () => run());
+  saveBtn.addEventListener('click', () => saveDefaults());
+  for (const input of [inN, inSeed]) input.addEventListener('input', () => edited.add(input));
   for (const input of [inN, inSeed, inTime]) {
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {

@@ -369,6 +369,7 @@ L10N: Dict[str, Dict[str, str]] = {
         "etaSkipped": "Event tree (ETA) mode: this section applies to fault trees only.",
         "col.id": "Id", "col.name": "Name", "col.kind": "Kind", "col.model": "Model",
         "col.params": "Parameters", "col.q": "q", "col.calc": "Calculated",
+        "col.source": "Source",
         "col.rank": "#", "col.events": "Events", "col.order": "Order",
         "col.prob": "Probability", "col.share": "Share",
         "col.fv": "FV", "col.birnbaum": "Birnbaum", "col.raw": "RAW", "col.rrw": "RRW",
@@ -422,6 +423,7 @@ L10N: Dict[str, Dict[str, str]] = {
         "etaSkipped": "イベントツリー(ETA)モード: この節は故障の木にのみ適用されます。",
         "col.id": "ID", "col.name": "名前", "col.kind": "種類", "col.model": "モデル",
         "col.params": "パラメータ", "col.q": "q", "col.calc": "計算値",
+        "col.source": "出典",
         "col.rank": "#", "col.events": "事象", "col.order": "次数",
         "col.prob": "確率", "col.share": "寄与率",
         "col.fv": "FV", "col.birnbaum": "Birnbaum", "col.raw": "RAW", "col.rrw": "RRW",
@@ -644,9 +646,10 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
         for r in doc_data["events"]:
             rows.append([r.get("Id"), r.get("Name"), r.get("Event kind") or "",
                          r.get("Model") or "", _params_text(r, fp),
-                         fp(r.get("Base probability")), fp(r.get("Calculated probability"))])
+                         fp(r.get("Base probability")), fp(r.get("Calculated probability")),
+                         r.get("Source") or ""])
         _table(doc, [t("col.id"), t("col.name"), t("col.kind"), t("col.model"), t("col.params"),
-                     t("col.q"), t("col.calc")], rows)
+                     t("col.q"), t("col.calc"), t("col.source")], rows)
 
     # ---- cut sets ----
     if "cutsets" in sections:

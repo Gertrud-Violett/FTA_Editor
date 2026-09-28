@@ -35,7 +35,12 @@ export default {
     'headline.label': 'Top event',
     'headline.title': 'Top-event probability',
     'headline.mcub': 'MCUB',
-    'headline.mcubTitle': 'Min-cut upper bound, used because the tree has repeated events. Tree walk: {alt}',
+    'headline.mcubTitle': 'Min-cut upper bound, used because {reason}. Tree walk: {alt}',
+    'headline.reason.repeated': 'the tree has repeated events',
+    'headline.reason.nonCoherent': 'the tree has XOR (non-coherent) gates',
+    'headline.reason.both': 'the tree has repeated events and XOR (non-coherent) gates',
+    'headline.reason.other': 'the tree walk is not exact for this tree',
+    'headline.pandNote': 'PAND treated as AND in cut sets (conservative).',
 
     'boot.busy': 'Loading the editor panels…',
 
@@ -70,7 +75,12 @@ export default {
     'headline.label': '頂上事象',
     'headline.title': '頂上事象の確率',
     'headline.mcub': 'MCUB',
-    'headline.mcubTitle': '重複事象があるため最小カット上限を使用しています。ツリー計算値: {alt}',
+    'headline.mcubTitle': '{reason}ため、最小カット上限を使用しています。ツリー計算値: {alt}',
+    'headline.reason.repeated': '重複事象がある',
+    'headline.reason.nonCoherent': 'XOR(非コヒーレント)ゲートがある',
+    'headline.reason.both': '重複事象と XOR(非コヒーレント)ゲートがある',
+    'headline.reason.other': 'このツリーではツリー計算が厳密でない',
+    'headline.pandNote': 'カットセットでは PAND を AND として扱っています(保守側)。',
 
     'boot.busy': 'エディターのパネルを読み込んでいます…',
 

@@ -306,7 +306,10 @@ export function mount(panel, ctx) {
   xlsxBtn.addEventListener('click', async () => {
     xlsxBtn.disabled = true;
     try {
-      const { blob, filename } = await ctx.api.download('GET', '/export/xlsx');
+      const { blob, filename } = await ctx.api.download(
+        'GET',
+        '/export/xlsx?sigFigs=' + encodeURIComponent(ctx.fmt?.sigFigs?.() || 3)
+      );
       const name = filename || safeStem(ctx.store?.metadata?.().title) + '.xlsx';
       offer(blob, name);
       ctx.toast(t('report.saved', { name }), 'ok');

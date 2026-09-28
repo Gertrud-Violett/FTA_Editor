@@ -504,13 +504,19 @@ Gates, house events and transfers cannot be quantified here. The tab tells you
 why.
 
 **Cut Sets tab.** The tab runs when first shown, and again, after a short
-delay, whenever the tree changes while it is visible. You can override the
-limits for one run (*Max order*, *Max count*, *Cutoff*). A blank field uses
-the document setting, which is shown as a hint. *Show* limits how many rows
-are listed; the totals always cover every cut set. **Copy CSV** copies the
-list to the clipboard. Clicking a row outlines its events in the tree and the
-diagram; leaving the tab clears the highlight. The badges above the table
-report truncation, repeated events, non-coherence (XOR) and approximations.
+delay, whenever the tree changes while it is visible. The limit fields (*Max
+order*, *Max count*, *Cutoff*) start with the document settings; change them
+to override the limits for one run (a blank field also uses the document
+setting, shown as a hint). **Save as document defaults** stores the three
+limits in the document (`analysis.cutsets`). That is what the Importance tab,
+the headline, the Validation tab, the report and the CLI use. Saving marks the
+document as modified and can be undone. *Show* limits how many rows are
+listed; the totals always cover every cut set. **Copy CSV** copies the list to
+the clipboard. Clicking a row outlines its events in the tree and the diagram;
+leaving the tab clears the highlight. The badges above the table report
+truncation, repeated events, non-coherence (XOR) and approximations. When the
+tree has a Priority-AND gate, a badge says **PAND treated as AND in cut sets
+(conservative)**.
 
 **Importance tab.** A sortable table of FV, Birnbaum, RAW and RRW, together
 with each event's q and the number of cut sets it appears in. **Colour diagram
@@ -520,8 +526,10 @@ same colour scale, so the ranking is visible in the tree as well. Click a row
 to select the event.
 
 **Uncertainty tab.** Enter the number of samples (up to 100,000), an optional
-seed and a time limit (up to 60 s), then press **Run**. A run never starts by
-itself. An elapsed-time counter shows progress, and only one run can be in
+seed and a time limit (up to 60 s), then press **Run**. The samples and seed
+start with the document settings (`analysis.mc`). **Save as document
+defaults** stores them in the document (a blank seed means a random seed);
+this can be undone. A run never starts by itself. An elapsed-time counter shows progress, and only one run can be in
 progress at a time. See [Uncertainty (Monte Carlo)](#uncertainty-monte-carlo).
 
 **Validation tab.** Issues are grouped by severity: error ✖, warning ⚠ and
@@ -597,7 +605,7 @@ get the closest coherent answer.
 | **OR** | curved shield | 1 − Π(1 − pᵢ) | OR | |
 | **k-out-of-n** (`KOFN`) | OR shield with `k/n` | P(at least k of n) by exact Poisson-binomial sum | OR | Voting logic such as 2oo3 sensors. `k` must satisfy 1 ≤ k ≤ n. |
 | **XOR** | OR shield with a second base line | p₁ + p₂ − 2p₁p₂ | OR | Exactly one of two. Makes the tree **non-coherent**. With more than 2 inputs it is evaluated as odd parity and flagged. |
-| **INHIBIT** | hexagon | p(input) × p(condition) | AND | Exactly one input and one child whose event kind is *conditioning*. |
+| **INHIBIT** | hexagon | p(input) × p(condition) | AND | Exactly two inputs: one ordinary input and one child whose event kind is *conditioning*. Any other shape is still evaluated as AND and flagged `INHIBIT_ARITY`. |
 | **Priority-AND** (`PAND`) | AND with an inner bar | Πpᵢ / n! (approximation) | AND | See below. Always flagged `PAND_APPROX`. |
 | **Transfer** (`TRANSFER`) | triangle | the value of the `transferTo` node | OR | Same file only. Its own children are ignored. |
 
@@ -619,6 +627,10 @@ Event kinds (`eventKind`) apply to leaves:
   true value can be far from that. The cut-set and importance analyses treat
   PAND as a plain **AND** (without the 1/n!), which is conservative. The
   headline shows the tree walk unless the tree has repeated events or XOR.
+  When it shows the MCUB, the PAND reduction is therefore not in the headline
+  either: the Cut Sets tab shows a *PAND treated as AND in cut sets
+  (conservative)* badge, the MCUB badge's tooltip says so, and the cut-set
+  and summary results list the approximation (`PAND_APPROX`).
 - **XOR** is non-coherent: a component *not* failing can contribute to the top
   event. Cut sets read XOR as OR, so the cut-set results overstate XOR
   branches. The tree is flagged `NONCOHERENT_XOR`, and the headline uses the
@@ -653,8 +665,9 @@ repeated events correctly because they are Boolean.
 **The headline** in the top bar shows the top-event probability:
 
 - It is the **MCUB** when the tree has repeated events or an XOR gate. In
-  advanced mode a badge says **MCUB**, and its tooltip gives the tree-walk
-  value.
+  advanced mode a badge says **MCUB**. Its tooltip gives the reason (repeated
+  events, XOR (non-coherent) gates, or both) and the tree-walk value, and
+  notes when Priority-AND gates were treated as AND in the cut sets.
 - Otherwise it is the **tree walk**.
 - The headline is computed with cheaper limits (at most 2,000 cut sets and a
   2 s budget). If those are exceeded, it falls back to the tree walk and is
@@ -675,7 +688,11 @@ truncated, the Cut Sets tab shows a *Truncated* badge, and the report and the
 CLI show it too.
 
 The document's defaults live in the `analysis.cutsets` block (see the API
-reference). The Cut Sets tab can override them for one run.
+reference). The Cut Sets tab can override them for one run, and its **Save as
+document defaults** button changes them. The Validation tab and `validate`
+expand the cut sets with the document's limits (2 s budget) and report
+`CUTSETS_TRUNCATED` when they truncate. If that expansion runs out of time,
+nothing is reported about truncation.
 
 ### Minimal cut sets
 
@@ -801,7 +818,7 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `DANGLING_LINK` | error | A link points to a node id that does not exist. | Remove the link, or link it to an existing node. |
 | `TRANSFER_MISSING` | error | A transfer gate has no valid target, so it counts as 0. | Pick a target node, or change the gate type. |
 | `TRANSFER_CYCLE` | error | A transfer chain comes back on itself, so it counts as 0. | Point the transfer at a node outside its own branch. |
-| `INHIBIT_ARITY` | error | An INHIBIT gate does not have exactly one input plus one *conditioning* child. | Keep one input, and one child marked as a conditioning event. |
+| `INHIBIT_ARITY` | error | An INHIBIT gate does not have exactly two children, one of them *conditioning*. The engine warning in the analysis tabs uses the same rule. | Keep one input, and one child marked as a conditioning event. |
 | `KOFN_ARITY` | error | A k-out-of-n gate has k missing, k < 1 or k > n. | Set k between 1 and the number of inputs. |
 | `XOR_ARITY` | error | An XOR gate does not have exactly 2 inputs. | Give it exactly two inputs, or use OR. |
 | `QUANT_PARAM_MISSING` | error | A rate, standby or repairable model lacks a parameter; the previous probability is used. | Fill in the missing values, or switch to the fixed model. |
@@ -813,7 +830,7 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `PARENT_PROBABILITY_IGNORED` | warning | A gate's own probability is neither 1.0 nor its calculated value, and it is ignored. | Clear it (set it to 1.0), or make the node a leaf. |
 | `STANDBY_LARGE_LT` | warning | Standby λτ > 0.2, where λτ/2 is inaccurate. | Shorten τ, or use the rate model. |
 | `NONCOHERENT_XOR` | warning | The tree has XOR gate(s), so cut-set results are approximate. | Use OR if both events can happen together. |
-| `CUTSETS_TRUNCATED` | warning | The cut-set list was truncated, so the results may be underestimated. It is reported in the DOCX report's validation section. | Raise the cut-set limits. |
+| `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so the results may be underestimated. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
 | `ETA_BRANCH_SUM` | warning | ETA only: the children's probabilities do not sum to 1 (±1e-6). | Adjust the branch probabilities. |
 | `LOAD_REPAIR` | warning | The file was repaired on load (duplicate id renamed, top id changed, invalid analysis setting reset). | Check the node, and save to keep the repair. |
 | `LINKS_REMOVED` | warning | Deleting a node removed links that pointed to it. | Re-add a link if the dependency still exists. |
@@ -947,7 +964,7 @@ Sections (tick the ones you want; the choice is remembered):
 | Headline | Top-event probability, the method (MCUB or tree walk) and the alternative value |
 | Assumptions | Mission time, the models used (with formulas and counts), approximations, non-coherence, repeated events, cut-set limits |
 | Diagram | The diagram image (see below) |
-| Events | The basic-event table: id, name, kind, model, parameters (λ, T, τ, μ, MTTR), q and calculated value |
+| Events | The basic-event table: id, name, kind, model, parameters (λ, T, τ, μ, MTTR), q, calculated value and source (data provenance) |
 | Cut sets | The top 50 by default, with totals, MCUB, rare-event value and a truncation note |
 | Importance | The top 30 by FV, by default |
 | Uncertainty | **Off by default.** When selected, a Monte Carlo run of at most 5,000 samples (30 s) is made for the report. |
@@ -973,8 +990,9 @@ sheets:
   Model, λ (/h), T (h), τ (h), μ (/h), MTTR (h), Base probability, Calculated
   probability, Source, Unc. dist, Unc. median, Unc. mean, Unc. EF, Requirement
   ID, Test ref, Owner, Status, Evidence, Tags, FMEA ID, FMEA item, FMEA mode,
-  FMEA cause, S, O, D, RPN. Numbers are real numbers in scientific format, so
-  you can sort, filter and pivot. The header row is frozen and auto-filtered.
+  FMEA cause, S, O, D, RPN. Numbers are real numbers in scientific format
+  with the significant figures chosen in the top bar, so you can sort, filter
+  and pivot. The header row is frozen and auto-filtered.
 - **Analysis**: the document settings (mission time, cut-set limits, Monte
   Carlo settings). In FTA mode it also has the headline, tree walk, MCUB,
   rare-event value, repeated-event count, non-coherence, the number of
@@ -1035,7 +1053,7 @@ uv run python fta_web/run.py <command> FILE... [options]
 | `quantify` | The headline (and its method), tree walk, MCUB and rare-event value, plus q and the calculated value per basic event |
 | `cutsets` | The minimal cut sets, ranked |
 | `importance` | FV, Birnbaum, RAW, RRW and the cut-set count per event, sorted by FV |
-| `mc` | Monte Carlo: point estimate, mean, median, p05, p95, std, seed and method |
+| `mc` | Monte Carlo: point estimate, mean, median, p05, p95, std, requested and completed samples, seed and method |
 | `validate` | The Validation issues and their counts |
 | `report` | The DOCX report (needs `python-docx`) |
 
@@ -1101,15 +1119,16 @@ What the frozen legacy desktop app (`desktop/`) does with a 1.7 file:
   - k-out-of-n, XOR and TRANSFER → OR. The desktop result is the plain OR of
     the children, i.e. "any 1 of n" for a vote and a + b − ab for XOR.
 - **The derived probability is written into `probability`** for rate,
-  standby and repairable models. So quantified basic events have meaningful
-  values in the desktop app, frozen at the web app's last recalculation.
-  Changing the mission time in the desktop app is not possible.
-- **Transfer gates and house events are not understood.**
-  - A transfer gate without children is a leaf in the desktop app and uses its
-    own `probability`, which is usually the 1.0 default.
-  - A house event uses its `probability`, not its ON/OFF state.
-  - Top-event values that involve either can therefore differ between the two
-    apps.
+  standby and repairable models, for house events (1 when ON, 0 when OFF) and
+  for transfer gates (the target's calculated value). So these leaves have
+  meaningful values in the desktop app, frozen at the web app's last
+  recalculation. Changing the mission time, a house state or a transfer
+  target in the desktop app is not possible.
+- **Transfer gates and house events are not understood** as such: the desktop
+  app sees leaves carrying the derived `probability` above, so for AND/OR
+  trees the top event matches the web app. A transfer gate **with children**
+  is the exception: the web app ignores the children, while the desktop app
+  computes the gate from them (`TRANSFER_HAS_CHILDREN` warns about it).
 
 Saving from the desktop app:
 
@@ -1121,11 +1140,18 @@ Saving from the desktop app:
   `date`, `mode` and `tree`. The mission time, cut-set limits, Monte Carlo
   settings and a custom FMEA occurrence table revert to their defaults the
   next time the web app opens the file.
-- **Edits that conflict with 1.7 keys are overruled by the web app.** When
-  both are present, `gateType` wins over `logicGate`. So changing AND/OR in
-  the desktop app on a node that has a `gateType` has no effect in the web
-  app. Likewise, a probability typed in the desktop app for an event with a
-  rate, standby or repairable model is recomputed from the model.
+- **A gate changed in the desktop app is kept.** The desktop app edits only
+  `logicGate` and leaves a stale `gateType` behind. When the web app opens a
+  file (or installs an AI update) where `gateType` no longer projects to
+  `logicGate`, for example a k-out-of-n gate that the desktop user switched
+  to AND, it trusts `logicGate`. The `gateType` is dropped together with its
+  `k` or `transferTo`, and the Validation tab lists a load repair
+  (`LOAD_REPAIR`, kind `gate_type_reset`). A change that keeps the projection
+  cannot be detected: a PAND or INHIBIT gate whose `logicGate` is still AND
+  keeps its `gateType`.
+- **Probabilities typed in the desktop app are overruled** for an event with a
+  rate, standby or repairable model (recomputed from the model), and for
+  house events and transfer gates (recomputed from the state or the target).
 - The desktop app's AI "Update FTA" replaces the tree with what the model
   returns, which usually drops the 1.7 node keys. The web app's AI update
   restores them by node id and reports how many (`mergedFields`).

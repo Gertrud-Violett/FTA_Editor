@@ -230,7 +230,7 @@ def fake_importance(result):
 def fake_mc(tree, analysis, n=None, seed=None, time_limit=30, bins=40):
     return {"mean": 0.03, "median": 0.029, "p05": 0.02, "p95": 0.04, "std": 0.005,
             "pointEstimate": 0.0298, "histogram": {"edges": [0, 1], "counts": [n or 0]},
-            "completed": True, "seed": seed, "method": "engine", "n": n}
+            "requested": n, "completed": n, "seed": seed, "method": "engine"}
 
 
 LINT_RESULT = []
@@ -295,7 +295,29 @@ def test_mc_uses_n_and_seed(fakes, tmp_path, capsys):
     code, payload = main_json(capsys, "mc", write_doc(tmp_path / "t.json"), "--n", "123",
                               "--seed", "7")
     assert code == 0
-    assert payload["results"]["n"] == 123 and payload["results"]["seed"] == 7
+    assert payload["results"]["requested"] == 123 and payload["results"]["seed"] == 7
+
+
+def test_mc_csv_shows_requested_and_completed(fakes, tmp_path, capsys):
+    """uncertainty.run reports ``requested``/``completed`` (there is no ``n``):
+    the CSV and text rows used to show an empty n column."""
+    assert cli.main(["mc", str(write_doc(tmp_path / "t.json")), "--n", "123", "--csv"]) == 0
+    rows = list(csv.DictReader(io.StringIO(capsys.readouterr().out)))
+    assert rows[0]["requested"] == "123" and rows[0]["completed"] == "123"
+    assert "n" not in rows[0]
+
+
+def test_validate_reports_cutset_truncation(tmp_path, capsys):
+    """cli validate passes the document-limit truncation to lint (real modules)."""
+    tree = small_tree()
+    doc = tmp_path / "t.json"
+    doc.write_text(json.dumps({"title": "T", "mode": "FTA", "tree": tree,
+                               "analysis": {"cutsets": {"maxCount": 1}}}), encoding="utf-8")
+    code, payload = main_json(capsys, "validate", doc)
+    codes = [i["code"] for i in payload["results"]["issues"]]
+    assert "CUTSETS_TRUNCATED" in codes
+    assert code == 0
+    assert cli.main(["validate", str(doc), "--strict"]) == 1
 
 
 def test_validate_exit_codes(fakes, tmp_path, capsys):

@@ -124,3 +124,29 @@ def test_does_not_modify_the_document(client):
     validate(client)
     assert json.dumps(get_state().core.get_data(), sort_keys=True) == before
     assert get_state().dirty == dirty
+
+
+def test_cutset_truncation_under_document_limits_is_reported(client):
+    """CUTSETS_TRUNCATED needs the cut-set signal (it never appeared before)."""
+    add(client, probability=0.1)
+    add(client, probability=0.2)
+    assert "CUTSETS_TRUNCATED" not in [i["code"] for i in validate(client)["issues"]]
+    response = client.post("/api/analysis/settings", json={"cutsets": {"maxCount": 1}})
+    if response.status_code == 404:  # analysis blueprint not registered here
+        get_state().core.analysis["cutsets"]["maxCount"] = 1
+    issues = validate(client)["issues"]
+    hit = [i for i in issues if i["code"] == "CUTSETS_TRUNCATED"]
+    assert hit and hit[0]["severity"] == "warning"
+    assert "count" in str(hit[0]["params"]["reason"])
+
+
+def test_truncation_signal_failure_is_silent(client, monkeypatch):
+    import fta_web.cutsets as cutsets_mod
+
+    def boom(*_a, **_k):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(cutsets_mod, "compute", boom)
+    add(client, probability=0.1)
+    assert cutsets_mod.truncation_signal(get_state().core.get_data(), None) is None
+    assert "CUTSETS_TRUNCATED" not in [i["code"] for i in validate(client)["issues"]]

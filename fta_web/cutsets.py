@@ -302,3 +302,25 @@ def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
         "limits": {"maxOrder": max_order, "maxCount": max_count, "cutoff": cutoff},
         "elapsedMs": round((time.perf_counter() - started) * 1000.0, 1),
     }
+
+
+#: Time budget for :func:`truncation_signal` (the Validation tab / ``cli validate``).
+VALIDATE_TIME_BUDGET_S = 2.0
+
+
+def truncation_signal(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None
+                      ) -> Optional[Dict[str, Any]]:
+    """``{"truncated", "truncatedBy", "count"}`` for the document's own cut-set
+    limits (``analysis.cutsets``), run with a short time budget -- the cheap
+    ``extra["cutsets"]`` that ``lint.run`` turns into ``CUTSETS_TRUNCATED``.
+
+    ``None`` when the expansion fails or runs out of time: validation then
+    simply says nothing about truncation.
+    """
+    try:
+        result = compute(tree, analysis, {"timeBudgetS": VALIDATE_TIME_BUDGET_S})
+    except Exception:  # noqa: BLE001 -- validation must never fail on this
+        return None
+    return {"truncated": bool(result.get("truncated")),
+            "truncatedBy": list(result.get("truncatedBy") or []),
+            "count": result.get("total", 0)}

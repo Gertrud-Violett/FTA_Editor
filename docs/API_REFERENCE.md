@@ -63,8 +63,18 @@ Units and ranges:
 - INHIBIT and PAND project to AND.
 - KOFN, XOR and TRANSFER project to OR.
 
-For `quant` models other than `fixed`, `probability` is overwritten with the
-derived q on every recalculation.
+When a loaded file (or an AI update) has a `gateType` that does not project
+to its `logicGate` (the 1.6 desktop app edits only `logicGate`), `logicGate`
+wins: `gateType`, `k` and `transferTo` are removed from that node and a
+`LOAD_REPAIR` session warning is recorded with `kind: "gate_type_reset"` and
+`params` `{old_id, new_id, name, gateType, logicGate, dropped, message}`.
+
+`probability` is overwritten with the derived value on every recalculation
+for `quant` models other than `fixed`, for house leaves (1.0 when
+`houseState` is true, else 0.0) and for `TRANSFER` nodes (the target's
+calculated value; 0.0 when the target is missing or cyclic). The 1.6 desktop
+app reads `probability`, so it shows the same values. It still computes a
+`TRANSFER` node that has children from those children.
 
 **Document block `analysis`**, saved beside `tree`:
 
@@ -193,6 +203,10 @@ The headline figures (`engine.summary`):
   budget.
 - If the cut sets fail or run out of time, `mcub` and `rareEvent` are `null`,
   `headline` is the tree walk, and `truncated` is `true`.
+- `approximations` lists `PAND_APPROX` for every reachable Priority-AND gate:
+  cut sets expand PAND as plain AND (no 1/n!), so an MCUB headline is
+  conservative for PAND. The UI badge tooltip uses `repeatedEvents`,
+  `nonCoherent` and this list to say why the MCUB is used.
 
 #### `POST /api/analysis/cutsets`
 
@@ -285,6 +299,12 @@ It works in both modes and does not return `MODE_UNSUPPORTED`.
 
 - Issues are sorted by severity (error, warning, info). Within a severity,
   document-level issues come first, then tree order.
+- In FTA mode the cut sets are expanded (outside the lock) with the
+  document's `analysis.cutsets` limits and a 2 s budget
+  (`cutsets.truncation_signal`), so `CUTSETS_TRUNCATED` (`params: {reason,
+  count}`, reason such as `"count"` or `"cutoff, order"`) appears when they
+  truncate. If the expansion fails or runs out of time, nothing is reported
+  about truncation.
 - `message` is English. The UI localises it with `val.code.<CODE>` and
   `params`.
 - The codes and their severities are listed in the
@@ -426,9 +446,12 @@ case is ignored.
 
 ### Excel export
 
-`GET /api/export/xlsx` writes the 1.6 `FTA` sheet unchanged, plus an **Events**
-sheet (one row per node; the columns are `excel_events.EVENT_COLUMNS`) and an
-**Analysis** sheet (settings and, in FTA mode, the headline figures).
+`GET /api/export/xlsx[?sigFigs=N]` writes the 1.6 `FTA` sheet unchanged, plus
+an **Events** sheet (one row per node; the columns are
+`excel_events.EVENT_COLUMNS`) and an **Analysis** sheet (settings and, in FTA
+mode, the headline figures). `sigFigs` sets the scientific number format of
+the probability cells; it is clamped to 1–6, and a missing or unparseable
+value gives 3. The UI sends the top bar's significant-figures setting.
 
 ### New error codes
 

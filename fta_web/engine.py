@@ -41,6 +41,8 @@ n != 2, flagged); INHIBIT -- AND over the input and its conditioning child;
 PAND -- Πp/n!, always flagged as an approximation; TRANSFER -- the value of
 the ``transferTo`` node, through the shared memo (missing target -> 0 and a
 warning). A leaf with ``eventKind: house`` is 1 or 0 by ``houseState``.
+Both write that derived value into ``probability`` too, so the 1.6 desktop
+app (which reads a leaf's ``probability``) shows the same number.
 
 Warnings land in ``self.quant_warnings`` as ``{code, nodeId, params}``.
 """
@@ -54,9 +56,11 @@ from typing import Any, Dict, List, Optional, Tuple
 try:  # normal package import: ``import fta_web.engine``
     from . import config  # noqa: F401  (puts fta_web/core on sys.path)
     from .node_schema import project_logic_gate  # noqa: F401  (re-exported)
+    from .node_schema import reconcile_gate_types
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]  # noqa: F401
     from node_schema import project_logic_gate  # type: ignore[no-redef]  # noqa: F401
+    from node_schema import reconcile_gate_types  # type: ignore[no-redef]
 
 from FTA_Editor_core import FTACore, _tidy  # noqa: E402
 
@@ -423,6 +427,8 @@ class WebCore(FTACore):
                     "message": "Invalid analysis setting(s) were reset to their "
                                "defaults: %s." % ", ".join(problems),
                 })
+        # A desktop edit changes only logicGate: trust it over a stale gateType.
+        self.last_load_warnings.extend(reconcile_gate_types(self.fta_data))
         self.recalculate_probabilities()
         return True, None
 
@@ -506,9 +512,16 @@ class WebCore(FTACore):
                         base = 0.0
                     else:
                         base = value
+                # Desktop compatibility: the 1.6 app knows nothing of TRANSFER
+                # and reads a leaf's ``probability``, so it must hold the
+                # derived value. (A TRANSFER node *with* children is still
+                # computed from those children by the desktop app; lint flags
+                # it as TRANSFER_HAS_CHILDREN.)
+                node["probability"] = base
             elif not children:
                 if str(node.get("eventKind") or "").lower() == "house":
                     base = 1.0 if node.get("houseState") is True else 0.0
+                    node["probability"] = base  # desktop compatibility, as TRANSFER
                 else:
                     base = float(node.get("probability", 0.0))
             else:
@@ -542,7 +555,7 @@ class WebCore(FTACore):
                         1 for c in children
                         if str(c.get("eventKind") or "").lower() == "conditioning"
                     )
-                    if conditions != 1 or len(children) < 2:
+                    if conditions != 1 or len(children) != 2:  # as lint: exactly 2, 1 conditioning
                         warn("INHIBIT_ARITY", node, conditions=conditions, n=len(children))
                     base = _tidy(self._product(child_probs))
                 elif gate == "PAND":

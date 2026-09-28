@@ -1110,7 +1110,9 @@ let headline = null;
 /**
  * Paint the top-bar headline. `value` is the top-event probability, `method`
  * 'mcub' | 'treeWalk' (anything else is treated as the tree walk), `alt` the
- * other method's value, shown in the MCUB badge's tooltip. null clears it.
+ * other method's value, shown in the MCUB badge's tooltip, `reason` why the
+ * MCUB is used ('repeated' | 'nonCoherent' | 'both'), `pand` whether PAND
+ * gates were expanded as plain AND in the cut sets. null clears it.
  */
 function setHeadline(next) {
   headline = next && typeof next === 'object' ? { ...next } : null;
@@ -1129,7 +1131,11 @@ function renderHeadline() {
   if (mcub) {
     const alt =
       headline.alt === null || headline.alt === undefined ? '—' : formatProb(headline.alt, getSigFigs());
-    badge.title = t('headline.mcubTitle', { alt });
+    const reasons = ['repeated', 'nonCoherent', 'both'];
+    const reason = t('headline.reason.' + (reasons.includes(headline.reason) ? headline.reason : 'other'));
+    let title = t('headline.mcubTitle', { alt, reason });
+    if (headline.pand) title += '\n' + t('headline.pandNote');
+    badge.title = title;
   } else {
     badge.removeAttribute('title');
   }
@@ -1207,10 +1213,14 @@ async function refreshHeadline() {
     if (seq !== headlineSeq) return; // a newer request superseded this one
     const value = typeof res.headline === 'number' ? res.headline : rootCalculated();
     const method = res.headlineMethod === 'mcub' ? 'mcub' : 'treeWalk';
+    const repeated = Array.isArray(res.repeatedEvents) && res.repeatedEvents.length > 0;
+    const nonCoherent = Boolean(res.nonCoherent);
     setHeadline({
       value,
       method,
       alt: method === 'mcub' ? res.treeWalk : null,
+      reason: repeated && nonCoherent ? 'both' : nonCoherent ? 'nonCoherent' : repeated ? 'repeated' : null,
+      pand: (res.approximations || []).some((a) => a && a.code === 'PAND_APPROX'),
       truncated: Boolean(res.truncated),
     });
   } catch (_err) {
@@ -2364,7 +2374,9 @@ async function actionExport(kind) {
   const fallbackName = exportFilename(spec.extension);
   setStatus(t('msg.downloading', { name: fallbackName }), 'info');
   try {
-    const result = await fetchDownload(spec.url);
+    // The Excel number formats follow the significant-figures setting.
+    const url = kind === 'xlsx' ? spec.url + '?sigFigs=' + encodeURIComponent(getSigFigs()) : spec.url;
+    const result = await fetchDownload(url);
     const name = result.filename || fallbackName;
     saveBlob(result.blob, name);
     toast(t('msg.downloaded', { name }), 'ok');
@@ -2919,7 +2931,7 @@ window.ftaShell = {
   pickPath,
   /** @returns {Promise<Blob|null>} the diagram preview as a PNG, without downloading. */
   diagramPng,
-  /** Top-bar headline: setHeadline({value, method: 'mcub'|'treeWalk', alt}) or null. */
+  /** Top-bar headline: setHeadline({value, method: 'mcub'|'treeWalk', alt, reason, pand}) or null. */
   setHeadline,
   /** Show a bottom-panel tab by id. @returns {boolean} false if hidden/unknown. */
   openTab,

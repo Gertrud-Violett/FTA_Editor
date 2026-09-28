@@ -93,6 +93,7 @@ try:  # normal package import: ``import fta_web.routes.files``
     )
     from ..engine import WebCore
     from ..excel_events import export_xlsx
+    from ..numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs
     from ..state import get_state, load_warning_issues
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import fsbrowser  # type: ignore[no-redef]
@@ -111,6 +112,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     )
     from engine import WebCore  # type: ignore[no-redef]
     from excel_events import export_xlsx  # type: ignore[no-redef]
+    from numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs  # type: ignore[no-redef]
     from state import get_state, load_warning_issues  # type: ignore[no-redef]
 
 # Both import paths above have already put fta_web/core on sys.path.
@@ -489,8 +491,9 @@ def _export_xml(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
     return core.export_to_xml(path)
 
 
-def _export_xlsx(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
-    return export_xlsx(core, path)
+def _export_xlsx(core: FTACore, path: str, sig_figs: int = DEFAULT_SIG_FIGS
+                 ) -> Tuple[bool, Optional[str]]:
+    return export_xlsx(core, path, sig_figs=sig_figs)
 
 
 #: format -> (suffix, MIME type, writer). Also the allow-list: the ``<fmt>``
@@ -560,7 +563,12 @@ def export_document(fmt: str):
             # Under the lock for the whole write: every exporter walks the
             # live tree, so a concurrent edit mid-walk would produce a file
             # describing a document that never existed.
-            ok, error = writer(state.core, str(temp_path))
+            if key == "xlsx":
+                # ?sigFigs= (clamped to 1..6) sets the sheets' number formats.
+                ok, error = writer(state.core, str(temp_path),
+                                   clamp_sig_figs(request.args.get("sigFigs")))
+            else:
+                ok, error = writer(state.core, str(temp_path))
             download_name = fsbrowser.safe_download_name(
                 _document_stem(state), suffix
             )

@@ -153,6 +153,24 @@ pinned hashes, and no divergence was added. All new behaviour lives in
   offers the advanced gates when the Advanced switch is on.
 - The frozen build bundles `python-docx`, with its templates, when it is
   installed. CLI subcommands work in the exe.
+- **Document analysis defaults can be edited in the UI.** The Cut Sets tab
+  (max order, max count, cutoff) and the Uncertainty tab (samples, seed)
+  start from the document's `analysis` settings and have a **Save as document
+  defaults** button (`POST /api/analysis/settings`: undoable, marks the
+  document modified). The `CUTSETS_TRUNCATED` hint now points there.
+- **The MCUB badge tooltip gives the reason**: repeated events, XOR
+  (non-coherent) gates, or both. It used to say "repeated events" also for
+  XOR trees.
+- **Priority-AND in cut sets is now visible.** Cut sets expand PAND as plain
+  AND (no 1/n!), which is conservative, so an MCUB headline drops the PAND
+  reduction. The Cut Sets tab shows a *PAND treated as AND in cut sets
+  (conservative)* badge and the MCUB tooltip says so.
+- **`INHIBIT_ARITY` from the engine** now uses lint's rule: exactly two
+  inputs, one of them conditioning. Before, the engine accepted three or more
+  inputs while the Validation tab rejected them. Quantification is unchanged.
+- The DOCX report's event table has a **Source** column (`quant.source`).
+- `GET /api/export/xlsx` accepts `?sigFigs=N` (clamped to 1–6) for the number
+  formats; the Excel buttons send the top bar's setting. It was always 3.
 
 ### Fixed
 
@@ -168,6 +186,23 @@ pinned hashes, and no divergence was added. All new behaviour lives in
   from the tree did not report the links that were stripped with them, as a
   single delete does. It now shows the count in a toast linked to the
   Validation tab.
+- **`mc --csv` and the `mc` text table had an empty `n` column**: the CLI read
+  a key `uncertainty.run` does not return. They now show `requested` and
+  `completed`.
+- **`CUTSETS_TRUNCATED` never appeared** in the Validation tab or
+  `validate`, because they ran lint without a cut-set result. They now expand
+  the cut sets with the document's limits (2 s budget, outside the lock;
+  skipped silently on failure or timeout) and pass the truncation to lint.
+- **House events and transfer gates showed stale values in the desktop app.**
+  The engine now writes their derived value into `probability` (1/0 for a
+  house event, the target's value for a transfer), which is what the 1.6 app
+  reads.
+- **A gate changed in the desktop app was silently discarded.** The desktop
+  app edits only `logicGate`, and the stale `gateType` won. On load and on an
+  AI update, a `gateType` that does not project to `logicGate` is now dropped
+  (with its `k`/`transferTo`) and reported as `LOAD_REPAIR`
+  (`gate_type_reset`). An AI update also no longer restores a `transferTo`
+  whose transfer gate it dropped.
 
 ### Compatibility
 
@@ -177,14 +212,15 @@ pinned hashes, and no divergence was added. All new behaviour lives in
 - **The legacy desktop app** reads only `logicGate` and `probability`:
   - Advanced gates are projected to AND or OR. INHIBIT and PAND become AND;
     KOFN, XOR and TRANSFER become OR.
-  - Model-derived probabilities are written into `probability`, so its
-    numbers stay meaningful.
-  - Transfer gates and house events are not understood there.
+  - Model-derived probabilities, house states (1/0) and transfer values are
+    written into `probability`, so its numbers stay meaningful. A transfer
+    gate that has children is still computed from them there.
 - **Saving from the desktop app** keeps the new node keys but drops the
   top-level `analysis` block, which then reverts to its defaults.
-- **Conflicting desktop edits are overruled.** When a file comes back from the
-  desktop app, `gateType` wins over a changed `logicGate`, and a rate model
-  recomputes `probability`.
+- **Desktop gate edits are kept.** When a file comes back from the desktop
+  app with a `logicGate` that its `gateType` no longer projects to,
+  `logicGate` wins and the stale `gateType` is dropped with a load notice. A
+  rate model still recomputes `probability`.
 - See [USER_GUIDE.md → Desktop app compatibility](docs/USER_GUIDE.md#desktop-app-compatibility).
 
 ## [1.6.4] - 2026-09-22

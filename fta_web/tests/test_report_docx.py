@@ -211,6 +211,15 @@ def test_docx_contains_headline_and_tables(fakes):
     assert first_row.xpath("./w:trPr/w:tblHeader")  # header row repeats
 
 
+def test_docx_event_table_has_the_source_column(fakes):
+    doc = build({"sections": ["events"], "sigFigs": 3})
+    table = doc.tables[-1]
+    header = [c.text for c in table.rows[0].cells]
+    assert header[-1] == "Source"
+    pump = [r for r in table.rows if r.cells[0].text == "a"][0]
+    assert pump.cells[len(header) - 1].text == "OREDA"
+
+
 def test_docx_notes_unavailable_sections(monkeypatch):
     import fta_web.cutsets
 

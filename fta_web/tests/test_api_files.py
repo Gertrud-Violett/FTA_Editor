@@ -747,6 +747,29 @@ def test_export_xlsx_downloads_a_readable_workbook(opened):
     assert "Seal leak" in sheet["B1"].value
 
 
+def _calc_format(data):
+    import openpyxl
+
+    sheet = openpyxl.load_workbook(io.BytesIO(data))["Events"]
+    header = [c.value for c in sheet[1]]
+    col = header.index("Calculated probability") + 1
+    return sheet.cell(row=2, column=col).number_format
+
+
+@pytest.mark.parametrize("query, expected", [
+    ("", "0.00E+00"),               # default 3
+    ("?sigFigs=5", "0.0000E+00"),
+    ("?sigFigs=99", "0.00000E+00"),  # clamped to 6
+    ("?sigFigs=0", "0E+00"),         # clamped to 1
+    ("?sigFigs=abc", "0.00E+00"),    # unparseable -> default
+])
+def test_export_xlsx_follows_the_sig_figs_param(opened, query, expected):
+    pytest.importorskip("openpyxl")
+    response = opened.get("/api/export/xlsx" + query)
+    assert response.status_code == 200
+    assert _calc_format(response.get_data()) == expected
+
+
 def test_export_names_the_download_after_the_title_when_unsaved(client):
     post(client, "/api/metadata", {"title": "Untitled Analysis"})
     disposition = client.get("/api/export/json").headers["Content-Disposition"]

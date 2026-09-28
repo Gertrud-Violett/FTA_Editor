@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import copy
 import math
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 try:  # normal package import: ``import fta_web.node_schema``
     from .errors import INVALID_FIELD, ApiError
@@ -378,6 +378,54 @@ MERGE_BACK_KEYS = (
 )
 
 
+def reconcile_gate_types(tree: Any) -> List[Dict[str, Any]]:
+    """Drop every ``gateType`` that no longer projects to its node's
+    ``logicGate``. Mutates ``tree``; returns load warnings
+    (``kind: "gate_type_reset"``).
+
+    The 1.6 desktop app edits only ``logicGate`` and keeps unknown keys, so a
+    file edited there can carry a stale ``gateType`` (a KOFN whose gate the
+    user switched to AND). The web engine follows ``gateType``, which would
+    silently discard the desktop edit -- so ``logicGate`` is trusted, and the
+    ``gateType`` goes together with the ``k``/``transferTo`` that only it used.
+    """
+    warnings: List[Dict[str, Any]] = []
+    stack = [tree] if isinstance(tree, dict) else []
+    seen = set()
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict) or id(node) in seen:
+            continue
+        seen.add(id(node))
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+        gate_type = node.get("gateType")
+        if gate_type in (None, ""):
+            continue
+        logic = str(node.get("logicGate") or "OR").strip().upper()
+        if project_logic_gate(gate_type) == logic:
+            continue
+        node.pop("gateType", None)
+        dropped = ["gateType"]
+        for key in ("k", "transferTo"):
+            if key in node:
+                node.pop(key)
+                dropped.append(key)
+        node_id = str(node.get("id"))
+        warnings.append({
+            "kind": "gate_type_reset",
+            "old_id": node_id,
+            "new_id": node_id,
+            "name": node.get("name"),
+            "gateType": gate_type,
+            "logicGate": logic,
+            "dropped": dropped,
+            "message": "Node %r: its gate is %s (probably changed in the desktop editor) but the "
+                       "stored gate type was %s; the gate type was dropped and %s is used."
+                       % (node_id, logic, str(gate_type), logic),
+        })
+    return warnings
+
+
 def merge_back_node_keys(before: Dict[str, Any], after: Dict[str, Any]) -> int:
     """Copy the 1.7 keys from ``before`` onto the same-id nodes of ``after``
     wherever ``after`` lacks them. Mutates ``after``; returns how many fields
@@ -411,7 +459,7 @@ def merge_back_node_keys(before: Dict[str, Any], after: Dict[str, Any]) -> int:
         for key in MERGE_BACK_KEYS:
             if key in node or key not in old:
                 continue
-            if key in ("gateType", "k") and not gate_ok:
+            if key in ("gateType", "k", "transferTo") and not gate_ok:
                 continue
             node[key] = copy.deepcopy(old[key])
             restored += 1

@@ -264,15 +264,22 @@ def cmd_mc(core, args):
                    copy.deepcopy(core.analysis), n=mc.get("n"), seed=mc.get("seed"),
                    time_limit=args.time_limit)
     row = {k: result.get(k) for k in ("pointEstimate", "mean", "median", "p05", "p95", "std",
-                                       "n", "seed", "completed", "method")}
+                                       "requested", "completed", "seed", "method")}
     return result, [row], EXIT_OK
 
 
 def cmd_validate(core, args):
     tree = copy.deepcopy(core.get_data())
     warnings = session_issues(core)
+    extra = None
+    if (core.mode or "FTA") != "ETA":
+        # Cut-set truncation under the document's limits (lint: CUTSETS_TRUNCATED).
+        signal, _why = report_docx.try_call("cutsets", "truncation_signal", copy.deepcopy(tree),
+                                            copy.deepcopy(core.analysis))
+        if signal:
+            extra = {"cutsets": signal}
     issues, reason = report_docx.try_call("lint", "run", tree, copy.deepcopy(core.analysis), warnings,
-                                          mode=core.mode or "FTA")
+                                          mode=core.mode or "FTA", extra=extra)
     note = None
     if issues is None:
         if reason != "unavailable":

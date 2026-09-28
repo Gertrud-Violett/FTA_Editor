@@ -921,6 +921,24 @@ class TestUpdate:
         assert [c["id"] for c in payload["tree"]["children"]] == ["n_1"]
         assert payload["dirty"] is True
 
+    def test_a_stale_gate_type_from_the_model_is_dropped(self, configured, provider, monkeypatch):
+        """logicGate wins over a gateType that no longer projects to it; the
+        Validation tab gets a LOAD_REPAIR (gate_type_reset)."""
+        update = json.loads(json.dumps(VALID_UPDATE))
+        update["logicGate"] = "AND"
+        update["gateType"] = "KOFN"
+        update["k"] = 1
+        monkeypatch.setattr(provider, "send_message", replies(json.dumps(update)))
+
+        response = configured.post("/api/ai/update", json={})
+
+        assert response.status_code == 200, body(response)
+        tree = body(response)["tree"]
+        assert "gateType" not in tree and "k" not in tree
+        warnings = body(configured.get("/api/state"))["sessionWarnings"]
+        assert any(w["code"] == "LOAD_REPAIR" and w["params"]["kind"] == "gate_type_reset"
+                   for w in warnings)
+
     def test_a_code_fenced_tree_is_accepted(self, configured, provider, monkeypatch):
         """The handler strips fences; this pins that the route relies on it."""
         monkeypatch.setattr(

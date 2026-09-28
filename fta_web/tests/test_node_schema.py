@@ -131,6 +131,57 @@ def test_merge_back_node_keys():
     assert "gateType" not in after["children"][1]
 
 
+def test_merge_back_skips_transfer_to_with_a_stale_transfer_gate():
+    before = {"id": "root", "children": [
+        {"id": "t", "gateType": "TRANSFER", "transferTo": "x", "logicGate": "OR", "children": []}]}
+    after = {"id": "root", "children": [{"id": "t", "logicGate": "AND", "children": []}]}
+    node_schema.merge_back_node_keys(before, after)
+    assert "gateType" not in after["children"][0] and "transferTo" not in after["children"][0]
+
+
+def test_reconcile_gate_types_trusts_logic_gate():
+    tree = {"id": "root", "logicGate": "OR", "gateType": "KOFN", "k": 2, "children": [
+        {"id": "g", "name": "G", "logicGate": "and", "gateType": "kofn", "k": 2, "children": []},
+        {"id": "p", "logicGate": "AND", "gateType": "PAND", "children": []},
+        {"id": "t", "logicGate": "AND", "gateType": "TRANSFER", "transferTo": "root",
+         "children": []},
+    ]}
+    warnings = node_schema.reconcile_gate_types(tree)
+    assert tree["gateType"] == "KOFN" and tree["k"] == 2          # consistent: kept
+    assert tree["children"][1]["gateType"] == "PAND"
+    g, t = tree["children"][0], tree["children"][2]
+    assert "gateType" not in g and "k" not in g
+    assert "gateType" not in t and "transferTo" not in t
+    assert [w["kind"] for w in warnings] == ["gate_type_reset"] * 2
+    assert warnings[0]["new_id"] == "g" and warnings[0]["logicGate"] == "AND"
+    assert warnings[0]["gateType"] == "kofn" and warnings[0]["dropped"] == ["gateType", "k"]
+
+
+def test_a_desktop_edited_file_keeps_the_desktop_gate(tmp_path):
+    """The 1.6 desktop app changed a KOFN gate's logicGate to AND and kept the
+    stale gateType: on load the web engine must follow logicGate."""
+    import json
+
+    from fta_web.engine import WebCore
+    from fta_web.state import load_warning_issues
+
+    tree = {"id": "root", "name": "Top", "type": "Root", "logicGate": "AND",
+            "gateType": "KOFN", "k": 1, "children": [
+                {"id": "a", "name": "A", "type": "Event", "probability": 0.5, "children": []},
+                {"id": "b", "name": "B", "type": "Event", "probability": 0.5, "children": []}]}
+    path = tmp_path / "desktop.json"
+    path.write_text(json.dumps({"title": "D", "tree": tree}), encoding="utf-8")
+    core = WebCore()
+    assert core.load_from_json(str(path))[0]
+    data = core.get_data()
+    assert "gateType" not in data and "k" not in data
+    assert data["calculatedProbability"] == 0.25          # AND, not 1-of-2
+    resets = [w for w in core.last_load_warnings if w["kind"] == "gate_type_reset"]
+    assert len(resets) == 1 and "KOFN" in resets[0]["message"]
+    issue = load_warning_issues(resets)[0]
+    assert issue["code"] == "LOAD_REPAIR" and issue["nodeId"] == "root"
+
+
 # ---- the API ------------------------------------------------------------------------------
 
 

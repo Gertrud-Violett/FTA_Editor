@@ -271,6 +271,48 @@ def test_inhibit_is_and_with_the_condition():
     assert [w["code"] for w in core.quant_warnings] == ["INHIBIT_ARITY"]
 
 
+def test_inhibit_arity_matches_lint_exactly_two_inputs():
+    """Three inputs with one conditioning event: lint flags it, so must the engine."""
+    from fta_web import lint
+
+    tree = gate("root", "INHIBIT", [leaf("a", 0.1), leaf("b", 0.2),
+                                    leaf("c", 0.5, eventKind="conditioning")])
+    core = calc(tree)
+    assert [w["code"] for w in core.quant_warnings] == ["INHIBIT_ARITY"]
+    assert core.quant_warnings[0]["params"] == {"conditions": 1, "n": 3}
+    assert core.get_data()["calculatedProbability"] == pytest.approx(0.01)  # still AND
+    assert any(i["code"] == "INHIBIT_ARITY" for i in lint.run(core.get_data(), None))
+
+
+def test_house_and_transfer_write_the_derived_probability_for_the_desktop_app(tmp_path):
+    """The 1.6 desktop app (plain FTACore) reads a leaf's ``probability``: a
+    saved file must carry the derived house/transfer values, not stale ones."""
+    sub = gate("sub", "AND", [leaf("a", 0.5), leaf("b", 0.4)])
+    tree = gate("root", "OR", [
+        sub,
+        gate("t", "TRANSFER", [], transferTo="sub", probability=1.0),
+        leaf("hon", 1.0, eventKind="house", houseState=True),
+        leaf("hoff", 1.0, eventKind="house", houseState=False),
+        gate("tmiss", "TRANSFER", [], transferTo="nowhere", probability=0.7),
+    ])
+    web = WebCore()
+    web.set_data(copy.deepcopy(tree))
+    web.recalculate_probabilities()
+    assert web.find_node_by_id("t")["probability"] == 0.2
+    assert web.find_node_by_id("hon")["probability"] == 1.0
+    assert web.find_node_by_id("hoff")["probability"] == 0.0
+    assert web.find_node_by_id("tmiss")["probability"] == 0.0
+    path = tmp_path / "doc.json"
+    assert web.save_to_json(str(path))[0]
+
+    desktop = FTACore()
+    assert desktop.load_from_json(str(path))[0]
+    desktop.recalculate_probabilities()
+    for node_id in ("t", "hon", "hoff", "tmiss", "root"):
+        assert (desktop.find_node_by_id(node_id)["calculatedProbability"]
+                == web.find_node_by_id(node_id)["calculatedProbability"]), node_id
+
+
 def test_pand_is_product_over_n_factorial_and_flagged():
     core = calc(gate("root", "PAND", [leaf("a", 0.1), leaf("b", 0.2), leaf("c", 0.3)]))
     assert core.get_data()["calculatedProbability"] == pytest.approx(0.006 / 6)
