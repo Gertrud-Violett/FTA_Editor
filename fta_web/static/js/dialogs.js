@@ -23,6 +23,20 @@
  * imports from them.
  */
 import { api, ApiError } from './api.js';
+import { formatProb, getSigFigs } from './numfmt.js';
+import { BASIC_GATES, GATE_TYPES, projectLogicGate } from './schema.js';
+import gateCatalog from './i18n/gate.js';
+
+// Workstream B: gate/event strings live in i18n/gate.js. Registered here (the
+// shell exists by the time the panels are dynamically imported) and also
+// consulted directly by t() below, so a missing shell never shows raw keys.
+try {
+  if (typeof window !== 'undefined' && window.ftaShell && window.ftaShell.registerStrings) {
+    window.ftaShell.registerStrings(gateCatalog);
+  }
+} catch (_err) {
+  /* strings fall back to the catalog itself */
+}
 
 /* ----------------------------------------------------------------- i18n ---- */
 
@@ -107,7 +121,11 @@ export function t(key, vars) {
       /* fall through */
     }
   }
-  const text = FALLBACK[key];
+  let text = FALLBACK[key];
+  if (text === undefined) {
+    const lang = shell && shell.language === 'ja' ? 'ja' : 'en';
+    text = (gateCatalog[lang] && gateCatalog[lang][key]) || (gateCatalog.en && gateCatalog.en[key]);
+  }
   return text === undefined ? key : interpolate(text, vars);
 }
 
@@ -550,7 +568,8 @@ export function showNotice(message) {
 
 /* ------------------------------------------------------------- validation ---- */
 
-export const GATES = ['AND', 'OR'];
+/** AND/OR only: link relations and the basic gate select. See schema.js. */
+export const GATES = BASIC_GATES;
 
 /**
  * Normalise a stored gate for display. Empty/missing means OR, matching
@@ -567,15 +586,64 @@ export function normalizeGate(value) {
  * Validate a gate the way the server does. NOT is refused rather than accepted
  * and quietly scored as OR -- divergence D5, fta_web/core/DIVERGENCE.md.
  */
-export function validateGate(value) {
+export function validateGate(value, options) {
   const gate = normalizeGate(value);
   if (gate === 'NOT') {
     return { ok: false, message: t('dialog.gateNot') };
   }
-  if (GATES.indexOf(gate) === -1) {
-    return { ok: false, message: t('dialog.gateInvalid') };
+  const advanced = !!(options && options.advanced);
+  const allowed = advanced ? GATE_TYPES : GATES;
+  if (allowed.indexOf(gate) === -1) {
+    return { ok: false, message: t(advanced ? 'gate.invalidAdvanced' : 'dialog.gateInvalid') };
   }
   return { ok: true, value: gate };
+}
+
+/** True when the Advanced switch in the top bar is on. */
+export function isAdvancedMode() {
+  try {
+    const s = shell();
+    return !!(s && typeof s.advanced === 'function' && s.advanced());
+  } catch (_err) {
+    return false;
+  }
+}
+
+/** Localised display name of a gate type (`AND`, `k-out-of-n`, ...). */
+export function gateLabel(gate) {
+  const key = 'gate.' + normalizeGate(gate);
+  const text = t(key);
+  return text === key ? normalizeGate(gate) : text;
+}
+
+/**
+ * Fill `select` with the gates for the mode. Basic: AND/OR. Advanced: every
+ * GATE_TYPES entry, localised. A stored value outside the list is shown as a
+ * disabled option (never silently rewritten).
+ */
+export function fillGateOptions(select, value, advanced) {
+  clear(select);
+  const list = advanced ? GATE_TYPES : GATES;
+  for (const gate of list) {
+    select.appendChild(el('option', { value: gate, text: advanced ? gateLabel(gate) : gate }));
+  }
+  const current = normalizeGate(value);
+  if (list.indexOf(current) === -1) {
+    const known = GATE_TYPES.indexOf(current) !== -1;
+    select.insertBefore(
+      el('option', {
+        value: current,
+        disabled: true,
+        text: known
+          ? gateLabel(current) + ' (' + t('gate.advancedChip') + ')'
+          : t('dialog.gateUnsupported', { gate: current }),
+        dataset: { unsupported: 'true' },
+      }),
+      select.firstChild
+    );
+  }
+  select.value = current;
+  return select;
 }
 
 /** Mirror of `routes/tree.py::_validate_probability`. */
@@ -596,11 +664,12 @@ export function sanitizeName(value) {
     .trim();
 }
 
-/** Round for display the way the engine rounds internally (6 decimals). */
+/**
+ * Display form of a probability at the user's significant-figure preference
+ * (numfmt.js). Rounding to six decimals used to show 1e-7 as "0".
+ */
 export function formatProbability(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
-  return String(Math.round(number * 1e6) / 1e6);
+  return formatProb(value, getSigFigs());
 }
 
 /** `Name (id)`, exactly as the desktop dialog renders a link target. */
@@ -1060,27 +1129,22 @@ function field(labelText, control) {
   };
 }
 
-/** A select offering AND and OR, and nothing else. See divergence D5. */
-export function createGateSelect(value) {
-  const select = el('select');
-  for (const gate of GATES) select.appendChild(el('option', { value: gate, text: gate }));
-  const current = normalizeGate(value);
-  if (GATES.indexOf(current) === -1) {
-    // A hand-edited file can carry an unsupported gate (NOT). Show it, disabled,
-    // so the user sees what is stored instead of a silently rewritten value.
-    select.insertBefore(
-      el('option', { value: current, disabled: true, text: t('dialog.gateUnsupported', { gate: current }) }),
-      select.firstChild
-    );
-  }
-  select.value = current;
-  return select;
+/**
+ * A gate select. `createGateSelect('OR')` offers AND and OR only (basic mode,
+ * divergence D5); `createGateSelect({value, advanced: true})` offers every
+ * 1.7 gate type. NOT is never offered. A hand-edited file can carry an
+ * unsupported gate: it is shown disabled, so the user sees what is stored
+ * instead of a silently rewritten value.
+ */
+export function createGateSelect(opts) {
+  const options = opts && typeof opts === 'object' ? opts : { value: opts };
+  return fillGateOptions(el('select'), options.value, !!options.advanced);
 }
 
 /**
  * Collect the field values for a new child of `parentId`.
  *
- * Resolves with `{name, type, probability, logicGate, notes, links}` or null if
+ * Resolves with `{name, type, probability, logicGate, notes, links, gateType?}` or null if
  * the dialog was cancelled. No id is included and none may be sent: ids are
  * assigned server-side by `next_child_id` (routes/tree.py::create_node).
  */
@@ -1093,7 +1157,8 @@ export function openAddNodeDialog(parentId) {
     t('details.probability'),
     el('input', { type: 'text', inputmode: 'decimal', value: '1.0' })
   );
-  const gateField = field(t('details.logicGate'), createGateSelect('OR'));
+  const advancedGates = isAdvancedMode();
+  const gateField = field(t('details.logicGate'), createGateSelect({ value: 'OR', advanced: advancedGates }));
   const notesField = field(t('details.notes'), el('textarea', { rows: '4' }));
 
   const linksEditor = createLinksEditor({ selfId: null, links: [] });
@@ -1148,21 +1213,24 @@ export function openAddNodeDialog(parentId) {
       probabilityField.control.focus();
       return;
     }
-    const gate = validateGate(gateField.control.value);
+    const gate = validateGate(gateField.control.value, { advanced: advancedGates });
     if (!gate.ok) {
       gateField.setError(gate.message);
       gateField.control.focus();
       return;
     }
 
-    modal.close({
+    const result = {
       name: name,
       type: type,
       probability: probability.value,
-      logicGate: gate.value,
+      logicGate: projectLogicGate(gate.value),
       notes: String(notesField.control.value || ''),
       links: linksEditor.getLinks(),
-    });
+    };
+    // 1.7 gates travel as gateType; the server projects logicGate from it.
+    if (GATES.indexOf(gate.value) === -1) result.gateType = gate.value;
+    modal.close(result);
   }
 
   linksEditor.reload();

@@ -207,6 +207,26 @@ def resolve_in_root(raw: Any, root: Path) -> Path:
     if not candidate.is_absolute():
         candidate = root / candidate
 
+    # Windows only (on POSIX ':' is an ordinary filename character):
+    if os.name == "nt":
+        # 3a. A different drive or share is outside the root, and is refused
+        # lexically, *before* resolve(): resolving a UNC path opens it -- an
+        # SMB connection and NTLM handshake to whatever host the client named.
+        # Device-namespace forms (\\?\, \\.\) land here too: they are never
+        # how the picker names a file.
+        if candidate.drive.lower() != root.drive.lower():
+            raise PathRejected(
+                "That path is outside %s, which is the only folder this editor "
+                "may read or write. Relaunch with --root to change it." % root,
+                reason="outside_root",
+            )
+        # 3b. No NTFS alternate data streams: 'notes.txt:x.json' passes a
+        # '.json' allow-list but names a hidden stream of notes.txt.
+        if ":" in str(candidate)[len(candidate.drive):]:
+            raise PathRejected(
+                "A file name may not contain ':'.", reason="stream"
+            )
+
     # Rule 4: resolve (following symlinks), then confine.
     try:
         resolved = candidate.resolve()
@@ -314,8 +334,41 @@ def resolve_for_write(raw: Any, root: Path,
     return resolved
 
 
-def list_directory(raw: Any, root: Path) -> Dict[str, Any]:
+def parse_list_extensions(raw: Any) -> Optional[set]:
+    """The ``ext`` query parameter of ``/api/fs/list`` as a set, or None.
+
+    ``raw`` is a comma-separated list such as ``".csv,.xlsx"`` (the leading
+    dot is optional, case is ignored). None or blank means "the default"
+    (``ALLOWED_OPEN_EXTENSIONS``). Anything outside ``LISTABLE_EXTENSIONS``
+    raises ``ValueError`` naming it -- the parameter narrows or widens the
+    listing within a fixed allow-list, it cannot make the picker enumerate
+    arbitrary file types.
+    """
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    allowed = {ext.lower() for ext in config.LISTABLE_EXTENSIONS}
+    out = set()
+    for part in str(raw).split(","):
+        ext = part.strip().lower()
+        if not ext:
+            continue
+        if not ext.startswith("."):
+            ext = "." + ext
+        if ext not in allowed:
+            raise ValueError(
+                "Extension '%s' cannot be listed; expected any of %s."
+                % (part.strip(), ", ".join(sorted(allowed)))
+            )
+        out.add(ext)
+    return out or None
+
+
+def list_directory(raw: Any, root: Path,
+                   extensions: Optional[set] = None) -> Dict[str, Any]:
     """One directory's contents, as the file picker wants them.
+
+    ``extensions`` (from :func:`parse_list_extensions`) replaces the default
+    ``ALLOWED_OPEN_EXTENSIONS`` filter when given.
 
     ``raw`` may be None or empty, meaning the root itself. Returns
     ``{path, parent, dirs, files, truncated}`` with absolute paths; ``parent``
@@ -349,7 +402,7 @@ def list_directory(raw: Any, root: Path) -> Dict[str, Any]:
     dirs: List[Dict[str, Any]] = []
     files: List[Dict[str, Any]] = []
     truncated = False
-    openable = {ext.lower() for ext in config.ALLOWED_OPEN_EXTENSIONS}
+    openable = {ext.lower() for ext in (extensions or config.ALLOWED_OPEN_EXTENSIONS)}
 
     try:
         with os.scandir(target) as entries:

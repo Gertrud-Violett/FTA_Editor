@@ -264,6 +264,48 @@ def test_list_hides_unopenable_files_and_dotfiles(client, sandbox):
     assert payload["dirs"] == []
 
 
+def _names(payload):
+    return sorted(f["name"] for f in payload["files"])
+
+
+def _populate_mixed(sandbox):
+    write_document(sandbox)
+    (sandbox / "fmea.csv").write_text("a,b", encoding="utf-8")
+    (sandbox / "fmea.xlsx").write_bytes(b"x")
+    (sandbox / "notes.txt").write_text("x", encoding="utf-8")
+
+
+def test_list_ext_param_lists_the_requested_types(client, sandbox):
+    _populate_mixed(sandbox)
+    payload = body(client.get("/api/fs/list", query_string={"ext": ".csv,.xlsx"}))
+    assert _names(payload) == ["fmea.csv", "fmea.xlsx"]
+
+
+def test_list_ext_param_accepts_bare_and_uppercase_names(client, sandbox):
+    _populate_mixed(sandbox)
+    payload = body(client.get("/api/fs/list", query_string={"ext": "CSV, json"}))
+    assert _names(payload) == ["analysis.json", "fmea.csv"]
+
+
+def test_list_without_ext_still_defaults_to_json(client, sandbox):
+    _populate_mixed(sandbox)
+    assert _names(body(client.get("/api/fs/list"))) == ["analysis.json"]
+    assert _names(body(client.get("/api/fs/list", query_string={"ext": " "}))) == [
+        "analysis.json"
+    ]
+
+
+@pytest.mark.parametrize("ext", [".txt", ".csv,.exe", "py", ".json,../x"])
+def test_list_ext_param_rejects_unlisted_extensions(client, sandbox, ext):
+    _populate_mixed(sandbox)
+    response = client.get("/api/fs/list", query_string={"ext": ext})
+    assert response.status_code == 400
+    payload = body(response)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "INVALID_FIELD"
+    assert payload["error"]["detail"]["field"] == "ext"
+
+
 def test_list_of_a_missing_directory_is_rejected(client, sandbox):
     response = client.get(
         "/api/fs/list", query_string={"path": str(sandbox / "nope")}
@@ -488,7 +530,8 @@ def test_save_as_then_save_round_trips(client, sandbox):
     saved = body(post(client, "/api/file/save-as", {"path": str(target)}))
     assert saved == {"ok": True, "currentPath": str(target), "dirty": False}
     on_disk = json.loads(target.read_text(encoding="utf-8"))
-    assert set(on_disk) == {"title", "date", "mode", "tree"}
+    # 1.7: the document's analysis settings are saved beside the tree.
+    assert set(on_disk) == {"title", "date", "mode", "tree", "analysis"}
 
     # Edit, save to the same path, reopen: the edit is on disk.
     post(client, "/api/metadata", {"title": "Renamed"})
@@ -702,6 +745,29 @@ def test_export_xlsx_downloads_a_readable_workbook(opened):
     sheet = workbook["FTA"]
     assert "Top event" in sheet["A1"].value
     assert "Seal leak" in sheet["B1"].value
+
+
+def _calc_format(data):
+    import openpyxl
+
+    sheet = openpyxl.load_workbook(io.BytesIO(data))["Events"]
+    header = [c.value for c in sheet[1]]
+    col = header.index("Calculated probability") + 1
+    return sheet.cell(row=2, column=col).number_format
+
+
+@pytest.mark.parametrize("query, expected", [
+    ("", "0.00E+00"),               # default 3
+    ("?sigFigs=5", "0.0000E+00"),
+    ("?sigFigs=99", "0.00000E+00"),  # clamped to 6
+    ("?sigFigs=0", "0E+00"),         # clamped to 1
+    ("?sigFigs=abc", "0.00E+00"),    # unparseable -> default
+])
+def test_export_xlsx_follows_the_sig_figs_param(opened, query, expected):
+    pytest.importorskip("openpyxl")
+    response = opened.get("/api/export/xlsx" + query)
+    assert response.status_code == 200
+    assert _calc_format(response.get_data()) == expected
 
 
 def test_export_names_the_download_after_the_title_when_unsaved(client):

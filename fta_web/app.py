@@ -69,6 +69,41 @@ import security  # noqa: E402
 
 log = logging.getLogger(__name__)
 
+from flask.json.provider import DefaultJSONProvider  # noqa: E402
+
+
+def _finite(value: Any) -> Any:
+    """``value`` with every NaN/Infinity float replaced by None."""
+    if isinstance(value, float):
+        return value if value == value and value not in (float("inf"), float("-inf")) else None
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(item) for item in value]
+    return value
+
+
+class FiniteJSONProvider(DefaultJSONProvider):
+    """Flask's JSON provider, but every response is strict JSON.
+
+    Python's ``json`` reads ``NaN``/``Infinity`` (in a request body, and in a
+    document file), and a plain ``jsonify`` writes them back -- in an error's
+    ``detail.value`` or in the tree of a loaded file. ``JSON.parse`` in the
+    browser rejects those tokens, so the page got an unparseable response
+    instead of the error or the document. They are sent as ``null`` instead.
+    The fast path is one ordinary ``dumps``; the payload is only walked when
+    it actually holds such a float.
+    """
+
+    def dumps(self, obj: Any, **kwargs: Any) -> str:
+        kwargs["allow_nan"] = False
+        try:
+            return super().dumps(obj, **kwargs)
+        except ValueError as exc:
+            if "float" not in str(exc):  # e.g. a circular reference: not ours
+                raise
+            return super().dumps(_finite(obj), **kwargs)
+
 # ---------------------------------------------------------------------------
 # HTTP-level error codes.
 #
@@ -272,6 +307,8 @@ def create_app(
     # out-of-memory DoS against a process that holds the user's unsaved work.
     app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_BYTES
     app.config["FTA_FS_ROOT"] = Path(fs_root) if fs_root else config.DEFAULT_FS_ROOT
+    # Strict JSON out (no NaN/Infinity tokens): see FiniteJSONProvider.
+    app.json = FiniteJSONProvider(app)
     # Keep payload key order as written (Flask 3 API; the old JSON_SORT_KEYS
     # config key is a no-op there).
     if hasattr(app, "json"):
@@ -299,6 +336,10 @@ _BLUEPRINTS = (
     ("routes.render", "render_bp", "the rendering API"),
     ("routes.files", "files_bp", "the file and export API"),
     ("routes.ai", "ai_bp", "the AI assistant API"),
+    ("routes.analysis", "analysis_bp", "the analysis API"),
+    ("routes.validate", "validate_bp", "the validation API"),
+    ("routes.report", "report_bp", "the report API"),
+    ("routes.fmea", "fmea_bp", "the FMEA import API"),
 )
 
 

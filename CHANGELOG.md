@@ -7,6 +7,301 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-28
+
+Analysis release for the web app. Engineers can now enter failure rates, use
+the standard gate types, get minimal cut sets, importance and uncertainty,
+validate a tree, trace nodes to requirements, import an FMEA, run batches from
+the command line, and produce a report. Each feature has its own tab in a new
+bottom panel. An **Advanced** switch keeps the basic UI simple.
+
+**The vendored core is not edited.** `fta_web/core/` and `desktop/` keep their
+pinned hashes, and no divergence was added. All new behaviour lives in
+`fta_web/engine.py` as `WebCore(FTACore)` and in new sibling modules.
+
+### Added
+
+- **Engine (`engine.py`).** `WebCore` subclasses `FTACore` and overrides only
+  three methods: the tree walk, `load_from_json` (to keep the `analysis`
+  block) and `prepare_export_data`. It replaces `FTACore()` at every
+  construction site. On legacy trees it reproduces the core exactly;
+  `test_engine.py` proves this on a few hundred random trees with links and
+  cycles.
+- **New optional node keys** (`node_schema.py`, mirrored in
+  `static/js/schema.js`): `gateType` (AND, OR, KOFN, XOR, INHIBIT, PAND,
+  TRANSFER), `k`, `transferTo`, `eventKind` (basic, house, undeveloped,
+  conditioning), `houseState`, and the objects `quant`, `trace` and `fmea`.
+  `logicGate` stays AND/OR as the projection of `gateType`.
+- **Document `analysis` block**: mission time, display time unit, cut-set
+  limits, Monte Carlo n and seed, and the FMEA occurrence table. It is saved
+  beside `tree`, is part of undo, and invalid values are reset on load with
+  a notice.
+- **Quantification models**: fixed q, rate 1−e^(−λT) with T defaulting to the
+  mission time, standby min(1, λτ/2) (flagged above λτ = 0.2) and repairable
+  λ/(λ+μ). λ is stored per hour; the UI accepts /h, /y and FIT. Each event
+  has a data-source field and a lognormal uncertainty (median or mean, error
+  factor). The derived value is written to `probability`.
+- **Gate semantics**:
+  - k-out-of-n by exact Poisson-binomial computation
+  - XOR a+b−2ab (odd parity for n ≠ 2; flagged non-coherent)
+  - INHIBIT with a conditioning event
+  - PAND Πp/n! (flagged as an approximation)
+  - same-file TRANSFER through the shared memo
+  - house events 1/0
+- **Minimal cut sets** (`logic.py`, `cutsets.py`): bottom-up MOCUS over a
+  compiled Boolean graph, with integer-bitmask sets, repeated events counted
+  once, and truncation by order, count and cutoff that is reported. Also the
+  MCUB and rare-event values. A voting gate is refused above 20,000
+  combinations.
+- **Headline value** in the top bar: the MCUB when the tree has repeated
+  events or XOR, the tree walk otherwise (`engine.summary`,
+  `GET /api/analysis/summary`), with an MCUB badge in advanced mode. It is
+  refreshed 400 ms after every change, and an outdated answer is dropped. ETA
+  mode shows the root value without a badge.
+- **Validation badge** on the Validation tab button: a red error count, or
+  else an amber warning count. It is shown in basic mode too.
+- **"Show in Validation"** button on the warning toasts for load repairs and
+  removed links.
+- **FV bar in the tree**: while the importance overlay is on, each tree row
+  shows a small bar on the diagram's colour scale.
+- **Importance measures** (`importance.py`): Fussell-Vesely, Birnbaum, RAW and
+  RRW on the MCUB, computed in log space through an event-to-cut-set index,
+  with an FV colour overlay on the diagram.
+- **Monte Carlo uncertainty** (`uncertainty.py`): pure Python, seeded and
+  deterministic, time-capped with partial results, and one run at a time. It
+  evaluates the tree exactly when the tree is coherent with no repeated
+  events, and otherwise uses the MCUB over the cut sets covering 99.99 % of
+  the rare-event sum.
+- **Validation** (`lint.py`): 21 codes with fixed severities, localised
+  messages and one-line fixes. Load repairs and removed links are collected
+  as session notices (`AppState.session_warnings`).
+- **Bottom-panel tabs**: Details, Quantification, Cut Sets, Importance,
+  Uncertainty, Validation, Traceability, FMEA and Report. They are
+  lazy-loaded, the last-used tab is remembered, and they refresh when the tree
+  changes. Each has English and Japanese catalogs.
+- **Advanced switch** in the top bar (`fta.advanced`, off by default). Basic
+  mode shows Details and Validation only, and AND/OR only. Advanced content
+  in a file is shown read-only with an "advanced" chip, never hidden or
+  lost. Calculations, files and the API are identical in both modes.
+- **Significant-figures selector** (`fta.sigFigs`, 1–6, default 3). It is
+  used by the UI (`numfmt.js`) and by the report, Excel and CLI
+  (`numfmt.py`).
+- **Traceability**: requirement ID, test reference, owner, status, evidence
+  and tags per node, edited in a grid. Tree search understands `tag:`,
+  `owner:`, `status:`, `req:` and `fmea:`, and highlights nodes from other
+  tabs.
+- **FMEA import** (`fmea_import.py`, `/api/fmea/preview`, `/api/fmea/import`):
+  CSV or XLSX, a suggested column mapping (English and Japanese headers), λ
+  unit conversion, and an editable AIAG occurrence-rank table saved in the
+  document. Re-import updates in place by `fmea.id`, the whole import is one
+  undo step, and bad rows are skipped with reasons.
+- **DOCX report** (`report_docx.py`, `POST /api/report/docx`, new `report`
+  extra = `python-docx`, included in `all` and `dev`). Sections: metadata,
+  headline, assumptions, diagram (the browser PNG, falling back to native
+  `dot`), events, cut sets, importance, uncertainty (optional), validation and
+  traceability. English or Japanese.
+- **Excel export**: new **Events** (flat, numeric, filterable) and
+  **Analysis** sheets beside the unchanged hierarchical sheet
+  (`excel_events.py`).
+- **Diagram**:
+  - a *Standard symbols* style, with IEC 61025 / NUREG-0492 paths in the
+    browser (`fta_symbols.js`) and Graphviz approximations in native renders
+  - a top-down layout
+  - significant figures in labels
+  - `idMap` in `GET /api/dot`, so clicking a gate symbol selects its node
+- **CLI** (`cli.py`): `quantify`, `cutsets`, `importance`, `mc`, `validate`
+  and `report`, with `--json`/`--csv`, `--out`, `--sig-figs`, limit and
+  Monte Carlo options, and exit codes 0/1/2/3. It works as
+  `fta_editor.exe <cmd>` and `python fta_web/run.py <cmd>`, and never starts
+  the server.
+- **API**:
+  - new endpoints: `POST /api/analysis/settings`, `GET /api/analysis/summary`,
+    `POST /api/analysis/{cutsets,importance,uncertainty}`,
+    `GET /api/analysis/validate`, `POST /api/report/docx` and
+    `POST /api/fmea/{preview,import}`
+  - new error codes: `MODE_UNSUPPORTED` (409), `BUSY` (409),
+    `ANALYSIS_TOO_LARGE` (422) and `EXPORT_UNAVAILABLE` for docx (503)
+  - `capabilities.reportExport` and `capabilities.fmeaXlsx`
+  - `analysis` and `sessionWarnings` in `/api/state` and in every mutation
+    payload
+- **Docs**: the User Guide gains "Analysis features (1.7)", a CLI reference
+  and desktop compatibility notes. The API reference gains the 1.7 endpoints
+  and modules. The roadmap and code review are marked with their 1.7.0
+  status.
+
+### Changed
+
+- `PATCH /api/nodes/<id>`:
+  - `quant`, `trace` and `fmea` merge partially, and `null` removes a key or
+    sub-key.
+  - Setting `gateType` rewrites `logicGate` to its projection.
+  - Setting `logicGate` on a node with a `gateType` keeps the two in step.
+- `POST /api/ai/update` restores the 1.7 node keys by node id that a
+  full-tree AI rewrite dropped, and reports `mergedFields`.
+- `GET /api/dot` and `POST /api/render` accept `style`, `rankdir` and
+  `sigFigs`. The compact style's meta line uses significant figures instead
+  of `%.1E`.
+- `GET /api/fs/list` takes an optional `ext` filter, for example
+  `?ext=.csv,.xlsx`. It is limited to `config.LISTABLE_EXTENSIONS`
+  (`.json`, `.csv`, `.xlsx`); anything else is `400 INVALID_FIELD`, and the
+  default is still `.json` only. The FMEA file dialog uses it.
+- Error localisation now covers `BUSY` and `ANALYSIS_TOO_LARGE`, including
+  per-reason texts for `kofn` and `time`. The DOCX-unavailable message gives
+  `uv sync --extra report`, and FMEA `.xlsx` without openpyxl has its own
+  message.
+- The node details panel moved into the Details tab. Its gate selector
+  offers the advanced gates when the Advanced switch is on.
+- The frozen build bundles `python-docx`, with its templates, when it is
+  installed. CLI subcommands work in the exe.
+- **Document analysis defaults can be edited in the UI.** The Cut Sets tab
+  (max order, max count, cutoff) and the Uncertainty tab (samples, seed)
+  start from the document's `analysis` settings and have a **Save as document
+  defaults** button (`POST /api/analysis/settings`: undoable, marks the
+  document modified). The `CUTSETS_TRUNCATED` hint now points there.
+- **The MCUB badge tooltip gives the reason**: repeated events, XOR
+  (non-coherent) gates, or both. It used to say "repeated events" also for
+  XOR trees.
+- **Priority-AND in cut sets is now visible.** Cut sets expand PAND as plain
+  AND (no 1/n!), which is conservative, so an MCUB headline drops the PAND
+  reduction. The Cut Sets tab shows a *PAND treated as AND in cut sets
+  (conservative)* badge and the MCUB tooltip says so.
+- **`INHIBIT_ARITY` from the engine** now uses lint's rule: exactly two
+  inputs, one of them conditioning. Before, the engine accepted three or more
+  inputs while the Validation tab rejected them. Quantification is unchanged.
+- The DOCX report's event table has a **Source** column (`quant.source`).
+- `GET /api/export/xlsx` accepts `?sigFigs=N` (clamped to 1–6) for the number
+  formats; the Excel buttons send the top bar's setting. It was always 3.
+- **`GET /api/analysis/summary` separates its own caps from the document's
+  limits.** It uses `min(maxCount, 2000)` sets; `capped: true` means only the
+  summary's 2000-set / 2 s caps cut the run short, while `truncated` and the
+  new `truncatedBy` mean the document's limits did. In advanced mode a subtle
+  `≈` marker after an MCUB headline shows either case in its tooltip.
+- **`POST /api/report/docx` reads only its documented keys.** `limits` is
+  validated like `analysis.cutsets` (unknown keys, including `timeBudgetS`,
+  are a 400), `uncertaintyN` must be an integer 1–5,000 and
+  `uncertaintyTimeLimit` a number of seconds in (0, 60]; other top-level keys
+  are ignored.
+
+### Fixed
+
+- **Diagram labels spilled past their boxes or sat off-centre.** Graphviz
+  sizes and places label text with its own font metrics, which run 20–25%
+  narrower than the fonts the page draws with. The preview now centres each
+  label in its box and, only if it would still overflow, squeezes it to fit.
+  Browser SVG/PNG exports use the same fitted labels. Server-side padding
+  grows with the row's length and is split evenly around the text, so native
+  Graphviz exports are centred too. Box scale 0 no longer spills.
+- **The top-bar date field was clipped** (`2026-09-2`) by the new 1.7
+  controls; it now always has room for a full date.
+- **The node details showed small probabilities as `0`.**
+  `dialogs.formatProbability` rounded to six decimals, so 1e-7 displayed as
+  `0` even though the stored value was right. It now uses
+  significant-figure formatting.
+- **Boot gate**: the action bar and keyboard shortcuts were live for about a
+  second before the panels finished loading (the last open item of the
+  2026-09 code review). `<html data-booting>` now blocks them until
+  `loadPanels()` settles.
+- **Multi-select delete now reports removed links.** Deleting several nodes
+  from the tree did not report the links that were stripped with them, as a
+  single delete does. It now shows the count in a toast linked to the
+  Validation tab.
+- **`mc --csv` and the `mc` text table had an empty `n` column**: the CLI read
+  a key `uncertainty.run` does not return. They now show `requested` and
+  `completed`.
+- **`CUTSETS_TRUNCATED` never appeared** in the Validation tab or
+  `validate`, because they ran lint without a cut-set result. They now expand
+  the cut sets with the document's limits (2 s budget, outside the lock;
+  skipped silently on failure or timeout) and pass the truncation to lint.
+- **House events and transfer gates showed stale values in the desktop app.**
+  The engine now writes their derived value into `probability` (1/0 for a
+  house event, the target's value for a transfer), which is what the 1.6 app
+  reads.
+- **A gate changed in the desktop app was silently discarded.** The desktop
+  app edits only `logicGate`, and the stale `gateType` won. On load and on an
+  AI update, a `gateType` that does not project to `logicGate` is now dropped
+  (with its `k`/`transferTo`) and reported as `LOAD_REPAIR`
+  (`gate_type_reset`). An AI update also no longer restores a `transferTo`
+  whose transfer gate it dropped.
+- **The report's Monte Carlo section never said when a run was cut short**,
+  and never showed the sample count: it read `completed` as a flag and a
+  key `n` that `uncertainty.run` does not return. It now notes a time-capped
+  run (`truncatedByTime`) and shows *completed / requested* samples.
+- **The report's cut-set section lacked the MCUB and rare-event values** the
+  User Guide lists; they are now shown. An infinite RRW is shown as `∞`
+  rather than `—`.
+- **`report --time-limit` was ignored** (the report always used 30 s). It is
+  now honoured, capped at 60 s.
+- **`report x.json --out reports`** wrote a file literally named `reports`
+  when that folder did not exist yet. For `report`, an `--out` that does not
+  end in `.docx` is now a folder.
+- **`--top 0`** silently showed every row, and `--time-limit 0` was
+  accepted; both are now usage errors (exit 2). A mistyped command
+  (`fta_editor qunatify x.json`) now names the valid commands instead of
+  argparse's "unrecognized arguments".
+- **Excel export**: a NaN or infinite number in a hand-edited file was
+  written as an empty numeric cell (malformed for Excel); it is now left
+  blank. On the Analysis sheet only probabilities use the scientific format
+  (mission time reads `8760`, not `8.76E+03`).
+- **Deleting a node left transfers pointing at its id**, so the next node
+  added there silently became the transfer's target. `DELETE /api/nodes`, an
+  AI `delete` change and a full AI update now strip `transferTo` (and, on the
+  AI paths, links) into removed ids, reported in `removedLinks` /
+  `LINKS_REMOVED` with relation `TRANSFER`.
+- **Applied AI gate edits were overruled by a stale `gateType`**;
+  `POST /api/ai/changes/apply` now reconciles gate types like `/update`. A
+  `gate_type_reset` notice from an AI edit carries `params.cause: "ai"`, says
+  so in the Validation tab (English and Japanese), and is undone and redone
+  with the edit.
+- **NaN/Infinity in a response** (a loaded tree, an error's `detail.value`)
+  made it unparseable for the browser; they are now sent as `null`.
+  `POST /api/fmea/import` with a non-string `lambdaUnit` is a 400, not a 500.
+- **Windows path hardening**: a `:` after the drive (an NTFS alternate data
+  stream such as `notes.txt:x.json`) is refused, and a path on another drive
+  or share (UNC, `\\?\`, a `subst` alias of the root) is refused before it
+  is resolved, so no SMB connection is opened.
+- **Load errors say what is wrong**: *empty*, *not valid JSON (line, column)*
+  or *root must be an object*, instead of the core's encoding error.
+- **Numerics**: a PAND gate with more than 170 inputs no longer overflows
+  (log space); Monte Carlo with an extreme error factor no longer overflows;
+  float sums use `math.fsum`, so Python 3.10/3.11 give the same results as
+  3.12+; an empty cut-set list has MCUB `0.0`, not `-0.0`.
+- **Web UI** (frontend pass):
+  - the diagram keeps fitting while the tree grows until you zoom or pan, and
+    on resize;
+  - analysis tabs drop stale results and inputs after New / Open, and a tab
+    that went stale in the background re-runs when shown;
+  - number fields reject `5,000` (it was read as 5) and hex; cut-set limits
+    are range-checked with localized messages; Escape reverts typing;
+  - the Uncertainty tab no longer lowers a stored `mc.n` above 100,000 on
+    Save;
+  - Quantification labels are tied to their controls; diagram popovers, font
+    options and aria-labels follow the language;
+  - **Render** and PNG export honour the style, layout and significant
+    figures; the symbols style is rasterised in the browser, never by native
+    `dot`;
+  - the capabilities chip and panel are styled (the panel floats instead of
+    pushing the top bar down), and faint text, badges and unit suffixes meet
+    WCAG AA contrast in both themes.
+
+### Compatibility
+
+- **The file format is additive.** Every new key is optional, and a 1.6 file
+  opens and computes exactly as before. A 1.7 file without advanced features
+  is a valid 1.6 file plus an `analysis` block.
+- **The legacy desktop app** reads only `logicGate` and `probability`:
+  - Advanced gates are projected to AND or OR. INHIBIT and PAND become AND;
+    KOFN, XOR and TRANSFER become OR.
+  - Model-derived probabilities, house states (1/0) and transfer values are
+    written into `probability`, so its numbers stay meaningful. A transfer
+    gate that has children is still computed from them there.
+- **Saving from the desktop app** keeps the new node keys but drops the
+  top-level `analysis` block, which then reverts to its defaults.
+- **Desktop gate edits are kept.** When a file comes back from the desktop
+  app with a `logicGate` that its `gateType` no longer projects to,
+  `logicGate` wins and the stale `gateType` is dropped with a load notice. A
+  rate model still recomputes `probability`.
+- See [USER_GUIDE.md → Desktop app compatibility](docs/USER_GUIDE.md#desktop-app-compatibility).
+
 ## [1.6.4] - 2026-09-22
 
 Single-defect release for the web app: **click-to-select in the diagram panel

@@ -48,7 +48,8 @@ optional at runtime by design:
 
 | Package | Feature | Absent from the build ⇒ |
 |---|---|---|
-| `openpyxl` | `.xlsx` export | `capabilities.excelExport: false`; the export offers JSON/XML/SVG/PNG only |
+| `openpyxl` | `.xlsx` export (incl. the 1.7 Events/Analysis sheets) and `.xlsx` FMEA import | `capabilities.excelExport` / `fmeaXlsx: false`; the export offers JSON/XML/SVG/PNG only, FMEA import takes `.csv` only |
+| `python-docx` (`docx`) | the 1.7 DOCX report (`report` extra, also in `all`) | `capabilities.reportExport: false`; the Report tab and `fta_editor report` explain what to install |
 | `openai` | OpenAI + Azure/Copilot providers | provider present in the list, "package not installed" on connect |
 | `anthropic` | Anthropic Claude provider | as above |
 | `google-genai` | Google Gemini provider (`google-generativeai` pre-D11) | as above |
@@ -60,6 +61,20 @@ it is the only warning you get that you have built a crippled release:
 fta_editor.spec: optional packages bundled: openpyxl
 fta_editor.spec: optional packages NOT installed, so NOT bundled: openai, anthropic, google.genai
 ```
+
+**python-docx needs its data files, not only its code.** python-docx opens
+every new document from its bundled default template
+(`docx/templates/default.docx` and related files). Those are package data,
+which a hidden import does not bring along. When `docx` is present, the spec
+therefore also runs `collect_data_files("docx")` and prints:
+
+```
+fta_editor.spec: collected python-docx templates
+```
+
+If that line says `WARNING: could not collect python-docx data`, the build
+still succeeds, but the DOCX report will fail in it. `uv sync --extra all`
+(or `--extra report`) installs python-docx on the build machine.
 
 Graphviz is **not** a build prerequisite and not a runtime one — see
 [No native prerequisite](#no-native-prerequisite).
@@ -87,9 +102,16 @@ Ship the whole `fta_editor/` folder. The executable will not run without its
 
 ## What ships
 
-Compiled into the archive: the `fta_web` Python modules, the four vendored core
-modules, Flask/Werkzeug/Jinja/click/itsdangerous/MarkupSafe, `openpyxl` when
-present, and a private CPython runtime.
+Compiled into the archive:
+
+- the `fta_web` Python modules, including the 1.7 modules: `engine`,
+  `node_schema`, `numfmt`, `logic`, `cutsets`, `importance`, `uncertainty`,
+  `lint`, `diagram_dot`, `fmea_import`, `excel_events`, `report_docx`, `cli`
+  and their `routes.*` blueprints, all listed as hidden imports
+- the four vendored core modules
+- Flask, Werkzeug, Jinja, click, itsdangerous and MarkupSafe
+- `openpyxl` and `python-docx` (with its templates) when present
+- a private CPython runtime
 
 Unpacked as data, under the root the app knows as
 [`runtime_paths.resource_root()`](../fta_web/runtime_paths.py):
@@ -191,10 +213,14 @@ oldest glibc you support.
 
 ### Windows
 
-Verified for 1.6.3 on Windows 11 with PyInstaller 6.22.3 and CPython 3.14: the
-bundle is about **62 MB, 528 files** with all three AI SDKs and `openpyxl`, and
-every check in [How to verify a build](#how-to-verify-a-build) passes against
-`build\dist\fta_editor\fta_editor.exe`. The command is the same as on Linux:
+Verified for 1.7.0 on Windows 11 with PyInstaller 6.22.3 and CPython 3.14: the
+bundle is about **72 MB, 594 files** with all three AI SDKs, `openpyxl` and
+`python-docx` (1.6.3 was 62 MB, 528 files; python-docx and its `lxml` account
+for most of the difference), and every check in
+[How to verify a build](#how-to-verify-a-build) passes against
+`build\dist\fta_editor\fta_editor.exe`, as do the CLI subcommands and a DOCX
+report generated both over HTTP and by `fta_editor.exe report`. The command is
+the same as on Linux:
 
 ```
 uv sync --extra all --extra build
@@ -284,6 +310,22 @@ curl -s -H "X-FTA-Token: $TOKEN" http://127.0.0.1:8791/api/dot | head -c 80   # 
 
 A 404 on `/api/state` rather than a 403 means the blueprints did not make it
 into the bundle: check the `routes.*` hidden imports.
+
+**The command-line subcommands (1.7)** run in the same executable. A first
+argument that names a command goes to `cli.py` before any server, token or
+browser exists. The spec builds a console application (`console=True`), so
+output and exit codes reach the shell:
+
+```
+./build/dist/fta_editor/fta_editor --version                                  # FTA Editor 1.7.0
+./build/dist/fta_editor/fta_editor validate fta_web/examples/sampleFTA.json   # exit 0 (warnings only)
+./build/dist/fta_editor/fta_editor quantify fta_web/examples/sampleFTA.json --json | head -c 200
+./build/dist/fta_editor/fta_editor report fta_web/examples/sampleFTA.json --out /tmp/r.docx   # needs python-docx
+```
+
+On Windows these are `fta_editor.exe validate x.json` and so on. `cmd.exe`
+does not expand `*.json`, so the CLI expands wildcards itself. Exit codes:
+0 ok, 1 validation errors / analysis failure, 2 usage, 3 unreadable file.
 
 Worth also checking, because they exercise the parts a naive freeze breaks:
 

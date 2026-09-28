@@ -592,6 +592,9 @@ class TestAppState:
             "canRedo",
             "language",
             "zeroNodes",
+            # 1.7
+            "analysis",
+            "sessionWarnings",
         }
         assert set(payload["metadata"]) == {"title", "date", "mode"}
         assert payload["metadata"]["mode"] == "FTA"

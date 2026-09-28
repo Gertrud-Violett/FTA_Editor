@@ -17,10 +17,43 @@
  * it is not, everything happens here. The panel always states which engine
  * produced what is on screen, because a user comparing output against the
  * desktop app needs to know whether it is even the same engine (spec 6.8).
+ *
+ * 1.7 (workstream B)
+ * ------------------
+ *   * Style (Compact boxes | Standard symbols) and Layout (LR | TB) live in the
+ *     Aa popover and persist in `fta.diagram.settings`; both are display-only.
+ *     They travel to /api/dot and /api/render with the sig-fig preference.
+ *   * In the symbols style the Graphviz approximations are replaced with true
+ *     IEC 61025 / NUREG-0492 symbols by fta_symbols.js after sanitizeSvg().
+ *     Export (SVG, canvas PNG, ftaShell.diagramPng) uses that processed SVG.
+ *   * Click-to-select resolves a node's <title> through the response `idMap`
+ *     (every DOT name -> node id, gate/event symbol nodes included) and falls
+ *     back to the sanitizeId mirror below.
+ *   * store.onHighlight outlines the matching nodes (`is-highlighted`),
+ *     store.onOverlay({kind:'fv', values}) fills events on a sequential scale
+ *     with a legend, and `fta:jump` {id} centres a node.
  */
 import { api, ApiError } from './api.js';
 import { store } from './store.js';
 import { el, clear, injectStyles } from './dialogs.js';
+import { formatProb, getSigFigs } from './numfmt.js';
+import { replaceGateShapes } from './fta_symbols.js';
+import diagramCatalog from './i18n/diagram.js';
+import { scaleColor, overlayMax } from './overlay_scale.js';
+
+function registerCatalog() {
+  try {
+    if (window.ftaShell && typeof window.ftaShell.registerStrings === 'function') {
+      window.ftaShell.registerStrings(diagramCatalog);
+    }
+  } catch (_err) {
+    /* t() below falls back to the catalog itself */
+  }
+}
+registerCatalog();
+
+const DIAGRAM_STYLES = ['compact', 'symbols'];
+const DIAGRAM_RANKDIRS = ['LR', 'TB'];
 
 const RENDER_DEBOUNCE_MS = 150; // config.RENDER_DEBOUNCE_MS
 const ZOOM_MIN = 0.1;
@@ -44,9 +77,21 @@ function getViz() {
 
 function t(key, fallback) {
   const fn = window.ftaShell && window.ftaShell.t;
-  if (typeof fn !== 'function') return fallback;
-  const out = fn(key);
-  return out === key ? fallback : out;
+  const out = typeof fn === 'function' ? fn(key) : key;
+  if (out !== key) return out;
+  const lang = window.ftaShell && window.ftaShell.language === 'ja' ? 'ja' : 'en';
+  const own = (diagramCatalog[lang] && diagramCatalog[lang][key]) || (diagramCatalog.en && diagramCatalog.en[key]);
+  return own || fallback;
+}
+
+/** The user's significant-figure preference, through the shell when present. */
+function currentSigFigs() {
+  try {
+    if (window.ftaShell && typeof window.ftaShell.sigFigs === 'function') return window.ftaShell.sigFigs();
+  } catch (_err) {
+    /* fall through */
+  }
+  return getSigFigs();
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +147,10 @@ function readDiagramSettings() {
   }
   // fontChoice '' means "auto-detect"; popoverLeft/Top null means "not moved
   // yet, use the default lower-right pin".
-  const out = { fontChoice: '', scale: SCALE_DEFAULT, popoverLeft: null, popoverTop: null };
+  const out = {
+    fontChoice: '', scale: SCALE_DEFAULT, popoverLeft: null, popoverTop: null,
+    style: 'compact', rankdir: 'LR',
+  };
   if (!raw) return out;
   try {
     const parsed = JSON.parse(raw);
@@ -113,6 +161,8 @@ function readDiagramSettings() {
     const top = Number(parsed && parsed.popoverTop);
     if (Number.isFinite(left)) out.popoverLeft = left;
     if (Number.isFinite(top)) out.popoverTop = top;
+    if (parsed && DIAGRAM_STYLES.indexOf(parsed.style) !== -1) out.style = parsed.style;
+    if (parsed && DIAGRAM_RANKDIRS.indexOf(parsed.rankdir) !== -1) out.rankdir = parsed.rankdir;
   } catch (_err) {
     /* corrupt entry: keep the defaults */
   }
@@ -241,6 +291,62 @@ const SAFE_HREF = /^(#|https?:\/\/)/i;
  * server, but the SVG is still imported into the live document, so anything
  * that could run script is stripped here regardless.
  */
+/**
+ * Centre every node label in its box and keep it inside.
+ *
+ * Graphviz sizes and positions label text from its own font metrics
+ * (Times-like in the WASM build), which run 20-25% narrower than the fonts
+ * the page actually draws with (Meiryo, Segoe UI). Server-side padding
+ * widens the boxes, but a start-anchored label still drifts off-centre and
+ * very long rows can still spill. So, per label: trim Graphviz's padding
+ * spaces, anchor the text at the centre of the smallest shape that contains
+ * it, and only if the real rendered width still exceeds that shape, squeeze
+ * it with textLength. Gate/event symbol nodes are left alone.
+ */
+const LABEL_MARGIN = 4; // px of air kept on each side of a squeezed label
+
+function fitLabels(svg) {
+  const nodes = svg.querySelectorAll('g.node');
+  for (const g of nodes) {
+    const cls = g.getAttribute('class') || '';
+    if (/\bfta-(gate|event)\b/.test(cls)) continue;
+    const shapes = [];
+    for (const s of g.querySelectorAll('polygon, ellipse')) {
+      let b;
+      try { b = s.getBBox(); } catch (_) { continue; }
+      if (b && b.width > 0 && b.height > 0) shapes.push(b);
+    }
+    if (!shapes.length) continue; // hidden panel: nothing measurable yet
+    for (const text of g.querySelectorAll('text')) {
+      const raw = text.textContent || '';
+      const trimmed = raw.replace(/^[\s ]+|[\s ]+$/g, '');
+      if (!trimmed) continue;
+      let tb;
+      try { tb = text.getBBox(); } catch (_) { continue; }
+      const cy = tb.y + tb.height / 2;
+      const cx = tb.x + tb.width / 2;
+      let cell = null;
+      for (const b of shapes) {
+        if (cy < b.y || cy > b.y + b.height) continue;
+        if (cx < b.x - tb.width || cx > b.x + b.width + tb.width) continue;
+        if (!cell || b.width * b.height < cell.width * cell.height) cell = b;
+      }
+      if (!cell) continue;
+      if (trimmed !== raw) text.textContent = trimmed;
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('x', String(cell.x + cell.width / 2));
+      text.removeAttribute('textLength');
+      let width = 0;
+      try { width = text.getComputedTextLength(); } catch (_) { width = 0; }
+      const room = cell.width - 2 * LABEL_MARGIN;
+      if (width > room && room > 0) {
+        text.setAttribute('textLength', String(room));
+        text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      }
+    }
+  }
+}
+
 function sanitizeSvg(root) {
   root.querySelectorAll('script, foreignObject').forEach((node) => node.remove());
   const doc = root.ownerDocument;
@@ -275,8 +381,25 @@ function buildIdMap(flat) {
   return map;
 }
 
+
+/** The node's main shape: the event box / table background, never a symbol. */
+function isMainGroup(g) {
+  const cls = g.getAttribute('class') || '';
+  if (/\bfta-event-conditioning\b/.test(cls)) return true;
+  return !/\bfta-(gate|event)\b/.test(cls);
+}
+
+function mainShape(g) {
+  for (const child of Array.from(g.children)) {
+    const tag = child.localName || child.nodeName;
+    if (tag === 'polygon' || tag === 'ellipse' || tag === 'path') return child;
+  }
+  return null;
+}
+
 export function initDiagram(container) {
   if (!container) throw new Error('initDiagram(container): container is required');
+  registerCatalog();
 
   injectStyles('fta-diagram-styles', STYLES);
   clear(container);
@@ -297,10 +420,12 @@ export function initDiagram(container) {
   // ---- box-sizing popover (font auto-detect + manual scale) --------------
   const boxSettings = readDiagramSettings();
 
-  const fontSelect = el('select', { 'aria-label': 'Diagram font' }, [
-    el('option', { value: '', text: 'Auto-detect' }),
+  const fontAutoOption = el('option', { value: '', text: t('diagram17.fontAuto', 'Auto-detect') });
+  const fontSystemOption = el('option', { value: 'sans-serif', text: t('diagram17.fontSystem', 'System default') });
+  const fontSelect = el('select', { 'aria-label': t('diagram.fontLabel', 'Font') }, [
+    fontAutoOption,
     ...FONT_CANDIDATES.filter((n) => n !== 'sans-serif').map((n) => el('option', { value: n, text: n })),
-    el('option', { value: 'sans-serif', text: 'System default' }),
+    fontSystemOption,
   ]);
   fontSelect.value = boxSettings.fontChoice;
 
@@ -309,11 +434,31 @@ export function initDiagram(container) {
     min: String(SCALE_MIN),
     max: String(SCALE_MAX),
     step: '1',
-    'aria-label': 'Diagram box scale',
+    'aria-label': t('diagram.scaleLabel', 'Box scale'),
     value: String(boxSettings.scale),
   });
 
   const fontDetectedNote = el('span', { class: 'diagram__fontnote' });
+
+  const styleSelect = el('select', { 'aria-label': 'Diagram style' });
+  const layoutSelect = el('select', { 'aria-label': 'Diagram layout' });
+  const styleLabel = el('span');
+  const layoutLabel = el('span');
+  function relabelLayoutControls() {
+    clear(styleSelect);
+    styleSelect.appendChild(el('option', { value: 'compact', text: t('diagram17.styleCompact', 'Compact boxes') }));
+    styleSelect.appendChild(el('option', { value: 'symbols', text: t('diagram17.styleSymbols', 'Standard symbols') }));
+    styleSelect.value = boxSettings.style;
+    clear(layoutSelect);
+    layoutSelect.appendChild(el('option', { value: 'LR', text: t('diagram17.layoutLR', 'Left → right') }));
+    layoutSelect.appendChild(el('option', { value: 'TB', text: t('diagram17.layoutTB', 'Top → down') }));
+    layoutSelect.value = boxSettings.rankdir;
+    styleLabel.textContent = t('diagram17.style', 'Style');
+    layoutLabel.textContent = t('diagram17.layout', 'Layout');
+    styleSelect.setAttribute('aria-label', t('diagram17.style', 'Style'));
+    layoutSelect.setAttribute('aria-label', t('diagram17.layout', 'Layout'));
+  }
+  relabelLayoutControls();
 
   function refreshFontNote() {
     const active = boxSettings.fontChoice ? boxSettings.fontChoice : detectFont();
@@ -329,8 +474,26 @@ export function initDiagram(container) {
     text: '×',
     onclick: () => closePopover(),
   });
+  const popoverTitle = el('span', { text: t('diagram.fontSettings', 'Font & box size') });
+  const fontLabel = el('span', { text: t('diagram.fontLabel', 'Font') });
+  const scaleLabel = el('span', { text: t('diagram.scaleLabel', 'Box scale') });
+  const scaleHint = el('p', { class: 'diagram__popoverHint' }, [
+    t('diagram.scaleHint', 'If text still spills out of the boxes after auto-detect, raise the scale.'),
+  ]);
+  /** The popover's fixed texts, again after a language switch. */
+  function relabelPopover() {
+    popoverTitle.textContent = t('diagram.fontSettings', 'Font & box size');
+    popoverCloseBtn.setAttribute('aria-label', t('diagram.fontSettingsClose', 'Close'));
+    fontLabel.textContent = t('diagram.fontLabel', 'Font');
+    scaleLabel.textContent = t('diagram.scaleLabel', 'Box scale');
+    scaleHint.textContent = t('diagram.scaleHint', 'If text still spills out of the boxes after auto-detect, raise the scale.');
+    fontAutoOption.textContent = t('diagram17.fontAuto', 'Auto-detect');
+    fontSystemOption.textContent = t('diagram17.fontSystem', 'System default');
+    fontSelect.setAttribute('aria-label', t('diagram.fontLabel', 'Font'));
+    scaleInput.setAttribute('aria-label', t('diagram.scaleLabel', 'Box scale'));
+  }
   const popoverHead = el('div', { class: 'diagram__popoverHead' }, [
-    el('span', { text: t('diagram.fontSettings', 'Font & box size') }),
+    popoverTitle,
     popoverCloseBtn,
   ]);
 
@@ -339,21 +502,12 @@ export function initDiagram(container) {
     { class: 'diagram__popover', hidden: true },
     [
       popoverHead,
-      el('label', { class: 'diagram__popoverRow' }, [
-        el('span', { text: t('diagram.fontLabel', 'Font') }),
-        fontSelect,
-      ]),
+      el('label', { class: 'diagram__popoverRow' }, [styleLabel, styleSelect]),
+      el('label', { class: 'diagram__popoverRow' }, [layoutLabel, layoutSelect]),
+      el('label', { class: 'diagram__popoverRow' }, [fontLabel, fontSelect]),
       fontDetectedNote,
-      el('label', { class: 'diagram__popoverRow' }, [
-        el('span', { text: t('diagram.scaleLabel', 'Box scale') }),
-        scaleInput,
-      ]),
-      el('p', { class: 'diagram__popoverHint' }, [
-        t(
-          'diagram.scaleHint',
-          'If text still spills out of the boxes after auto-detect, raise the scale.'
-        ),
-      ]),
+      el('label', { class: 'diagram__popoverRow' }, [scaleLabel, scaleInput]),
+      scaleHint,
     ]
   );
 
@@ -450,6 +604,18 @@ export function initDiagram(container) {
     refreshFontNote();
     schedule();
   });
+  styleSelect.addEventListener('change', () => {
+    boxSettings.style = DIAGRAM_STYLES.indexOf(styleSelect.value) !== -1 ? styleSelect.value : 'compact';
+    writeDiagramSettings(boxSettings);
+    resetView = true;
+    schedule();
+  });
+  layoutSelect.addEventListener('change', () => {
+    boxSettings.rankdir = DIAGRAM_RANKDIRS.indexOf(layoutSelect.value) !== -1 ? layoutSelect.value : 'LR';
+    writeDiagramSettings(boxSettings);
+    resetView = true;
+    schedule();
+  });
   scaleInput.addEventListener('change', () => {
     const value = Math.round(Number(scaleInput.value));
     boxSettings.scale = Number.isFinite(value)
@@ -506,6 +672,9 @@ export function initDiagram(container) {
       font: boxSettings.fontChoice || detectFont(),
       scale: boxSettings.scale,
       dark: isDarkMode(),
+      style: boxSettings.style,
+      rankdir: boxSettings.rankdir,
+      sigFigs: currentSigFigs(),
     };
   }
 
@@ -514,6 +683,17 @@ export function initDiagram(container) {
   let ty = 0;
   let svgEl = null;
   let lastSvgText = '';
+  // What export uses: the raw Graphviz SVG for compact, the symbol-processed
+  // one for the symbols style (so exports show the true symbols).
+  let exportSvgText = '';
+  let dotIdMap = new Map();      // DOT node name -> node id, from /api/dot
+  let fallbackIdMap = null;      // sanitizeId mirror, built lazily per render
+  let resetView = false;         // re-fit after a style/layout switch
+  // True until the user zooms, pans or jumps: each render then re-fits, so a
+  // diagram that grows from one box (fit at 400%) stays in view instead of
+  // spilling off the stage at the old zoom.
+  let autoFit = true;
+  let pendingJump = null;
   let renderer = 'wasm';
   let timer = null;
   let generation = 0;
@@ -528,6 +708,7 @@ export function initDiagram(container) {
 
   function zoomBy(factor, originX, originY) {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale * factor));
+    autoFit = false;
     if (next === scale) return;
     // Keep the point under the cursor fixed while zooming.
     if (typeof originX === 'number') {
@@ -551,6 +732,7 @@ export function initDiagram(container) {
       ? svgEl.viewBox.baseVal.height
       : svgEl.getBoundingClientRect().height / (scale || 1);
     if (!w || !h) return;
+    autoFit = true;
     scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min((rect.width - 24) / w, (rect.height - 24) / h)));
     tx = (rect.width - w * scale) / 2;
     ty = 12;
@@ -590,6 +772,7 @@ export function initDiagram(container) {
         && Math.abs(ev.clientY - pressY) < PAN_SLOP_PX) return;
       dragging = true;
       pressNode = null; // a drag is a pan, never a selection
+      autoFit = false;
       try { stage.setPointerCapture(ev.pointerId); } catch (_) { /* not capturable */ }
       stage.classList.add('is-panning');
     }
@@ -636,19 +819,104 @@ export function initDiagram(container) {
     if (!g) return;
     const title = g.querySelector('title');
     if (!title) return;
-    const map = buildIdMap(store.flat ? store.flat() : []);
-    const real = map.get(title.textContent.trim());
+    // A gate or event symbol resolves (through idMap) to its event node.
+    const real = resolveNodeId(title.textContent.trim());
     if (real) store.select(real);
   });
 
-  function markSelection() {
-    if (!svgEl) return;
-    const selected = store.selectedId ? sanitizeId(store.selectedId) : null;
+  /** DOT node name -> tree node id: the server's idMap, else the sanitizeId mirror. */
+  function resolveNodeId(name) {
+    if (dotIdMap.has(name)) return dotIdMap.get(name);
+    if (!fallbackIdMap) fallbackIdMap = buildIdMap(store.flat ? store.flat() : []);
+    return fallbackIdMap.get(name) || null;
+  }
+
+  /** [{g, id}] for every rendered node group. */
+  function nodeGroups() {
+    if (!svgEl) return [];
+    const out = [];
     svgEl.querySelectorAll('g.node').forEach((g) => {
       const title = g.querySelector('title');
-      const isSel = !!(title && selected && title.textContent.trim() === selected);
-      g.classList.toggle('is-selected', isSel);
+      const id = title ? resolveNodeId(title.textContent.trim()) : null;
+      if (id !== null && id !== undefined) out.push({ g, id: String(id) });
     });
+    return out;
+  }
+
+  function markSelection() {
+    if (!svgEl) return;
+    fallbackIdMap = null; // the tree may have changed since the last lookup
+    const selected = store.selectedId ? String(store.selectedId) : null;
+    for (const { g, id } of nodeGroups()) g.classList.toggle('is-selected', !!selected && id === selected);
+  }
+
+  // ---- highlight / overlay / jump ----------------------------------------
+  let highlight = store.highlight || { ids: [], source: null };
+  let overlay = store.overlay || null;
+
+  const legendTitle = el('span', { class: 'diagram__legendTitle' });
+  const legendLow = el('span');
+  const legendHigh = el('span');
+  const legend = el('div', { class: 'diagram__legend', hidden: true }, [
+    legendTitle,
+    el('span', { class: 'diagram__legendBar' }),
+    el('div', { class: 'diagram__legendScale' }, [legendLow, legendHigh]),
+  ]);
+  stage.appendChild(legend);
+
+  function applyHighlight() {
+    const ids = new Set((highlight && highlight.ids) || []);
+    for (const { g, id } of nodeGroups()) g.classList.toggle('is-highlighted', ids.has(id));
+  }
+
+  function applyOverlay() {
+    const values = overlay && overlay.values && typeof overlay.values === 'object' ? overlay.values : null;
+    const max = overlayMax(values);
+    for (const { g, id } of nodeGroups()) {
+      if (!isMainGroup(g)) continue;
+      const shape = mainShape(g);
+      if (!shape) continue;
+      const v = values ? Number(values[id]) : NaN;
+      if (values && Number.isFinite(v)) {
+        shape.style.fill = scaleColor(max > 0 ? v / max : 0);
+        g.classList.add('has-overlay');
+      } else {
+        shape.style.removeProperty('fill');
+        g.classList.remove('has-overlay');
+      }
+    }
+    legend.hidden = !values;
+    if (values) {
+      const kind = String((overlay && overlay.kind) || '');
+      legendTitle.textContent = kind === 'fv'
+        ? t('diagram17.legendFv', 'Fussell-Vesely importance')
+        : kind.toUpperCase();
+      legendLow.textContent = t('diagram17.legendLow', 'low') + ' 0';
+      legendHigh.textContent = formatProb(max, currentSigFigs()) + ' ' + t('diagram17.legendHigh', 'high');
+    }
+  }
+
+  /** Centre node `id` in the stage without changing the zoom. */
+  function jumpTo(id) {
+    if (!svgEl) {
+      pendingJump = id;
+      return;
+    }
+    const wanted = String(id);
+    const found = nodeGroups().find(({ g, id: gid }) => gid === wanted && isMainGroup(g));
+    if (!found) return;
+    autoFit = false;
+    const box = found.g.getBoundingClientRect();
+    const view = stage.getBoundingClientRect();
+    tx += view.left + view.width / 2 - (box.left + box.width / 2);
+    ty += view.top + view.height / 2 - (box.top + box.height / 2);
+    applyTransform();
+  }
+
+  function decorate() {
+    markSelection();
+    applyHighlight();
+    applyOverlay();
   }
 
   function setStatusMessage(text, kind) {
@@ -667,10 +935,18 @@ export function initDiagram(container) {
       const box = effectiveBoxSettings();
       const payload = await api.get(
         `/dot?hideZero=${hideZero ? 'true' : 'false'}&font=${encodeURIComponent(box.font)}` +
-        `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}`
+        `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}` +
+        `&style=${encodeURIComponent(box.style)}&rankdir=${encodeURIComponent(box.rankdir)}` +
+        `&sigFigs=${encodeURIComponent(box.sigFigs)}`
       );
       if (mine !== generation || destroyed) return; // a newer render superseded this one
       renderer = payload.renderer || 'wasm';
+      const idMap = new Map();
+      if (payload.idMap && typeof payload.idMap === 'object') {
+        for (const key of Object.keys(payload.idMap)) idMap.set(key, String(payload.idMap[key]));
+      }
+      const renderedStyle = payload.style || box.style;
+      const renderedRankdir = payload.rankdir || box.rankdir;
 
       const viz = await getViz();
       if (mine !== generation || destroyed) return;
@@ -683,6 +959,10 @@ export function initDiagram(container) {
       const parsed = doc.documentElement;
       if (!parsed || parsed.nodeName === 'parsererror') throw new Error('Graphviz returned invalid SVG.');
       sanitizeSvg(parsed);
+      // After sanitizing: the symbol paths are built from numbers only.
+      if (renderedStyle === 'symbols') replaceGateShapes(parsed, renderedRankdir);
+      dotIdMap = idMap;
+      fallbackIdMap = null;
       svgEl = document.importNode(parsed, true);
       // Give the SVG real intrinsic pixel size from its own viewBox rather
       // than stripping width/height outright. .diagram__canvas is
@@ -705,9 +985,21 @@ export function initDiagram(container) {
         svgEl.removeAttribute('height');
       }
       canvas.appendChild(svgEl);
+      // Must run after appendChild: it measures the text with the page's
+      // real font. Browser exports use the fitted SVG as well.
+      fitLabels(svgEl);
+      exportSvgText = new XMLSerializer().serializeToString(svgEl);
 
-      markSelection();
-      if (scale === 1 && tx === 0 && ty === 0) fit();
+      decorate();
+      if (resetView || autoFit || (scale === 1 && tx === 0 && ty === 0)) {
+        resetView = false;
+        fit();
+      }
+      if (pendingJump !== null) {
+        const id = pendingJump;
+        pendingJump = null;
+        jumpTo(id);
+      }
       setStatusMessage('');
       setMeta(
         renderer === 'native'
@@ -717,6 +1009,7 @@ export function initDiagram(container) {
     } catch (err) {
       if (mine !== generation || destroyed) return;
       svgEl = null;
+      exportSvgText = '';
       clear(canvas);
       const msg = err instanceof ApiError ? err.message : String((err && err.message) || err);
       setStatusMessage(t('diagram.error', 'Could not render the diagram: ') + msg, 'error');
@@ -740,11 +1033,11 @@ export function initDiagram(container) {
   }
 
   function exportSvg() {
-    if (!lastSvgText) {
+    if (!exportSvgText) {
       setStatusMessage(t('diagram.nothingToExport', 'Nothing to export yet.'), 'error');
       return;
     }
-    download(new Blob([lastSvgText], { type: 'image/svg+xml;charset=utf-8' }), 'fta_diagram.svg');
+    download(new Blob([exportSvgText], { type: 'image/svg+xml;charset=utf-8' }), 'fta_diagram.svg');
   }
 
   async function exportPng() {
@@ -753,7 +1046,10 @@ export function initDiagram(container) {
       return;
     }
     const caps = (store.state && store.state.capabilities) || {};
-    if (caps.nativeDot) {
+    // The true gate symbols are drawn in the browser (fta_symbols.js); native
+    // `dot` only knows the placeholder polygons, so a symbols-style PNG must
+    // come from the processed preview, never from /api/render.
+    if (caps.nativeDot && effectiveBoxSettings().style !== 'symbols') {
       // A real `dot` rasterises at 300 dpi; prefer it over a canvas upscale.
       try {
         const box = effectiveBoxSettings();
@@ -764,6 +1060,9 @@ export function initDiagram(container) {
           font: box.font,
           scale: box.scale,
           dark: box.dark,
+          style: box.style,
+          rankdir: box.rankdir,
+          sigFigs: box.sigFigs,
         });
         const bin = atob(res.data);
         const bytes = new Uint8Array(bin.length);
@@ -778,14 +1077,29 @@ export function initDiagram(container) {
     await exportPngViaCanvas();
   }
 
-  function exportPngViaCanvas() {
+  async function exportPngViaCanvas() {
+    const blob = await toPngBlob();
+    if (blob) download(blob, 'fta_diagram.png');
+    else setStatusMessage(t('diagram.pngFailed', 'Could not rasterise the diagram to PNG.'), 'error');
+  }
+
+  /**
+   * Rasterise the current preview to a PNG Blob without downloading it.
+   * Resolves null when nothing is rendered yet or rasterising fails. Used by
+   * exportPngViaCanvas() and by window.ftaShell.diagramPng() (report export).
+   */
+  function toPngBlob() {
     return new Promise((resolve) => {
+      if (!exportSvgText) {
+        resolve(null);
+        return;
+      }
       const scaleUp = 2;
       const box = svgEl ? svgEl.viewBox.baseVal : null;
       const w = (box && box.width) || 1200;
       const h = (box && box.height) || 800;
       const img = new Image();
-      const svgBlob = new Blob([lastSvgText], { type: 'image/svg+xml;charset=utf-8' });
+      const svgBlob = new Blob([exportSvgText], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(svgBlob);
       img.onload = () => {
         const c = document.createElement('canvas');
@@ -796,15 +1110,11 @@ export function initDiagram(container) {
         ctx.fillRect(0, 0, c.width, c.height);
         ctx.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
-        c.toBlob((blob) => {
-          if (blob) download(blob, 'fta_diagram.png');
-          resolve();
-        }, 'image/png');
+        c.toBlob((blob) => resolve(blob || null), 'image/png');
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        setStatusMessage(t('diagram.pngFailed', 'Could not rasterise the diagram to PNG.'), 'error');
-        resolve();
+        resolve(null);
       };
       img.src = url;
     });
@@ -812,6 +1122,19 @@ export function initDiagram(container) {
 
   // ---- wiring ------------------------------------------------------------
   const unsubscribe = store.subscribe(() => { markSelection(); schedule(); });
+  const unsubscribeHighlight = typeof store.onHighlight === 'function'
+    ? store.onHighlight((next) => { highlight = next || { ids: [], source: null }; applyHighlight(); })
+    : null;
+  const unsubscribeOverlay = typeof store.onOverlay === 'function'
+    ? store.onOverlay((next) => { overlay = next || null; applyOverlay(); })
+    : null;
+  const onJump = (ev) => {
+    const id = ev && ev.detail && ev.detail.id;
+    if (id !== undefined && id !== null && id !== '') jumpTo(id);
+  };
+  window.addEventListener('fta:jump', onJump);
+  const onSigFigs = () => schedule();
+  window.addEventListener('fta:sigfigs', onSigFigs);
   const onHideZero = () => schedule();
   window.addEventListener('fta:hide-zero', onHideZero);
   // The toolbar buttons carry glyphs, not words, so a sighted user sees nothing
@@ -819,7 +1142,7 @@ export function initDiagram(container) {
   // screen-reader user switching mid-session would otherwise hear the old
   // language. Re-render on the next diagram update picks up the meta line for
   // free; the toolbar needs this.
-  const onLanguage = () => { retitleToolbar(); refreshFontNote(); schedule(); };
+  const onLanguage = () => { retitleToolbar(); refreshFontNote(); relabelLayoutControls(); relabelPopover(); schedule(); };
   window.addEventListener('fta:language', onLanguage);
 
   // Explicit light/dark from the theme toggle...
@@ -838,15 +1161,37 @@ export function initDiagram(container) {
   applyTransform();
   schedule();
 
+  // A resized stage (window, splitters, phone rotation) keeps a fitted
+  // diagram fitted; once the user has zoomed or panned, their view stays.
+  let resizeFrame = 0;
+  const stageObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => {
+      if (!autoFit || !svgEl || resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        if (autoFit && !destroyed) fit();
+      });
+    })
+    : null;
+  if (stageObserver) stageObserver.observe(stage);
+
   return {
     refresh: schedule,
     exportSvg,
     exportPng,
+    toPngBlob,
     getBoxSettings: effectiveBoxSettings,
+    jumpTo,
     destroy() {
       destroyed = true;
       if (timer) clearTimeout(timer);
+      if (stageObserver) stageObserver.disconnect();
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
       window.removeEventListener('fta:hide-zero', onHideZero);
+      window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:sigfigs', onSigFigs);
+      if (typeof unsubscribeHighlight === 'function') unsubscribeHighlight();
+      if (typeof unsubscribeOverlay === 'function') unsubscribeOverlay();
       window.removeEventListener('fta:language', onLanguage);
       window.removeEventListener('fta:theme', onThemeChange);
       if (darkMediaQuery) darkMediaQuery.removeEventListener('change', onThemeChange);
@@ -880,6 +1225,22 @@ const STYLES = `
 .diagram__canvas g.node.is-selected > path,
 .diagram__canvas g.node.is-selected > ellipse {
   stroke: var(--fta-accent, #14507d); stroke-width:2.5px; }
+.diagram__canvas g.node.is-highlighted > polygon,
+.diagram__canvas g.node.is-highlighted > path,
+.diagram__canvas g.node.is-highlighted > ellipse {
+  stroke: var(--fta-accent, #14507d); stroke-width:4.5px; }
+.diagram__canvas g.node.is-highlighted { filter: drop-shadow(0 0 3px var(--fta-accent, #14507d)); }
+.diagram__legend { position:absolute; left:8px; bottom:8px; z-index:2; display:flex; flex-direction:column;
+  gap:2px; padding:6px 8px; font-size:11px; border-radius:4px; pointer-events:none;
+  background: var(--fta-surface, #fff); color: var(--fta-fg, #10151c);
+  border:1px solid var(--fta-border, #d7dde5); box-shadow: 0 2px 6px rgba(16,20,24,0.15); }
+.diagram__legend[hidden] { display:none; }
+.diagram__legendTitle { font-weight:600; }
+.diagram__legendBar { display:block; width:9rem; height:8px; border-radius:2px;
+  border:1px solid var(--fta-border, #d7dde5);
+  background: linear-gradient(to right, rgb(255,244,229), rgb(230,85,13)); }
+.diagram__legendScale { display:flex; justify-content:space-between; gap:8px;
+  color: var(--fta-muted-fg, #5d6a78); font-variant-numeric: tabular-nums; }
 .diagram__status { flex:0 0 auto; padding:4px 8px; font-size:12px; min-height:0;
   color: var(--fta-fg, #10151c); }
 .diagram__status--error { color: var(--fta-danger-fg, #a8321c); }

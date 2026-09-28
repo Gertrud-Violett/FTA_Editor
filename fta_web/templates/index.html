@@ -19,7 +19,14 @@
        stored choice. Kept inline and tiny on purpose: a separate file would
        be a second round trip and the flash would be back. */
     (function () {
+      /* Boot gate: main.js removes this once every panel has loaded, so an
+         early click or shortcut cannot reach a half-initialised editor. */
+      document.documentElement.setAttribute('data-booting', '');
+      document.documentElement.setAttribute('data-advanced', '0');
       try {
+        if (localStorage.getItem('fta.advanced') === '1') {
+          document.documentElement.setAttribute('data-advanced', '1');
+        }
         var pref = localStorage.getItem('fta.theme');
         if (pref === 'dark' || pref === 'light') {
           document.documentElement.setAttribute('data-theme', pref);
@@ -62,7 +69,7 @@
            editor may hold a non-ISO value that a date picker would silently
            blank on the next save. -->
       <input id="date-input" type="text" autocomplete="off" spellcheck="false"
-             inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9/.\-]*">
+             inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9\/.\-]*">
     </div>
 
     <label class="checkbox" for="hide-zero"
@@ -71,6 +78,40 @@
       <input id="hide-zero" type="checkbox">
       <span data-i18n="bar.hideZero">Hide Zero</span>
     </label>
+
+    <div class="topbar__group">
+      <label class="topbar__label" for="sigfig-select" data-i18n="bar.sigFigs">Sig. figs</label>
+      <select id="sigfig-select" data-i18n-title="bar.sigFigsTitle"
+              title="Significant figures used to display probabilities">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+    </div>
+
+    <label class="switch" for="advanced-toggle"
+           data-i18n-title="bar.advancedTitle"
+           title="Show advanced gates, models and analysis tabs. Calculations and files are the same either way.">
+      <input id="advanced-toggle" type="checkbox" role="switch" class="switch__input">
+      <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+      <span class="switch__label" data-i18n="bar.advanced">Advanced</span>
+    </label>
+
+    <!-- Top-event headline. ftaShell.setHeadline() fills it; the MCUB badge
+         and the capped/truncated marker are advanced-mode details and hidden
+         in basic mode. -->
+    <div class="headline" id="headline" data-i18n-title="headline.title"
+         title="Top-event probability" aria-live="polite">
+      <span class="headline__label"><span data-i18n="headline.label">Top event</span>:</span>
+      <span class="headline__value" id="headline-value">&#8212;</span>
+      <span class="headline__badge" id="headline-badge" data-advanced-only hidden
+            data-i18n="headline.mcub">MCUB</span>
+      <span class="headline__marker" id="headline-marker" data-advanced-only hidden
+            role="img">&#8776;</span>
+    </div>
 
     <div class="topbar__group" id="capabilities-host"></div>
 
@@ -143,13 +184,67 @@
          data-i18n-aria="a11y.splitDetails"
          aria-label="Resize the node details panel"></div>
 
-    <section class="panel" id="details-panel" aria-labelledby="details-panel-title">
-      <div class="panel__head">
-        <h2 class="panel__title" id="details-panel-title" data-i18n="panel.details">Node Details</h2>
-        <span class="panel__spacer"></span>
+    <!-- Bottom panel: one tab per feature (1.7). tabs/host.js wires the strip
+         and lazy-loads tabs/<id>.js the first time a tab is shown. The Details
+         tab wraps #details-root, which details.js owns exactly as before.
+         data-advanced-only tabs are hidden while the Advanced switch is off. -->
+    <section class="panel panel--tabs" id="details-panel" aria-labelledby="details-panel-title">
+      <div class="panel__head panel__head--tabs">
+        <h2 class="visually-hidden" id="details-panel-title" data-i18n="panel.bottom">Details and analysis</h2>
+        <div class="tabstrip" id="bottom-tabs" role="tablist"
+             data-i18n-aria="tabs.aria" aria-label="Details and analysis tabs">
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-details" data-tab="details"
+                  aria-controls="tabpanel-details" aria-selected="true" tabindex="0"
+                  data-i18n="tab.details">Details</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-quant" data-tab="quant"
+                  aria-controls="tabpanel-quant" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.quant">Quantification</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-cutsets" data-tab="cutsets"
+                  aria-controls="tabpanel-cutsets" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.cutsets">Cut Sets</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-importance" data-tab="importance"
+                  aria-controls="tabpanel-importance" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.importance">Importance</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-uncertainty" data-tab="uncertainty"
+                  aria-controls="tabpanel-uncertainty" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.uncertainty">Uncertainty</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-validation" data-tab="validation"
+                  aria-controls="tabpanel-validation" aria-selected="false" tabindex="-1"
+                  data-i18n="tab.validation">Validation</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-trace" data-tab="trace"
+                  aria-controls="tabpanel-trace" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.trace">Traceability</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-fmea" data-tab="fmea"
+                  aria-controls="tabpanel-fmea" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.fmea">FMEA</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-report" data-tab="report"
+                  aria-controls="tabpanel-report" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.report">Report</button>
+        </div>
         <span class="panel__meta" id="details-meta"></span>
       </div>
-      <div class="panel__body" id="details-root" tabindex="-1"></div>
+      <div class="tabpanels">
+        <div class="tabpanel tabpanel--details" id="tabpanel-details" role="tabpanel"
+             aria-labelledby="tab-details" tabindex="-1">
+          <div class="panel__body" id="details-root" tabindex="-1"></div>
+        </div>
+        <div class="tabpanel panel__body" id="tabpanel-quant" role="tabpanel"
+             aria-labelledby="tab-quant" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-cutsets" role="tabpanel"
+             aria-labelledby="tab-cutsets" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-importance" role="tabpanel"
+             aria-labelledby="tab-importance" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-uncertainty" role="tabpanel"
+             aria-labelledby="tab-uncertainty" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-validation" role="tabpanel"
+             aria-labelledby="tab-validation" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-trace" role="tabpanel"
+             aria-labelledby="tab-trace" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-fmea" role="tabpanel"
+             aria-labelledby="tab-fmea" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-report" role="tabpanel"
+             aria-labelledby="tab-report" tabindex="0" hidden></div>
+      </div>
     </section>
 
     <section class="panel" id="ai-panel" aria-labelledby="ai-panel-title">
@@ -174,7 +269,7 @@
   <!-- Action bar. Buttons whose phase has not landed carry                  -->
   <!-- aria-disabled + data-phase: still focusable, still explain themselves.-->
   <!-- ==================================================================== -->
-  <footer class="actionbar" role="toolbar" aria-label="Document actions">
+  <footer class="actionbar" role="toolbar" aria-label="Document actions" aria-busy="true">
     <button type="button" class="btn btn--primary" data-action="new"
             data-i18n="btn.new" data-i18n-title="tip.new"
             title="New analysis (Ctrl+N)">New</button>

@@ -83,7 +83,9 @@ try:  # normal package import: ``import fta_web.routes.ai``
         api_error_response,
         ok_response,
     )
-    from ..state import get_state
+    from ..node_schema import merge_back_node_keys, reconcile_gate_types
+    from ..state import get_state, load_warning_issues, removed_link_issues
+    from ..tree_ops import all_ids, strip_references_to
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import ai_bridge  # type: ignore[no-redef]
     from errors import (  # type: ignore[no-redef]
@@ -94,7 +96,9 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         api_error_response,
         ok_response,
     )
-    from state import get_state  # type: ignore[no-redef]
+    from node_schema import merge_back_node_keys, reconcile_gate_types  # type: ignore[no-redef]
+    from state import get_state, load_warning_issues, removed_link_issues  # type: ignore[no-redef]
+    from tree_ops import all_ids, strip_references_to  # type: ignore[no-redef]
 
 log = logging.getLogger(__name__)
 
@@ -222,6 +226,31 @@ def _document_snapshot() -> Tuple[Dict[str, Any], str, str]:
         )
 
 
+class _TreeHolder:
+    """The ``get_data()`` a tree_ops helper wants, over a bare tree."""
+
+    def __init__(self, tree: Any):
+        self._tree = tree
+
+    def get_data(self) -> Any:
+        return self._tree
+
+
+def _strip_references_to_removed(state, old_tree: Any) -> None:
+    """Links/transfers into ids that ``old_tree`` had and the live tree has
+    lost, removed and reported as ``LINKS_REMOVED`` session notices (as
+    DELETE /api/nodes does). Caller holds the lock."""
+    gone = all_ids(_TreeHolder(old_tree)) - all_ids(state.core)
+    if not gone:
+        return
+    removed = strip_references_to(state.core, gone)
+    if removed:
+        issues = []
+        for entry in removed:
+            issues.extend(removed_link_issues([entry], entry["targetId"]))
+        state.add_session_warnings(issues)
+
+
 def _mutation_payload(state) -> Dict[str, Any]:
     """The post-mutation view every mutating endpoint returns.
 
@@ -237,6 +266,8 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
+        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "sessionWarnings": copy.deepcopy(state.session_warnings),
     }
 
 
@@ -539,6 +570,17 @@ def post_apply_changes():
 
         # One entry for the whole batch, so one Ctrl-Z reverses all of it.
         state.push_undo(before)
+        # The handler's 'edit' writes only logicGate. On a node with a
+        # gateType that no longer projects to it (a KOFN the AI made an AND)
+        # the engine would follow the stale gateType and silently ignore the
+        # applied edit -- so the AI's logicGate wins, as on /update and load.
+        resets = reconcile_gate_types(state.core.get_data(), cause="ai")
+        if resets:
+            state.add_edit_warnings(load_warning_issues(resets))
+        # The handler's 'delete' removes the node and nothing else. As for
+        # DELETE /api/nodes, links and transfers into the removed ids go too:
+        # the next Add may be handed one of those ids back.
+        _strip_references_to_removed(state, before.get("tree"))
         state.core.recalculate_probabilities()
         state.mark_dirty()
 
@@ -619,8 +661,22 @@ def post_update():
         # is: the validator accepts anything float() accepts, so a model that
         # writes "probability": "0.5" would otherwise leave a string in the
         # tree and node_label's numeric formatting would 500 on /api/dot.
-        state.core.set_data(state.core._normalize_node(copy.deepcopy(updated)))
+        new_tree = state.core._normalize_node(copy.deepcopy(updated))
+        # The model is shown (and returns) only the fields the AI validator
+        # knows, so a rewrite would silently drop every 1.7 key. Restore them
+        # by node id from the tree being replaced, and say how many.
+        merged = merge_back_node_keys(state.core.get_data(), new_tree)
+        # A gateType the model kept while changing logicGate is stale: the
+        # AND/OR the model wrote wins (as on load), and the Validation tab
+        # says so.
+        resets = reconcile_gate_types(new_tree, cause="ai")
+        old_tree = state.core.get_data()
+        state.core.set_data(new_tree)
+        if resets:
+            # An edit notice, not a session one: undoing the update removes it.
+            state.add_edit_warnings(load_warning_issues(resets))
+        _strip_references_to_removed(state, old_tree)
         state.core.recalculate_probabilities()
         state.mark_dirty()
 
-        return ok_response(reply=reply, **_mutation_payload(state))
+        return ok_response(reply=reply, mergedFields=merged, **_mutation_payload(state))

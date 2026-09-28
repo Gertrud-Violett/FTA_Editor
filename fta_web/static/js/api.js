@@ -12,6 +12,9 @@
  *   api.post(path, body)
  *   api.patch(path, body)
  *   api.del(path)
+ *   api.download(method, path, body)  -> {blob, filename, contentType}
+ *                                    for binary responses (DOCX, XLSX...);
+ *                                    filename from Content-Disposition.
  *
  * Every method resolves to the UNWRAPPED payload: the server's
  * `{"ok": true, ...}` body with the `ok` key removed. So
@@ -181,8 +184,11 @@ function toApiPath(path) {
   return API_PREFIX + withSlash;
 }
 
-async function request(method, path, body) {
-  const url = toApiPath(path);
+/**
+ * Build the fetch() init for an /api call, or throw NO_SESSION when this tab
+ * holds no token. Shared by request() (JSON) and download() (binary).
+ */
+function buildInit(method, body, accept) {
   const token = readStoredToken();
 
   if (!token) {
@@ -197,7 +203,7 @@ async function request(method, path, body) {
     );
   }
 
-  const headers = { Accept: 'application/json' };
+  const headers = { Accept: accept };
   headers[TOKEN_HEADER] = token;
 
   const init = {
@@ -211,10 +217,12 @@ async function request(method, path, body) {
     headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
   }
+  return init;
+}
 
-  let response;
+async function send(method, url, init) {
   try {
-    response = await fetch(url, init);
+    return await fetch(url, init);
   } catch (cause) {
     throw new ApiError(
       'NETWORK_ERROR',
@@ -222,16 +230,42 @@ async function request(method, path, body) {
       { method, path: url, cause: String(cause && cause.message ? cause.message : cause) }
     );
   }
+}
+
+function parseJson(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_err) {
+    return null;
+  }
+}
+
+/** Turn a failed envelope into an ApiError (and end the session on 403). */
+function envelopeError(response, payload) {
+  const envelope = (payload && payload.error && typeof payload.error === 'object') ? payload.error : {};
+  const error = new ApiError(
+    envelope.code || `HTTP_${response.status}`,
+    envelope.message || `Request failed with HTTP ${response.status}.`,
+    envelope.detail || null,
+    response.status
+  );
+  if (response.status === 403) {
+    // Either the token is wrong/stale or Host/Origin were refused. Either
+    // way this tab is done: drop the token so nothing retries with it.
+    clearToken();
+    announceSessionInvalid(error.detail.reason || 'forbidden');
+  }
+  return error;
+}
+
+async function request(method, path, body) {
+  const url = toApiPath(path);
+  const init = buildInit(method, body, 'application/json');
+  const response = await send(method, url, init);
 
   const text = await response.text().catch(() => '');
-  let payload = null;
-  if (text) {
-    try {
-      payload = JSON.parse(text);
-    } catch (_err) {
-      payload = null;
-    }
-  }
+  const payload = parseJson(text);
 
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
     // app.py installs handlers so that even 404/405/413/500 come back as the
@@ -245,25 +279,69 @@ async function request(method, path, body) {
   }
 
   if (!response.ok || payload.ok === false) {
-    const envelope = (payload.error && typeof payload.error === 'object') ? payload.error : {};
-    const error = new ApiError(
-      envelope.code || `HTTP_${response.status}`,
-      envelope.message || `Request failed with HTTP ${response.status}.`,
-      envelope.detail || null,
-      response.status
-    );
-    if (response.status === 403) {
-      // Either the token is wrong/stale or Host/Origin were refused. Either
-      // way this tab is done: drop the token so nothing retries with it.
-      clearToken();
-      announceSessionInvalid(error.detail.reason || 'forbidden');
-    }
-    throw error;
+    throw envelopeError(response, payload);
   }
 
   // Unwrap: callers get the payload without the `ok` flag.
   const { ok: _ok, ...rest } = payload;
   return rest;
+}
+
+/** filename from a Content-Disposition header (RFC 5987 filename* first). */
+function filenameFrom(disposition) {
+  const raw = String(disposition || '');
+  const star = /filename\*\s*=\s*([^']*)'[^']*'([^;]+)/i.exec(raw);
+  if (star) {
+    try {
+      return decodeURIComponent(star[2].trim().replace(/^"|"$/g, ''));
+    } catch (_err) {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename\s*=\s*("([^"]*)"|[^;]+)/i.exec(raw);
+  if (plain) return (plain[2] !== undefined ? plain[2] : plain[1]).trim();
+  return null;
+}
+
+/**
+ * Fetch a binary response (DOCX, XLSX, PNG...). Resolves {blob, filename,
+ * contentType}; `filename` comes from Content-Disposition or is null. A
+ * non-2xx response, or a 200 that is the JSON envelope with ok:false, throws
+ * an ApiError parsed from the envelope exactly like request().
+ */
+async function download(method, path, body) {
+  const url = toApiPath(path);
+  const verb = String(method || 'GET').toUpperCase();
+  const init = buildInit(verb, verb === 'GET' ? undefined : (body === undefined ? {} : body), '*/*');
+  const response = await send(verb, url, init);
+  const contentType = response.headers.get('Content-Type') || '';
+
+  if (!response.ok || /application\/json/i.test(contentType)) {
+    const text = await response.text().catch(() => '');
+    const payload = parseJson(text);
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      if (!response.ok || payload.ok === false) throw envelopeError(response, payload);
+      // A 200 JSON body that is not an error: hand it back as a blob anyway.
+      return {
+        blob: new Blob([text], { type: contentType || 'application/json' }),
+        filename: filenameFrom(response.headers.get('Content-Disposition')),
+        contentType,
+      };
+    }
+    throw new ApiError(
+      response.ok ? 'BAD_RESPONSE' : `HTTP_${response.status}`,
+      `The server returned an unexpected response (HTTP ${response.status}).`,
+      { method: verb, path: url, body: text.slice(0, 200) },
+      response.status
+    );
+  }
+
+  const blob = await response.blob();
+  return {
+    blob,
+    filename: filenameFrom(response.headers.get('Content-Disposition')),
+    contentType,
+  };
 }
 
 export const api = {
@@ -280,6 +358,14 @@ export const api = {
   },
   del(path) {
     return request('DELETE', path);
+  },
+  /**
+   * Binary download. @returns {Promise<{blob: Blob, filename: string|null,
+   * contentType: string}>}. Errors throw ApiError, parsed from the JSON
+   * envelope when the server sent one.
+   */
+  download(method, path, body) {
+    return download(method, path, body);
   },
 };
 

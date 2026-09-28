@@ -98,3 +98,9 @@ PATH_REJECTED = "PATH_REJECTED"
 NO_CURRENT_PATH = "NO_CURRENT_PATH"
 RENDERER_UNAVAILABLE = "RENDERER_UNAVAILABLE"
 AI_NOT_CONFIGURED = "AI_NOT_CONFIGURED"
+# 1.7: analysis endpoints are FTA-only; the Phase-0 stubs answer 501 until
+# their workstream lands; EXPORT_UNAVAILABLE (also owned by routes/files.py,
+# same string) is reused for a missing python-docx.
+MODE_UNSUPPORTED = "MODE_UNSUPPORTED"
+NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
+EXPORT_UNAVAILABLE = "EXPORT_UNAVAILABLE"

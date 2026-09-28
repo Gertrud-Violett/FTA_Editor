@@ -413,7 +413,11 @@ class TestDotEndpoint:
         assert "Seal leak" in body["dot"]
 
     def test_dot_matches_the_library_function(self, client, core):
-        assert client.get("/api/dot").get_json()["dot"] == build_dot_text(core)
+        # 1.7: /api/dot serves diagram_dot.build_dot_text2 (sig-fig labels,
+        # styles, layouts); test_diagram_dot pins its parity with build_dot_text.
+        from fta_web.diagram_dot import build_dot_text2
+
+        assert client.get("/api/dot").get_json()["dot"] == build_dot_text2(core)[0]
 
     def test_hide_zero_query_parameter_drops_zero_nodes(self, client):
         shown = client.get("/api/dot").get_json()
@@ -618,8 +622,11 @@ class TestCapabilities:
             "excelExport",
             "aiConfigured",
             "aiProviders",
+            # 1.7
+            "reportExport",
+            "fmeaXlsx",
         }
-        for name in ("nativeDot", "excelExport", "aiConfigured"):
+        for name in ("nativeDot", "excelExport", "aiConfigured", "reportExport", "fmeaXlsx"):
             assert isinstance(capabilities[name], bool), "%s is %r" % (
                 name,
                 capabilities[name],

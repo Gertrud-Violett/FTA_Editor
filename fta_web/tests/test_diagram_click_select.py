@@ -99,3 +99,30 @@ def test_js_sanitize_id_mirror_matches_the_shipped_source():
     assert "function sanitizeId" in DIAGRAM_JS
     assert "replace(/[^0-9A-Za-z_]/g, '_')" in DIAGRAM_JS
     assert "sha1Hex(raw).slice(0, 8)" in DIAGRAM_JS
+
+
+# ---- 1.7: idMap and the symbols style --------------------------------------------
+
+SYMBOLS_JS = (REPO_ROOT / "fta_web" / "static" / "js" / "fta_symbols.js").read_text(encoding="utf-8")
+
+
+def test_click_resolves_through_the_server_id_map_first():
+    """Gate/event symbol nodes (<sid>__gate, <sid>__event) only resolve via idMap."""
+    body = _handler_body("click")
+    assert "resolveNodeId(" in body
+    assert "dotIdMap.has(name)" in DIAGRAM_JS
+    assert "payload.idMap" in DIAGRAM_JS
+
+
+def test_symbols_are_replaced_after_sanitizing():
+    start = DIAGRAM_JS.index("sanitizeSvg(parsed);")
+    assert DIAGRAM_JS.index("replaceGateShapes(parsed", start) > start
+
+
+def test_every_class_the_server_emits_has_a_symbol():
+    from fta_web.diagram_dot import EVENT_SHAPES, GATE_SHAPES
+
+    for gate in GATE_SHAPES:
+        assert "'gate-%s'" % gate.lower() in SYMBOLS_JS, gate
+    for kind in EVENT_SHAPES:
+        assert "'event-%s'" % kind in SYMBOLS_JS, kind

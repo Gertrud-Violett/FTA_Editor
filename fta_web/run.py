@@ -114,6 +114,8 @@ def parse_args(argv=None) -> argparse.Namespace:
             else "fta_web/run.py"
         ),
         description="Run the FTA Editor web UI on localhost.",
+        epilog="Batch analysis without a server: quantify, cutsets, importance, mc, "
+               "validate, report. Run '%(prog)s help' for the command list.",
     )
     parser.add_argument(
         "--port",
@@ -139,6 +141,26 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 
 def main(argv=None) -> int:
+    # Batch subcommands (``validate x.json`` ...) go to cli.py before any
+    # token, Flask app or browser exists: they must never start the server.
+    # ``help`` and ``--version`` belong to the CLI too (the server has neither).
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and (not raw_argv[0].startswith("-") or raw_argv[0] == "--version"):
+        import cli  # noqa: E402  (bare name: fta_web/ or _MEIPASS is on sys.path)
+
+        if raw_argv[0] == "help":
+            return cli.main(["--help"])
+        if raw_argv[0] in cli.COMMANDS or raw_argv[0] == "--version":
+            return cli.main(raw_argv)
+        # Not a flag and not a command: most likely a mistyped command or a
+        # file given without one. The server takes no positional arguments,
+        # so argparse would only say "unrecognized arguments"; name the
+        # commands instead.
+        print("error: unknown command '%s'. Commands: %s, help. Run with --help "
+              "for the web UI options." % (raw_argv[0], ", ".join(cli.COMMANDS)),
+              file=sys.stderr)
+        return 2
+
     args = parse_args(argv)
 
     port = args.port if args.port is not None else _free_port()
