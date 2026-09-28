@@ -322,6 +322,7 @@ def cmd_report(core, args, out_path: Path):
         "sections": sections, "sigFigs": args.sig_figs, "lang": args.lang,
         "runUncertainty": bool(args.uncertainty), "limits": _limits(core),
         "uncertaintyN": args.n or report_docx.MAX_REPORT_MC_N,
+        "uncertaintyTimeLimit": args.time_limit,
     })
     if "diagram" in options["sections"]:
         options["diagramPng"] = report_docx.render_png(
@@ -496,8 +497,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     files = expand_files(args.files)
     many = len(files) > 1
 
+    if getattr(args, "top", None) is not None and args.top < 1:
+        print("error: --top must be at least 1", file=sys.stderr)
+        return EXIT_USAGE
+    if getattr(args, "time_limit", None) is not None and not args.time_limit > 0:
+        print("error: --time-limit must be greater than 0", file=sys.stderr)
+        return EXIT_USAGE
+
     out = Path(args.out) if args.out else None
     out_is_dir = out is not None and (out.is_dir() or str(args.out).endswith(("/", "\\")))
+    if command == "report" and out is not None and not out_is_dir and out.suffix.lower() != ".docx":
+        # ``report x.json --out reports`` means a folder: without this the
+        # report was written to a file literally named "reports", with no
+        # extension, that Word will not open by double-click.
+        out_is_dir = True
     if command == "report" and many and out is not None and not out_is_dir:
         print("error: --out must be a directory when several files are given", file=sys.stderr)
         return EXIT_USAGE

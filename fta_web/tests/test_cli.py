@@ -368,3 +368,60 @@ def test_report_in_process_with_fakes(fakes, tmp_path, capsys):
     assert payload["results"]["out"] == str(target)
     text = "\n".join(p.text for p in docx.Document(str(target)).paragraphs)
     assert "Minimal cut sets" in text and "Uncertainty (Monte Carlo)" in text
+
+
+def test_report_out_without_docx_suffix_is_a_directory(fakes, tmp_path, capsys):
+    """``--out reports`` (not yet existing, no slash) is a folder, not a file
+    literally named "reports"."""
+    pytest.importorskip("docx")
+    doc = write_doc(tmp_path / "t.json")
+    code, payload = main_json(capsys, "report", doc, "--out", tmp_path / "reports",
+                              "--sections", "metadata")
+    assert code == 0
+    assert (tmp_path / "reports" / "t_report.docx").is_file()
+    assert payload["results"]["out"] == str(tmp_path / "reports" / "t_report.docx")
+
+
+def test_report_out_docx_file_is_kept(fakes, tmp_path, capsys):
+    pytest.importorskip("docx")
+    doc = write_doc(tmp_path / "t.json")
+    target = tmp_path / "new" / "Plant Report.DOCX"
+    code, _payload = main_json(capsys, "report", doc, "--out", target, "--sections", "metadata")
+    assert code == 0 and target.is_file()
+
+
+def test_report_passes_the_time_limit(fakes, tmp_path, capsys, monkeypatch):
+    pytest.importorskip("docx")
+    seen = {}
+
+    def mc(tree, analysis, n=None, seed=None, time_limit=30, bins=40):
+        seen["time_limit"] = time_limit
+        return fake_mc(tree, analysis, n=n, seed=seed, time_limit=time_limit)
+
+    import fta_web.uncertainty
+    monkeypatch.setattr(fta_web.uncertainty, "run", mc)
+    code, _payload = main_json(capsys, "report", write_doc(tmp_path / "t.json"), "--out",
+                               tmp_path / "r.docx", "--uncertainty", "--time-limit", "7")
+    assert code == 0 and seen["time_limit"] == 7.0
+
+
+@pytest.mark.parametrize("args", [
+    ["cutsets", "--top", "0"],
+    ["importance", "--top", "-3"],
+    ["mc", "--time-limit", "0"],
+])
+def test_non_positive_counts_are_usage_errors(fakes, tmp_path, capsys, args):
+    doc = write_doc(tmp_path / "t.json")
+    assert cli.main([args[0], str(doc)] + args[1:]) == 2
+
+
+def test_unknown_command_names_the_commands(tmp_path, monkeypatch, capsys):
+    fta_web_dir = str(REPO / "fta_web")
+    if fta_web_dir not in sys.path:
+        monkeypatch.syspath_prepend(fta_web_dir)
+    import run
+
+    monkeypatch.setattr(run, "create_app", lambda **_kw: pytest.fail("no server for a typo"))
+    assert run.main(["qunatify", "x.json"]) == 2
+    err = capsys.readouterr().err
+    assert "unknown command 'qunatify'" in err and "quantify" in err
