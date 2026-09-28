@@ -244,8 +244,8 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
         head = "Gate: " + ctx.gate_text(node) + " | "
     else:
         head = ""
-    name_pad = _pad_for(str(name), ctx.pad)
-    meta_pad = _pad_for(f"{head}P:{p_str} | P_calc:{cp_str}", ctx.pad)
+    name_plain = str(name)
+    meta_plain = f"{head}P:{p_str} | P_calc:{cp_str}"
     name = html.escape(str(name), quote=False)
     head = html.escape(head, quote=False)
     meta_text = f"{head}P:{p_str} | P_calc:{cp_str}"
@@ -253,8 +253,8 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     name_height = max(1, round(font_size * 1.7))
     meta_height = max(1, round(small_font_size * 2.0))
     return f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="{cellpadding}" BGCOLOR="{_bgcolor(cp)}">
-        <TR><TD HEIGHT="{name_height}"><FONT POINT-SIZE="{font_size}">{name}{name_pad}</FONT></TD></TR>
-        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">{meta_text}{meta_pad}</FONT></TD></TR>
+        <TR><TD HEIGHT="{name_height}"><FONT POINT-SIZE="{font_size}">{_padded(name_plain, name, ctx.pad)}</FONT></TD></TR>
+        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">{_padded(meta_plain, meta_text, ctx.pad)}</FONT></TD></TR>
     </TABLE>>'''
 
 
@@ -263,7 +263,7 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     name = node.get("name")
     if name is None:
         name = node.get("id", "")
-    name_pad = _pad_for(str(name), ctx.pad)
+    name_plain = str(name)
     name = html.escape(str(name), quote=False)
     extra = []
     if _gate_type(node) == "TRANSFER":
@@ -275,30 +275,33 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
                              ctx.prob(node.get("calculatedProbability")))
     if node.get("children") and _gate_type(node) != "TRANSFER":
         probs = "Q=%s" % ctx.prob(node.get("calculatedProbability"))
-    lines = [f'<FONT POINT-SIZE="12">{name}{name_pad}</FONT>']
+    lines = [f'<FONT POINT-SIZE="12">{_padded(name_plain, name, ctx.pad)}</FONT>']
     for text in extra:
-        lines.append(f'<FONT POINT-SIZE="9">{text}{_pad_for(html.unescape(text), ctx.pad)}</FONT>')
-    lines.append(f'<FONT POINT-SIZE="9">{html.escape(probs, quote=False)}'
-                 f'{_pad_for(probs, ctx.pad)}</FONT>')
+        lines.append(f'<FONT POINT-SIZE="9">{_padded(html.unescape(text), text, ctx.pad)}</FONT>')
+    lines.append(f'<FONT POINT-SIZE="9">'
+                 f'{_padded(probs, html.escape(probs, quote=False), ctx.pad)}</FONT>')
     return "<" + "<BR/>".join(lines) + ">"
 
 
-def _pad_for(plain: str, pad: str) -> str:
-    """Trailing padding for one label row.
+def _padded(plain: str, escaped: str, pad: str) -> str:
+    """One label row with padding split evenly before and after the text.
 
     Graphviz sizes a cell from its own font metrics, but the browser draws
-    the text with the real (usually wider) UI font, so a long row can run
-    past the box edge even with the fixed D12 padding. Measured in 1.7:
+    the text with the real (usually wider) UI font. Measured in 1.7:
     Graphviz (WASM, and native SVG when it cannot resolve the font) sizes
-    text with Times-like metrics, which run ~20-25% narrower than Meiryo
-    or Segoe UI, while a padding space is only ~0.25 em. The shortfall
-    grows with the row's length, so pad in proportion: the user's
-    box-scale spaces plus one space per two characters. A box scale of 0
-    still means no padding at all.
+    text with Times-like metrics, ~20-25% narrower than Meiryo or Segoe UI,
+    while a padding space is only ~0.25 em. The shortfall grows with the
+    row's length, so every row gets one space per two characters, plus the
+    user's box-scale spaces on top (scale 0 therefore no longer spills).
+
+    Graphviz writes the spaces as non-breaking spaces with
+    ``xml:space="preserve"`` and a start anchor, so leading spaces render.
+    Splitting the padding evenly keeps the text centred in its box; 1.6's
+    trailing-only padding pushed it left by half the padding.
     """
-    if not pad:
-        return ""
-    return pad + " " * ((len(plain) + 1) // 2)
+    total = len(pad) + (len(plain) + 1) // 2
+    lead = total // 2
+    return " " * lead + escaped + " " * (total - lead)
 
 
 # ---- graph skeleton ------------------------------------------------------------

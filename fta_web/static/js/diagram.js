@@ -291,6 +291,62 @@ const SAFE_HREF = /^(#|https?:\/\/)/i;
  * server, but the SVG is still imported into the live document, so anything
  * that could run script is stripped here regardless.
  */
+/**
+ * Centre every node label in its box and keep it inside.
+ *
+ * Graphviz sizes and positions label text from its own font metrics
+ * (Times-like in the WASM build), which run 20-25% narrower than the fonts
+ * the page actually draws with (Meiryo, Segoe UI). Server-side padding
+ * widens the boxes, but a start-anchored label still drifts off-centre and
+ * very long rows can still spill. So, per label: trim Graphviz's padding
+ * spaces, anchor the text at the centre of the smallest shape that contains
+ * it, and only if the real rendered width still exceeds that shape, squeeze
+ * it with textLength. Gate/event symbol nodes are left alone.
+ */
+const LABEL_MARGIN = 4; // px of air kept on each side of a squeezed label
+
+function fitLabels(svg) {
+  const nodes = svg.querySelectorAll('g.node');
+  for (const g of nodes) {
+    const cls = g.getAttribute('class') || '';
+    if (/\bfta-(gate|event)\b/.test(cls)) continue;
+    const shapes = [];
+    for (const s of g.querySelectorAll('polygon, ellipse')) {
+      let b;
+      try { b = s.getBBox(); } catch (_) { continue; }
+      if (b && b.width > 0 && b.height > 0) shapes.push(b);
+    }
+    if (!shapes.length) continue; // hidden panel: nothing measurable yet
+    for (const text of g.querySelectorAll('text')) {
+      const raw = text.textContent || '';
+      const trimmed = raw.replace(/^[\s ]+|[\s ]+$/g, '');
+      if (!trimmed) continue;
+      let tb;
+      try { tb = text.getBBox(); } catch (_) { continue; }
+      const cy = tb.y + tb.height / 2;
+      const cx = tb.x + tb.width / 2;
+      let cell = null;
+      for (const b of shapes) {
+        if (cy < b.y || cy > b.y + b.height) continue;
+        if (cx < b.x - tb.width || cx > b.x + b.width + tb.width) continue;
+        if (!cell || b.width * b.height < cell.width * cell.height) cell = b;
+      }
+      if (!cell) continue;
+      if (trimmed !== raw) text.textContent = trimmed;
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('x', String(cell.x + cell.width / 2));
+      text.removeAttribute('textLength');
+      let width = 0;
+      try { width = text.getComputedTextLength(); } catch (_) { width = 0; }
+      const room = cell.width - 2 * LABEL_MARGIN;
+      if (width > room && room > 0) {
+        text.setAttribute('textLength', String(room));
+        text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      }
+    }
+  }
+}
+
 function sanitizeSvg(root) {
   root.querySelectorAll('script, foreignObject').forEach((node) => node.remove());
   const doc = root.ownerDocument;
@@ -929,9 +985,10 @@ export function initDiagram(container) {
         svgEl.removeAttribute('height');
       }
       canvas.appendChild(svgEl);
-      exportSvgText = renderedStyle === 'symbols'
-        ? new XMLSerializer().serializeToString(svgEl)
-        : svgText;
+      // Must run after appendChild: it measures the text with the page's
+      // real font. Browser exports use the fitted SVG as well.
+      fitLabels(svgEl);
+      exportSvgText = new XMLSerializer().serializeToString(svgEl);
 
       decorate();
       if (resetView || autoFit || (scale === 1 && tx === 0 && ty === 0)) {

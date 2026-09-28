@@ -12,6 +12,7 @@ Pins the contracts the browser relies on:
 * ``id_map`` maps every emitted DOT node name to its tree node id;
 * native ``dot`` parses every variant (when it is on PATH).
 """
+import html
 import re
 import shutil
 import subprocess
@@ -113,20 +114,29 @@ def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
     strip = re.compile(r"P:[^ |<]+ \| P_calc:[^ <]+")
     # Trailing padding differs on purpose (1.7 pads in proportion to the
     # row's length so browser fonts do not overflow the box).
-    unpad = re.compile(r" +</FONT>")
-    assert (unpad.sub("</FONT>", strip.sub("P", new))
-            == unpad.sub("</FONT>", strip.sub("P", old)))
+    def unpad(dot):
+        dot = re.sub(r" +</FONT>", "</FONT>", dot)
+        return re.sub(r'(<FONT POINT-SIZE="[0-9]+">) +', r"\1", dot)
+
+    assert unpad(strip.sub("P", new)) == unpad(strip.sub("P", old))
 
 
-def test_padding_grows_with_the_row_length_and_respects_scale_zero(legacy):
-    dot, _ = build_dot_text2(legacy, sig_figs=3)
-    rows = re.findall(r'POINT-SIZE="9">([^<]*?)( *)</FONT>', dot)
-    assert rows
-    for text, pad in rows:
-        # base box-scale padding (4) plus one space per two characters
-        assert len(pad) >= 4 + len(text.rstrip()) // 2
-    bare, _ = build_dot_text2(legacy, scale=0)
-    assert not re.search(r" +</FONT>", bare)
+def test_padding_is_proportional_and_split_evenly_around_the_text(legacy):
+    """Each row: box-scale spaces + one per two characters, centred."""
+    for scale in (0, 4, 8):
+        dot, _ = build_dot_text2(legacy, sig_figs=3, scale=scale)
+        rows = re.findall(r'POINT-SIZE="(?:9|12|14)">( *)([^<]*?)( *)</FONT>', dot)
+        assert rows
+        for lead, text, trail in rows:
+            total = len(lead) + len(trail)
+            plain = html.unescape(text)
+            assert total == scale + (len(plain) + 1) // 2, (scale, plain)
+            # even split: never more than one space of imbalance
+            assert len(trail) - len(lead) in (0, 1)
+        if scale == 0:
+            # scale 0 used to mean "no padding" and spilled in the browser;
+            # the proportional part now always applies.
+            assert any(lead for lead, _, _ in rows)
 
 
 def test_sig_figs_reach_the_labels(legacy):
