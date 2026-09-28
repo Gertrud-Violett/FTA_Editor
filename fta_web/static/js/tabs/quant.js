@@ -73,6 +73,13 @@ function nodeKind(node) {
   return 'event';
 }
 
+/** Unique id so each grid label is tied to its control (screen readers). */
+let controlSeq = 0;
+function controlId(control) {
+  if (!control.id) control.id = 'quant-field-' + ++controlSeq;
+  return control.id;
+}
+
 export function mount(panel, ctx) {
   ensureStyles();
   const t = translator(ctx);
@@ -154,10 +161,11 @@ export function mount(panel, ctx) {
   function textField(key, baseline, parse, commit, attrs) {
     const input = el('input', Object.assign({ type: 'text', dataset: { field: key } }, attrs || {}));
     input.value = baseline;
-    const field = { key, input, baseline, parse, commit };
+    // The field's own tooltip; an error message replaces it only while invalid.
+    const field = { key, input, baseline, parse, commit, title: input.title || '' };
     fields.set(key, field);
     input.addEventListener('blur', () => commitField(field));
-    input.addEventListener('input', () => input.classList.remove('anl-invalid'));
+    input.addEventListener('input', () => setInvalid(field, ''));
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -166,10 +174,18 @@ export function mount(panel, ctx) {
         event.preventDefault();
         event.stopPropagation();
         input.value = field.baseline;
-        input.classList.remove('anl-invalid');
+        setInvalid(field, '');
       }
     });
     return input;
+  }
+
+  function setInvalid(field, message) {
+    const bad = Boolean(message);
+    field.input.classList.toggle('anl-invalid', bad);
+    if (bad) field.input.setAttribute('aria-invalid', 'true');
+    else field.input.removeAttribute('aria-invalid');
+    field.input.title = bad ? message : field.title;
   }
 
   function commitField(field) {
@@ -177,12 +193,10 @@ export function mount(panel, ctx) {
     if (raw.trim() === String(field.baseline).trim()) return;
     const parsed = field.parse(raw);
     if (!parsed.ok) {
-      field.input.classList.add('anl-invalid');
-      field.input.title = parsed.message || '';
+      setInvalid(field, parsed.message || '');
       return;
     }
-    field.input.classList.remove('anl-invalid');
-    field.input.title = '';
+    setInvalid(field, '');
     field.baseline = raw;
     field.commit(parsed.value);
   }
@@ -224,11 +238,12 @@ export function mount(panel, ctx) {
     const unitSelect = el('select', { dataset: { field: 'timeUnit' } },
       Object.keys(TIME_FACTORS).map((u) => el('option', { value: u, text: t('quant.unit.' + u) })));
     unitSelect.value = unit;
+    unitSelect.setAttribute('aria-label', t('quant.mission') + ' (' + t('quant.unit.' + unit) + ')');
     unitSelect.addEventListener('change', () => postSettings({ timeUnit: unitSelect.value }));
     docSection.append(
       el('h3', { text: t('quant.doc') }),
       el('div', { class: 'anl-grid' }, [
-        el('label', { text: t('quant.mission'), title: t('quant.missionTitle') }),
+        el('label', { text: t('quant.mission'), title: t('quant.missionTitle'), for: controlId(input) }),
         input,
         unitSelect,
         el('span'),
@@ -274,7 +289,7 @@ export function mount(panel, ctx) {
 
   function row(labelText, control, suffix, title) {
     return [
-      el('label', { text: labelText, title: title || null }),
+      el('label', { text: labelText, title: title || null, for: controlId(control) }),
       control,
       suffix instanceof Node ? suffix : el('span', { class: 'anl-suffix', text: suffix || '' }),
     ];
@@ -328,7 +343,7 @@ export function mount(panel, ctx) {
     const grid = el('div', { class: 'anl-grid' });
     grid.append(...row(t('quant.model'), modelSelect, ''));
 
-    const lambdaSelect = el('select', { title: t('quant.lambdaUnitTitle'), dataset: { field: 'lambdaUnit' } },
+    const lambdaSelect = el('select', { title: t('quant.lambdaUnitTitle'), 'aria-label': t('quant.lambdaUnitTitle'), dataset: { field: 'lambdaUnit' } },
       Object.keys(LAMBDA_UNITS).map((u) => el('option', { value: u, text: LAMBDA_LABELS[u] })));
     lambdaSelect.value = lambdaUnit;
     lambdaSelect.addEventListener('change', () => {
@@ -399,7 +414,8 @@ export function mount(panel, ctx) {
         (v) => setQuant({ unc: center === 'mean'
           ? { mean: v === null ? null : v / scale, median: null }
           : { median: v === null ? null : v / scale, mean: null } }),
-        { inputmode: 'decimal', placeholder: t('quant.unc.valueNote') });
+        { inputmode: 'decimal', placeholder: t('quant.unc.valueNote'), 'aria-label': t('quant.unc.value') });
+      centerSelect.setAttribute('aria-label', t('quant.unc.value'));
       grid.append(centerSelect, valueInput,
         el('span', { class: 'anl-suffix', text: model === 'fixed' ? '' : LAMBDA_LABELS[lambdaUnit] }));
       grid.append(...row(t('quant.unc.ef'), textField('uncEf', formatPlain(unc.ef), numberParser(1, { allowBlank: false }),
@@ -436,7 +452,7 @@ export function mount(panel, ctx) {
       if (key === skipKey || !(key in values)) continue;
       field.baseline = values[key];
       field.input.value = values[key];
-      field.input.classList.remove('anl-invalid');
+      setInvalid(field, '');
     }
   }
 

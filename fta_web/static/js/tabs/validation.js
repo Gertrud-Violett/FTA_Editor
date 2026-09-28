@@ -445,6 +445,12 @@ export function mount(panel, ctx) {
   // ---- wiring ----------------------------------------------------------------
   const onLanguage = () => render();
   window.addEventListener('fta:language', onLanguage);
+  // New / Open: dismissals belonged to the old document's session.
+  const onDocument = () => {
+    dismissed.clear();
+    render();
+  };
+  window.addEventListener('fta:document', onDocument);
   const unSig = ctx && typeof ctx.onSigFigs === 'function' ? ctx.onSigFigs(() => render()) : null;
   const unAdv = ctx && typeof ctx.onAdvanced === 'function' ? ctx.onAdvanced(() => render()) : null;
 
@@ -472,6 +478,7 @@ export function mount(panel, ctx) {
       disposed = true;
       if (timer) clearTimeout(timer);
       window.removeEventListener('fta:language', onLanguage);
+      window.removeEventListener('fta:document', onDocument);
       if (typeof unSig === 'function') unSig();
       if (typeof unAdv === 'function') unAdv();
       if (ctx && typeof ctx.clearHighlight === 'function') ctx.clearHighlight(HIGHLIGHT_SOURCE);

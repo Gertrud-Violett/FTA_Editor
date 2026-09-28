@@ -100,6 +100,9 @@
  *   fta:advanced  {advanced}      -> dispatched when the Advanced switch flips
  *   fta:sigfigs   {sigFigs}       -> from numfmt.setSigFigs; the shell
  *                                    re-renders the headline and store.touch()es
+ *   fta:document                  -> a different document replaced the current
+ *                                    one (New, Open): tabs drop results and
+ *                                    typed-but-unsaved inputs of the old one
  *
  * 1.7 SHELL
  * ---------
@@ -1912,6 +1915,7 @@ async function actionNew() {
   try {
     const result = await api.post('/new', {});
     store.applyMutation(result);
+    announceDocument();
     store.select(rootId());
     toast(t('msg.newCreated'), 'ok');
   } catch (err) {
@@ -1922,6 +1926,7 @@ async function actionNew() {
       try {
         const forced = await api.post('/new', { force: true });
         store.applyMutation(forced);
+        announceDocument();
         store.select(rootId());
         toast(t('msg.newCreated'), 'ok');
       } catch (retryErr) {
@@ -2154,7 +2159,12 @@ async function pickPath(request) {
  * value for it -- a stale dirty badge, or an undo button that lies -- so that
  * case takes one extra /api/state read instead of guessing.
  */
-const DOCUMENT_KEYS = ['tree', 'metadata', 'zeroNodes', 'currentPath', 'dirty', 'canUndo', 'canRedo'];
+const DOCUMENT_KEYS = ['tree', 'metadata', 'zeroNodes', 'currentPath', 'dirty', 'canUndo', 'canRedo', 'analysis'];
+
+/** Tell the tabs a different document is now loaded (see fta:document). */
+function announceDocument() {
+  window.dispatchEvent(new CustomEvent('fta:document'));
+}
 
 async function adoptDocument(payload) {
   const complete =
@@ -2162,6 +2172,7 @@ async function adoptDocument(payload) {
     DOCUMENT_KEYS.every((key) => Object.prototype.hasOwnProperty.call(payload, key));
 
   store.setState({ ...(store.state || {}), ...(payload || {}) });
+  announceDocument();
   store.select(rootId());
   syncMetadataInputs(true);
   if (complete) return;
@@ -2413,12 +2424,31 @@ async function actionRenderImage() {
   const box = diagramPanel && typeof diagramPanel.getBoxSettings === 'function'
     ? diagramPanel.getBoxSettings()
     : null;
+  // The standard symbols are drawn in the browser; native `dot` only has the
+  // placeholder polygons, so that style is rasterised from the preview.
+  if (box && box.style === 'symbols' && diagramPanel && typeof diagramPanel.toPngBlob === 'function') {
+    const blob = await diagramPanel.toPngBlob();
+    if (blob) {
+      saveBlob(blob, name);
+      toast(t('msg.downloaded', { name }), 'ok');
+      return;
+    }
+  }
   try {
     const result = await api.post('/render', {
       format: 'png',
       hideZero: document.documentElement.dataset.hideZero === '1',
       highQuality: true,
-      ...(box ? { font: box.font, scale: box.scale, dark: box.dark } : {}),
+      // Everything the preview uses, so the file matches what is on screen
+      // (style, layout direction and significant figures included).
+      ...(box ? {
+        font: box.font,
+        scale: box.scale,
+        dark: box.dark,
+        style: box.style,
+        rankdir: box.rankdir,
+        sigFigs: box.sigFigs,
+      } : {}),
     });
     saveBlob(
       new Blob([base64ToBytes(result.data)], { type: result.contentType || 'image/png' }),

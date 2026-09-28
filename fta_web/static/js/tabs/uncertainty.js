@@ -31,7 +31,10 @@ export const id = 'uncertainty';
 export const advanced = true;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const MAX_N = 100000;
+/** Largest n one interactive run accepts (routes/analysis.py MAX_MC_N). */
+const RUN_MAX_N = 100000;
+/** Largest n the document may store (engine.MAX_MC_N, used by the CLI). */
+const SAVE_MAX_N = 1000000;
 const MAX_TIME = 60;
 
 function svg(tag, attrs, text) {
@@ -53,6 +56,7 @@ export function mount(panel, ctx) {
   let stale = false;
   let startedAt = 0;
   let ticker = null;
+  let docGen = 0; // bumped by New / Open; a run for an older document is dropped
 
   const root = el('div', { class: 'anl anl-uncertainty', dataset: { tab: 'uncertainty' } });
   const runBtn = el('button', { type: 'button', class: 'btn btn--primary', dataset: { role: 'run' } });
@@ -76,21 +80,34 @@ export function mount(panel, ctx) {
   function defaults() {
     const analysis = (ctx.store.state && ctx.store.state.analysis) || {};
     const mc = analysis.mc || {};
-    return { n: Math.min(MAX_N, Number(mc.n) || 10000), seed: mc.seed };
+    // Shown as stored: clamping here would make "Save" silently lower a
+    // document n above the interactive run limit.
+    return { n: Number(mc.n) || 10000, seed: mc.seed };
+  }
+
+  /** Flag an input as invalid (red border, aria-invalid, optional reason). */
+  function markInvalid(input, bad, reason) {
+    input.classList.toggle('anl-invalid', bad);
+    if (bad) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+    input.title = bad && reason ? reason : '';
   }
 
   function readInputs() {
     const n = parseNumber(inN.value);
     const seed = parseNumber(inSeed.value);
     const time = parseNumber(inTime.value);
-    const badN = Number.isNaN(n) || (n !== null && (!Number.isInteger(n) || n < 1 || n > MAX_N));
+    const effN = n === null ? defaults().n : n;
+    const badN = Number.isNaN(n) || !Number.isInteger(effN) || effN < 1 || effN > RUN_MAX_N;
     const badSeed = Number.isNaN(seed) || (seed !== null && (!Number.isInteger(seed) || seed < 0));
     const badTime = Number.isNaN(time) || (time !== null && (time <= 0 || time > MAX_TIME));
-    inN.classList.toggle('anl-invalid', badN);
-    inSeed.classList.toggle('anl-invalid', badSeed);
-    inTime.classList.toggle('anl-invalid', badTime);
+    const overRunMax = badN && Number.isInteger(effN) && effN > RUN_MAX_N;
+    markInvalid(inN, badN, overRunMax ? t('unc.runMax', { max: RUN_MAX_N }) : '');
+    markInvalid(inSeed, badSeed);
+    markInvalid(inTime, badTime);
+    if (overRunMax) ctx.toast(t('unc.runMax', { max: RUN_MAX_N }), 'warn');
     if (badN || badSeed || badTime) return null;
-    const body = { n: n === null ? defaults().n : n };
+    const body = { n: effN };
     if (seed !== null) body.seed = seed;
     else if (defaults().seed !== null && defaults().seed !== undefined) body.seed = defaults().seed;
     body.timeLimit = time === null ? 30 : time;
@@ -101,10 +118,10 @@ export function mount(panel, ctx) {
   async function saveDefaults() {
     const n = parseNumber(inN.value);
     const seed = parseNumber(inSeed.value);
-    const badN = Number.isNaN(n) || (n !== null && (!Number.isInteger(n) || n < 1 || n > MAX_N));
+    const badN = Number.isNaN(n) || (n !== null && (!Number.isInteger(n) || n < 1 || n > SAVE_MAX_N));
     const badSeed = Number.isNaN(seed) || (seed !== null && (!Number.isInteger(seed) || seed < 0));
-    inN.classList.toggle('anl-invalid', badN);
-    inSeed.classList.toggle('anl-invalid', badSeed);
+    markInvalid(inN, badN);
+    markInvalid(inSeed, badSeed);
     if (badN || badSeed) return;
     const mc = { seed }; // null = random (the default)
     if (n !== null) mc.n = n;
@@ -140,11 +157,15 @@ export function mount(panel, ctx) {
     ticker = setInterval(tick, 200);
     paintToolbar();
     tick();
+    const gen = docGen;
     try {
-      result = await ctx.api.post('/analysis/uncertainty', body);
-      stale = false;
+      const res = await ctx.api.post('/analysis/uncertainty', body);
+      if (gen === docGen) {
+        result = res;
+        stale = false;
+      }
     } catch (err) {
-      reportError(ctx, err);
+      if (gen === docGen) reportError(ctx, err);
     } finally {
       running = false;
       clearInterval(ticker);
@@ -311,10 +332,23 @@ export function mount(panel, ctx) {
   saveBtn.addEventListener('click', () => saveDefaults());
   for (const input of [inN, inSeed]) input.addEventListener('input', () => edited.add(input));
   for (const input of [inN, inSeed, inTime]) {
+    // Escape discards what was typed since the field was focused (as in the
+    // Details and Quantification forms) instead of reaching the shell.
+    let before = null;
+    input.addEventListener('focus', () => {
+      before = { value: input.value, edited: edited.has(input) };
+    });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
         run();
+      } else if (event.key === 'Escape' && before && input.value !== before.value) {
+        event.preventDefault();
+        event.stopPropagation();
+        input.value = before.value;
+        if (!before.edited) edited.delete(input);
+        input.classList.remove('anl-invalid');
+        input.removeAttribute('aria-invalid');
       }
     });
   }
@@ -324,6 +358,15 @@ export function mount(panel, ctx) {
     else paintToolbar();
   };
   window.addEventListener('fta:language', repaint);
+  // New / Open: the old document's run and typed inputs do not apply.
+  const onDocument = () => {
+    docGen += 1;
+    result = null;
+    stale = false;
+    edited.clear();
+    repaint();
+  };
+  window.addEventListener('fta:document', onDocument);
   const unSig = ctx.onSigFigs(repaint);
 
   paint();
@@ -340,6 +383,7 @@ export function mount(panel, ctx) {
     dispose() {
       if (ticker) clearInterval(ticker);
       window.removeEventListener('fta:language', repaint);
+      window.removeEventListener('fta:document', onDocument);
       if (typeof unSig === 'function') unSig();
       root.remove();
     },

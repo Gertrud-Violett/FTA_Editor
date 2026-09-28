@@ -34,7 +34,7 @@ const CSS = `
 .anl-badge { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: var(--fs-xs, 11px);
   line-height: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); white-space: nowrap; }
 .anl-badge--warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
-.anl-badge--info { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.anl-badge--info { background: var(--accent-soft); color: var(--accent-hover); border-color: transparent; }
 .anl-tablewrap { flex: 1 1 auto; min-height: 90px; overflow: auto; border: 1px solid var(--border);
   border-radius: var(--r-sm, 5px); background: var(--surface); }
 .anl-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
@@ -54,7 +54,7 @@ const CSS = `
 .anl-events { display: flex; flex-wrap: wrap; gap: 3px; }
 .anl-event { padding: 0 5px; border-radius: 4px; background: var(--surface-hover); color: var(--text); white-space: nowrap; }
 .anl-note { color: var(--text-dim); margin: 0; }
-.anl-empty { color: var(--text-faint); padding: 10px 2px; margin: 0; }
+.anl-empty { color: var(--text-dim); padding: 10px 2px; margin: 0; }
 .anl-error { color: var(--danger); margin: 0; }
 .anl-warnings { margin: 0; padding-left: 1.3em; color: var(--warn); }
 .anl-warnings li { margin: 1px 0; }
@@ -65,7 +65,7 @@ const CSS = `
 .anl-grid > label { color: var(--text-dim); }
 .anl-grid > input[type="text"], .anl-grid > select { width: 100%; box-sizing: border-box; }
 .anl-grid > select:nth-child(3n) { width: auto; }
-.anl-grid .anl-suffix { color: var(--text-faint); }
+.anl-grid .anl-suffix { color: var(--text-dim); }
 .anl-derived { font-variant-numeric: tabular-nums; }
 .anl-derived b { font-size: var(--fs-md, 13.5px); }
 .anl-mono { font-family: var(--font-mono, monospace); color: var(--text-dim); }
@@ -150,11 +150,25 @@ export function debounce(fn, ms) {
   return wrapped;
 }
 
-/** Parse a user-typed number ("1e-6", "0.5", " 3 "). '' -> null, bad -> NaN. */
+/**
+ * Parse a user-typed number ("1e-6", "0.5", " 3 ", "1,5"). '' -> null, bad -> NaN.
+ *
+ * One comma is read as a decimal comma. A comma that could just as well be a
+ * thousands separator ("1,500", "5,000", "1,000,000") is rejected rather than
+ * guessed: reading "5,000" as 5 would silently change a limit by 1000x.
+ */
 export function parseNumber(raw) {
   const text = String(raw === null || raw === undefined ? '' : raw).trim();
   if (text === '') return null;
-  const value = Number(text.replace(/,/g, '.'));
+  let normal = text;
+  if (text.includes(',')) {
+    const ambiguous = /^[-+]?[1-9]\d{0,2},\d{3}$/.test(text);
+    if (ambiguous || text.includes('.') || text.split(',').length > 2) return NaN;
+    normal = text.replace(',', '.');
+  }
+  // Plain decimal / exponent notation only (Number() would also take "0x1f").
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(normal)) return NaN;
+  const value = Number(normal);
   return Number.isFinite(value) ? value : NaN;
 }
 

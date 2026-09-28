@@ -44,6 +44,7 @@ export function mount(panel, ctx) {
   let seq = 0;
   let hasRun = false;
   let stale = false;
+  let justActivated = false;
 
   // ---- skeleton ---------------------------------------------------------
   const root = el('div', { class: 'anl anl-cutsets', dataset: { tab: 'cutsets' } });
@@ -74,6 +75,16 @@ export function mount(panel, ctx) {
   ]);
   panel.appendChild(root);
 
+  // Same bounds as the server (engine.merge_analysis / routes/analysis.py), so
+  // a bad value is flagged here in the user's language instead of coming back
+  // as an English 400.
+  const BOUNDS = {
+    maxOrder: { min: 1, max: 20, int: true },
+    maxCount: { min: 1, max: 1000000, int: true },
+    cutoff: { min: 0, max: 1, int: false, maxExclusive: true },
+    limit: { min: 0, max: 100000, int: true },
+  };
+
   function limitsBody() {
     const out = {};
     const pairs = [
@@ -82,14 +93,29 @@ export function mount(panel, ctx) {
       ['cutoff', inCutoff],
       ['limit', inLimit],
     ];
-    let ok = true;
+    let firstBad = null;
     for (const [key, input] of pairs) {
       const value = parseNumber(input.value);
-      input.classList.toggle('anl-invalid', Number.isNaN(value));
-      if (Number.isNaN(value)) ok = false;
-      else if (value !== null) out[key] = value;
+      const b = BOUNDS[key];
+      const bad = Number.isNaN(value) || (value !== null && (
+        (b.int && !Number.isInteger(value)) || value < b.min
+        || (b.maxExclusive ? value >= b.max : value > b.max)));
+      input.classList.toggle('anl-invalid', bad);
+      if (bad) {
+        input.setAttribute('aria-invalid', 'true');
+        const reason = t(b.int ? 'cutsets.invalidInt' : 'cutsets.invalidCutoff', { min: b.min, max: b.max });
+        input.title = reason;
+        if (!firstBad) firstBad = reason;
+      } else {
+        input.removeAttribute('aria-invalid');
+        if (value !== null) out[key] = value;
+      }
     }
-    return ok ? out : null;
+    if (firstBad) {
+      ctx.toast(firstBad, 'warn');
+      return null;
+    }
+    return out;
   }
 
   // ---- running ----------------------------------------------------------
@@ -188,8 +214,9 @@ export function mount(panel, ctx) {
       if (!edited.has(input) && document.activeElement !== input) {
         input.value = shown;
         input.classList.remove('anl-invalid');
+        input.removeAttribute('aria-invalid');
       }
-      input.title = t('cutsets.docDefault', { value: shown });
+      if (!input.classList.contains('anl-invalid')) input.title = t('cutsets.docDefault', { value: shown });
     }
     lblLimit.firstChild.textContent = t('cutsets.limit');
     lblLimit.title = t('cutsets.limitTitle');
@@ -329,10 +356,23 @@ export function mount(panel, ctx) {
     input.addEventListener('input', () => edited.add(input));
   }
   for (const input of [inOrder, inCount, inCutoff, inLimit]) {
+    // Escape discards what was typed since the field was focused (as in the
+    // Details and Quantification forms) instead of reaching the shell.
+    let before = null;
+    input.addEventListener('focus', () => {
+      before = { value: input.value, edited: edited.has(input) };
+    });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
         run();
+      } else if (event.key === 'Escape' && before && input.value !== before.value) {
+        event.preventDefault();
+        event.stopPropagation();
+        input.value = before.value;
+        if (!before.edited) edited.delete(input);
+        input.classList.remove('anl-invalid');
+        input.removeAttribute('aria-invalid');
       }
     });
   }
@@ -359,6 +399,20 @@ export function mount(panel, ctx) {
 
   const repaint = () => paint();
   window.addEventListener('fta:language', repaint);
+  // New / Open: the old document's cut sets and typed limits do not apply.
+  const onDocument = () => {
+    runSoon.cancel();
+    seq += 1; // drop an in-flight answer for the old document
+    running = false;
+    result = null;
+    hasRun = false;
+    stale = false;
+    edited.clear();
+    unselect();
+    if (active) run();
+    else paint();
+  };
+  window.addEventListener('fta:document', onDocument);
   const unSig = ctx.onSigFigs(repaint);
 
   paint();
@@ -366,6 +420,12 @@ export function mount(panel, ctx) {
   return {
     activate() {
       active = true;
+      // host.js calls onStale() synchronously right after activate() for a
+      // tab that went stale in the background: re-run at once then, rather
+      // than showing the old (possibly previous-document) results for the
+      // debounce delay.
+      justActivated = true;
+      Promise.resolve().then(() => { justActivated = false; });
       if (!hasRun && !running) run();
       else paint();
     },
@@ -382,11 +442,15 @@ export function mount(panel, ctx) {
       }
       stale = true;
       paint();
-      if (active) runSoon();
+      if (active && justActivated) {
+        runSoon.cancel();
+        run();
+      } else if (active) runSoon();
     },
     dispose() {
       runSoon.cancel();
       window.removeEventListener('fta:language', repaint);
+      window.removeEventListener('fta:document', onDocument);
       if (typeof unSig === 'function') unSig();
       unselect();
       root.remove();
