@@ -69,6 +69,20 @@
  * reload mid-search comes back to the pre-search shape rather than to the
  * filter's scaffolding.
  *
+ * 1.7: plain text also matches the traceability and FMEA fields
+ * (trace.requirementId/owner/status/tags, fmea.id/item), case-insensitively,
+ * and `tag:x`, `owner:x`, `status:x`, `req:x`, `fmea:x` narrow to one field.
+ * Terms combine with AND; the free text left over is one phrase, so names
+ * with spaces still work. A prefix with an empty value (`tag:`) matches any
+ * node that has that field at all. See parseQuery().
+ *
+ * HIGHLIGHT AND JUMP (1.7)
+ * ------------------------
+ * `store.onHighlight` ({ids, source}, from the cut-set, FMEA and other tabs)
+ * marks those rows `is-highlighted` and opens their ancestors so they are on
+ * screen. `fta:jump` {id} (store.jumpTo) opens the ancestors, scrolls the row
+ * into view and focuses it; a search that hides the row is cleared first.
+ *
  * EVERY STRING GOES THROUGH THE SHELL CATALOG
  * -------------------------------------------
  * `t()` below reaches window.ftaShell.t, i.e. main.js's STRINGS table. Nothing
@@ -88,6 +102,7 @@ import {
   showError as dialogShowError,
   uid,
 } from './dialogs.js';
+import traceStrings from './i18n/trace.js';
 
 const STORAGE_KEY = 'fta.tree.expanded.v1';
 const MARK = '✖';
@@ -105,14 +120,22 @@ const TREE_CSS = `
 /* The search highlight is the one colour this file owns rather than borrows.
    Declared at specificity 0 in all three theme states, exactly like the token
    sheet in dialogs.js, so theme.css can still override it. */
-:where(:root) { --fta-tree-hit-bg: rgba(255, 214, 0, 0.55); }
+:where(:root) {
+  --fta-tree-hit-bg: rgba(255, 214, 0, 0.55);
+  --fta-tree-hl-bg: rgba(0, 120, 255, 0.16);
+  --fta-tree-hl-edge: #0a64d8;
+}
 @media (prefers-color-scheme: dark) {
   :where(:root:not([data-theme="light"]):not(.theme-light):not(.light)) {
     --fta-tree-hit-bg: rgba(255, 214, 0, 0.30);
+    --fta-tree-hl-bg: rgba(90, 170, 255, 0.24);
+    --fta-tree-hl-edge: #6cb4ff;
   }
 }
 :where([data-theme="dark"], .theme-dark, html.dark, body.dark) {
   --fta-tree-hit-bg: rgba(255, 214, 0, 0.30);
+  --fta-tree-hl-bg: rgba(90, 170, 255, 0.24);
+  --fta-tree-hl-edge: #6cb4ff;
 }
 
 /* #tree-root is itself a flex column (.panel__body--flush in app.css), so the
@@ -277,6 +300,25 @@ const TREE_CSS = `
 .fta-tree-item[aria-selected="true"]:not([data-lead="1"]) > .fta-tree-row {
   outline-style: dashed;
 }
+/* Highlight bus (cut sets, FMEA import...): a tinted ground plus a thick
+   left edge, layered with the selection tint when a row is both. */
+.fta-tree-row.is-highlighted {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
+.fta-tree-row.is-highlighted:hover {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-hover-tint),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
+.fta-tree-item[aria-selected="true"] > .fta-tree-row.is-highlighted {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-selected-tint),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
 .fta-tree-item:focus { outline: none; }
 .fta-tree-item:focus > .fta-tree-row {
   outline: 2px dashed var(--fta-focus-ring);
@@ -329,6 +371,98 @@ function t(key, vars) {
     }
   }
   return key;
+}
+
+/** Register the 1.7 search strings (i18n/trace.js) with the shell, once. */
+let traceStringsRegistered = false;
+function registerTraceStrings() {
+  if (traceStringsRegistered) return;
+  const shell = window.ftaShell;
+  if (shell && typeof shell.registerStrings === 'function') {
+    shell.registerStrings(traceStrings);
+    traceStringsRegistered = true;
+  }
+}
+
+/** t(), falling back to another key while the preferred one is unregistered. */
+function tOr(key, fallbackKey, vars) {
+  const text = t(key, vars);
+  return text === key ? t(fallbackKey, vars) : text;
+}
+
+/* ------------------------------------------------------------------ search -- */
+
+/** Field prefixes the search box understands (see the SEARCH note above). */
+const SEARCH_PREFIXES = Object.freeze(['tag', 'owner', 'status', 'req', 'fmea']);
+const PREFIX_RE = new RegExp(
+  '(^|\\s)(' + SEARCH_PREFIXES.join('|') + '):(?:"([^"]*)"|(\\S*))',
+  'gi'
+);
+
+/**
+ * Split a query into `{text, terms: [{field, value}]}`, all lower-cased.
+ * `tag:"two words"` quotes a value with spaces.
+ */
+export function parseQuery(raw) {
+  const source = String(raw === null || raw === undefined ? '' : raw);
+  const terms = [];
+  const text = source
+    .replace(PREFIX_RE, (_m, lead, field, quoted, bare) => {
+      terms.push({
+        field: field.toLowerCase(),
+        value: String(quoted !== undefined ? quoted : bare || '').toLowerCase(),
+      });
+      return lead;
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return { text: text, terms: terms };
+}
+
+function lowerText(value) {
+  return value === null || value === undefined ? '' : String(value).toLowerCase();
+}
+
+/** The searchable values of one field of a node, lower-cased. */
+function fieldValues(node, field) {
+  const trace = node && node.trace && typeof node.trace === 'object' ? node.trace : {};
+  const fmea = node && node.fmea && typeof node.fmea === 'object' ? node.fmea : {};
+  switch (field) {
+    case 'tag':
+      return Array.isArray(trace.tags) ? trace.tags.map(lowerText) : [];
+    case 'owner':
+      return trace.owner ? [lowerText(trace.owner)] : [];
+    case 'status':
+      return trace.status ? [lowerText(trace.status)] : [];
+    case 'req':
+      return trace.requirementId ? [lowerText(trace.requirementId)] : [];
+    case 'fmea':
+      return [fmea.id, fmea.item, fmea.mode].filter((v) => v !== undefined && v !== null && v !== '').map(lowerText);
+    default:
+      return [];
+  }
+}
+
+/** Does `node` satisfy a parsed query? (Exported for tests.) */
+export function nodeMatches(node, parsed) {
+  if (!node) return false;
+  for (const term of parsed.terms) {
+    const values = fieldValues(node, term.field);
+    if (!values.length) return false;
+    if (term.value && !values.some((v) => v.indexOf(term.value) !== -1)) return false;
+  }
+  const needle = parsed.text;
+  if (!needle) return parsed.terms.length > 0;
+  if (lowerText(node.name).indexOf(needle) !== -1) return true;
+  // Ids are how the details panel and every error message name a node, so a
+  // search that cannot find "root_0_2" would be missing the obvious case.
+  if (lowerText(node.id).indexOf(needle) !== -1) return true;
+  const trace = node.trace && typeof node.trace === 'object' ? node.trace : {};
+  const fmea = node.fmea && typeof node.fmea === 'object' ? node.fmea : {};
+  const extra = [trace.requirementId, trace.owner, trace.status, fmea.id, fmea.item];
+  if (Array.isArray(trace.tags)) extra.push(...trace.tags);
+  return extra.some((v) => v !== undefined && v !== null && lowerText(v).indexOf(needle) !== -1);
 }
 
 /** A short confirmation or refusal. Goes to the shell's toast + status line. */
@@ -508,6 +642,7 @@ export function initTree(container) {
   if (!container) throw new Error('initTree(container): container is required');
   ensureBaseStyles();
   injectStyles('fta-tree-css', TREE_CSS);
+  registerTraceStrings();
 
   /* ---- chrome ---- */
 
@@ -552,7 +687,9 @@ export function initTree(container) {
   function applyStrings() {
     host.setAttribute('aria-label', t('tree.ariaLabel'));
     search.setAttribute('aria-label', t('tree.searchLabel'));
-    search.placeholder = t('tree.searchPlaceholder');
+    search.placeholder = tOr('treesearch.placeholder', 'tree.searchPlaceholder');
+    const help = t('treesearch.help');
+    if (help !== 'treesearch.help') search.title = help;
     clearSearch.setAttribute('aria-label', t('tree.searchClear'));
     clearSearch.title = t('tree.searchClear');
     hint.textContent = t('tree.hint');
@@ -605,6 +742,9 @@ export function initTree(container) {
 
   let searchTimer = 0;
   let destroyed = false;
+
+  /** Ids the highlight bus currently marks (store.onHighlight). */
+  let highlighted = new Set();
 
   function isExpanded(id) {
     return expanded ? expanded.has(String(id)) : true;
@@ -687,12 +827,20 @@ export function initTree(container) {
 
   /* ---- search ------------------------------------------------------------ */
 
-  function matchesQuery(node, needle) {
-    const name = String(node && node.name ? node.name : '').toLowerCase();
-    if (name.indexOf(needle) !== -1) return true;
-    // Ids are how the details panel and every error message name a node, so a
-    // search that cannot find "root_0_2" would be missing the obvious case.
-    return String(node && node.id ? node.id : '').toLowerCase().indexOf(needle) !== -1;
+  let parsedFor = null;
+  let parsedValue = null;
+  /** parseQuery(query), cached per query string (labelContent runs per row). */
+  function parsedQuery() {
+    if (parsedFor !== query) {
+      parsedFor = query;
+      parsedValue = parseQuery(query);
+    }
+    return parsedValue;
+  }
+
+  /** `parsed` is parseQuery(query): free text plus field-prefix terms. */
+  function matchesQuery(node, parsed) {
+    return nodeMatches(node, parsed);
   }
 
   /**
@@ -701,7 +849,7 @@ export function initTree(container) {
    */
   function computeFilter(root) {
     if (!query || !root) return null;
-    const needle = query.toLowerCase();
+    const needle = parsedQuery();
     const matches = new Set();
     const visible = new Set();
 
@@ -746,7 +894,8 @@ export function initTree(container) {
   /** The label, with the matched run wrapped so it can be highlighted. */
   function labelContent(name) {
     if (!query) return [name];
-    const needle = query.toLowerCase();
+    // Only the free text is marked; a `tag:` term matched a field, not the name.
+    const needle = parsedQuery().text;
     const hay = name.toLowerCase();
     const at = hay.indexOf(needle);
     if (at === -1 || !needle) return [name];
@@ -777,8 +926,9 @@ export function initTree(container) {
 
     // The zero mark sits on the <li> so "Hide Zero" removes the whole item
     // (row and children) as the diagram does, not just the header row.
+    const isHighlighted = highlighted.has(id);
     const item = el('li', {
-      class: 'fta-tree-item' + (isZero ? ' is-zero' : ''),
+      class: 'fta-tree-item' + (isZero ? ' is-zero' : '') + (isHighlighted ? ' is-highlighted' : ''),
       role: 'treeitem',
       tabindex: '-1',
       draggable: isEditing || id === ctx.rootId ? 'false' : 'true',
@@ -794,7 +944,11 @@ export function initTree(container) {
     item.style.setProperty('--fta-level', String(Math.max(0, level)));
     if (hasChildren) item.setAttribute('aria-expanded', open ? 'true' : 'false');
 
-    const rowClass = 'fta-tree-row' + (isFull ? ' is-full' : '') + (isZero ? ' is-zero' : '');
+    const rowClass =
+      'fta-tree-row' +
+      (isFull ? ' is-full' : '') +
+      (isZero ? ' is-zero' : '') +
+      (isHighlighted ? ' is-highlighted' : '');
     const label = isEditing
       ? el('input', {
           type: 'text',
@@ -1711,10 +1865,69 @@ export function initTree(container) {
     if (pending) detail.promises.push(pending);
   }
 
+  /** Open every ancestor of `ids`. @returns {boolean} whether anything opened. */
+  function revealAll(ids) {
+    let changed = false;
+    if (!expanded) expanded = new Set();
+    for (const id of ids) {
+      for (const ancestor of ancestorsOf(id)) {
+        if (!expanded.has(ancestor)) {
+          expanded.add(ancestor);
+          changed = true;
+        }
+      }
+    }
+    if (changed && !query) writeExpanded(expanded);
+    return changed;
+  }
+
+  /* ---- highlight bus + jump (1.7) ---- */
+
+  let busPrimed = false;
+  const unHighlight =
+    typeof store.onHighlight === 'function'
+      ? store.onHighlight((current) => {
+          const ids = current && Array.isArray(current.ids) ? current.ids.map(String) : [];
+          highlighted = new Set(ids);
+          revealAll(ids);
+          // onHighlight fires once immediately; the first render below covers it.
+          if (busPrimed) render();
+        })
+      : null;
+  busPrimed = true;
+
+  function onJump(event) {
+    const id = event && event.detail && event.detail.id;
+    if (id === null || id === undefined || id === '') return;
+    const wanted = String(id);
+    if (!store.findNode(wanted)) return;
+    if (editing) return; // never yank the caret out of a rename
+    revealAll([wanted]);
+    // A search that hides the target would make the jump land nowhere.
+    if (query) {
+      const filter = computeFilter(treeRoot());
+      if (filter && !filter.visible.has(wanted)) {
+        search.value = '';
+        setQuery('');
+      }
+    }
+    render();
+    const item = itemById(wanted);
+    if (!item) return;
+    const row = rowOf(item) || item;
+    if (typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    for (const other of itemNodes()) other.tabIndex = -1;
+    item.tabIndex = 0;
+    item.focus({ preventScroll: true });
+  }
+
   window.addEventListener('fta:action', onAction);
   window.addEventListener('fta:find', onFind);
   window.addEventListener('fta:language', onLanguage);
   window.addEventListener('fta:flush', onFlush);
+  window.addEventListener('fta:jump', onJump);
 
   render();
 
@@ -1727,6 +1940,8 @@ export function initTree(container) {
       window.removeEventListener('fta:find', onFind);
       window.removeEventListener('fta:language', onLanguage);
       window.removeEventListener('fta:flush', onFlush);
+      window.removeEventListener('fta:jump', onJump);
+      if (typeof unHighlight === 'function') unHighlight();
       if (searchTimer) window.clearTimeout(searchTimer);
       clearHoverTimer();
       clear(panel);
