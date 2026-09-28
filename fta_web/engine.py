@@ -379,6 +379,19 @@ def kofn_probability(probs: List[float], k: int) -> float:
     return min(1.0, max(0.0, sum(dist[k:])))
 
 
+def pand_divide(product: float, n: int) -> float:
+    """``product / n!`` -- the PAND approximation -- without the
+    ``OverflowError`` a plain ``/ math.factorial(n)`` raises above n = 170
+    (171! does not fit a float). Bit-identical to the plain division below
+    that; above it the quotient is computed in log space and underflows to 0.
+    """
+    if n <= 170:
+        return product / math.factorial(n)
+    if product <= 0.0:
+        return 0.0
+    return math.exp(math.log(product) - math.lgamma(n + 1))
+
+
 def xor_probability(probs: List[float]) -> float:
     """Odd-parity probability; a+b-2ab for the two-input case."""
     result = 0.0
@@ -560,9 +573,7 @@ class WebCore(FTACore):
                     base = _tidy(self._product(child_probs))
                 elif gate == "PAND":
                     warn("PAND_APPROX", node, n=len(child_probs))
-                    base = _tidy(
-                        self._product(child_probs) / math.factorial(len(child_probs))
-                    )
+                    base = _tidy(pand_divide(self._product(child_probs), len(child_probs)))
                 else:
                     base = _tidy(1 - self._product([1 - p for p in child_probs]))
             gate_only[key] = base
@@ -637,33 +648,61 @@ def summary(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None) -> 
 
     Works on a deep copy; ``tree`` is not modified. Shape frozen:
     ``{treeWalk, mcub, rareEvent, headline, headlineMethod, repeatedEvents,
-    nonCoherent, approximations, truncated, elapsedMs}``.
+    nonCoherent, approximations, truncated, elapsedMs}``, plus (additive)
+    ``truncatedBy`` and ``capped``.
 
     The headline is the min-cut upper bound when the tree has repeated events
     or an XOR gate (the tree walk then double-counts / is not a probability of
     a coherent structure), otherwise the tree walk. Cut sets run with the
-    cheaper :data:`SUMMARY_LIMITS`; if they fail or time out the tree walk is
-    the headline and ``truncated`` is True.
+    cheaper :data:`SUMMARY_LIMITS` -- at most ``min(analysis.cutsets.maxCount,
+    2000)`` sets and a 2 s budget. Two different things can then cut them short,
+    and they are reported separately:
+
+    * ``truncated`` / ``truncatedBy`` -- the **document's own** limits
+      (``maxOrder``, ``cutoff``, and ``maxCount`` when it is 2000 or less)
+      dropped cut sets: the Cut Sets tab would say the same.
+    * ``capped`` -- only the summary's own, cheaper caps (the 2000-set count
+      cap under a larger document ``maxCount``, or the 2 s budget) cut the
+      computation short: the full analysis may well be complete, the headline
+      is just computed from fewer sets.
+
+    If the cut sets fail (a voting gate too large) or time out, the tree walk
+    is the headline, ``mcub``/``rareEvent`` are None and ``truncated`` is True
+    (as in 1.7.0); a timeout also sets ``capped``.
     """
     import time as _time
 
-    started = _time.perf_counter()
     try:
-        try:
-            from . import cutsets as _cutsets
-        except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
-            import cutsets as _cutsets  # type: ignore[no-redef]
-        result = _cutsets.compute(tree, analysis, dict(SUMMARY_LIMITS))
-    except Exception:  # noqa: BLE001 -- the headline must never fail
+        from . import cutsets as _cutsets
+    except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+        import cutsets as _cutsets  # type: ignore[no-redef]
+
+    started = _time.perf_counter()
+    limits = dict(SUMMARY_LIMITS)
+    doc_max_count = _summary_doc_max_count(analysis)
+    limits["maxCount"] = min(doc_max_count, SUMMARY_LIMITS["maxCount"])
+    timed_out = False
+    try:
+        result = _cutsets.compute(tree, analysis, limits)
+    except Exception as exc:  # noqa: BLE001 -- the headline must never fail
+        timed_out = getattr(exc, "reason", None) == "time"
         result = None
     if result is None:
         out = _summary_tree_walk(tree, analysis)
         out["truncated"] = True
+        out["truncatedBy"] = ["time"] if timed_out else ["error"]
+        out["capped"] = timed_out
     else:
         repeated = result["repeatedEvents"]
         non_coherent = result["nonCoherent"]
         method = "mcub" if (repeated or non_coherent) else "treeWalk"
         tree_walk = result["treeWalk"]
+        by = list(result.get("truncatedBy") or [])
+        # A count truncation is the document's own only when the document's
+        # maxCount is the cap that was applied.
+        capped = "count" in by and doc_max_count > limits["maxCount"]
+        if capped:
+            by.remove("count")
         out = {
             "treeWalk": tree_walk,
             "mcub": result["mcub"],
@@ -673,10 +712,24 @@ def summary(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None) -> 
             "repeatedEvents": repeated,
             "nonCoherent": non_coherent,
             "approximations": result["approximations"],
-            "truncated": result["truncated"],
+            "truncated": bool(by),
+            "truncatedBy": by,
+            "capped": capped,
         }
     out["elapsedMs"] = round((_time.perf_counter() - started) * 1000.0, 1)
     return out
+
+
+def _summary_doc_max_count(analysis: Optional[Dict[str, Any]]) -> int:
+    """The document's ``cutsets.maxCount`` (the default when unset/invalid)."""
+    default = DEFAULT_ANALYSIS["cutsets"]["maxCount"]
+    cut = analysis.get("cutsets") if isinstance(analysis, dict) else None
+    value = cut.get("maxCount") if isinstance(cut, dict) else None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return default
+    return value
 
 
 def _summary_tree_walk(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]]
