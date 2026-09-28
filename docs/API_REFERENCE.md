@@ -67,7 +67,11 @@ When a loaded file (or an AI update) has a `gateType` that does not project
 to its `logicGate` (the 1.6 desktop app edits only `logicGate`), `logicGate`
 wins: `gateType`, `k` and `transferTo` are removed from that node and a
 `LOAD_REPAIR` session warning is recorded with `kind: "gate_type_reset"` and
-`params` `{old_id, new_id, name, gateType, logicGate, dropped, message}`.
+`params` `{old_id, new_id, name, gateType, logicGate, dropped, cause, message}`.
+`cause` is `"desktop"` for a loaded file and `"ai"` for an AI edit
+(`POST /api/ai/update`, `POST /api/ai/changes/apply`), and the message says
+which. A notice with `cause: "ai"` belongs to that edit: undoing the AI update
+removes it and redo brings it back.
 
 `probability` is overwritten with the derived value on every recalculation
 for `quant` models other than `fixed`, for house leaves (1.0 when
@@ -111,7 +115,9 @@ app reads `probability`, so it shows the same values. It still computes a
 - `analysis`: the block above.
 - `sessionWarnings`: the load repairs and removed links collected this
   session, as issue objects `{severity, code, nodeId, message, params}`.
-  They are not saved and not undone. At most 500 are kept.
+  They are not saved and not undone, except the `gate_type_reset` notices of
+  an AI edit (`params.cause: "ai"`), which are undone with that edit. At most
+  500 are kept.
 - `capabilities.reportExport`: whether `python-docx` is installed.
 - `capabilities.fmeaXlsx`: whether `openpyxl` is installed, which `.xlsx`
   FMEA import needs.
@@ -194,15 +200,25 @@ The headline figures (`engine.summary`):
  "headline": 1.1e-4, "headlineMethod": "mcub",
  "repeatedEvents": [{"id": "root_0_1", "name": "Pump A fails"}],
  "nonCoherent": false, "approximations": [{"code": "PAND_APPROX", "nodeId": "root_2", "params": {"n": 2}}],
- "truncated": false, "elapsedMs": 3.1}
+ "truncated": false, "truncatedBy": [], "capped": false, "elapsedMs": 3.1}
 ```
 
 - `headlineMethod` is `mcub` when there are repeated events or an XOR gate,
   and `treeWalk` otherwise.
-- The endpoint uses cheaper cut-set limits: at most 2,000 sets and a 2 s
-  budget.
+- The endpoint uses cheaper cut-set limits: at most
+  `min(analysis.cutsets.maxCount, 2000)` sets and a 2 s budget. Two things can
+  cut the cut sets short, and they are reported separately:
+  - `truncated` / `truncatedBy` (`order`, `count`, `cutoff`): the
+    **document's own** limits dropped sets, as the Cut Sets tab would.
+    `count` counts here only when the document's `maxCount` is 2,000 or less.
+  - `capped`: only the summary's own caps (2,000 sets under a larger document
+    `maxCount`, or the 2 s budget) cut the run short. The full analysis may
+    be complete; the headline is just computed from fewer sets.
 - If the cut sets fail or run out of time, `mcub` and `rareEvent` are `null`,
-  `headline` is the tree walk, and `truncated` is `true`.
+  `headline` is the tree walk, `truncated` is `true` and `truncatedBy` is
+  `["time"]` (with `capped: true`) or `["error"]`.
+- The UI shows a subtle `≈` marker beside the headline in advanced mode when
+  the MCUB headline is capped or truncated; its tooltip says which.
 - `approximations` lists `PAND_APPROX` for every reachable Priority-AND gate:
   cut sets expand PAND as plain AND (no 1/n!), so an MCUB headline is
   conservative for PAND. The UI badge tooltip uses `repeatedEvents`,
@@ -322,8 +338,12 @@ Body (every key optional):
  "sigFigs": 3, "lang": "en",
  "diagramPng": "<base64 PNG>",
  "topN": {"cutsets": 50, "importance": 30},
- "runUncertainty": false}
+ "limits": {"maxOrder": 6, "maxCount": 5000, "cutoff": 1e-15},
+ "runUncertainty": false, "uncertaintyN": 5000, "uncertaintyTimeLimit": 30}
 ```
+
+Only these keys are read; any other top-level key is ignored (never passed to
+the report builder). A bad value of a known key is `400 INVALID_FIELD`.
 
 - `sections` defaults to all of them except `uncertainty`. An unknown section
   is `400 INVALID_FIELD`.
@@ -334,9 +354,14 @@ Body (every key optional):
   - Without it, the diagram is rendered server-side in the compact style when
     a native `dot` exists. Otherwise the report says it is unavailable.
 - `topN` values are clamped to 1–10,000.
+- `limits` overrides the document's cut-set limits for the report. It is
+  validated exactly like `analysis.cutsets`: only `maxOrder`, `maxCount` and
+  `cutoff`, each in its range; any other key (including `timeBudgetS`) is a
+  400.
 - `runUncertainty` runs Monte Carlo for the report. `uncertaintyN` sets the
-  samples (1–5,000, default 5,000) and `uncertaintyTimeLimit` the time cap in
-  seconds (default 30, at most 60). The seed is `analysis.mc.seed`.
+  samples (an integer 1–5,000, default 5,000) and `uncertaintyTimeLimit` the
+  time cap in seconds (a number in (0, 60], default 30). The seed is
+  `analysis.mc.seed`.
 
 The response is the `.docx` bytes as an attachment, `<document>_report.docx`,
 with MIME type
@@ -478,6 +503,40 @@ text is the server's own message; `fta_web/i18n.py` supplies the Japanese:
 **Session warnings from deletes.** Each `DELETE /api/nodes/<id>` returns
 `removedLinks` and adds a `LINKS_REMOVED` session warning for every link it
 stripped. These appear in `sessionWarnings` and in the Validation issues.
+
+- A `transferTo` that names a deleted node is removed too and reported the
+  same way, with `relation: "TRANSFER"` (`{nodeId, targetId, relation}`). The
+  node stays a TRANSFER gate without a target (value 0, `TRANSFER_MISSING`).
+  Deleted ids can be handed out again, so a kept reference would silently
+  point at the next new node.
+- The AI paths do the same: a `delete` change applied through
+  `POST /api/ai/changes/apply` and a full `POST /api/ai/update` strip links
+  and `transferTo` into the ids they removed, with the same `LINKS_REMOVED`
+  notices.
+
+### Robustness
+
+- **Strict JSON responses.** Python reads `NaN` and `Infinity` from request
+  bodies and document files, but the browser's `JSON.parse` rejects them.
+  Every response is strict JSON: a non-finite number (in a loaded tree, or in
+  an error's `detail.value`) is sent as `null`.
+- **Load errors.** `/api/file/open` reports a file that cannot be read
+  (`400 INVALID_JSON`, `detail.reason: "load_failed"`) as *the file is
+  empty*, *not valid JSON (line L, column C: …)*, *JSON root must be an
+  object*, or *not text in a supported encoding (UTF-8, Shift_JIS, cp1252)*,
+  instead of the core's generic encoding error.
+- **Windows path hardening** (`fsbrowser.py`, `PATH_REJECTED`):
+  - A `:` after the drive is refused (`reason: "stream"`), so
+    `notes.txt:x.json` cannot write an NTFS alternate data stream.
+  - A path on another drive or share is refused lexically, *before* it is
+    resolved (`reason: "outside_root"`). Resolving a UNC path
+    (`\\host\share\x.json`) would open an SMB connection to the named
+    host. Device-namespace forms (`\\?\`, `\\.\`) and a drive letter that
+    `subst` maps onto the root folder are refused the same way.
+- **Numerics.** A PAND gate with more than 170 inputs is computed in log
+  space (171! does not fit a float), and Monte Carlo samples an extreme error
+  factor in log space, clamped below the float ceiling, instead of
+  overflowing.
 
 ---
 

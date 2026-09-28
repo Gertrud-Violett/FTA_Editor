@@ -3,7 +3,9 @@
  *
  * `val.code.<CODE>` is the issue message (params interpolated as {name}),
  * `val.fix.<CODE>` the one-line "how to fix" hint. LOAD_REPAIR also has
- * `val.code.LOAD_REPAIR.<kind>` variants, tried first. The codes and their
+ * `val.code.LOAD_REPAIR.<kind>` variants, tried first -- and before those
+ * `val.code.LOAD_REPAIR.<kind>.<cause>` (e.g. `.ai` when params.cause is
+ * 'ai', a notice raised by an AI edit). The codes and their
  * severities are documented in fta_web/lint.py.
  *
  * Catalog format: see i18n/shell17.js (flat, single-quoted, one per line).
@@ -54,6 +56,7 @@ export default {
     'val.code.LOAD_REPAIR.root_id': 'The top event id {old_id} was changed to {new_id} when the file was opened.',
     'val.code.LOAD_REPAIR.analysis_invalid': 'Invalid analysis settings were reset to defaults: {fields}.',
     'val.code.LOAD_REPAIR.gate_type_reset': 'This gate is {logicGate}, but its stored gate type was {gateType} (probably changed in the desktop editor). The stale gate type was dropped, so {logicGate} is used.',
+    'val.code.LOAD_REPAIR.gate_type_reset.ai': 'The AI assistant set this gate to {logicGate}, but its stored gate type was {gateType}. The stale gate type was dropped, so {logicGate} is used. Undoing the AI edit removes this notice.',
     'val.code.LINKS_REMOVED': 'A link to the deleted node {targetId} was removed from this event.',
     'val.code.UNDEVELOPED_EVENT': 'Undeveloped event: its causes are not analysed further.',
     'val.code.PAND_APPROX': 'Priority-AND is approximated as AND × 1/{n}! (order of events is not modelled exactly).',
@@ -125,6 +128,7 @@ export default {
     'val.code.LOAD_REPAIR.root_id': '開くときにトップ事象の ID {old_id} を {new_id} に変更しました。',
     'val.code.LOAD_REPAIR.analysis_invalid': '無効な解析設定を初期値に戻しました: {fields}。',
     'val.code.LOAD_REPAIR.gate_type_reset': 'このゲートは {logicGate} ですが、保存されていたゲート種類は {gateType} でした(デスクトップ版で変更されたと思われます)。古いゲート種類を外し、{logicGate} で計算しています。',
+    'val.code.LOAD_REPAIR.gate_type_reset.ai': 'AI アシスタントがこのゲートを {logicGate} に変更しましたが、保存されていたゲート種類は {gateType} でした。古いゲート種類を外し、{logicGate} で計算しています。AI の編集を元に戻すと、この通知も消えます。',
     'val.code.LINKS_REMOVED': '削除されたノード {targetId} へのリンクを、この事象から外しました。',
     'val.code.UNDEVELOPED_EVENT': '未展開事象です。これより先の原因は解析していません。',
     'val.code.PAND_APPROX': '優先 AND は AND × 1/{n}! で近似しています(事象の順序は厳密には扱いません)。',

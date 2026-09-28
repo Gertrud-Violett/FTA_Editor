@@ -1115,7 +1115,9 @@ let headline = null;
  * 'mcub' | 'treeWalk' (anything else is treated as the tree walk), `alt` the
  * other method's value, shown in the MCUB badge's tooltip, `reason` why the
  * MCUB is used ('repeated' | 'nonCoherent' | 'both'), `pand` whether PAND
- * gates were expanded as plain AND in the cut sets. null clears it.
+ * gates were expanded as plain AND in the cut sets, `capped` that only the
+ * summary's own caps (2000 sets / 2 s) cut its cut sets short, `truncated`
+ * that the document's limits did. null clears it.
  */
 function setHeadline(next) {
   headline = next && typeof next === 'object' ? { ...next } : null;
@@ -1141,6 +1143,20 @@ function renderHeadline() {
     badge.title = title;
   } else {
     badge.removeAttribute('title');
+  }
+  const marker = $('#headline-marker');
+  if (marker) {
+    const lines = [];
+    if (headline && headline.capped) lines.push(t('headline.cappedNote'));
+    if (headline && headline.truncated) lines.push(t('headline.truncatedNote'));
+    marker.hidden = !(lines.length && advanced);
+    if (lines.length) {
+      marker.title = lines.join('\n');
+      marker.setAttribute('aria-label', lines.join(' '));
+    } else {
+      marker.removeAttribute('title');
+      marker.removeAttribute('aria-label');
+    }
   }
 }
 
@@ -1218,13 +1234,23 @@ async function refreshHeadline() {
     const method = res.headlineMethod === 'mcub' ? 'mcub' : 'treeWalk';
     const repeated = Array.isArray(res.repeatedEvents) && res.repeatedEvents.length > 0;
     const nonCoherent = Boolean(res.nonCoherent);
+    // capped: only the summary's own caps (2000 sets / 2 s) cut the cut sets
+    // short; truncated: the document's limits did (truncatedBy 'time' /
+    // 'error' mean the cut sets did not finish at all, not a document limit).
+    // Either matters only when the headline comes from the cut sets (MCUB) or
+    // the cut sets failed.
+    const by = Array.isArray(res.truncatedBy) ? res.truncatedBy : null;
+    const failed = Boolean(by) && (by.includes('time') || by.includes('error'));
+    const fromCutSets = method === 'mcub' || failed;
+    const docTruncated = by ? by.some((b) => b !== 'time' && b !== 'error') : Boolean(res.truncated);
     setHeadline({
       value,
       method,
       alt: method === 'mcub' ? res.treeWalk : null,
       reason: repeated && nonCoherent ? 'both' : nonCoherent ? 'nonCoherent' : repeated ? 'repeated' : null,
       pand: (res.approximations || []).some((a) => a && a.code === 'PAND_APPROX'),
-      truncated: Boolean(res.truncated),
+      capped: fromCutSets && Boolean(res.capped),
+      truncated: fromCutSets && docTruncated,
     });
   } catch (_err) {
     if (seq !== headlineSeq) return;
