@@ -153,3 +153,55 @@ class TestThroughTheApp:
         en = client.get("/api/x").get_json()["error"]["code"]
         ja = client.get("/api/x?lang=ja").get_json()["error"]["code"]
         assert en == ja == "NOT_FOUND"
+
+
+# --------------------------------------------------------------------------
+# 1.7 codes and format/feature/reason-specific messages
+# --------------------------------------------------------------------------
+
+
+class TestLocalizeError17:
+    @staticmethod
+    def _err(code, detail=None, message="EN"):
+        e = {"code": code, "message": message}
+        if detail is not None:
+            e["detail"] = detail
+        return {"ok": False, "error": e}
+
+    @staticmethod
+    def _ja(payload):
+        return i18n.localize_error(payload, "ja")["error"]["message"]
+
+    @pytest.mark.parametrize("code", ["BUSY", "ANALYSIS_TOO_LARGE", "MODE_UNSUPPORTED",
+                                      "NOT_IMPLEMENTED"])
+    def test_analysis_codes_have_japanese(self, code):
+        msg = self._ja(self._err(code))
+        assert msg != "EN" and any(ord(c) > 0x3000 for c in msg)
+
+    def test_docx_hint_names_uv_sync_extra_report(self):
+        msg = self._ja(self._err("EXPORT_UNAVAILABLE",
+                                 {"format": "docx", "package": "python-docx"}))
+        assert "uv sync --extra report" in msg
+        assert "pip install" not in msg
+
+    def test_fmea_xlsx_is_not_called_an_excel_export(self):
+        fmea = self._ja(self._err("EXPORT_UNAVAILABLE",
+                                  {"format": "xlsx", "feature": "fmea", "package": "openpyxl"}))
+        export = self._ja(self._err("EXPORT_UNAVAILABLE",
+                                    {"format": "xlsx", "package": "openpyxl"}))
+        assert "FMEA" in fmea and "エクスポート" not in fmea
+        assert "Excelエクスポート" in export
+
+    @pytest.mark.parametrize("reason", ["kofn", "time"])
+    def test_analysis_too_large_is_reason_specific(self, reason):
+        generic = self._ja(self._err("ANALYSIS_TOO_LARGE"))
+        specific = self._ja(self._err("ANALYSIS_TOO_LARGE", {"reason": reason}))
+        assert specific != generic and specific != "EN"
+
+    def test_unknown_reason_falls_back_to_the_bare_code(self):
+        generic = self._ja(self._err("ANALYSIS_TOO_LARGE"))
+        assert self._ja(self._err("ANALYSIS_TOO_LARGE", {"reason": "other"})) == generic
+
+    def test_english_keeps_the_route_message(self):
+        payload = self._err("EXPORT_UNAVAILABLE", {"format": "xlsx", "feature": "fmea"})
+        assert i18n.localize_error(payload, "en")["error"]["message"] == "EN"

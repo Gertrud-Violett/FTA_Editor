@@ -63,11 +63,40 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
         "ja": (
             "DOCXレポートには 'python-docx' パッケージが必要ですが、"
             "このマシンにはインストールされていません。"
-            "'pip install python-docx' を実行してエディターを再起動してください。"
+            "'uv sync --extra report' を実行してエディターを再起動してください。"
+        ),
+    },
+    # "<code>:<detail.format>:<detail.feature>" -- the FMEA import reads .xlsx
+    # through openpyxl too, but it is not an Excel *export*.
+    "EXPORT_UNAVAILABLE:xlsx:fmea": {
+        "ja": (
+            ".xlsx形式のFMEAシートの読み込みには 'openpyxl' パッケージが必要ですが、"
+            "このマシンにはインストールされていません。"
+            "'pip install openpyxl' を実行してエディターを再起動するか、"
+            "シートを .csv で保存してそちらを取り込んでください。"
         ),
     },
     "MODE_UNSUPPORTED": {
         "ja": "この解析はFTAモードでのみ使用できます。ETAモードでは利用できません。",
+    },
+    "BUSY": {
+        "ja": "不確かさ解析はすでに実行中です。完了してから再度実行してください。",
+    },
+    "ANALYSIS_TOO_LARGE": {
+        "ja": "解析対象が大きすぎるため計算を中止しました。カットセットの上限を下げるか、ツリーを簡略化してください。",
+    },
+    # "<code>:<detail.reason>"
+    "ANALYSIS_TOO_LARGE:kofn": {
+        "ja": (
+            "投票ゲート（k/n）の組み合わせが多すぎて展開できません。"
+            "入力数を減らすか、ゲートを分割してください。"
+        ),
+    },
+    "ANALYSIS_TOO_LARGE:time": {
+        "ja": (
+            "カットセット計算が制限時間を超えました。"
+            "最大次数や最大件数を下げるか、カットオフを大きくしてください。"
+        ),
     },
     "NOT_IMPLEMENTED": {
         "ja": "この機能はまだ実装されていません。",
@@ -195,11 +224,22 @@ def localize_error(payload: dict, language: str) -> dict:
     localized = dict(error)
     code = error["code"]
     detail = error.get("detail")
-    fmt = detail.get("format") if isinstance(detail, dict) else None
-    if isinstance(fmt, str) and language != config.DEFAULT_LANGUAGE:
-        specific = "%s:%s" % (code, fmt)
-        if language in _MESSAGES.get(specific, {}):
-            code = specific
+    if isinstance(detail, dict) and language != config.DEFAULT_LANGUAGE:
+        # Most specific first: code:format:feature, code:format, code:reason.
+        fmt = detail.get("format")
+        feature = detail.get("feature")
+        reason = detail.get("reason")
+        candidates = []
+        if isinstance(fmt, str) and isinstance(feature, str):
+            candidates.append("%s:%s:%s" % (code, fmt, feature))
+        if isinstance(fmt, str):
+            candidates.append("%s:%s" % (code, fmt))
+        if isinstance(reason, str) and reason:
+            candidates.append("%s:%s" % (code, reason))
+        for specific in candidates:
+            if language in _MESSAGES.get(specific, {}):
+                code = specific
+                break
     localized["message"] = localize_message(
         code, error.get("message", ""), language
     )
