@@ -145,8 +145,6 @@ def test_eta_mode_is_409(client, method, url):
     "/api/analysis/cutsets",
     "/api/analysis/importance",
     "/api/analysis/uncertainty",
-    "/api/fmea/preview",
-    "/api/fmea/import",
 ])
 def test_stubs_are_501(client, url):
     response = api(client, "POST", url, json={})
