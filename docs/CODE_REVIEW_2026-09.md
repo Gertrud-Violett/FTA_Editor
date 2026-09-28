@@ -47,6 +47,31 @@ from 1.6.2 and the review fixes).
 **Still open after this round** (minor, listed in "Also noticed" below): the action
 bar is clickable for ~1 s before the panel modules finish loading. Everything else
 in the tables is closed or explicitly deferred to the desktop known-defect list.
+*(Fixed in 1.7.0; see below.)*
+
+### Update 2026-09-28 — release 1.7.0
+
+- **Boot gate: ✅ fixed in 1.7.0.** The pre-paint script sets
+  `<html data-booting>`. While it is present, the action bar and the keyboard
+  shortcuts ignore input, and the attribute is removed once `loadPanels()`
+  settles. It is deliberately separate from `aria-disabled`, so
+  `applyCapabilityGates` is unchanged.
+- **Display bug: ✅ fixed in 1.7.0.** `dialogs.formatProbability` rounded to
+  six decimals, so the node details showed any probability below 5e-7
+  (1e-7, 2.3e-8, …) as `0`, even though the engine (after B-2) stored it
+  correctly. It found no place in the tables above because the stored value
+  was right. The function now delegates to `static/js/numfmt.js`
+  `formatProb(v, sigFigs)`: significant figures, exponent form below 1e-3.
+  `fta_web/numfmt.py` mirrors it for the report, the Excel formats and the
+  CLI, and `test_numfmt.py` pins the Python side.
+- **Most of the recommended feature upgrades below have shipped.** Their
+  status is marked in
+  [`ROADMAP_MECHANICAL_ENGINEERS.md`](ROADMAP_MECHANICAL_ENGINEERS.md) and
+  summarised under [Recommended feature upgrades](#recommended-feature-upgrades).
+- **The core stays untouched.** All 1.7 behaviour is in
+  `fta_web/engine.py` (`WebCore(FTACore)`) and new sibling modules.
+  `fta_web/core/` and `desktop/` keep their pinned hashes, and no new
+  divergence was recorded.
 
 ---
 
@@ -325,6 +350,39 @@ PR #8, worth watching for.
 
 ## Recommended feature upgrades
 
+> **Status 1.7.0 (2026-09-28).**
+>
+> *Done*:
+>
+> - 3.4 number formatting
+> - 1.3 failure-rate models (the coverage model is still missing)
+> - 1.1 cut sets
+> - 1.4 gates (NOT is still missing)
+> - 3.1 symbols and top-down layout
+> - 1.2 importance
+> - 2.1 FMEA import
+> - 2.3 traceability
+> - 2.5 DOCX report and flat Excel sheets (PDF is still missing)
+> - 3.5 validation panel
+> - 1.6 Monte Carlo
+> - 2.6 CLI
+>
+> *Open*:
+>
+> - 1.5 common-cause failure groups
+> - 1.7 sensitivity and scenario compare
+> - 1.8 ETA and bow-tie
+> - 3.2 large-tree navigation
+> - 3.3 grid view
+> - 2.2 component library
+> - 2.4 revisions and diff
+> - 3.6 editing ergonomics
+> - the AI items (grounded proposals, narratives from the numbers, the
+>   audit action)
+>
+> The small items below are addressed: the action bar is gated during boot,
+> and load and delete warnings feed the Validation tab.
+
 These are the upgrades proposed for the web app now that the correctness items above
 are closed. The full write-up — what each does today, what is missing, effort and the
 standards they follow — is in
@@ -376,10 +434,14 @@ decide. F-1 is fixed, so extending this area is safe now.
 ### Small items surfaced by the fixes themselves
 
 - **Disable the action bar until `loadPanels()` resolves** (the open minor item above). S.
+  ✅ 1.7.0 (`data-booting`).
 - **Surface `warnings` from open and `removedLinks` from delete more prominently** —
   they are toasts today; the lint panel (3.5) is their natural home.
+  ✅ 1.7.0: `AppState.session_warnings` → `LOAD_REPAIR` / `LINKS_REMOVED` in the
+  Validation tab.
 - **Promote `last_load_warnings` (duplicate ids, root renamed) to a file-level notice**
   that is saved with the file, so a reviewer sees that the source was repaired.
+  ⬜ open: session notices are not saved with the file.
 
 ### Suggested order
 

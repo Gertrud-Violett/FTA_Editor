@@ -7,6 +7,186 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-28
+
+Analysis release for the web app. Engineers can now enter failure rates, use
+the standard gate types, get minimal cut sets, importance and uncertainty,
+validate a tree, trace nodes to requirements, import an FMEA, run batches from
+the command line, and produce a report. Each feature has its own tab in a new
+bottom panel. An **Advanced** switch keeps the basic UI simple.
+
+**The vendored core is not edited.** `fta_web/core/` and `desktop/` keep their
+pinned hashes, and no divergence was added. All new behaviour lives in
+`fta_web/engine.py` as `WebCore(FTACore)` and in new sibling modules.
+
+### Added
+
+- **Engine (`engine.py`).** `WebCore` subclasses `FTACore` and overrides only
+  three methods: the tree walk, `load_from_json` (to keep the `analysis`
+  block) and `prepare_export_data`. It replaces `FTACore()` at every
+  construction site. On legacy trees it reproduces the core exactly;
+  `test_engine.py` proves this on a few hundred random trees with links and
+  cycles.
+- **New optional node keys** (`node_schema.py`, mirrored in
+  `static/js/schema.js`): `gateType` (AND, OR, KOFN, XOR, INHIBIT, PAND,
+  TRANSFER), `k`, `transferTo`, `eventKind` (basic, house, undeveloped,
+  conditioning), `houseState`, and the objects `quant`, `trace` and `fmea`.
+  `logicGate` stays AND/OR as the projection of `gateType`.
+- **Document `analysis` block**: mission time, display time unit, cut-set
+  limits, Monte Carlo n and seed, and the FMEA occurrence table. It is saved
+  beside `tree`, is part of undo, and invalid values are reset on load with
+  a notice.
+- **Quantification models**: fixed q, rate 1−e^(−λT) with T defaulting to the
+  mission time, standby min(1, λτ/2) (flagged above λτ = 0.2) and repairable
+  λ/(λ+μ). λ is stored per hour; the UI accepts /h, /y and FIT. Each event
+  has a data-source field and a lognormal uncertainty (median or mean, error
+  factor). The derived value is written to `probability`.
+- **Gate semantics**:
+  - k-out-of-n by exact Poisson-binomial computation
+  - XOR a+b−2ab (odd parity for n ≠ 2; flagged non-coherent)
+  - INHIBIT with a conditioning event
+  - PAND Πp/n! (flagged as an approximation)
+  - same-file TRANSFER through the shared memo
+  - house events 1/0
+- **Minimal cut sets** (`logic.py`, `cutsets.py`): bottom-up MOCUS over a
+  compiled Boolean graph, with integer-bitmask sets, repeated events counted
+  once, and truncation by order, count and cutoff that is reported. Also the
+  MCUB and rare-event values. A voting gate is refused above 20,000
+  combinations.
+- **Headline value** in the top bar: the MCUB when the tree has repeated
+  events or XOR, the tree walk otherwise (`engine.summary`,
+  `GET /api/analysis/summary`), with an MCUB badge in advanced mode. It is
+  refreshed 400 ms after every change, and an outdated answer is dropped. ETA
+  mode shows the root value without a badge.
+- **Validation badge** on the Validation tab button: a red error count, or
+  else an amber warning count. It is shown in basic mode too.
+- **"Show in Validation"** button on the warning toasts for load repairs and
+  removed links.
+- **FV bar in the tree**: while the importance overlay is on, each tree row
+  shows a small bar on the diagram's colour scale.
+- **Importance measures** (`importance.py`): Fussell-Vesely, Birnbaum, RAW and
+  RRW on the MCUB, computed in log space through an event-to-cut-set index,
+  with an FV colour overlay on the diagram.
+- **Monte Carlo uncertainty** (`uncertainty.py`): pure Python, seeded and
+  deterministic, time-capped with partial results, and one run at a time. It
+  evaluates the tree exactly when the tree is coherent with no repeated
+  events, and otherwise uses the MCUB over the cut sets covering 99.99 % of
+  the rare-event sum.
+- **Validation** (`lint.py`): 21 codes with fixed severities, localised
+  messages and one-line fixes. Load repairs and removed links are collected
+  as session notices (`AppState.session_warnings`).
+- **Bottom-panel tabs**: Details, Quantification, Cut Sets, Importance,
+  Uncertainty, Validation, Traceability, FMEA and Report. They are
+  lazy-loaded, the last-used tab is remembered, and they refresh when the tree
+  changes. Each has English and Japanese catalogs.
+- **Advanced switch** in the top bar (`fta.advanced`, off by default). Basic
+  mode shows Details and Validation only, and AND/OR only. Advanced content
+  in a file is shown read-only with an "advanced" chip, never hidden or
+  lost. Calculations, files and the API are identical in both modes.
+- **Significant-figures selector** (`fta.sigFigs`, 1–6, default 3). It is
+  used by the UI (`numfmt.js`) and by the report, Excel and CLI
+  (`numfmt.py`).
+- **Traceability**: requirement ID, test reference, owner, status, evidence
+  and tags per node, edited in a grid. Tree search understands `tag:`,
+  `owner:`, `status:`, `req:` and `fmea:`, and highlights nodes from other
+  tabs.
+- **FMEA import** (`fmea_import.py`, `/api/fmea/preview`, `/api/fmea/import`):
+  CSV or XLSX, a suggested column mapping (English and Japanese headers), λ
+  unit conversion, and an editable AIAG occurrence-rank table saved in the
+  document. Re-import updates in place by `fmea.id`, the whole import is one
+  undo step, and bad rows are skipped with reasons.
+- **DOCX report** (`report_docx.py`, `POST /api/report/docx`, new `report`
+  extra = `python-docx`, included in `all` and `dev`). Sections: metadata,
+  headline, assumptions, diagram (the browser PNG, falling back to native
+  `dot`), events, cut sets, importance, uncertainty (optional), validation and
+  traceability. English or Japanese.
+- **Excel export**: new **Events** (flat, numeric, filterable) and
+  **Analysis** sheets beside the unchanged hierarchical sheet
+  (`excel_events.py`).
+- **Diagram**:
+  - a *Standard symbols* style, with IEC 61025 / NUREG-0492 paths in the
+    browser (`fta_symbols.js`) and Graphviz approximations in native renders
+  - a top-down layout
+  - significant figures in labels
+  - `idMap` in `GET /api/dot`, so clicking a gate symbol selects its node
+- **CLI** (`cli.py`): `quantify`, `cutsets`, `importance`, `mc`, `validate`
+  and `report`, with `--json`/`--csv`, `--out`, `--sig-figs`, limit and
+  Monte Carlo options, and exit codes 0/1/2/3. It works as
+  `fta_editor.exe <cmd>` and `python fta_web/run.py <cmd>`, and never starts
+  the server.
+- **API**:
+  - new endpoints: `POST /api/analysis/settings`, `GET /api/analysis/summary`,
+    `POST /api/analysis/{cutsets,importance,uncertainty}`,
+    `GET /api/analysis/validate`, `POST /api/report/docx` and
+    `POST /api/fmea/{preview,import}`
+  - new error codes: `MODE_UNSUPPORTED` (409), `BUSY` (409),
+    `ANALYSIS_TOO_LARGE` (422) and `EXPORT_UNAVAILABLE` for docx (503)
+  - `capabilities.reportExport` and `capabilities.fmeaXlsx`
+  - `analysis` and `sessionWarnings` in `/api/state` and in every mutation
+    payload
+- **Docs**: the User Guide gains "Analysis features (1.7)", a CLI reference
+  and desktop compatibility notes. The API reference gains the 1.7 endpoints
+  and modules. The roadmap and code review are marked with their 1.7.0
+  status.
+
+### Changed
+
+- `PATCH /api/nodes/<id>`:
+  - `quant`, `trace` and `fmea` merge partially, and `null` removes a key or
+    sub-key.
+  - Setting `gateType` rewrites `logicGate` to its projection.
+  - Setting `logicGate` on a node with a `gateType` keeps the two in step.
+- `POST /api/ai/update` restores the 1.7 node keys by node id that a
+  full-tree AI rewrite dropped, and reports `mergedFields`.
+- `GET /api/dot` and `POST /api/render` accept `style`, `rankdir` and
+  `sigFigs`. The compact style's meta line uses significant figures instead
+  of `%.1E`.
+- `GET /api/fs/list` takes an optional `ext` filter, for example
+  `?ext=.csv,.xlsx`. It is limited to `config.LISTABLE_EXTENSIONS`
+  (`.json`, `.csv`, `.xlsx`); anything else is `400 INVALID_FIELD`, and the
+  default is still `.json` only. The FMEA file dialog uses it.
+- Error localisation now covers `BUSY` and `ANALYSIS_TOO_LARGE`, including
+  per-reason texts for `kofn` and `time`. The DOCX-unavailable message gives
+  `uv sync --extra report`, and FMEA `.xlsx` without openpyxl has its own
+  message.
+- The node details panel moved into the Details tab. Its gate selector
+  offers the advanced gates when the Advanced switch is on.
+- The frozen build bundles `python-docx`, with its templates, when it is
+  installed. CLI subcommands work in the exe.
+
+### Fixed
+
+- **The node details showed small probabilities as `0`.**
+  `dialogs.formatProbability` rounded to six decimals, so 1e-7 displayed as
+  `0` even though the stored value was right. It now uses
+  significant-figure formatting.
+- **Boot gate**: the action bar and keyboard shortcuts were live for about a
+  second before the panels finished loading (the last open item of the
+  2026-09 code review). `<html data-booting>` now blocks them until
+  `loadPanels()` settles.
+- **Multi-select delete now reports removed links.** Deleting several nodes
+  from the tree did not report the links that were stripped with them, as a
+  single delete does. It now shows the count in a toast linked to the
+  Validation tab.
+
+### Compatibility
+
+- **The file format is additive.** Every new key is optional, and a 1.6 file
+  opens and computes exactly as before. A 1.7 file without advanced features
+  is a valid 1.6 file plus an `analysis` block.
+- **The legacy desktop app** reads only `logicGate` and `probability`:
+  - Advanced gates are projected to AND or OR. INHIBIT and PAND become AND;
+    KOFN, XOR and TRANSFER become OR.
+  - Model-derived probabilities are written into `probability`, so its
+    numbers stay meaningful.
+  - Transfer gates and house events are not understood there.
+- **Saving from the desktop app** keeps the new node keys but drops the
+  top-level `analysis` block, which then reverts to its defaults.
+- **Conflicting desktop edits are overruled.** When a file comes back from the
+  desktop app, `gateType` wins over a changed `logicGate`, and a rate model
+  recomputes `probability`.
+- See [USER_GUIDE.md → Desktop app compatibility](docs/USER_GUIDE.md#desktop-app-compatibility).
+
 ## [1.6.4] - 2026-09-22
 
 Single-defect release for the web app: **click-to-select in the diagram panel

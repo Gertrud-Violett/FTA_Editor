@@ -5,7 +5,7 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 [![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.6.4-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.7.0-green.svg)](CHANGELOG.md)
 
 There are two ways to run it:
 
@@ -18,6 +18,21 @@ Both edit the same files, keep AI credentials in the same place, and produce the
 same diagrams. Use the web app unless you specifically need the old Tk window;
 see [desktop/README.md](desktop/README.md) for what the fallback does not fix.
 
+**1.7 files in the desktop app.** The 1.7 file format is additive. The desktop
+app still opens 1.7 files, but it reads only `logicGate` (AND/OR) and
+`probability`:
+
+- Advanced gates are projected to AND or OR.
+- Model-derived probabilities are written into `probability`, so they stay
+  meaningful.
+- Transfer gates and house events are not understood.
+- Saving from the desktop app keeps the new node keys but drops the top-level
+  `analysis` block (mission time, cut-set limits, Monte Carlo settings, FMEA
+  occurrence table).
+
+Details are in
+[USER_GUIDE.md → Desktop app compatibility](docs/USER_GUIDE.md#desktop-app-compatibility).
+
 ## Features
 
 - **Interactive Tree Editor** with live diagram preview
@@ -29,6 +44,39 @@ see [desktop/README.md](desktop/README.md) for what the fallback does not fix.
 - **Multiple Export Formats** (JSON, XML, Excel with hierarchical structure)
 - **Zero-Probability Node Highlighting** for quick issue identification
 - **Secure Credential Storage**: API keys stored locally, never in repository
+
+New in **1.7** (web app), for reliability and safety engineers:
+
+- **Failure-rate models**: fixed q, constant rate 1−e^(−λT) with a document
+  mission time, periodically tested standby λτ/2, and repairable λ/(λ+μ).
+  λ can be entered in /h, /y or FIT, and a data-source field keeps
+  provenance in the file.
+- **Standard gates and events**: k-out-of-n voting, XOR, INHIBIT with a
+  conditioning event, Priority-AND (approximated and flagged), same-file
+  transfer, and house and undeveloped events.
+- **Minimal cut sets** (MOCUS), with the min-cut upper bound used as the
+  headline when events are repeated.
+- **Importance measures** (Fussell-Vesely, Birnbaum, RAW, RRW) with an FV
+  colour overlay on the diagram.
+- **Monte Carlo uncertainty**: lognormal error factors, a seeded and
+  time-capped run, and mean, median and 5th/95th percentiles.
+- **Validation** with 21 rules, a plain-language fix for each, and click to
+  jump to the node.
+- **Traceability fields**: requirement, test reference, owner, status,
+  evidence and tags, searchable with `tag:`, `owner:`, `status:`, `req:` and
+  `fmea:`.
+- **FMEA import** from CSV or XLSX, with an editable AIAG occurrence table and
+  in-place re-import.
+- **DOCX report**, plus flat **Events** and **Analysis** sheets in the Excel
+  export.
+- **Standard FTA symbols** (IEC 61025 / NUREG-0492) and a top-down layout.
+- **Significant-figures** display setting (1–6).
+- **Command-line batch mode**: `fta_editor validate *.json --json`.
+- **Basic / Advanced switch**: juniors see AND/OR plus the Details and
+  Validation tabs. Advanced shows every gate, model and analysis tab. Files
+  and results are identical either way.
+
+See [USER_GUIDE.md → Analysis features (1.7)](docs/USER_GUIDE.md#analysis-features-17).
 
 ## Quick Start
 
@@ -46,13 +94,34 @@ versions via the committed `uv.lock` — or with plain pip if you don't:
 
 ```bash
 # with uv (recommended)
-uv sync --extra web --extra excel --extra ai
+uv sync --extra web --extra excel --extra ai --extra report   # or: uv sync --extra all
 uv run python fta_web/run.py
 
 # or with pip
 pip install -r requirements.txt -r fta_web/requirements.txt
 python3 fta_web/run.py
 ```
+
+`report` adds `python-docx` for the DOCX report, and `all` includes it. The
+editor runs without it; the report control then explains what to install.
+
+The analysis tabs, advanced gates and failure-rate models are behind the
+**Advanced** switch in the top bar. It is off by default, so a new user sees a
+plain AND/OR editor with validation.
+
+**Batch / CI use.** The same analyses run from the command line without
+starting a server:
+
+```bash
+uv run python fta_web/run.py validate trees/*.json --json   # exit 1 on validation errors
+uv run python fta_web/run.py cutsets plant.json --top 20 --csv
+fta_editor.exe quantify plant.json --mission-time 17520      # the standalone build
+```
+
+Commands: `quantify`, `cutsets`, `importance`, `mc`, `validate`, `report`.
+Exit codes: 0 ok, 1 validation errors or analysis failure, 2 usage, 3
+unreadable file. See the
+[CLI reference](docs/USER_GUIDE.md#command-line-interface).
 
 That starts a server on `127.0.0.1` and opens your browser on it. The terminal
 prints the URL, which carries a **one-time session token** for this launch —
@@ -117,7 +186,7 @@ python desktop/src/FTA_Editor_UI.py
   `python3 -c "import tkinter"` and your OS's `python3-tk` (or equivalent)
   package if that fails. Desktop app only, not installable via pip/uv.
 - Everything else is declared in `pyproject.toml` as optional extras
-  (`web`, `desktop`, `excel`, `ai`) — `uv sync --extra <name>`, or see
+  (`web`, `desktop`, `excel`, `report`, `ai`; `all` = all of them) — `uv sync --extra <name>`, or see
   `requirements.txt` / `fta_web/requirements.txt` for the pip equivalent.
 
 ## AI Assistant Setup
@@ -190,6 +259,11 @@ core.recalculate_probabilities()
 core.export_to_excel("output.xlsx")
 ```
 
+For the 1.7 semantics (advanced gates, rate models, the `analysis` block), use
+`fta_web/engine.py`'s `WebCore`, a subclass of `FTACore`, together with
+`cutsets`, `importance`, `uncertainty` and `lint`. See
+[API_REFERENCE.md → Python analysis modules](docs/API_REFERENCE.md#python-analysis-modules-17).
+
 ## Project Structure
 
 ```
@@ -198,7 +272,11 @@ FTA_Editor/
 │   ├── run.py                   # Launcher -- the only supported entry point
 │   ├── app.py                   # Flask app factory
 │   ├── security.py              # Session token, Host/Origin pinning
-│   ├── routes/                  # /api blueprints: tree, render, files, ai
+│   ├── routes/                  # /api blueprints: tree, render, files, ai, analysis, validate, report, fmea
+│   ├── engine.py                # WebCore(FTACore): 1.7 gates, rate models, `analysis` block
+│   ├── logic.py, cutsets.py     # structure function, minimal cut sets (MOCUS)
+│   ├── importance.py, uncertainty.py, lint.py   # FV/RAW/RRW, Monte Carlo, validation rules
+│   ├── report_docx.py, excel_events.py, fmea_import.py, cli.py
 │   ├── core/                    # Vendored fork of desktop/src/ -- see DIVERGENCE.md
 │   ├── examples/                # Sample data (sampleFTA.json)
 │   ├── static/, templates/      # Frontend, incl. WebAssembly Graphviz
@@ -246,7 +324,8 @@ python -m pytest desktop/tests/    # the frozen legacy suite
 
 - **JSON**: Complete tree data with metadata
 - **XML**: Standard fault tree format
-- **Excel**: Hierarchical spreadsheet with color coding
+- **Excel**: Hierarchical spreadsheet with color coding, plus flat **Events** and **Analysis** sheets (1.7)
+- **DOCX report** (1.7, needs the `report` extra): headline, assumptions, diagram, events, cut sets, importance, uncertainty, validation, traceability
 
 ## Documentation
 
