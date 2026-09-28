@@ -615,13 +615,60 @@ def _read_document(file_path) -> Any:
 # ---- summary (workstream A completes this) ------------------------------------------
 
 
+#: Cheaper cut-set caps for the headline, which runs after every edit.
+SUMMARY_LIMITS = {"maxCount": 2000, "timeBudgetS": 2.0}
+
+
 def summary(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Headline figures for ``tree``. Phase-0 stub: tree walk only.
+    """Headline figures for ``tree``.
 
     Works on a deep copy; ``tree`` is not modified. Shape frozen:
     ``{treeWalk, mcub, rareEvent, headline, headlineMethod, repeatedEvents,
-    nonCoherent, approximations, truncated}``.
+    nonCoherent, approximations, truncated, elapsedMs}``.
+
+    The headline is the min-cut upper bound when the tree has repeated events
+    or an XOR gate (the tree walk then double-counts / is not a probability of
+    a coherent structure), otherwise the tree walk. Cut sets run with the
+    cheaper :data:`SUMMARY_LIMITS`; if they fail or time out the tree walk is
+    the headline and ``truncated`` is True.
     """
+    import time as _time
+
+    started = _time.perf_counter()
+    try:
+        try:
+            from . import cutsets as _cutsets
+        except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+            import cutsets as _cutsets  # type: ignore[no-redef]
+        result = _cutsets.compute(tree, analysis, dict(SUMMARY_LIMITS))
+    except Exception:  # noqa: BLE001 -- the headline must never fail
+        result = None
+    if result is None:
+        out = _summary_tree_walk(tree, analysis)
+        out["truncated"] = True
+    else:
+        repeated = result["repeatedEvents"]
+        non_coherent = result["nonCoherent"]
+        method = "mcub" if (repeated or non_coherent) else "treeWalk"
+        tree_walk = result["treeWalk"]
+        out = {
+            "treeWalk": tree_walk,
+            "mcub": result["mcub"],
+            "rareEvent": result["rareEvent"],
+            "headline": result["mcub"] if method == "mcub" else tree_walk,
+            "headlineMethod": method,
+            "repeatedEvents": repeated,
+            "nonCoherent": non_coherent,
+            "approximations": result["approximations"],
+            "truncated": result["truncated"],
+        }
+    out["elapsedMs"] = round((_time.perf_counter() - started) * 1000.0, 1)
+    return out
+
+
+def _summary_tree_walk(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]]
+                       ) -> Dict[str, Any]:
+    """The summary from the tree walk alone (the cut sets were unavailable)."""
     core = WebCore()
     core.set_data(copy.deepcopy(tree) if isinstance(tree, dict) else {})
     core.analysis, _problems = coerce_analysis(analysis)

@@ -142,9 +142,6 @@ def test_eta_mode_is_409(client, method, url):
 
 
 @pytest.mark.parametrize("url", [
-    "/api/analysis/cutsets",
-    "/api/analysis/importance",
-    "/api/analysis/uncertainty",
     "/api/fmea/preview",
     "/api/fmea/import",
 ])
