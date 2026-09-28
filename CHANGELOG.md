@@ -171,6 +171,16 @@ pinned hashes, and no divergence was added. All new behaviour lives in
 - The DOCX report's event table has a **Source** column (`quant.source`).
 - `GET /api/export/xlsx` accepts `?sigFigs=N` (clamped to 1–6) for the number
   formats; the Excel buttons send the top bar's setting. It was always 3.
+- **`GET /api/analysis/summary` separates its own caps from the document's
+  limits.** It uses `min(maxCount, 2000)` sets; `capped: true` means only the
+  summary's 2000-set / 2 s caps cut the run short, while `truncated` and the
+  new `truncatedBy` mean the document's limits did. In advanced mode a subtle
+  `≈` marker after an MCUB headline shows either case in its tooltip.
+- **`POST /api/report/docx` reads only its documented keys.** `limits` is
+  validated like `analysis.cutsets` (unknown keys, including `timeBudgetS`,
+  are a 400), `uncertaintyN` must be an integer 1–5,000 and
+  `uncertaintyTimeLimit` a number of seconds in (0, 60]; other top-level keys
+  are ignored.
 
 ### Fixed
 
@@ -223,6 +233,46 @@ pinned hashes, and no divergence was added. All new behaviour lives in
   written as an empty numeric cell (malformed for Excel); it is now left
   blank. On the Analysis sheet only probabilities use the scientific format
   (mission time reads `8760`, not `8.76E+03`).
+- **Deleting a node left transfers pointing at its id**, so the next node
+  added there silently became the transfer's target. `DELETE /api/nodes`, an
+  AI `delete` change and a full AI update now strip `transferTo` (and, on the
+  AI paths, links) into removed ids, reported in `removedLinks` /
+  `LINKS_REMOVED` with relation `TRANSFER`.
+- **Applied AI gate edits were overruled by a stale `gateType`**;
+  `POST /api/ai/changes/apply` now reconciles gate types like `/update`. A
+  `gate_type_reset` notice from an AI edit carries `params.cause: "ai"`, says
+  so in the Validation tab (English and Japanese), and is undone and redone
+  with the edit.
+- **NaN/Infinity in a response** (a loaded tree, an error's `detail.value`)
+  made it unparseable for the browser; they are now sent as `null`.
+  `POST /api/fmea/import` with a non-string `lambdaUnit` is a 400, not a 500.
+- **Windows path hardening**: a `:` after the drive (an NTFS alternate data
+  stream such as `notes.txt:x.json`) is refused, and a path on another drive
+  or share (UNC, `\\?\`, a `subst` alias of the root) is refused before it
+  is resolved, so no SMB connection is opened.
+- **Load errors say what is wrong**: *empty*, *not valid JSON (line, column)*
+  or *root must be an object*, instead of the core's encoding error.
+- **Numerics**: a PAND gate with more than 170 inputs no longer overflows
+  (log space); Monte Carlo with an extreme error factor no longer overflows;
+  float sums use `math.fsum`, so Python 3.10/3.11 give the same results as
+  3.12+; an empty cut-set list has MCUB `0.0`, not `-0.0`.
+- **Web UI** (frontend pass):
+  - the diagram keeps fitting while the tree grows until you zoom or pan, and
+    on resize;
+  - analysis tabs drop stale results and inputs after New / Open, and a tab
+    that went stale in the background re-runs when shown;
+  - number fields reject `5,000` (it was read as 5) and hex; cut-set limits
+    are range-checked with localized messages; Escape reverts typing;
+  - the Uncertainty tab no longer lowers a stored `mc.n` above 100,000 on
+    Save;
+  - Quantification labels are tied to their controls; diagram popovers, font
+    options and aria-labels follow the language;
+  - **Render** and PNG export honour the style, layout and significant
+    figures; the symbols style is rasterised in the browser, never by native
+    `dot`;
+  - the capabilities chip and panel are styled (the panel floats instead of
+    pushing the top bar down), and faint text, badges and unit suffixes meet
+    WCAG AA contrast in both themes.
 
 ### Compatibility
 

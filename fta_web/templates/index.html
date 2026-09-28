@@ -101,13 +101,16 @@
     </label>
 
     <!-- Top-event headline. ftaShell.setHeadline() fills it; the MCUB badge
-         is an advanced-mode detail and hidden in basic mode. -->
+         and the capped/truncated marker are advanced-mode details and hidden
+         in basic mode. -->
     <div class="headline" id="headline" data-i18n-title="headline.title"
          title="Top-event probability" aria-live="polite">
       <span class="headline__label"><span data-i18n="headline.label">Top event</span>:</span>
       <span class="headline__value" id="headline-value">&#8212;</span>
       <span class="headline__badge" id="headline-badge" data-advanced-only hidden
             data-i18n="headline.mcub">MCUB</span>
+      <span class="headline__marker" id="headline-marker" data-advanced-only hidden
+            role="img">&#8776;</span>
     </div>
 
     <div class="topbar__group" id="capabilities-host"></div>

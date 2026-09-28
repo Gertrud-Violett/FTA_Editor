@@ -1043,6 +1043,13 @@ html[data-booting] .tabstrip { pointer-events: none; }
   cursor: help;
 }
 .headline__badge[hidden] { display: none; }
+/* Subtle marker: the headline's cut sets were capped / truncated. */
+.headline__marker {
+  color: var(--text-dim);
+  font-weight: 700;
+  cursor: help;
+}
+.headline__marker[hidden] { display: none; }
 
 /* ---- bottom panel: tab strip + panels ------------------------------------- */
 .panel__head--tabs {

@@ -41,6 +41,8 @@ export default {
     'headline.reason.both': 'the tree has repeated events and XOR (non-coherent) gates',
     'headline.reason.other': 'the tree walk is not exact for this tree',
     'headline.pandNote': 'PAND treated as AND in cut sets (conservative).',
+    'headline.cappedNote': 'Quick estimate (summary capped at 2000 cut sets / 2 s) — open the Cut Sets tab for the full result',
+    'headline.truncatedNote': 'Cut sets truncated by the document limits',
 
     'boot.busy': 'Loading the editor panels…',
 
@@ -81,6 +83,8 @@ export default {
     'headline.reason.both': '重複事象と XOR(非コヒーレント)ゲートがある',
     'headline.reason.other': 'このツリーではツリー計算が厳密でない',
     'headline.pandNote': 'カットセットでは PAND を AND として扱っています(保守側)。',
+    'headline.cappedNote': '簡易見積もりです(サマリーはカットセット 2000 件 / 2 秒で打ち切り)— 完全な結果はカットセットタブで確認してください',
+    'headline.truncatedNote': 'ドキュメントの制限によりカットセットが打ち切られています',
 
     'boot.busy': 'エディターのパネルを読み込んでいます…',
 

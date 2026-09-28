@@ -337,6 +337,11 @@ Type any question in the input box and press Enter. Examples:
 3. Confirm deletion
 4. All children are also deleted
 
+In the web app, links and transfer targets (`transferTo`) that pointed into
+the deleted branch are removed as well and listed in the Validation tab
+(`LINKS_REMOVED`); a transfer gate left without a target counts as 0. The
+same happens when the AI assistant deletes nodes.
+
 ### Node Linking
 
 **Create Link Between Nodes**:
@@ -670,8 +675,14 @@ repeated events correctly because they are Boolean.
   notes when Priority-AND gates were treated as AND in the cut sets.
 - Otherwise it is the **tree walk**.
 - The headline is computed with cheaper limits (at most 2,000 cut sets and a
-  2 s budget). If those are exceeded, it falls back to the tree walk and is
-  marked truncated.
+  2 s budget). If the cut sets cannot be computed at all, it falls back to
+  the tree walk.
+- In advanced mode a subtle **≈** marker after an MCUB headline says it was
+  computed from fewer sets. Its tooltip says why: *Quick estimate (summary
+  capped at 2000 cut sets / 2 s)* means only the headline's own limits cut
+  the run short, so open the Cut Sets tab for the full result; *Cut sets
+  truncated by the document limits* means the document's max order, max
+  count or cutoff dropped sets, as the Cut Sets tab would also show.
 - It refreshes from `GET /api/analysis/summary` about 400 ms after each edit
   to the tree, the analysis settings or the mode. A slower, outdated answer is
   discarded. If the request fails, the headline quietly shows the tree walk.
@@ -832,8 +843,8 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `NONCOHERENT_XOR` | warning | The tree has XOR gate(s), so cut-set results are approximate. | Use OR if both events can happen together. |
 | `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so the results may be underestimated. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
 | `ETA_BRANCH_SUM` | warning | ETA only: the children's probabilities do not sum to 1 (±1e-6). | Adjust the branch probabilities. |
-| `LOAD_REPAIR` | warning | The file was repaired on load (duplicate id renamed, top id changed, invalid analysis setting reset). | Check the node, and save to keep the repair. |
-| `LINKS_REMOVED` | warning | Deleting a node removed links that pointed to it. | Re-add a link if the dependency still exists. |
+| `LOAD_REPAIR` | warning | The file was repaired on load (duplicate id renamed, top id changed, invalid analysis setting reset, stale gate type dropped), or an AI edit left a stale gate type that was dropped. | Check the node, and save to keep the repair. |
+| `LINKS_REMOVED` | warning | Deleting a node (by hand or by the AI assistant) removed links or transfer targets (`transferTo`) that pointed to it. | Re-add the link or transfer target if the dependency still exists. |
 | `UNDEVELOPED_EVENT` | info | The leaf is marked undeveloped. | Nothing needed, or develop it later. |
 | `PAND_APPROX` | info | A Priority-AND gate is evaluated as AND × 1/n!. | Nothing needed; note the approximation in your report. |
 
@@ -843,7 +854,10 @@ its one cause is normal practice. An empty document is never
 notices are reported.
 
 `LOAD_REPAIR` and `LINKS_REMOVED` are *session notices*. They are collected
-while the document is open and are not saved in the file or undone.
+while the document is open and are not saved in the file or undone. The one
+exception is a stale gate type dropped after an AI edit (the notice says
+*The AI assistant set this gate to …*): it belongs to that edit, so undoing
+the AI update removes the notice and redo brings it back.
 
 ### Traceability and tree search
 
@@ -1274,6 +1288,19 @@ A: Switch on **Advanced** in the top bar. See [Basic and Advanced mode](#basic-a
 **Q: The top-event value differs from the root node's calculated probability**
 A: The headline uses the min-cut upper bound when the tree has repeated events
 or XOR gates. See [Top-event value](#top-event-value-tree-walk-mcub-and-rare-event).
+
+**Q: Opening a file says it is empty, not valid JSON, or that the root must be an object**
+A: The web app says why a file could not be read: an empty file, a JSON
+syntax error (with the line and column to look at), or a file whose top level
+is not a JSON object. Fix the file in a text editor, or restore it from a
+backup.
+
+**Q: A path is refused with "outside" or "may not contain ':'"**
+A: The web app only reads and writes inside its root folder. On Windows a
+path on another drive, a network (UNC) path, or a drive letter created with
+`subst` is refused even if it points at the same folder, and a `:` in a file
+name (an NTFS alternate data stream) is refused. Relaunch with `--root` to
+use another folder.
 
 **Q: Legacy JSON files don't load properly**
 A: Old format is supported, but defaults to FTA mode. Set mode manually after loading.

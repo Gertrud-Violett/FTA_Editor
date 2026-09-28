@@ -276,6 +276,13 @@ export function mount(panel, ctx) {
     const vars = displayParams(issue);
     const kind = issue.params && typeof issue.params.kind === 'string' ? issue.params.kind : null;
     if (kind) {
+      // A cause-specific variant first (params.cause 'ai': the AI assistant
+      // made the edit, not the desktop editor), then the kind's own text.
+      const cause = typeof issue.params.cause === 'string' ? issue.params.cause : null;
+      if (cause) {
+        const byCause = lookup('val.code.' + issue.code + '.' + kind + '.' + cause, vars);
+        if (byCause !== null) return byCause;
+      }
       const specific = lookup('val.code.' + issue.code + '.' + kind, vars);
       if (specific !== null) return specific;
     }
