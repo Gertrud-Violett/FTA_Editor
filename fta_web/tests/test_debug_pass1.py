@@ -164,3 +164,60 @@ def test_repairable_sample_at_the_overflow_edge_is_one_not_zero():
     out = uncertainty.run(leaf("root", 0.1, quant=quant), None, n=400, seed=5)
     # Half the samples of a median-1e300 lambda are at or above 1e300.
     assert out["p95"] == 1.0
+
+
+# ---- filesystem sandbox: Windows path forms ---------------------------------------------
+
+windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows path semantics")
+
+
+@windows_only
+@pytest.mark.parametrize("raw", ["notes.txt:evil.json", "notes.txt:x:$DATA.json",
+                                 "sub\\notes.txt:evil.json"])
+def test_alternate_data_streams_are_rejected(tmp_path, raw):
+    """``notes.txt:evil.json`` passed the .json allow-list and wrote a hidden
+    NTFS alternate data stream onto an arbitrary file inside the root."""
+    (tmp_path / "notes.txt").write_text("secret")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "notes.txt").write_text("secret")
+    root = fsbrowser.resolve_root(tmp_path)
+    with pytest.raises(fsbrowser.PathRejected) as info:
+        fsbrowser.resolve_in_root(raw, root)
+    assert info.value.reason == "stream"
+    with pytest.raises(fsbrowser.PathRejected):
+        fsbrowser.resolve_for_write(raw, root, {".json"})
+
+
+@windows_only
+@pytest.mark.parametrize("raw", ["\\\\attacker.invalid\\share\\x.json",
+                                 "//attacker.invalid/share/x.json",
+                                 "\\\\?\\UNC\\attacker.invalid\\share\\x.json"])
+def test_unc_paths_are_rejected_before_touching_the_network(tmp_path, monkeypatch, raw):
+    """Resolving a UNC path opens it -- an SMB connection (and an NTLM
+    handshake) to whatever host the client named -- before containment was
+    checked. The drive must be compared lexically first."""
+    root = fsbrowser.resolve_root(tmp_path)
+    seen = []
+    original = type(root).resolve
+
+    def spy(self, *args, **kwargs):
+        seen.append(str(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(root), "resolve", spy)
+    with pytest.raises(fsbrowser.PathRejected) as info:
+        fsbrowser.resolve_in_root(raw, root)
+    assert info.value.reason == "outside_root"
+    assert not any("attacker" in s for s in seen)
+
+
+@windows_only
+def test_ordinary_windows_paths_still_work(tmp_path):
+    root = fsbrowser.resolve_root(tmp_path)
+    (tmp_path / "a.json").write_text("{}")
+    assert fsbrowser.resolve_in_root(str(tmp_path / "a.json"), root) == root / "a.json"
+    # Drive letter case and forward slashes are the same place.
+    other_case = str(root / "a.json")
+    other_case = other_case[0].swapcase() + other_case[1:]
+    assert fsbrowser.resolve_in_root(other_case.replace("\\", "/"), root) == root / "a.json"
+    assert fsbrowser.resolve_for_write("new.json", root, {".json"}) == root / "new.json"

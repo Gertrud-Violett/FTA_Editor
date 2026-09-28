@@ -207,6 +207,26 @@ def resolve_in_root(raw: Any, root: Path) -> Path:
     if not candidate.is_absolute():
         candidate = root / candidate
 
+    # Windows only (on POSIX ':' is an ordinary filename character):
+    if os.name == "nt":
+        # 3a. A different drive or share is outside the root, and is refused
+        # lexically, *before* resolve(): resolving a UNC path opens it -- an
+        # SMB connection and NTLM handshake to whatever host the client named.
+        # Device-namespace forms (\\?\, \\.\) land here too: they are never
+        # how the picker names a file.
+        if candidate.drive.lower() != root.drive.lower():
+            raise PathRejected(
+                "That path is outside %s, which is the only folder this editor "
+                "may read or write. Relaunch with --root to change it." % root,
+                reason="outside_root",
+            )
+        # 3b. No NTFS alternate data streams: 'notes.txt:x.json' passes a
+        # '.json' allow-list but names a hidden stream of notes.txt.
+        if ":" in str(candidate)[len(candidate.drive):]:
+            raise PathRejected(
+                "A file name may not contain ':'.", reason="stream"
+            )
+
     # Rule 4: resolve (following symlinks), then confine.
     try:
         resolved = candidate.resolve()
