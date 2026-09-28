@@ -177,3 +177,26 @@ def test_export_route_has_the_events_sheet(tmp_path):
         assert response.status_code == 200
         wb = openpyxl.load_workbook(io.BytesIO(response.get_data()))
         assert wb.sheetnames == ["FTA", "Events", "Analysis"]
+
+
+def test_non_finite_numbers_are_left_blank():
+    """NaN / Infinity (Python's json accepts both literals) would be written by
+    openpyxl as an empty numeric cell, which is malformed SpreadsheetML."""
+    tree = sample_tree()
+    leaf = tree["children"][1]
+    leaf["probability"] = float("nan")
+    leaf["quant"] = {"model": "fixed", "lambda": float("inf"), "unc": {"ef": float("-inf")}}
+    row = next(r for r in excel_events.event_rows(tree) if r["Id"] == leaf["id"])
+    assert row["Base probability"] is None and row["λ (/h)"] is None and row["Unc. EF"] is None
+
+
+def test_analysis_sheet_formats_only_probabilities_as_scientific(tmp_path):
+    path = tmp_path / "a.xlsx"
+    assert excel_events.export_xlsx(make_core(), str(path), sig_figs=4)[0]
+    ws = openpyxl.load_workbook(path)["Analysis"]
+    fmt = {ws.cell(row=r, column=1).value: ws.cell(row=r, column=2).number_format
+           for r in range(2, ws.max_row + 1)}
+    assert fmt["Mission time (h)"] == "General"
+    assert fmt["Cut sets: cutoff"] == "0.000E+00"
+    assert fmt["Top event (headline)"] == "0.000E+00"
+    assert fmt["MCUB"] == "0.000E+00"

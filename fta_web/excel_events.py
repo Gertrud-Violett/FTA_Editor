@@ -19,6 +19,7 @@ A pre-existing sheet of either name is replaced. No images, so no PIL.
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.excel_events``
@@ -102,19 +103,22 @@ def iter_nodes(tree: Any) -> Iterator[Tuple[Dict[str, Any], Optional[str], int]]
 
 
 def _number(value: Any) -> Optional[float]:
+    """A finite float, or None. NaN and infinities (Python's json reads the
+    bare ``NaN``/``Infinity`` literals) have no Excel representation: openpyxl
+    writes them as an empty numeric cell (``<v></v>``), which is malformed
+    SpreadsheetML, so they are left blank instead."""
     if isinstance(value, bool) or value is None:
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
     try:
-        return float(str(value).strip())
-    except (TypeError, ValueError):
+        number = float(value) if isinstance(value, (int, float)) else float(str(value).strip())
+    except (TypeError, ValueError, OverflowError):
         return None
+    return number if math.isfinite(number) else None
 
 
 def _integer(value: Any) -> Optional[int]:
     number = _number(value)
-    if number is None or number != number:  # NaN
+    if number is None:
         return None
     try:
         return int(round(number))
@@ -236,6 +240,12 @@ def _summary(tree: Any, analysis: Any) -> Optional[Dict[str, Any]]:
         return None
 
 
+#: Analysis-sheet rows whose value is a probability.
+PROBABILITY_SETTINGS = frozenset((
+    "Cut sets: cutoff", "Top event (headline)", "Tree walk", "MCUB", "Rare-event approximation",
+))
+
+
 def analysis_rows(core) -> List[Tuple[str, Any, str]]:
     """``(setting, value, note)`` rows for the Analysis sheet."""
     analysis = copy.deepcopy(getattr(core, "analysis", None) or {})
@@ -319,7 +329,9 @@ def _write_analysis(wb, core, sig_figs: int) -> None:
     fmt = sci_format(sig_figs)
     for setting, value, note in analysis_rows(core):
         ws.append([setting, value, note])
-        if isinstance(value, float):
+        # Probabilities get the scientific format; hours and counts stay
+        # General (8760 h, not 8.76E+03).
+        if isinstance(value, float) and setting in PROBABILITY_SETTINGS:
             ws.cell(row=ws.max_row, column=2).number_format = fmt
     ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 18
