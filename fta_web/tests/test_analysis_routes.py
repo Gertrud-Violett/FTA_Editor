@@ -255,11 +255,11 @@ def test_save_and_open_keep_analysis(client, tmp_path):
 
 def test_dot_accepts_the_new_parameters(client):
     plain = body(api(client, "GET", "/api/dot"))
-    assert plain["idMap"] == {}
+    assert plain["idMap"].get("root") == "root"  # every DOT node name -> node id
     assert plain["style"] == "compact" and plain["rankdir"] == "LR" and plain["sigFigs"] == 3
     styled = body(api(client, "GET", "/api/dot?style=symbols&rankdir=tb&sigFigs=5"))
     assert styled["style"] == "symbols" and styled["rankdir"] == "TB" and styled["sigFigs"] == 5
-    assert styled["dot"] == plain["dot"]  # Phase-0 stub: same DOT
+    assert "rankdir=TB;" in styled["dot"] and "fta-box" in styled["dot"]
 
 
 @pytest.mark.parametrize("query", ["style=fancy", "rankdir=RL"])

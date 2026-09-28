@@ -17,6 +17,13 @@
  *     See divergence D5 in fta_web/core/DIVERGENCE.md.
  *   * `type` is a non-empty string.
  *
+ * 1.7 (workstream B): the gate select offers every gate type when the Advanced
+ * switch is on (AND/OR only when it is off) and PATCHes `gateType` for them;
+ * KOFN reveals `k`, TRANSFER a target picker, a leaf an event-kind select and
+ * a house event its ON/OFF state. In basic mode an advanced value is shown
+ * read-only with an "advanced" chip and a hint -- never silently changed. A
+ * probability derived from a non-fixed quantification model is read-only.
+ *
  * The only client-side rule the server does not have is a non-empty `name`;
  * the server would accept "" (sanitize_name of anything blank), but an unnamed
  * row is unusable in the tree, so the form refuses to send one.
@@ -31,8 +38,10 @@ import {
   ensureBaseStyles,
   errorField,
   errorMessage,
+  fillGateOptions,
   formatProbability,
   injectStyles,
+  isAdvancedMode,
   normalizeGate,
   parseProbability,
   sanitizeName,
@@ -41,6 +50,7 @@ import {
   uid,
   validateGate,
 } from './dialogs.js';
+import { BASIC_GATES, EVENT_KINDS, GATE_TYPES, isAdvancedNode } from './schema.js';
 
 const DETAILS_CSS = `
 .fta-details {
@@ -85,6 +95,29 @@ const DETAILS_CSS = `
   letter-spacing: 0.04em;
 }
 .fta-details [hidden] { display: none; }
+.fta-details-adv {
+  margin: -0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--fta-muted-fg);
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.fta-details-chip {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--fta-accent, #14507d);
+  color: var(--fta-accent, #14507d);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fta-details-extras { display: flex; flex-direction: column; gap: 0.5rem; }
+.fta-details-note { margin: 0; font-size: 0.78rem; color: var(--fta-muted-fg); }
+.fta-details input[readonly] { background: var(--fta-surface-2, #f4f6f8); color: var(--fta-muted-fg); }
 `;
 
 /** The editable fields, in the order the desktop dialog lists them. */
@@ -114,15 +147,55 @@ function displayValue(node, key) {
       return String(node.type === undefined || node.type === null ? '' : node.type);
     case 'probability': {
       const value = Number(node.probability);
-      return Number.isFinite(value) ? String(value) : '';
+      if (!Number.isFinite(value)) return '';
+      return derivedModel(node) ? formatProbability(value) : String(value);
     }
     case 'logicGate':
-      return normalizeGate(node.logicGate);
+      return effectiveGate(node);
     case 'notes':
       return String(node.notes === undefined || node.notes === null ? '' : node.notes);
     default:
       return '';
   }
+}
+
+/** gateType when set (upper-cased), else the legacy logicGate. */
+function effectiveGate(node) {
+  const raw = node && node.gateType;
+  if (raw !== undefined && raw !== null && String(raw).trim() !== '') return normalizeGate(raw);
+  return normalizeGate(node ? node.logicGate : '');
+}
+
+/** The quant model name when it is not `fixed` (probability is derived), else null. */
+function derivedModel(node) {
+  const quant = node && node.quant;
+  const model = quant && typeof quant === 'object' ? quant.model : null;
+  if (model === undefined || model === null || model === '') return null;
+  const name = String(model).toLowerCase();
+  return name === 'fixed' ? null : name;
+}
+
+function eventKindOf(node) {
+  const kind = node && node.eventKind;
+  const name = kind === undefined || kind === null ? '' : String(kind).toLowerCase();
+  return EVENT_KINDS.indexOf(name) === -1 ? 'basic' : name;
+}
+
+function childCount(node) {
+  return Array.isArray(node && node.children) ? node.children.length : 0;
+}
+
+/** Ids of `node` and every descendant (a transfer must not point into itself). */
+function subtreeIds(node) {
+  const out = new Set();
+  const stack = node ? [node] : [];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== 'object') continue;
+    out.add(String(cur.id));
+    if (Array.isArray(cur.children)) stack.push(...cur.children);
+  }
+  return out;
 }
 
 /** Stable key for a links array, so equal link sets compare equal. */
@@ -156,19 +229,10 @@ function nodeListSignature() {
  * disabled option instead of being silently rewritten.
  */
 function syncGateOptions(select, gate) {
-  const existing = select.querySelector('option[data-unsupported]');
-  const unsupported = gate !== 'AND' && gate !== 'OR';
-  if (existing && (!unsupported || existing.value !== gate)) existing.remove();
-  if (unsupported && (!existing || existing.value !== gate)) {
-    const option = el('option', {
-      value: gate,
-      disabled: true,
-      text: t('dialog.gateUnsupported', { gate: gate }),
-      dataset: { unsupported: 'true' },
-    });
-    select.insertBefore(option, select.firstChild);
-  }
-  select.value = gate;
+  const advanced = isAdvancedMode();
+  fillGateOptions(select, gate, advanced);
+  // Basic mode with an advanced gate stored: read-only, never rewritten.
+  select.disabled = !advanced && BASIC_GATES.indexOf(gate) === -1 && GATE_TYPES.indexOf(gate) !== -1;
 }
 
 /**
@@ -212,7 +276,7 @@ export function initDetails(container) {
   for (const spec of FIELDS) {
     let control;
     if (spec.kind === 'textarea') control = el('textarea', { rows: '4' });
-    else if (spec.kind === 'gate') control = createGateSelect('OR');
+    else if (spec.kind === 'gate') control = createGateSelect({ value: 'OR', advanced: isAdvancedMode() });
     else control = el('input', { type: 'text' });
 
     const id = uid('fta-details');
@@ -231,6 +295,215 @@ export function initDetails(container) {
     links: [],
     onChange: (links) => send({ links: links }),
   });
+  /* ---- 1.7 gate / event extras, placed right after the gate select ---- */
+
+  const extras = buildExtras();
+  const gateWrapper = fields.logicGate.control.parentNode;
+  gateWrapper.parentNode.insertBefore(extras.root, gateWrapper.nextSibling);
+  const probNote = el('p', { class: 'fta-details-note', hidden: true });
+  fields.probability.control.parentNode.appendChild(probNote);
+
+  function buildExtras() {
+    const chipText = el('span', { class: 'fta-details-chip' });
+    const hintText = el('span');
+    const advBox = el('p', { class: 'fta-details-adv', hidden: true }, [chipText, hintText]);
+
+    const kInput = el('input', { type: 'number', min: '1', step: '1', inputmode: 'numeric' });
+    const kId = uid('fta-details-k');
+    kInput.id = kId;
+    const kLabel = el('label', { for: kId });
+    const kError = el('p', { class: 'fta-field-error', id: kId + '-error', hidden: true });
+    kInput.setAttribute('aria-describedby', kError.id);
+    const kRow = el('div', { class: 'fta-field', hidden: true }, [kLabel, kInput, kError]);
+
+    const transferSelect = el('select');
+    const trId = uid('fta-details-transfer');
+    transferSelect.id = trId;
+    const trLabel = el('label', { for: trId });
+    const trNote = el('p', { class: 'fta-details-note' });
+    const trRow = el('div', { class: 'fta-field', hidden: true }, [trLabel, transferSelect, trNote]);
+
+    const kindSelect = el('select');
+    const kindId = uid('fta-details-kind');
+    kindSelect.id = kindId;
+    const kindLabel = el('label', { for: kindId });
+    const kindRow = el('div', { class: 'fta-field', hidden: true }, [kindLabel, kindSelect]);
+
+    const houseSelect = el('select');
+    const houseId = uid('fta-details-house');
+    houseSelect.id = houseId;
+    const houseLabel = el('label', { for: houseId });
+    const houseRow = el('div', { class: 'fta-field', hidden: true }, [houseLabel, houseSelect]);
+
+    const root = el('div', { class: 'fta-details-extras' }, [advBox, kRow, trRow, kindRow, houseRow]);
+    return {
+      root, advBox, chipText, hintText,
+      kRow, kInput, kLabel, kError,
+      trRow, transferSelect, trLabel, trNote,
+      kindRow, kindSelect, kindLabel,
+      houseRow, houseSelect, houseLabel,
+      kBaseline: '',
+    };
+  }
+
+  function relabelExtras() {
+    extras.chipText.textContent = t('gate.advancedChip');
+    extras.hintText.textContent = t('gate.advancedHint');
+    extras.kLabel.textContent = t('gate.k');
+    extras.trLabel.textContent = t('gate.transferTo');
+    extras.trNote.textContent = t('gate.transferNote');
+    extras.kindLabel.textContent = t('event.kind');
+    extras.houseLabel.textContent = t('event.houseState');
+    const kindValue = extras.kindSelect.value;
+    clear(extras.kindSelect);
+    for (const kind of EVENT_KINDS) {
+      extras.kindSelect.appendChild(el('option', { value: kind, text: t('event.' + kind) }));
+    }
+    if (kindValue) extras.kindSelect.value = kindValue;
+    const houseValue = extras.houseSelect.value;
+    clear(extras.houseSelect);
+    extras.houseSelect.appendChild(el('option', { value: 'on', text: t('event.houseOn') }));
+    extras.houseSelect.appendChild(el('option', { value: 'off', text: t('event.houseOff') }));
+    if (houseValue) extras.houseSelect.value = houseValue;
+  }
+
+  /** Transfer targets: every node except this one and its own subtree. */
+  function fillTransferOptions(node) {
+    const select = extras.transferSelect;
+    const excluded = subtreeIds(node);
+    const wanted = node.transferTo === undefined || node.transferTo === null ? '' : String(node.transferTo);
+    clear(select);
+    select.appendChild(el('option', { value: '', text: t('gate.transferNone') }));
+    let flat = [];
+    try {
+      flat = store.flat() || [];
+    } catch (_err) {
+      flat = [];
+    }
+    let found = wanted === '';
+    for (const entry of flat) {
+      const id = String(entry.id);
+      if (excluded.has(id)) continue;
+      if (id === wanted) found = true;
+      select.appendChild(el('option', { value: id, text: String(entry.name) + ' (' + id + ')' }));
+    }
+    if (!found) {
+      // A dangling or self-referencing target: shown as stored, not dropped.
+      select.appendChild(el('option', { value: wanted, disabled: true, text: wanted + ' (?)' }));
+    }
+    select.value = wanted;
+  }
+
+  /** Show/hide and fill the extras for `node`; `force` repopulates the k box. */
+  function updateExtras(node, force) {
+    const advanced = isAdvancedMode();
+    const gate = effectiveGate(node);
+    const n = childCount(node);
+    const kind = eventKindOf(node);
+    const readOnly = !advanced;
+
+    extras.advBox.hidden = advanced || !isAdvancedNode(node);
+
+    extras.kRow.hidden = gate !== 'KOFN';
+    extras.kInput.max = String(Math.max(1, n));
+    extras.kInput.disabled = readOnly;
+    const kText = node.k === undefined || node.k === null ? '' : String(node.k);
+    if (force || document.activeElement !== extras.kInput) {
+      extras.kInput.value = kText;
+      extras.kBaseline = kText;
+      delete extras.kInput.dataset.dirty;
+      if (force) setKError('');
+    }
+
+    extras.trRow.hidden = gate !== 'TRANSFER';
+    extras.transferSelect.disabled = readOnly;
+    if (gate === 'TRANSFER') fillTransferOptions(node);
+
+    const isLeaf = n === 0 && gate !== 'TRANSFER';
+    extras.kindRow.hidden = !isLeaf || (!advanced && kind === 'basic');
+    extras.kindSelect.disabled = readOnly;
+    extras.kindSelect.value = kind;
+
+    extras.houseRow.hidden = !isLeaf || kind !== 'house';
+    extras.houseSelect.disabled = readOnly;
+    extras.houseSelect.value = node.houseState === true ? 'on' : 'off';
+
+    const model = derivedModel(node);
+    const prob = fields.probability.control;
+    prob.readOnly = !!model;
+    probNote.hidden = !model;
+    probNote.textContent = model ? t('event.derivedNote', { model: model }) : '';
+  }
+
+  function setKError(message) {
+    extras.kError.textContent = message || '';
+    extras.kError.hidden = !message;
+    extras.kInput.setAttribute('aria-invalid', message ? 'true' : 'false');
+  }
+
+  function commitK() {
+    const node = currentNode();
+    if (!node || extras.kInput.disabled) return;
+    const text = String(extras.kInput.value || '').trim();
+    if (text === extras.kBaseline) {
+      delete extras.kInput.dataset.dirty;
+      return;
+    }
+    const n = childCount(node);
+    const value = Number(text);
+    if (n < 1) {
+      setKError(t('gate.kNoChildren'));
+      return;
+    }
+    if (!Number.isInteger(value) || value < 1 || value > n) {
+      setKError(t('gate.kRange', { n: n }));
+      return;
+    }
+    setKError('');
+    const nodeId = String(node.id);
+    send({ k: value }).then(
+      () => {
+        const now = currentNode();
+        if (now && String(now.id) === nodeId) updateExtras(now, true);
+      },
+      () => {
+        /* reported by send(); the typed value stays (and stays dirty) */
+      }
+    );
+  }
+
+  extras.kInput.addEventListener('input', () => {
+    setKError('');
+    if (extras.kInput.value !== extras.kBaseline) extras.kInput.dataset.dirty = 'true';
+    else delete extras.kInput.dataset.dirty;
+  });
+  extras.kInput.addEventListener('blur', commitK);
+  extras.kInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      extras.kInput.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      const node = currentNode();
+      if (node) updateExtras(node, true);
+    }
+  });
+  const quiet = () => {
+    /* reported by send() */
+  };
+  extras.transferSelect.addEventListener('change', () => {
+    const value = extras.transferSelect.value;
+    send({ transferTo: value === '' ? null : value }).catch(quiet);
+  });
+  extras.kindSelect.addEventListener('change', () => {
+    const value = extras.kindSelect.value;
+    send({ eventKind: value === 'basic' ? null : value }).catch(quiet);
+  });
+  extras.houseSelect.addEventListener('change', () => {
+    send({ houseState: extras.houseSelect.value === 'on' }).catch(quiet);
+  });
+
   const linksTitle = el('h3', { class: 'fta-details-links-title' });
   const linksSection = el('div', { hidden: true }, [linksTitle, linksEditor.element]);
 
@@ -244,8 +517,12 @@ export function initDetails(container) {
     for (const key of Object.keys(fields)) {
       fields[key].label.textContent = t(fields[key].spec.label);
     }
+    relabelExtras();
     const node = currentNode();
-    if (node) syncGateOptions(fields.logicGate.control, displayValue(node, 'logicGate'));
+    if (node) {
+      syncGateOptions(fields.logicGate.control, displayValue(node, 'logicGate'));
+      updateExtras(node, false);
+    }
     linksEditor.relabel();
   }
 
@@ -357,6 +634,7 @@ export function initDetails(container) {
     for (const key of Object.keys(fields)) {
       if (fields[key].control === active) commitField(key);
     }
+    if (active === extras.kInput) commitK();
     detail.promises.push(pending);
   }
 
@@ -366,7 +644,7 @@ export function initDetails(container) {
       case 'probability':
         return parseProbability(raw);
       case 'logicGate':
-        return validateGate(raw);
+        return validateGate(raw, { advanced: isAdvancedMode() });
       case 'name': {
         const name = sanitizeName(raw);
         if (!name) return { ok: false, message: t('dialog.nameRequired') };
@@ -386,9 +664,10 @@ export function initDetails(container) {
   function unchanged(node, key, value) {
     switch (key) {
       case 'probability':
-        return Number(node.probability) === value;
+        // A derived value is read-only; its formatted text never "changes" it.
+        return derivedModel(node) ? true : Number(node.probability) === value;
       case 'logicGate':
-        return normalizeGate(node.logicGate) === value;
+        return effectiveGate(node) === value;
       case 'name':
         return sanitizeName(node.name) === value;
       case 'type':
@@ -396,6 +675,27 @@ export function initDetails(container) {
       default:
         return displayValue(node, key) === value;
     }
+  }
+
+  /**
+   * The PATCH for a gate change. A legacy node choosing AND/OR keeps writing
+   * only `logicGate`; anything with (or getting) a `gateType` writes that and
+   * the server projects `logicGate`. Leaving KOFN/TRANSFER drops the now
+   * meaningless `k`/`transferTo`; entering KOFN seeds k = majority of n.
+   */
+  function gatePatch(node, gate) {
+    const before = effectiveGate(node);
+    const hasType = node.gateType !== undefined && node.gateType !== null && node.gateType !== '';
+    const patch = {};
+    if (BASIC_GATES.indexOf(gate) !== -1 && !hasType) patch.logicGate = gate;
+    else patch.gateType = gate;
+    if (before === 'KOFN' && gate !== 'KOFN' && node.k !== undefined && node.k !== null) patch.k = null;
+    if (before === 'TRANSFER' && gate !== 'TRANSFER' && node.transferTo) patch.transferTo = null;
+    if (gate === 'KOFN' && (node.k === undefined || node.k === null)) {
+      const n = childCount(node);
+      if (n > 0) patch.k = Math.floor(n / 2) + 1;
+    }
+    return patch;
   }
 
   function commitField(key) {
@@ -416,8 +716,7 @@ export function initDetails(container) {
       populate(key, displayValue(node, key));
       return;
     }
-    const patch = {};
-    patch[key] = result.value;
+    const patch = key === 'logicGate' ? gatePatch(node, result.value) : { [key]: result.value };
     const nodeId = String(node.id);
     send(patch).then(
       () => {
@@ -502,6 +801,7 @@ export function initDetails(container) {
       // Never clobber the box the user is typing in.
       if (switched || document.activeElement !== control) populate(key, displayValue(node, key));
     }
+    updateExtras(node, switched);
 
     if (switched) linksEditor.setSelfId(node.id);
     if (switched || linksKey(node.links) !== linksKey(linksEditor.getLinks())) {
@@ -522,6 +822,14 @@ export function initDetails(container) {
   update();
   window.addEventListener('fta:language', relabel);
   window.addEventListener('fta:flush', onFlush);
+  // Advanced switch: rebuild the gate list and the read-only state.
+  const onAdvanced = () => {
+    const node = currentNode();
+    if (!node) return;
+    populate('logicGate', displayValue(node, 'logicGate'));
+    updateExtras(node, false);
+  };
+  window.addEventListener('fta:advanced', onAdvanced);
 
   return {
     refresh: update,
@@ -529,6 +837,7 @@ export function initDetails(container) {
       if (typeof unsubscribe === 'function') unsubscribe();
       window.removeEventListener('fta:language', relabel);
       window.removeEventListener('fta:flush', onFlush);
+      window.removeEventListener('fta:advanced', onAdvanced);
       clear(panel);
       if (panel.parentNode === container) container.removeChild(panel);
     },
