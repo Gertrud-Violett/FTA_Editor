@@ -6,6 +6,15 @@
 > are unchanged; `BASELINE.json` and `test_vendor_integrity.py` were updated
 > to the new paths. Every `src/` reference below means `desktop/src/`.
 
+> **1.7.0 note.** Release 1.7.0 (analysis features) makes **no edits** to
+> `fta_web/core/` and records no new divergence. The new gate types,
+> quantification models and `analysis` document block are implemented in
+> `fta_web/engine.py` as `WebCore(FTACore)`. It overrides
+> `_recalculate_fta_probabilities`, `load_from_json` and
+> `prepare_export_data`, and reproduces the core's tree walk exactly on
+> legacy trees (`fta_web/tests/test_engine.py`). The hashes in
+> `BASELINE.json` are unchanged.
+
 `fta_web/core/` holds a **vendored fork** of four modules copied from `src/` at baseline
 commit **`e5f655f`**. `src/`, `tests/` and `data/` are frozen and pinned by hash; the fork
 is the copy that FTA Editor v1.6 owns and is allowed to patch.

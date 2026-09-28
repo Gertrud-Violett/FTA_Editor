@@ -2,7 +2,7 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 1.6.0 (Updated: September 9, 2026)
+**Version**: 1.7.0 (Updated: September 28, 2026)
 
 The editor runs in your **browser**, with no Graphviz to install — that is the
 primary way to run it. The original Tkinter desktop app is kept in `desktop/`
@@ -17,7 +17,7 @@ git clone https://github.com/Gertrud-Violett/FTA_Editor.git
 cd FTA_Editor
 
 # with uv (recommended -- faster, pins exact versions)
-uv sync --extra web --extra excel --extra ai
+uv sync --extra web --extra excel --extra ai --extra report   # or: uv sync --extra all
 
 # or with pip
 pip install -r requirements.txt -r fta_web/requirements.txt
@@ -81,7 +81,33 @@ executable needs its `_internal/` sibling. Details in
 3. **Set logic gates**: Choose AND or OR for non-leaf nodes
 4. **Choose mode**: FTA (failure analysis) or ETA (event sequences)  
 5. **View diagram**: Logic gates displayed inside node boxes
-6. **Export**: Save as JSON/Excel/XML or render diagram
+6. **Check**: the **Validation** tab lists mistakes, such as events left at
+   1.0 or single-input gates, each with a one-line fix
+7. **Export**: Save as JSON/Excel/XML or render diagram
+
+### Advanced mode (1.7)
+
+Switch on **Advanced** in the top bar to get:
+
+- failure-rate models (λ with a mission time, standby, repairable)
+- k-out-of-n, XOR, INHIBIT, Priority-AND and transfer gates
+- house and undeveloped events
+- the **Cut Sets**, **Importance**, **Uncertainty**, **Traceability**,
+  **FMEA** and **Report** tabs
+
+Nothing in the file or the results changes when you flip the switch. **Sig.
+figs** in the top bar sets how many significant figures probabilities are
+shown with.
+
+### Command line (1.7)
+
+```bash
+uv run python fta_web/run.py validate my_tree.json         # exit 1 on errors
+uv run python fta_web/run.py cutsets my_tree.json --top 10
+fta_editor.exe validate *.json --json                      # the standalone build
+```
+
+See the [CLI reference](docs/USER_GUIDE.md#command-line-interface).
 
 ### AI Quick Actions (optional)
 - **Analyze FTA**: Reads the current tree and posts analysis/suggestions to chat only (no changes applied).
@@ -99,6 +125,24 @@ The AI assistant can analyze your FTA and suggest improvements.
 Your API key is stored locally at `~/.fta_editor/ai_credentials.json`, never in the repository.
 
 See [README.md](README.md#ai-assistant-setup) for detailed setup instructions.
+
+## What's New in v1.7.0
+
+- ✅ **Analysis tabs**: Quantification, Cut Sets, Importance, Uncertainty,
+  Validation, Traceability, FMEA and Report, in the bottom panel.
+- ✅ **Failure-rate models** with a mission time, and λ in /h, /y or FIT.
+- ✅ **Standard gates and symbols**: k-out-of-n, XOR, INHIBIT, Priority-AND,
+  transfer, house and undeveloped events, a top-down layout and IEC 61025
+  symbols.
+- ✅ **Minimal cut sets, importance measures and Monte Carlo uncertainty.**
+- ✅ **DOCX report** and flat Events/Analysis sheets in Excel.
+- ✅ **FMEA import** (CSV/XLSX) and **traceability fields** with tree search.
+- ✅ **Command-line batch mode** (`validate`, `quantify`, `cutsets`,
+  `importance`, `mc`, `report`).
+- ✅ **Basic/Advanced switch** and a **significant-figures** setting. Small
+  probabilities such as 1e-7 no longer display as `0`.
+- ✅ **Files stay compatible**: the new keys are optional. See
+  [Desktop app compatibility](docs/USER_GUIDE.md#desktop-app-compatibility).
 
 ## What's New in v1.6.0
 

@@ -10,6 +10,30 @@ merged to `main` (PR #11, `6f93d61`; 622 tests passing). All items below are unb
 The review document now carries a condensed copy of this list under "Recommended
 feature upgrades".
 
+**Status 2026-09-28 — release 1.7.0:** the P0 items and most P1/P2 items are
+implemented. They are marked **✅ 1.7.0** below, partly done items are marked
+**◐ 1.7.0** with what is missing, and open items are marked **⬜ open**. The
+user-facing description is in
+[USER_GUIDE.md → Analysis features (1.7)](USER_GUIDE.md#analysis-features-17).
+The implementation did not edit the hash-pinned core: everything lives in
+`fta_web/engine.py` (`WebCore(FTACore)`) and new modules beside it.
+
+**What remains** after 1.7.0:
+
+- common-cause failure groups (1.5)
+- sensitivity sliders and scenario compare (1.7)
+- ETA normalisation, consequences and bow-tie (1.8)
+- component library (2.2)
+- revisions, review comments and diff (2.4)
+- PDF output and a paged diagram in the report (2.5)
+- large-tree navigation (3.2)
+- a grid view of basic events with paste-from-Excel (3.3)
+- editing ergonomics and in-app semantics help (3.6, 3.7)
+- the AI items in section 4
+- the dormant-with-coverage model and a "cycles" unit (1.3)
+- a NOT gate (1.4)
+- a BDD backend for very large trees (1.1)
+
 The proposals are grouped by what an engineer is trying to do, ranked within each
 group, and summarised in a priority table at the end. Each item says what the tool
 does today, what is missing, and roughly what it would take.
@@ -18,7 +42,16 @@ does today, what is missing, and roughly what it would take.
 
 ## 1. Quantification — the numbers engineers actually need
 
-### 1.1 Minimal cut sets  (P0)
+### 1.1 Minimal cut sets  (P0) — ✅ 1.7.0
+
+> **Done:** bottom-up MOCUS over a compiled Boolean graph (`logic.py`,
+> `cutsets.py`). It handles links, transfers, k-out-of-n and house events;
+> repeated events are counted once; truncation by order, count and cutoff is
+> reported. The Cut Sets tab has click-to-highlight in the tree and diagram,
+> the headline uses the MCUB when there are repeated events, and cut sets
+> appear in the DOCX report and the CLI. **Not done:** a BDD backend, and
+> cut sets in the Excel workbook (the Cut Sets tab's Copy CSV and the CLI's
+> `--csv` cover export).
 
 **Today:** the engine computes a single top-event probability by walking the tree
 bottom-up. Nothing tells the user *which combinations of basic events* cause the top
@@ -38,14 +71,25 @@ top-event probability is over-counted. Cut-set quantification (with the rare-eve
 min-cut-upper-bound approximation, user-selectable) handles repeated events correctly
 and is the normal way tools solve this.
 
-### 1.2 Importance measures  (P1)
+### 1.2 Importance measures  (P1) — ✅ 1.7.0
+
+> **Done:** FV, Birnbaum, RAW and RRW on the MCUB (`importance.py`), in the
+> Importance tab with an FV colour overlay on the diagram, in the report and
+> in the CLI.
 
 Fussell–Vesely, Birnbaum, Risk Achievement Worth and Risk Reduction Worth per basic
 event, derived from the cut sets (1.1). Colour the tree/diagram by FV importance so the
 "where should I spend the next design hour" question is answered visually. Export as
 a table.
 
-### 1.3 Failure-rate inputs with mission time, not bare probabilities  (P0)
+### 1.3 Failure-rate inputs with mission time, not bare probabilities  (P0) — ◐ 1.7.0
+
+> **Done:** the fixed, rate (1−e^(−λT)), standby (λτ/2, flagged above
+> λτ = 0.2) and repairable (λ/(λ+μ)) models; a document mission time with an
+> h/d/y display unit; λ entry in /h, /y or FIT (always stored per hour); a
+> per-event *source* field; and a derived `probability` kept in the file for
+> the desktop app. **Not done:** the "dormant with detection/coverage" model
+> and a "cycles" unit.
 
 **Today:** every event carries one number, `probability ∈ [0,1]`, defaulting to 1.0.
 Engineers mostly have a failure *rate* λ (per hour, from OREDA / NPRD / vendor data /
@@ -71,7 +115,13 @@ legacy desktop app, which will keep reading it).
 1e-6/h, derived probabilities routinely fall below 5e-7 and are currently rounded to
 zero at every gate.
 
-### 1.4 Standard gate types  (P0)
+### 1.4 Standard gate types  (P0) — ◐ 1.7.0
+
+> **Done:** k-out-of-n, XOR (non-coherent, flagged), INHIBIT with a
+> conditioning event, Priority-AND (Πp/n!, flagged), same-file transfer,
+> house and undeveloped events. Each has an engine rule, validation, a symbol
+> and an Excel column. **Not done:** NOT/complement, and transfers across
+> files.
 
 **Today:** AND and OR only. NOT is rejected (correctly — see DIVERGENCE D5). A link's
 AND/OR relation is a *post-gate* stage, which surprises people who expect a link to be
@@ -94,27 +144,34 @@ another gate input.
 Each of these needs an engine rule, a validation rule, a symbol (see 3.1) and an
 export mapping; k-of-n and house events give the most value for the least work.
 
-### 1.5 Common-cause failures  (P1)
+### 1.5 Common-cause failures  (P1) — ⬜ open
 
 Group basic events into a CCF group with a β-factor (or MGL/α-factor) model; the engine
 adds the implied common-cause event to every cut set that contains members of the
 group. Without this, redundant trains look far more reliable than they are, which is
 the classic FTA mistake the standards warn about.
 
-### 1.6 Uncertainty propagation  (P2)
+### 1.6 Uncertainty propagation  (P2) — ✅ 1.7.0
+
+> **Done:** a lognormal with an error factor on each model's main parameter,
+> and a seeded, time-capped Monte Carlo (`uncertainty.py`) that reports the
+> mean, median, 5th/95th percentiles and a histogram in the Uncertainty tab.
+> The histogram is in that tab, not beside the top-event number.
 
 Per basic event: a distribution (lognormal with error factor is the convention) instead
 of a point value. Monte Carlo through the cut sets gives mean / median / 5–95 % bounds
 on the top event. Display as a small histogram beside the top-event number.
 
-### 1.7 Sensitivity and what-if  (P1)
+### 1.7 Sensitivity and what-if  (P1) — ⬜ open
 
 - A slider or ±factor on any basic event with the top event updating live.
 - "Scenario compare": open two saved files (or two revisions, see 2.4) side by side
   with a diff of structure and numbers, and a table of which basic events moved the
   result.
 
-### 1.8 ETA improvements  (P1)
+### 1.8 ETA improvements  (P1) — ⬜ open
+
+> 1.7.0 only adds the `ETA_BRANCH_SUM` validation warning.
 
 **Today:** ETA multiplies each branch's own probability by its ancestors', with no
 normalisation and no notion of success/failure branches or consequences.
@@ -131,34 +188,50 @@ process-safety and machinery-safety analyses are actually presented.
 
 ## 2. Data, workflow and reporting
 
-### 2.1 FMEA / FMECA import and linking  (P1)
+### 2.1 FMEA / FMECA import and linking  (P1) — ✅ 1.7.0
+
+> **Done:** CSV/XLSX import with a suggested column mapping, λ unit
+> conversion, and an editable occurrence-rank → probability table (AIAG
+> default, saved in the document). Re-import updates in place by `fmea.id`,
+> and the whole import is one undo step.
 
 Most fault trees start from an FMEA worksheet. Import a CSV/XLSX of failure modes
 (item, mode, cause, λ or occurrence, detection, RPN) as candidate basic events;
 keep the FMEA row ID on the node so the two analyses stay traceable; re-import updates
 numbers in place instead of creating duplicates.
 
-### 2.2 Component library / templates with cited data  (P2)
+### 2.2 Component library / templates with cited data  (P2) — ⬜ open
 
 Reusable sub-trees (pump train, PLC I/O channel, relief valve, sensor with 2oo3
 voting) that drop in with default rates and a source citation, editable per project.
 A per-project library file that ships alongside the analysis JSON keeps the data
 provenance inside the repository the engineer actually controls.
 
-### 2.3 Traceability fields on every node  (P1)
+### 2.3 Traceability fields on every node  (P1) — ✅ 1.7.0
+
+> **Done:** requirement ID, test reference, owner, status, evidence and
+> tags, edited in the Traceability tab. Tree search takes the `tag:`,
+> `owner:`, `status:`, `req:` and `fmea:` prefixes. The fields are in the
+> report and the Excel Events sheet.
 
 Requirement ID, test/inspection reference, owner, status (draft / reviewed /
 approved), evidence link, and free tags. Filter and search by any of them in the tree
 panel. This is what turns a diagram into a deliverable that survives an audit.
 
-### 2.4 Revisions and reviews  (P2)
+### 2.4 Revisions and reviews  (P2) — ⬜ open
 
 Revision number and history in the file's metadata; per-node review comments with
 author and date; a diff view between two files (structure, numbers, gates) that can be
 exported with the report. The existing 50-step undo is not a substitute for knowing
 what changed between issue A and issue B of a safety case.
 
-### 2.5 Report export  (P1)
+### 2.5 Report export  (P1) — ◐ 1.7.0
+
+> **Done:** a DOCX report (metadata, headline, assumptions, diagram, event
+> table, cut sets, importance, uncertainty, validation, traceability), and
+> flat Events and Analysis sheets in the Excel export. **Not done:** PDF,
+> diagram paging for large trees, revision history (needs 2.4), and the
+> data source column in the report's event table (it is in the Excel sheet).
 
 One-click PDF/DOCX containing: diagram (paged for large trees), assumptions and
 mission time, basic-event table with rates and sources, top-event result, cut sets
@@ -167,7 +240,11 @@ a hierarchical sheet meant for reading; add a flat "event table" sheet (one row 
 event: ID, name, gate, λ, T, q, calculated, source, tags) that engineers can pivot and
 re-import.
 
-### 2.6 Headless / batch use  (P2)
+### 2.6 Headless / batch use  (P2) — ✅ 1.7.0
+
+> **Done:** `fta_editor <quantify|cutsets|importance|mc|validate|report>
+> FILES [--json|--csv] [--out] [--sig-figs]`, with exit codes 0/1/2/3. It
+> works from the frozen exe too.
 
 The web app already has a JSON API. Add a small CLI (`fta quantify tree.json`) that
 prints or writes the top event, cut sets and importance for a file, so re-quantifying
@@ -177,7 +254,12 @@ fifty trees after a data update is a script, not fifty sessions.
 
 ## 3. Diagram and UI
 
-### 3.1 Standard FTA symbols  (P0)
+### 3.1 Standard FTA symbols  (P0) — ✅ 1.7.0
+
+> **Done:** the *Standard symbols* diagram style (IEC 61025 / NUREG-0492
+> paths in the browser, Graphviz approximations in native renders) and a
+> top-down layout option. The compact style is kept. **Not done:** a symbol
+> legend.
 
 **Today:** every node is a two-row table box; the gate is a text line inside it. That
 is readable but it is not what an engineer, reviewer or regulator expects to see.
@@ -190,26 +272,40 @@ table style as the "compact" alternative. Graphviz can draw all of these; the wo
 in `json_viewer.build_dot` and the symbol glyphs (SVG images are simplest and
 theme-able).
 
-### 3.2 Working with large trees  (P1)
+### 3.2 Working with large trees  (P1) — ⬜ open
+
+> 1.7.0 adds highlight-in-diagram from the cut-set and FMEA tabs, and
+> jump-to-node from Validation and Traceability. The rest is open.
 
 Collapse/expand a subtree in the diagram (not only in the tree panel); a focus mode
 that shows the selected node with its ancestors and descendants; a minimap; search
 that highlights matches in the diagram; and page-break hints for printing. Trees with
 a few hundred events are normal in this field.
 
-### 3.3 Table (grid) view of basic events  (P1)
+### 3.3 Table (grid) view of basic events  (P1) — ⬜ open
+
+> 1.7.0 has a read-only basic-event table in the Quantification tab and an
+> editable traceability grid, but no editable λ/q grid and no paste-from-Excel.
 
 A spreadsheet-like grid beside the tree — one row per basic event, editable cells for
 name, λ/T/q, source, tags, with sort/filter and paste-from-Excel. Engineers enter and
 check data in tables; the tree is for structure.
 
-### 3.4 Number formatting and units  (P0)
+### 3.4 Number formatting and units  (P0) — ✅ 1.7.0
+
+> **Done:** a significant-figures selector (1–6, default 3, a per-browser
+> preference) used by the details, tree, diagram, tabs, report, Excel and
+> CLI. This fixed the details panel showing 1e-7 as `0`.
 
 Scientific notation with a user-chosen number of significant figures everywhere the UI
 shows a probability (today: 6 fixed decimals in the engine, `%.1E` in the diagram,
 raw floats in the details panel). Tied to review item B-2.
 
-### 3.5 Validation ("lint") panel  (P1)
+### 3.5 Validation ("lint") panel  (P1) — ✅ 1.7.0
+
+> **Done:** 21 rules with fixed severities (`lint.py`). The Validation tab is
+> visible in basic mode, has click-to-jump, and shows load repairs and
+> removed links as session notices.
 
 Continuously listed warnings: gate with a single input; basic event still at the
 default 1.0; unquantified/undeveloped events; dangling or cyclic links; duplicate IDs;
@@ -217,14 +313,18 @@ a node whose own probability is ignored because it has children (today this is s
 and the value is still printed on the diagram); ETA branches not summing to 1. Click a
 warning to jump to the node.
 
-### 3.6 Editing ergonomics  (P2)
+### 3.6 Editing ergonomics  (P2) — ⬜ open
 
 Tab / Shift-Tab to add a sibling / child (as in mind-map tools), Enter to rename,
 duplicate-subtree, copy/paste between files, and inline editing of probability
 directly in the diagram. Finish the Japanese localisation of the details panel and
 dialogs (review item F-6) so the whole editing surface switches language together.
 
-### 3.7 Help where the semantics are non-obvious  (P2)
+### 3.7 Help where the semantics are non-obvious  (P2) — ◐ 1.7.0
+
+> The Quantification tab shows the formula of the selected model, and every
+> validation issue carries a one-line fix. In-app help for the gate/link
+> semantics is still open (the User Guide now documents them).
 
 An in-app explanation, next to the gate selector and the links editor, of exactly how
 the engine combines children, AND-links and OR-links (they are applied in a fixed
@@ -234,7 +334,10 @@ children, and how ETA propagates. Today this is documented only in code comments
 
 ---
 
-## 4. AI assistant
+## 4. AI assistant — ⬜ open
+
+> 1.7.0 only makes the AI "Update FTA" keep the 1.7 node keys, restoring
+> them by node id. The items below are open.
 
 - **Grounded proposals:** when the assistant proposes basic events, ask it for a
   failure-rate range and a source class (handbook / vendor / field data / engineering
@@ -255,28 +358,30 @@ it can currently apply a proposal the user never saw.
 
 ## 5. Priority summary
 
-| Priority | Item | Value | Effort |
-|---|---|---|---|
-| **P0** | 3.4 Number formatting / significant figures (with review B-2 rounding fix) | correctness | S |
-| **P0** | 1.3 Failure-rate inputs with mission time | correctness, adoption | M |
-| **P0** | 1.1 Minimal cut sets | core FTA output; fixes repeated-event over-count | M |
-| **P0** | 1.4 Gate types: k-of-n, house, undeveloped, transfer (XOR/INHIBIT/PAND next) | modelling power | M–L |
-| **P0** | 3.1 Standard FTA symbols + top-down layout | credibility with reviewers | M |
-| P1 | 1.2 Importance measures | design decisions | S (after 1.1) |
-| P1 | 1.5 Common-cause failure groups | correctness for redundancy | M |
-| P1 | 1.7 Sensitivity / scenario compare | design decisions | M |
-| P1 | 1.8 ETA normalisation, consequences, bow-tie | process/machinery safety | M–L |
-| P1 | 2.1 FMEA import/link | workflow | M |
-| P1 | 2.3 Traceability fields | audits | S |
-| P1 | 2.5 Report export + flat event table | deliverables | M |
-| P1 | 3.2 Large-tree navigation | usability | M |
-| P1 | 3.3 Grid view of basic events | data entry | M |
-| P1 | 3.5 Lint panel | error prevention | S–M |
-| P2 | 1.6 Uncertainty (Monte Carlo) | rigour | M |
-| P2 | 2.2 Component library | speed | M |
-| P2 | 2.4 Revisions / review comments / diff | governance | M |
-| P2 | 2.6 CLI / batch | automation | S |
-| P2 | 3.6 Editing ergonomics, 3.7 in-app semantics help, JA completion | polish | S–M |
+| Priority | Item | Value | Effort | 1.7.0 |
+|---|---|---|---|---|
+| **P0** | 3.4 Number formatting / significant figures (with review B-2 rounding fix) | correctness | S | ✅ |
+| **P0** | 1.3 Failure-rate inputs with mission time | correctness, adoption | M | ◐ |
+| **P0** | 1.1 Minimal cut sets | core FTA output; fixes repeated-event over-count | M | ✅ |
+| **P0** | 1.4 Gate types: k-of-n, house, undeveloped, transfer (XOR/INHIBIT/PAND next) | modelling power | M–L | ◐ |
+| **P0** | 3.1 Standard FTA symbols + top-down layout | credibility with reviewers | M | ✅ |
+| P1 | 1.2 Importance measures | design decisions | S (after 1.1) | ✅ |
+| P1 | 1.5 Common-cause failure groups | correctness for redundancy | M | ⬜ |
+| P1 | 1.7 Sensitivity / scenario compare | design decisions | M | ⬜ |
+| P1 | 1.8 ETA normalisation, consequences, bow-tie | process/machinery safety | M–L | ⬜ |
+| P1 | 2.1 FMEA import/link | workflow | M | ✅ |
+| P1 | 2.3 Traceability fields | audits | S | ✅ |
+| P1 | 2.5 Report export + flat event table | deliverables | M | ◐ |
+| P1 | 3.2 Large-tree navigation | usability | M | ⬜ |
+| P1 | 3.3 Grid view of basic events | data entry | M | ⬜ |
+| P1 | 3.5 Lint panel | error prevention | S–M | ✅ |
+| P2 | 1.6 Uncertainty (Monte Carlo) | rigour | M | ✅ |
+| P2 | 2.2 Component library | speed | M | ⬜ |
+| P2 | 2.4 Revisions / review comments / diff | governance | M | ⬜ |
+| P2 | 2.6 CLI / batch | automation | S | ✅ |
+| P2 | 3.6 Editing ergonomics, 3.7 in-app semantics help, JA completion | polish | S–M | ◐ (3.7 partly) |
+
+✅ implemented in 1.7.0 · ◐ partly · ⬜ open
 
 Effort: S ≈ days, M ≈ 1–3 weeks, L ≈ more, for one developer familiar with the code.
 
