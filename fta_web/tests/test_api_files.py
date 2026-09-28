@@ -264,6 +264,48 @@ def test_list_hides_unopenable_files_and_dotfiles(client, sandbox):
     assert payload["dirs"] == []
 
 
+def _names(payload):
+    return sorted(f["name"] for f in payload["files"])
+
+
+def _populate_mixed(sandbox):
+    write_document(sandbox)
+    (sandbox / "fmea.csv").write_text("a,b", encoding="utf-8")
+    (sandbox / "fmea.xlsx").write_bytes(b"x")
+    (sandbox / "notes.txt").write_text("x", encoding="utf-8")
+
+
+def test_list_ext_param_lists_the_requested_types(client, sandbox):
+    _populate_mixed(sandbox)
+    payload = body(client.get("/api/fs/list", query_string={"ext": ".csv,.xlsx"}))
+    assert _names(payload) == ["fmea.csv", "fmea.xlsx"]
+
+
+def test_list_ext_param_accepts_bare_and_uppercase_names(client, sandbox):
+    _populate_mixed(sandbox)
+    payload = body(client.get("/api/fs/list", query_string={"ext": "CSV, json"}))
+    assert _names(payload) == ["analysis.json", "fmea.csv"]
+
+
+def test_list_without_ext_still_defaults_to_json(client, sandbox):
+    _populate_mixed(sandbox)
+    assert _names(body(client.get("/api/fs/list"))) == ["analysis.json"]
+    assert _names(body(client.get("/api/fs/list", query_string={"ext": " "}))) == [
+        "analysis.json"
+    ]
+
+
+@pytest.mark.parametrize("ext", [".txt", ".csv,.exe", "py", ".json,../x"])
+def test_list_ext_param_rejects_unlisted_extensions(client, sandbox, ext):
+    _populate_mixed(sandbox)
+    response = client.get("/api/fs/list", query_string={"ext": ext})
+    assert response.status_code == 400
+    payload = body(response)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "INVALID_FIELD"
+    assert payload["error"]["detail"]["field"] == "ext"
+
+
 def test_list_of_a_missing_directory_is_rejected(client, sandbox):
     response = client.get(
         "/api/fs/list", query_string={"path": str(sandbox / "nope")}

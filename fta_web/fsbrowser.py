@@ -314,8 +314,41 @@ def resolve_for_write(raw: Any, root: Path,
     return resolved
 
 
-def list_directory(raw: Any, root: Path) -> Dict[str, Any]:
+def parse_list_extensions(raw: Any) -> Optional[set]:
+    """The ``ext`` query parameter of ``/api/fs/list`` as a set, or None.
+
+    ``raw`` is a comma-separated list such as ``".csv,.xlsx"`` (the leading
+    dot is optional, case is ignored). None or blank means "the default"
+    (``ALLOWED_OPEN_EXTENSIONS``). Anything outside ``LISTABLE_EXTENSIONS``
+    raises ``ValueError`` naming it -- the parameter narrows or widens the
+    listing within a fixed allow-list, it cannot make the picker enumerate
+    arbitrary file types.
+    """
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    allowed = {ext.lower() for ext in config.LISTABLE_EXTENSIONS}
+    out = set()
+    for part in str(raw).split(","):
+        ext = part.strip().lower()
+        if not ext:
+            continue
+        if not ext.startswith("."):
+            ext = "." + ext
+        if ext not in allowed:
+            raise ValueError(
+                "Extension '%s' cannot be listed; expected any of %s."
+                % (part.strip(), ", ".join(sorted(allowed)))
+            )
+        out.add(ext)
+    return out or None
+
+
+def list_directory(raw: Any, root: Path,
+                   extensions: Optional[set] = None) -> Dict[str, Any]:
     """One directory's contents, as the file picker wants them.
+
+    ``extensions`` (from :func:`parse_list_extensions`) replaces the default
+    ``ALLOWED_OPEN_EXTENSIONS`` filter when given.
 
     ``raw`` may be None or empty, meaning the root itself. Returns
     ``{path, parent, dirs, files, truncated}`` with absolute paths; ``parent``
@@ -349,7 +382,7 @@ def list_directory(raw: Any, root: Path) -> Dict[str, Any]:
     dirs: List[Dict[str, Any]] = []
     files: List[Dict[str, Any]] = []
     truncated = False
-    openable = {ext.lower() for ext in config.ALLOWED_OPEN_EXTENSIONS}
+    openable = {ext.lower() for ext in (extensions or config.ALLOWED_OPEN_EXTENSIONS)}
 
     try:
         with os.scandir(target) as entries:

@@ -39,7 +39,7 @@
  *
  * BACKEND SHAPES (fta_web/routes/files.py)
  *   GET /api/fs/home            -> {root, cwd}
- *   GET /api/fs/list?path=<abs> -> {path, parent, dirs:[{name,path}],
+ *   GET /api/fs/list?path=<abs>[&ext=.csv,.xlsx] -> {path, parent, dirs:[{name,path}],
  *                                   files:[{name,path,size,modified}]}
  *                                  `parent` is null at the sandbox root.
  * (api.js strips the `ok` flag, so those are the fields as seen here.)
@@ -214,6 +214,17 @@ function normaliseExtensions(raw) {
     out.push(ext.charAt(0) === '.' ? ext : '.' + ext);
   }
   return out;
+}
+
+/**
+ * The server lists only LISTABLE (config.LISTABLE_EXTENSIONS) types on request;
+ * anything else would be a 400, so it is left to the default (.json) listing.
+ */
+const LISTABLE = ['.json', '.csv', '.xlsx'];
+
+function listQuery(extensions) {
+  const wanted = extensions.filter((ext) => LISTABLE.includes(ext));
+  return wanted.length ? '&ext=' + encodeURIComponent(wanted.join(',')) : '';
 }
 
 function matchesExtension(name, extensions) {
@@ -519,7 +530,9 @@ export function openFileDialog(options) {
     setBusy(true);
     if (!quiet) setMessage(t('file.loading'), 'busy');
     try {
-      const res = await api.get('/fs/list?path=' + encodeURIComponent(target));
+      const res = await api.get(
+        '/fs/list?path=' + encodeURIComponent(target) + listQuery(extensions)
+      );
       if (mine !== generation || closed) return false;
       cwd = typeof res.path === 'string' && res.path ? res.path : String(target);
       parent = typeof res.parent === 'string' && res.parent ? res.parent : null;

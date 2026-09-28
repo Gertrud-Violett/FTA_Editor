@@ -302,9 +302,21 @@ def fs_home():
 
 @files_bp.get("/fs/list")
 def fs_list():
-    """One directory's contents. ``?path=`` defaults to the sandbox root."""
+    """One directory's contents. ``?path=`` defaults to the sandbox root.
+
+    ``?ext=.csv,.xlsx`` lists those file types instead of the default
+    ``.json``; only ``config.LISTABLE_EXTENSIONS`` are accepted (400
+    ``INVALID_FIELD`` otherwise).
+    """
     root = _fs_root()
-    return ok_response(**fsbrowser.list_directory(request.args.get("path"), root))
+    raw_ext = request.args.get("ext")
+    try:
+        extensions = fsbrowser.parse_list_extensions(raw_ext)
+    except ValueError as exc:
+        raise ApiError(INVALID_FIELD, str(exc), 400, {"field": "ext", "value": raw_ext})
+    return ok_response(
+        **fsbrowser.list_directory(request.args.get("path"), root, extensions)
+    )
 
 
 # ---- open / save ---------------------------------------------------------

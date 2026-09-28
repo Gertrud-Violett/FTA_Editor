@@ -61,6 +61,10 @@ RENDER_DEBOUNCE_MS = 150
 DEFAULT_FS_ROOT = Path.home()
 ALLOWED_WRITE_EXTENSIONS = {".json", ".xml", ".xlsx", ".png", ".svg"}
 ALLOWED_OPEN_EXTENSIONS = {".json"}
+# Extensions the file picker may *list* on request (``/api/fs/list?ext=``):
+# the document format plus the FMEA import sheets. Listing only -- what may
+# be opened is still decided by the endpoint that reads the file.
+LISTABLE_EXTENSIONS = {".json", ".csv", ".xlsx"}
 
 # ---- i18n ----------------------------------------------------------------
 DEFAULT_LANGUAGE = "en"
