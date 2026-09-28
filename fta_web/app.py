@@ -299,6 +299,10 @@ _BLUEPRINTS = (
     ("routes.render", "render_bp", "the rendering API"),
     ("routes.files", "files_bp", "the file and export API"),
     ("routes.ai", "ai_bp", "the AI assistant API"),
+    ("routes.analysis", "analysis_bp", "the analysis API"),
+    ("routes.validate", "validate_bp", "the validation API"),
+    ("routes.report", "report_bp", "the report API"),
+    ("routes.fmea", "fmea_bp", "the FMEA import API"),
 )
 
 

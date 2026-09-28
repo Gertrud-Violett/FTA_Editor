@@ -40,6 +40,9 @@ openai>=1.0.0
 anthropic>=0.7.0
 google-generativeai>=0.3.0
 
+# DOCX analysis report of the web app (fta_web 1.7) -- listed in
+# fta_web/requirements.txt, since the desktop app does not use it.
+
 # Testing (optional)
 pytest>=7.0.0
 

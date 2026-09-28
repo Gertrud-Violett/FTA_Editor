@@ -126,6 +126,10 @@ hiddenimports = [
     "routes.render",
     "routes.files",
     "routes.ai",
+    "routes.analysis",
+    "routes.validate",
+    "routes.report",
+    "routes.fmea",
     # -- fta_web's own modules. Most are reachable statically through run.py,
     #    but every cross-module import in this package is written as
     #    ``try: from ..x import y / except ImportError: from x import y``, and
@@ -141,6 +145,22 @@ hiddenimports = [
     "fsbrowser",
     "ai_bridge",
     "app",
+    # 1.7 analysis modules (engine is reached through state, the rest through
+    # the blueprints and cli; all named so no try/except import is left to a
+    # static scan's guess).
+    "engine",
+    "node_schema",
+    "numfmt",
+    "logic",
+    "cutsets",
+    "importance",
+    "uncertainty",
+    "lint",
+    "diagram_dot",
+    "report_docx",
+    "excel_events",
+    "fmea_import",
+    "cli",
 ]
 
 # ---------------------------------------------------------------------------
@@ -173,7 +193,8 @@ OPTIONAL_IMPORTS = (
     "openai",              # OpenAI + Azure OpenAI providers
     "anthropic",           # Anthropic provider
     "google.genai",        # Gemini provider (divergence D11: was google.generativeai)
-    "openpyxl",            # .xlsx export
+    "openpyxl",            # .xlsx export and FMEA .xlsx import
+    "docx",                # python-docx: the DOCX report (1.7)
 )
 
 
@@ -239,6 +260,20 @@ if "google.genai" in _present:
         extra_binaries.extend(_binaries)
         hiddenimports.extend(_hidden)
     print("fta_editor.spec: collected the google.* namespace packages for Gemini")
+
+# python-docx opens every new document from its bundled default template
+# (docx/templates/default.docx and friends). Those are package *data*, which a
+# hiddenimports entry does not bring along, so without this the report fails
+# at runtime with a missing-file error rather than at build time.
+if "docx" in _present:
+    from PyInstaller.utils.hooks import collect_data_files  # noqa: F821
+
+    try:
+        extra_datas.extend(collect_data_files("docx"))
+        print("fta_editor.spec: collected python-docx templates")
+    except Exception as exc:  # a partial install: better loud than silent
+        print("fta_editor.spec: WARNING: could not collect python-docx data "
+              "(%s); the DOCX report will fail in this build." % exc)
 
 print("fta_editor.spec: optional packages bundled: %s"
       % (", ".join(_present) or "(none)"))

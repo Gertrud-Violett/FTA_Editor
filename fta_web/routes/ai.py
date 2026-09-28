@@ -83,6 +83,7 @@ try:  # normal package import: ``import fta_web.routes.ai``
         api_error_response,
         ok_response,
     )
+    from ..node_schema import merge_back_node_keys
     from ..state import get_state
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import ai_bridge  # type: ignore[no-redef]
@@ -94,6 +95,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         api_error_response,
         ok_response,
     )
+    from node_schema import merge_back_node_keys  # type: ignore[no-redef]
     from state import get_state  # type: ignore[no-redef]
 
 log = logging.getLogger(__name__)
@@ -237,6 +239,8 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
+        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "sessionWarnings": copy.deepcopy(state.session_warnings),
     }
 
 
@@ -619,8 +623,13 @@ def post_update():
         # is: the validator accepts anything float() accepts, so a model that
         # writes "probability": "0.5" would otherwise leave a string in the
         # tree and node_label's numeric formatting would 500 on /api/dot.
-        state.core.set_data(state.core._normalize_node(copy.deepcopy(updated)))
+        new_tree = state.core._normalize_node(copy.deepcopy(updated))
+        # The model is shown (and returns) only the fields the AI validator
+        # knows, so a rewrite would silently drop every 1.7 key. Restore them
+        # by node id from the tree being replaced, and say how many.
+        merged = merge_back_node_keys(state.core.get_data(), new_tree)
+        state.core.set_data(new_tree)
         state.core.recalculate_probabilities()
         state.mark_dirty()
 
-        return ok_response(reply=reply, **_mutation_payload(state))
+        return ok_response(reply=reply, mergedFields=merged, **_mutation_payload(state))

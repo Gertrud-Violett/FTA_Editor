@@ -31,7 +31,7 @@ import shutil
 import threading
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Dict, Optional
+from typing import Any, Deque, Dict, List, Optional
 
 try:  # normal package import: ``import fta_web.state``
     from . import config
@@ -41,7 +41,12 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
 # Importing config placed fta_web/core on sys.path, so the vendored modules
 # import under their bare names. See config.py for why that is mandatory.
 from AI_agent_handler import AICredentialManager  # noqa: E402
-from FTA_Editor_core import FTACore  # noqa: E402
+from FTA_Editor_core import FTACore  # noqa: E402,F401  (kept for importers)
+
+try:  # normal package import
+    from .engine import WebCore  # noqa: E402
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    from engine import WebCore  # type: ignore[no-redef]  # noqa: E402
 
 
 # ``shutil.which`` hits the filesystem for every entry in PATH. The answer
@@ -152,6 +157,23 @@ def _probe_excel_export() -> bool:
     return bool(_excel_export_cache)
 
 
+_DOCX_UNPROBED = object()
+_docx_cache: Any = _DOCX_UNPROBED
+
+
+def _probe_report_export() -> bool:
+    """Whether ``python-docx`` (import name ``docx``) is importable, so the
+    DOCX report can be offered. ``find_spec``, probed once, for the same
+    reasons as :func:`_probe_excel_export`."""
+    global _docx_cache
+    if _docx_cache is _DOCX_UNPROBED:
+        try:
+            _docx_cache = importlib.util.find_spec("docx") is not None
+        except (ImportError, ValueError):
+            _docx_cache = False
+    return bool(_docx_cache)
+
+
 def _ai_configured() -> bool:
     """Whether AI credentials are on disk.
 
@@ -170,11 +192,16 @@ class AppState:
 
     def __init__(self) -> None:
         self.lock = threading.RLock()
-        self.core = FTACore()
+        self.core = WebCore()
         self.current_path: Optional[Path] = None
         self.dirty: bool = False
         self.native_dot: Optional[str] = _probe_native_dot()
         self.excel_export: bool = _probe_excel_export()
+        self.report_export: bool = _probe_report_export()
+        # Load repairs and removed links, for the Validation tab. Session
+        # facts, not document state: deliberately NOT part of undo/redo, and
+        # cleared by reset() (new/open/import).
+        self.session_warnings: List[Dict[str, Any]] = []
         self.language: str = config.DEFAULT_LANGUAGE
         self.fs_root: Path = Path(config.DEFAULT_FS_ROOT)
         self._undo: Deque[Dict[str, Any]] = deque(maxlen=config.UNDO_DEPTH)
@@ -193,6 +220,7 @@ class AppState:
                 "title": self.core.title,
                 "date": self.core.date,
                 "mode": self.core.mode,
+                "analysis": copy.deepcopy(getattr(self.core, "analysis", None)),
             }
 
     def restore(self, snap: Dict[str, Any]) -> None:
@@ -210,6 +238,8 @@ class AppState:
             self.core.title = snap.get("title", self.core.title)
             self.core.date = snap.get("date", self.core.date)
             self.core.mode = snap.get("mode", self.core.mode)
+            if snap.get("analysis") is not None:
+                self.core.analysis = copy.deepcopy(snap["analysis"])
 
     def push_undo(self, snap: Optional[Dict[str, Any]] = None) -> None:
         """Record the pre-mutation state. Call this *before* mutating.
@@ -261,12 +291,22 @@ class AppState:
     def reset(self) -> None:
         """Start a new, empty document. Clears history, path and dirty flag."""
         with self.lock:
-            self.core = FTACore()
+            self.core = WebCore()
+            self.session_warnings = []
             self._undo.clear()
             self._redo.clear()
             self.current_path = None
             self.dirty = False
             self.core.recalculate_probabilities()
+
+    # ---- session warnings -------------------------------------------------
+
+    def add_session_warnings(self, issues: List[Dict[str, Any]]) -> None:
+        """Append issue-shaped warnings (see :func:`load_warning_issues`)."""
+        with self.lock:
+            self.session_warnings.extend(copy.deepcopy(issues))
+            # Bounded: a long session of deletes must not grow without limit.
+            del self.session_warnings[:-500]
 
     # ---- serialization ---------------------------------------------------
 
@@ -315,12 +355,49 @@ class AppState:
                     # not (see _probe_provider_sdks), so the two are reported
                     # separately rather than collapsed into one flag.
                     "aiProviders": ai_providers,
+                    "reportExport": bool(self.report_export),
+                    "fmeaXlsx": bool(self.excel_export),
                 },
                 "canUndo": self.can_undo,
                 "canRedo": self.can_redo,
                 "language": self.language,
                 "zeroNodes": self.core.get_zero_probability_nodes(),
+                "analysis": copy.deepcopy(getattr(self.core, "analysis", None)),
+                "sessionWarnings": copy.deepcopy(self.session_warnings),
             }
+
+
+# ---- issue shapes ----------------------------------------------------------
+
+
+def load_warning_issues(load_warnings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``core.last_load_warnings`` as Validation-tab issues (``LOAD_REPAIR``)."""
+    issues = []
+    for warning in load_warnings or []:
+        issues.append({
+            "severity": "warning",
+            "code": "LOAD_REPAIR",
+            "nodeId": warning.get("new_id"),
+            "message": warning.get("message", ""),
+            "params": copy.deepcopy(warning),
+        })
+    return issues
+
+
+def removed_link_issues(removed_links: List[Dict[str, Any]],
+                        deleted_id: str) -> List[Dict[str, Any]]:
+    """Links stripped by a delete as Validation-tab issues (``LINKS_REMOVED``)."""
+    return [
+        {
+            "severity": "warning",
+            "code": "LINKS_REMOVED",
+            "nodeId": link.get("nodeId"),
+            "message": "Link from %r to deleted node %r was removed."
+            % (link.get("nodeId"), link.get("targetId")),
+            "params": dict(link, deletedId=str(deleted_id)),
+        }
+        for link in removed_links or []
+    ]
 
 
 # ---- process singleton ---------------------------------------------------

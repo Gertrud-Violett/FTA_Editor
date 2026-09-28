@@ -62,6 +62,8 @@ try:  # normal package import: ``import fta_web.routes.render``
         render_native,
         sanitize_font_name,
     )
+    from ..diagram_dot import RANKDIRS, STYLES, build_dot_text2
+    from ..numfmt import clamp_sig_figs
     from ..state import get_state
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from errors import (  # type: ignore[no-redef]
@@ -81,6 +83,8 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         render_native,
         sanitize_font_name,
     )
+    from diagram_dot import RANKDIRS, STYLES, build_dot_text2  # type: ignore[no-redef]
+    from numfmt import clamp_sig_figs  # type: ignore[no-redef]
     from state import get_state  # type: ignore[no-redef]
 
 render_bp = Blueprint("render", __name__, url_prefix="/api")
@@ -159,8 +163,35 @@ def _validate_format(value: Any) -> str:
     return fmt
 
 
-def _dot_source(hide_zero: bool, font_name: str, scale: int, dark: bool) -> str:
-    """The current document as DOT, read under the state lock.
+def _validate_choice(value: Any, field: str, choices, default: str,
+                     upper: bool = False) -> str:
+    """One of ``choices`` (case-insensitive); absent means ``default``."""
+    if value is None or value == "":
+        return default
+    if isinstance(value, str):
+        text = value.strip().upper() if upper else value.strip().lower()
+        if text in choices:
+            return text
+    raise ApiError(
+        INVALID_FIELD,
+        "'%s' must be one of %s." % (field, ", ".join(choices)),
+        400,
+        {"field": field, "value": value},
+    )
+
+
+def _diagram_options(source) -> Dict[str, Any]:
+    """``style``/``rankdir``/``sigFigs`` from query args or a JSON body."""
+    return {
+        "style": _validate_choice(source.get("style"), "style", STYLES, "compact"),
+        "rankdir": _validate_choice(source.get("rankdir"), "rankdir", RANKDIRS, "LR", upper=True),
+        "sig_figs": clamp_sig_figs(source.get("sigFigs")),
+    }
+
+
+def _dot_source(hide_zero: bool, font_name: str, scale: int, dark: bool,
+                style: str = "compact", rankdir: str = "LR", sig_figs: int = 3):
+    """The current document as ``(dot, id_map)``, read under the state lock.
 
     The lock is held for the whole walk, not just for a ``get_data()`` call:
     ``gather_nodes`` traverses the live tree, so a concurrent mutation
@@ -168,8 +199,9 @@ def _dot_source(hide_zero: bool, font_name: str, scale: int, dark: bool) -> str:
     """
     state = get_state()
     with state.lock:
-        return build_dot_text(
-            state.core, hide_zero=hide_zero, font_name=font_name, scale=scale, dark=dark
+        return build_dot_text2(
+            state.core, hide_zero=hide_zero, font_name=font_name, scale=scale,
+            dark=dark, style=style, rankdir=rankdir, sig_figs=sig_figs,
         )
 
 
@@ -196,10 +228,13 @@ def get_dot():
     font_name = sanitize_font_name(request.args.get("font"))
     scale = clamp_scale(request.args.get("scale"))
     dark = _as_bool(request.args.get("dark"), "dark")
-    dot_text = _dot_source(hide_zero, font_name, scale, dark)
+    options = _diagram_options(request.args)
+    dot_text, id_map = _dot_source(hide_zero, font_name, scale, dark, **options)
     renderer, _path = describe_renderer()
     return ok_response(
-        dot=dot_text, renderer=renderer, hideZero=hide_zero, font=font_name, scale=scale, dark=dark
+        dot=dot_text, renderer=renderer, hideZero=hide_zero, font=font_name, scale=scale, dark=dark,
+        style=options["style"], rankdir=options["rankdir"], sigFigs=options["sig_figs"],
+        idMap=id_map,
     )
 
 
@@ -208,7 +243,8 @@ def post_render():
     """Render the current document natively and return the image bytes.
 
     Body: ``{"format": "svg"|"png", "hideZero": bool, "highQuality": bool,
-    "font": str, "scale": number, "dark": bool}``. All are optional;
+    "font": str, "scale": number, "dark": bool, "style": "compact"|"symbols",
+    "rankdir": "LR"|"TB", "sigFigs": 1..6}``. All are optional;
     ``font``/``scale``/``dark`` default the same way ``GET /api/dot`` does, so
     a native export matches what the client was just previewing.
     """
@@ -219,8 +255,9 @@ def post_render():
     font_name = sanitize_font_name(payload.get("font"))
     scale = clamp_scale(payload.get("scale"))
     dark = _as_bool(payload.get("dark"), "dark")
+    options = _diagram_options(payload)
 
-    dot_text = _dot_source(hide_zero, font_name, scale, dark)
+    dot_text, _id_map = _dot_source(hide_zero, font_name, scale, dark, **options)
 
     try:
         image = render_native(dot_text, fmt, high_quality=high_quality)

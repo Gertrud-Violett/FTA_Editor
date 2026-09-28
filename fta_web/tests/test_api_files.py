@@ -488,7 +488,8 @@ def test_save_as_then_save_round_trips(client, sandbox):
     saved = body(post(client, "/api/file/save-as", {"path": str(target)}))
     assert saved == {"ok": True, "currentPath": str(target), "dirty": False}
     on_disk = json.loads(target.read_text(encoding="utf-8"))
-    assert set(on_disk) == {"title", "date", "mode", "tree"}
+    # 1.7: the document's analysis settings are saved beside the tree.
+    assert set(on_disk) == {"title", "date", "mode", "tree", "analysis"}
 
     # Edit, save to the same path, reopen: the edit is on disk.
     post(client, "/api/metadata", {"title": "Renamed"})

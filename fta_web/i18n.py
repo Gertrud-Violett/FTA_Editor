@@ -57,6 +57,21 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
             "JSONとXMLのエクスポートには必要ありません。"
         ),
     },
+    # Keyed "<code>:<detail.format>" -- consulted before the bare code, so one
+    # error code can carry a format-specific message (see localize_error).
+    "EXPORT_UNAVAILABLE:docx": {
+        "ja": (
+            "DOCXレポートには 'python-docx' パッケージが必要ですが、"
+            "このマシンにはインストールされていません。"
+            "'pip install python-docx' を実行してエディターを再起動してください。"
+        ),
+    },
+    "MODE_UNSUPPORTED": {
+        "ja": "この解析はFTAモードでのみ使用できます。ETAモードでは利用できません。",
+    },
+    "NOT_IMPLEMENTED": {
+        "ja": "この機能はまだ実装されていません。",
+    },
     "PATH_REJECTED": {
         "ja": "指定されたパスは許可されたフォルダーの外にあるか、無効です。",
     },
@@ -178,8 +193,15 @@ def localize_error(payload: dict, language: str) -> dict:
     if not isinstance(error, dict) or "code" not in error:
         return payload
     localized = dict(error)
+    code = error["code"]
+    detail = error.get("detail")
+    fmt = detail.get("format") if isinstance(detail, dict) else None
+    if isinstance(fmt, str) and language != config.DEFAULT_LANGUAGE:
+        specific = "%s:%s" % (code, fmt)
+        if language in _MESSAGES.get(specific, {}):
+            code = specific
     localized["message"] = localize_message(
-        error["code"], error.get("message", ""), language
+        code, error.get("message", ""), language
     )
     out = dict(payload)
     out["error"] = localized

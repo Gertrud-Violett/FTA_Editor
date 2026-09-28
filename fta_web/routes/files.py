@@ -91,7 +91,9 @@ try:  # normal package import: ``import fta_web.routes.files``
         api_error_response,
         ok_response,
     )
-    from ..state import get_state
+    from ..engine import WebCore
+    from ..excel_events import export_xlsx
+    from ..state import get_state, load_warning_issues
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import fsbrowser  # type: ignore[no-redef]
     from config import (  # type: ignore[no-redef]
@@ -107,7 +109,9 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         api_error_response,
         ok_response,
     )
-    from state import get_state  # type: ignore[no-redef]
+    from engine import WebCore  # type: ignore[no-redef]
+    from excel_events import export_xlsx  # type: ignore[no-redef]
+    from state import get_state, load_warning_issues  # type: ignore[no-redef]
 
 # Both import paths above have already put fta_web/core on sys.path.
 from FTA_Editor_core import FTACore  # noqa: E402
@@ -242,6 +246,8 @@ def _document_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
+        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "sessionWarnings": copy.deepcopy(state.session_warnings),
     }
 
 
@@ -258,6 +264,11 @@ def _install_document(state, core: FTACore, path: Optional[Path],
     state.core = core
     state.current_path = path
     state.dirty = dirty
+    # reset() emptied the session warnings; the new document's own load
+    # repairs are the first entries of its session.
+    state.add_session_warnings(
+        load_warning_issues(getattr(core, "last_load_warnings", None) or [])
+    )
 
 
 # ---- filesystem browsing -------------------------------------------------
@@ -309,7 +320,7 @@ def file_open():
 
     # Read outside the lock: the file may be large and the parse is the slow
     # part of this request. Nothing shared is touched until the swap below.
-    loaded = FTACore()
+    loaded = WebCore()
     ok, error = loaded.load_from_json(str(target))
     if not ok:
         # The message names the file, never the full path: the client already
@@ -467,7 +478,7 @@ def _export_xml(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
 
 
 def _export_xlsx(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
-    return core.export_to_excel(path)
+    return export_xlsx(core, path)
 
 
 #: format -> (suffix, MIME type, writer). Also the allow-list: the ``<fmt>``
@@ -635,7 +646,7 @@ def import_json():
                 {"limitBytes": MAX_UPLOAD_BYTES},
             )
 
-        loaded = FTACore()
+        loaded = WebCore()
         ok, error = loaded.load_from_json(str(temp_path))
         if not ok:
             raise ApiError(

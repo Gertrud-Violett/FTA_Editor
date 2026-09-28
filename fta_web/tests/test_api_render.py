@@ -618,8 +618,11 @@ class TestCapabilities:
             "excelExport",
             "aiConfigured",
             "aiProviders",
+            # 1.7
+            "reportExport",
+            "fmeaXlsx",
         }
-        for name in ("nativeDot", "excelExport", "aiConfigured"):
+        for name in ("nativeDot", "excelExport", "aiConfigured", "reportExport", "fmeaXlsx"):
             assert isinstance(capabilities[name], bool), "%s is %r" % (
                 name,
                 capabilities[name],

@@ -57,7 +57,9 @@ try:  # normal package import: ``import fta_web.routes.tree``
         api_error_response,
         ok_response,
     )
-    from ..state import get_state
+    from .. import node_schema
+    from ..engine import derive_quant
+    from ..state import get_state, removed_link_issues
     from ..tree_ops import (
         ROOT_ID,
         collect_flat,
@@ -85,7 +87,9 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         api_error_response,
         ok_response,
     )
-    from state import get_state  # type: ignore[no-redef]
+    import node_schema  # type: ignore[no-redef]
+    from engine import derive_quant  # type: ignore[no-redef]
+    from state import get_state, removed_link_issues  # type: ignore[no-redef]
     from tree_ops import (  # type: ignore[no-redef]
         ROOT_ID,
         collect_flat,
@@ -107,7 +111,10 @@ tree_bp = Blueprint("tree", __name__, url_prefix="/api")
 VALID_GATES = ("AND", "OR")
 VALID_MODES = ("FTA", "ETA")
 VALID_RELATIONS = ("AND", "OR")
-NODE_FIELDS = ("name", "type", "probability", "logicGate", "notes", "links")
+#: The 1.6 fields, then the 1.7 keys (see node_schema for their meaning).
+NODE_FIELDS = (
+    "name", "type", "probability", "logicGate", "notes", "links",
+) + node_schema.NODE_KEYS
 
 
 @tree_bp.errorhandler(ApiError)
@@ -276,6 +283,57 @@ def _validate_index(value: Any) -> Optional[int]:
     return value
 
 
+def _schema_changes(
+    payload: Dict[str, Any], existing: Optional[Dict[str, Any]]
+) -> "tuple[Dict[str, Any], List[str]]":
+    """Validate the 1.7 keys in ``payload`` against the node they will land on.
+
+    Returns ``(updates, removals)``. ``existing`` is the current node (None on
+    create). Rules:
+
+    * a ``None`` value removes the key;
+    * ``quant``/``trace``/``fmea`` merge partially (node_schema.merge_partial),
+      and a sub-object emptied by removals disappears;
+    * setting ``gateType`` rewrites ``logicGate`` to its AND/OR projection; an
+      explicit ``logicGate`` in the same request that contradicts it is a 400;
+    * setting only ``logicGate`` on a node that has a ``gateType`` sets the
+      ``gateType`` to the same AND/OR, so the two can never disagree.
+    """
+    updates: Dict[str, Any] = {}
+    removals: List[str] = []
+    existing = existing or {}
+
+    for key in node_schema.NODE_KEYS:
+        if key not in payload:
+            continue
+        value = node_schema.VALIDATORS[key](payload[key])
+        if value is None:
+            removals.append(key)
+        elif key in node_schema.PARTIAL_KEYS:
+            merged = node_schema.merge_partial(existing.get(key), value)
+            if merged:
+                updates[key] = merged
+            else:
+                removals.append(key)
+        else:
+            updates[key] = value
+
+    if "gateType" in updates:
+        projected = node_schema.project_logic_gate(updates["gateType"])
+        if "logicGate" in payload and _validate_gate(payload["logicGate"]) != projected:
+            raise ApiError(
+                INVALID_FIELD,
+                "'logicGate' must be '%s' for gateType '%s'."
+                % (projected, updates["gateType"]),
+                400,
+                {"field": "logicGate", "value": payload["logicGate"]},
+            )
+        updates["logicGate"] = projected
+    elif "logicGate" in payload and "gateType" not in payload and existing.get("gateType"):
+        updates["gateType"] = _validate_gate(payload["logicGate"])
+    return updates, removals
+
+
 def _require_node(
     core, node_id: str, code: str = NODE_NOT_FOUND, label: str = "Node"
 ) -> Dict[str, Any]:
@@ -303,6 +361,8 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
+        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "sessionWarnings": copy.deepcopy(state.session_warnings),
     }
 
 
@@ -322,7 +382,7 @@ def _node_view(core, node: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     base_probability = _as_float(node.get("probability"), 0.0)
-    return {
+    view = {
         "id": str(node.get("id")),
         "name": node.get("name", ""),
         "type": node.get("type", "Event"),
@@ -335,6 +395,25 @@ def _node_view(core, node: Dict[str, Any]) -> Dict[str, Any]:
         "links": links,
         "childIds": [str(c.get("id")) for c in node.get("children") or []],
     }
+    # The 1.7 keys, raw (null when absent), plus what the quant model and the
+    # last recalculation made of this node.
+    for key in node_schema.NODE_KEYS:
+        view[key] = copy.deepcopy(node.get(key))
+    derived = derive_quant(node, getattr(core, "analysis", None))
+    node_id = str(node.get("id"))
+    extra = [
+        w for w in getattr(core, "quant_warnings", None) or []
+        if w.get("nodeId") == node_id and w not in derived["warnings"]
+    ]
+    view["quantDerived"] = {
+        "q": derived["q"],
+        "model": derived["model"],
+        "formula": derived["formula"],
+        "formulaKey": derived["formulaKey"],
+        "params": derived["params"],
+        "warnings": copy.deepcopy(derived["warnings"] + extra),
+    }
+    return view
 
 
 # ---- document ------------------------------------------------------------
@@ -466,6 +545,8 @@ def create_node():
     gate = _validate_gate(payload.get("logicGate", "OR"))
     notes = _validate_notes(payload.get("notes", ""))
     links = _validate_links(payload.get("links", []))
+    extra, _removed = _schema_changes(payload, None)
+    gate = extra.pop("logicGate", gate)
 
     with state.lock:
         core = state.core
@@ -484,6 +565,7 @@ def create_node():
             "links": links,
             "children": [],
         }
+        new_node.update(extra)
 
         state.push_undo()
         core.add_node_to_data(parent_id, new_node)
@@ -517,7 +599,11 @@ def _refuse_root(core, node_id: str, verb: str) -> None:
 
 @tree_bp.patch("/nodes/<node_id>")
 def update_node(node_id: str):
-    """Partial update. Only the six editable node fields are accepted."""
+    """Partial update of the editable node fields (``NODE_FIELDS``).
+
+    ``quant``/``trace``/``fmea`` merge partially; ``null`` removes a key or
+    sub-key. See :func:`_schema_changes` for the gateType/logicGate rules.
+    """
     payload = _body()
     state = get_state()
 
@@ -559,10 +645,15 @@ def update_node(node_id: str):
 
     with state.lock:
         core = state.core
-        _require_node(core, node_id)
+        existing = _require_node(core, node_id)
+        extra, removals = _schema_changes(payload, existing)
+        updates.update(extra)
 
         state.push_undo()
         core.update_node(node_id, updates)
+        node = core.find_node_by_id(node_id)
+        for key in removals:
+            node.pop(key, None)
         core.recalculate_probabilities()
         state.mark_dirty()
 
@@ -593,6 +684,7 @@ def delete_node(node_id: str):
         doomed = subtree_ids(core, node_id)
         core.delete_node_from_data(node_id)
         removed_links = strip_links_to(core, doomed)
+        state.add_session_warnings(removed_link_issues(removed_links, node_id))
         core.recalculate_probabilities()
         state.mark_dirty()
 
