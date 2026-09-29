@@ -1229,6 +1229,29 @@ Standard fault tree XML format, compatible with other FTA tools.
 
 ## Keyboard Shortcuts
 
+### Web app (1.7.1)
+
+| Shortcut | Action |
+|----------|--------|
+| `Alt+N` | New analysis (Chrome and Edge reserve `Ctrl+N` for a new browser window, so the page never receives it) |
+| `Ctrl+A` | Add a child to the selected node |
+| `Ctrl+E` | Edit the selected node (Details tab) |
+| `Ctrl+D` / `Delete` | Delete the selected node (`Delete` only from the tree) |
+| `Ctrl+S` | Save (also with the caret still in a field) |
+| `Ctrl+Shift+S` | Save As |
+| `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / Redo |
+| `Ctrl+F` | Search the tree |
+| `Escape` | Discard what was typed in a field; close a dialog or the diagram's Aa popover; dismiss a toast |
+
+Inside a text field `Ctrl+A` and `Ctrl+Z` keep their usual meaning (select
+all, undo typing). In the tree: arrows move, `Enter` / `Space` select, `F2`
+renames, `Ctrl+Shift+arrows` move the focused node. In the bottom tab strip:
+`Left` / `Right` / `Home` / `End`. In the diagram: `Ctrl+=` / `Ctrl+-` zoom,
+`Ctrl+0` fits (never above 100%).
+
+### Desktop app
+
+- `Ctrl+N` - New Analysis
 - `Ctrl+A` - Add Node
 - `Ctrl+E` - Edit Node
 - `Ctrl+D` - Delete Node
