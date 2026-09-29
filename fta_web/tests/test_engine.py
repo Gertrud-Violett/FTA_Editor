@@ -274,7 +274,8 @@ def test_rate_model_T_defaults_to_mission_time():
 
 def test_small_rates_are_not_flushed_to_zero():
     core = calc(gate("root", "OR", [leaf("a", 0.5, quant={"model": "rate", "lambda": 1e-12, "T": 1})]))
-    assert core.find_node_by_id("a")["probability"] == pytest.approx(1e-12, rel=1e-9)
+    # abs=0: pytest.approx adds abs=1e-12 by default, which would accept 0.
+    assert core.find_node_by_id("a")["probability"] == pytest.approx(1e-12, rel=1e-9, abs=0)
 
 
 def test_standby_model_and_large_lambda_tau_warning():
