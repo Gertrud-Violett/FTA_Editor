@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Validation: `RATE_IMPLAUSIBLE`** (warning). A rate, standby or repairable
+  event with λ above 1e-2 /h (an MTBF under 100 h), or a rate event whose q
+  reaches 0.999, is flagged: almost always FIT or per-year values entered as
+  per hour. Before this, importing an FMEA sheet whose λ column held FIT
+  values (120, 45) with the default `/h` made both events certain (q = 1)
+  and Validation said nothing.
+
+### Changed
+
+- **FMEA import: λ unit suggestion.** When the λ header does not name a unit,
+  the suggestion now comes from the column's values: a median of 1 or more
+  suggests FIT, 1e-3 up to 1 suggests `/y`. A unit in the header (`FIT`,
+  `/y`, `per year`, `/h`, `per hour`, `年`, `時間`) still wins.
+
 ### Fixed
 
 - **Diagram, dark mode:** cross-link edges were pure blue on the dark

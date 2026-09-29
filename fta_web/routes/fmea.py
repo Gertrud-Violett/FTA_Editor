@@ -247,7 +247,9 @@ def post_preview():
     target, table = _read(payload)
     columns = table["columns"]
     suggested = fmea_import.suggest_mapping(columns)
-    unit = fmea_import.suggest_lambda_unit(suggested["lambda"]) if "lambda" in suggested else "h"
+    unit = (fmea_import.suggest_lambda_unit(
+        suggested["lambda"], fmea_import.column_values(table, suggested["lambda"]))
+        if "lambda" in suggested else "h")
     return ok_response(
         path=str(target),
         name=target.name,

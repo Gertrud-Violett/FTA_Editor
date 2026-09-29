@@ -122,6 +122,36 @@ def test_suggest_mapping_japanese_and_fullwidth():
     assert fmea_import.suggest_lambda_unit(mapping["lambda"]) == "y"
 
 
+#: A sheet whose λ column is FIT without saying so (the values give it away).
+FIT_CSV = (
+    "ID,Item,Failure Mode,Severity,Occurrence,Detection,Lambda\n"
+    "P-1,Pump,Seal leak,7,4,3,120\n"
+    "P-2,Valve,Stuck closed,6,3,2,45\n"
+)
+
+
+@pytest.mark.parametrize("header, values, unit", [
+    ("Lambda", [120, 45], "FIT"),                 # the sample sheet: FIT
+    ("Lambda", ["120", "45", ""], "FIT"),         # text cells, blanks ignored
+    ("Failure rate", [1.0, 3.0], "FIT"),          # median exactly 1
+    ("Lambda", [0.5, 0.01, 0.02], "y"),           # 1e-3 <= median < 1
+    ("Lambda", [1e-3], "y"),
+    ("Lambda", [1e-6, 2e-6, 5.0], "h"),           # the median decides, not the max
+    ("Lambda", [], "h"),
+    ("Lambda", ["n/a", None], "h"),
+    ("λ [/h]", [120, 45], "h"),                   # an explicit header unit wins
+    ("λ per hour", [120], "h"),
+    ("rate (1/hr)", [120], "h"),
+    ("λ (FIT)", [1e-6], "FIT"),
+    ("故障率(FIT)", [0.5], "FIT"),
+    ("故障率 [/年]", [120], "y"),
+    ("rate per year", [5.0], "y"),
+    ("故障率 [/時間]", [120], "h"),
+])
+def test_suggest_lambda_unit_from_header_then_magnitude(header, values, unit):
+    assert fmea_import.suggest_lambda_unit(header, values) == unit
+
+
 def test_suggest_mapping_never_reuses_a_column():
     mapping = fmea_import.suggest_mapping(["Item ID", "Mode"])
     assert list(mapping.values()).count("Item ID") == 1
@@ -307,6 +337,45 @@ def test_preview_route(client, tmp_path):
     assert payload["suggestedLambdaUnit"] == "h"
     assert payload["occurrenceTable"] == AIAG_OCCURRENCE_TABLE
     assert payload["name"] == "fmea.csv"
+
+
+def test_preview_suggests_fit_from_the_values(client, tmp_path):
+    path = write(tmp_path, "fit.csv", FIT_CSV)
+    payload = body(client.post("/api/fmea/preview", json={"path": str(path)}))
+    assert payload["suggestedMapping"]["lambda"] == "Lambda"
+    assert payload["suggestedLambdaUnit"] == "FIT"
+
+
+def test_fit_values_imported_per_hour_are_flagged_by_validation(tmp_path):
+    """The user keeps /h for FIT values: both events become certain, and the
+    Validation tab must say so (RATE_IMPLAUSIBLE); with FIT it stays quiet."""
+    import flask
+
+    from fta_web.routes.fmea import fmea_bp
+    from fta_web.routes.tree import tree_bp
+    from fta_web.routes.validate import validate_bp
+
+    path = write(tmp_path, "fit.csv", FIT_CSV)
+    mapping = {"id": "ID", "item": "Item", "mode": "Failure Mode", "severity": "Severity",
+               "occurrence": "Occurrence", "detection": "Detection", "lambda": "Lambda"}
+    found = {}
+    for unit in ("h", "FIT"):
+        reset_state()
+        app = flask.Flask(__name__)
+        for bp in (tree_bp, fmea_bp, validate_bp):
+            app.register_blueprint(bp)
+        get_state().fs_root = tmp_path
+        with app.test_client() as c:
+            response = c.post("/api/fmea/import", json={
+                "path": str(path), "mapping": mapping, "lambdaUnit": unit,
+                "parentId": "root", "update": True})
+            assert response.status_code == 200, body(response)
+            issues = body(c.get("/api/analysis/validate"))["issues"]
+        found[unit] = [i for i in issues if i["code"] == "RATE_IMPLAUSIBLE"]
+    assert len(found["h"]) == 2
+    assert {i["params"]["lambda"] for i in found["h"]} == {120.0, 45.0}
+    assert all(i["severity"] == "warning" and i["params"]["q"] == 1.0 for i in found["h"])
+    assert found["FIT"] == []
 
 
 def test_preview_caps_rows(client, tmp_path):

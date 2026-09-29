@@ -321,6 +321,10 @@ It works in both modes and does not return `MODE_UNSUPPORTED`.
   count}`, reason such as `"count"` or `"cutoff, order"`) appears when they
   truncate. If the expansion fails or runs out of time, nothing is reported
   about truncation.
+- `RATE_IMPLAUSIBLE` (warning, FTA) flags an event whose rate, standby or
+  repairable model has λ > 1e-2 /h, or whose rate model gives q ≥ 0.999
+  (`params: {lambda, unit: "h", q, model}`): usually FIT or per-year values
+  entered as per hour.
 - `message` is English. The UI localises it with `val.code.<CODE>` and
   `params`.
 - The codes and their severities are listed in the
@@ -394,6 +398,11 @@ endpoint is read-only.
 
 `rows` holds at most the first 50 rows. `occurrenceTable` is the document's
 table; `defaultOccurrenceTable` is the AIAG default.
+
+`suggestedLambdaUnit` is the unit the λ header names (`FIT`; `/y`, `per year`,
+`年`; `/h`, `per hour`, `時間`). When the header names none, it comes from the
+median of the column's non-empty values (all rows, not only the preview):
+at least 1 gives `FIT`, 1e-3 up to 1 gives `y`, anything else `h`.
 
 #### `POST /api/fmea/import`
 

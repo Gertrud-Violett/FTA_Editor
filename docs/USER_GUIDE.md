@@ -595,6 +595,9 @@ Notes for reliability engineers:
 - **Missing parameters.** If a model's parameters are missing or invalid, the
   event keeps its previous probability, and Validation reports
   `QUANT_PARAM_MISSING` as an error.
+- **Implausible rates.** A λ above 1e-2 /h (an MTBF under 100 h), or a rate
+  event whose q reaches 0.999, is reported as `RATE_IMPLAUSIBLE`. It usually
+  means FIT or per-year values were entered as per hour.
 - **Data source.** The free-text *Data source* field (`quant.source`) keeps
   provenance, such as "OREDA 2015 p. 123" or "vendor data sheet", in the file.
   It is exported in the Excel **Events** sheet (`Source` column).
@@ -841,6 +844,7 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `DEFAULT_PROBABILITY` | warning | A basic leaf is exactly 1.0 with no model, so it has probably never been quantified. | Enter the real probability. |
 | `PARENT_PROBABILITY_IGNORED` | warning | A gate's own probability is neither 1.0 nor its calculated value, and it is ignored. | Clear it (set it to 1.0), or make the node a leaf. |
 | `STANDBY_LARGE_LT` | warning | Standby λτ > 0.2, where λτ/2 is inaccurate. | Shorten τ, or use the rate model. |
+| `RATE_IMPLAUSIBLE` | warning | A rate, standby or repairable event has λ above 1e-2 /h (an MTBF under 100 h), or a rate event's q is 0.999 or more. This is almost always a unit mix-up, for example FIT or per-year values entered (or imported) as per hour. `params: {lambda, unit, q, model}`. | Check the unit: 1 FIT = 1e-9 /h, 1 /y = 1/8760 /h. Re-enter λ, or re-import with the right λ unit. |
 | `NONCOHERENT_XOR` | warning | The tree has XOR gate(s), so cut-set results are approximate. | Use OR if both events can happen together. |
 | `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so the results may be underestimated. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
 | `ETA_BRANCH_SUM` | warning | ETA only: the children's probabilities do not sum to 1 (±1e-6). | Adjust the branch probabilities. |
@@ -914,7 +918,11 @@ FMEA row id on each node so the two analyses stay linked.
      node. If the parent is a leaf, it becomes an OR gate. It cannot be a
      transfer gate.
    - *λ unit*: `/h`, `/y` or `FIT`. It is suggested from the λ header, for
-     example `λ (FIT)` or `故障率 [/年]`. λ is converted and stored per hour.
+     example `λ (FIT)`, `故障率 [/年]` or `rate per hour`. When the header does
+     not name a unit, it is suggested from the size of the values: a median
+     of 1 or more suggests FIT, a median from 1e-3 up to 1 suggests `/y`,
+     anything smaller `/h`. λ is converted and stored per hour. If FIT values
+     are imported as `/h` anyway, Validation reports `RATE_IMPLAUSIBLE`.
    - *Update existing rows*: see the rules below.
    - *Occurrence table*: the editable map from occurrence rank to
      probability.
