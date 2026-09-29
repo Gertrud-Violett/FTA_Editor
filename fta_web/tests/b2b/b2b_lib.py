@@ -1903,6 +1903,8 @@ def check_oracle(name: str, ref: Dict[str, Any]) -> List[Row]:
         compare(name, "oracle", "q", dict(zip(o.names, o.q)),
                 {n: ref["prob"][n] for n in o.names}, rel=TIDY_REL),
     ]
+    rows += _oracle_truncation(name, ref, o)
+    rows += _oracle_importance(name, ref, o)
     if not repeated:
         rows.append(compare(name, "oracle", "treeWalk==exact", {"top": o.exact},
                             {"top": tree_walk}, rel=TIDY_REL,
@@ -1916,6 +1918,76 @@ def check_oracle(name: str, ref: Dict[str, Any]) -> List[Row]:
                             note="exact %.6g mcub %.6g rare %.6g" % (o.exact, full["mcub"],
                                                                      full["rareEvent"])))
     return rows
+
+
+def _oracle_truncation(name: str, ref: Dict[str, Any], o: "OracleResult") -> List[Row]:
+    """The engine's cut sets under the document's limits must be exactly the
+    oracle's minimal sets of order <= maxOrder and P >= cutoff (truncating
+    inside the products is sound for order and cutoff; count is not tested:
+    the small trees stay under it)."""
+    cut = ref.get("cutsets") or {}
+    if "error" in cut:
+        return []
+    limits = ref["_core"].analysis.get("cutsets") or {}
+    max_order, cutoff = limits.get("maxOrder", 6), limits.get("cutoff", 1e-15)
+    kept = []
+    for s in o.min_sets:
+        p = 1.0
+        for nid in sorted(s, key=o.names.index):
+            p *= ref["prob"][nid]
+        if len(s) <= max_order and p >= cutoff:
+            kept.append(",".join(sorted(s)))
+    got = sorted(v for k, v in cut.items() if k.startswith("set/"))
+    return [compare(name, "oracle", "truncated sets==filtered minimal sets",
+                    {"sets": tuple(sorted(kept))}, {"sets": tuple(got)},
+                    note="maxOrder %s, cutoff %g" % (max_order, cutoff))]
+
+
+def _oracle_importance(name: str, ref: Dict[str, Any], o: "OracleResult") -> List[Row]:
+    """FV, Birnbaum, RAW, RRW on the MCUB of the (untruncated) minimal cut
+    sets, in exact rational arithmetic with the engine's own q values --
+    independent of importance.py's inverted index and log-space sums."""
+    from fractions import Fraction
+
+    if not o.min_sets or len(o.min_sets) > 60:
+        return []
+    core = ref["_core"]
+    full = cutsets_mod.compute(copy.deepcopy(core.get_data()), copy.deepcopy(core.analysis),
+                               {"maxOrder": 20, "maxCount": 1000000, "cutoff": 0.0})
+    measures = {m["id"]: m for m in importance.compute(full)}
+    q = {nid: Fraction(ref["prob"][nid]) for s in o.min_sets for nid in s}
+
+    def top(override=None):
+        prod = Fraction(1)
+        for s in o.min_sets:
+            p = Fraction(1)
+            for nid in s:
+                p *= override[1] if override and nid == override[0] else q[nid]
+            prod *= 1 - p
+        return 1 - prod
+
+    base = top()
+    want, got = {}, {}
+    for nid in sorted(q):
+        if nid not in measures or q[nid] == 0:
+            continue
+        q0, q1 = top((nid, Fraction(0))), top((nid, Fraction(1)))
+        m = measures[nid]
+        want["%s/birnbaum" % nid] = float(q1 - q0)
+        got["%s/birnbaum" % nid] = m["birnbaum"]
+        if base > 0:
+            want["%s/fv" % nid] = float((base - q0) / base)
+            want["%s/raw" % nid] = float(q1 / base)
+            got["%s/fv" % nid] = m["fv"]
+            got["%s/raw" % nid] = m["raw"]
+            if q0 > 0:
+                want["%s/rrw" % nid] = float(base / q0)
+                got["%s/rrw" % nid] = m["rrw"]
+            else:
+                want["%s/rrwInfinite" % nid] = True
+                got["%s/rrwInfinite" % nid] = m["rrwInfinite"]
+    return [compare(name, "oracle", "importance (exact rational)", want, got, rel=1e-12,
+                    abs_tol=1e-300)]
 
 
 def check_expected(name: str, ref: Dict[str, Any], exp: Dict[str, Any]) -> List[Row]:
