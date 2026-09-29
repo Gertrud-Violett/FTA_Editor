@@ -162,7 +162,10 @@ def test_collect_with_fakes(fakes):
     assert fake_uncertainty.calls == [report_docx.MAX_REPORT_MC_N]
     assert [i["code"] for i in data["validation"]] == ["DANGLING_LINK", "LOAD_REPAIR"]
     assert fake_lint.calls[-1]["mode"] == "FTA"
-    assert fake_lint.calls[-1]["extra"]["cutsets"]["total"] == 2
+    # The truncation signal in cutsets.truncation_signal's shape (the report's
+    # own cut sets, expanded with the document's limits, are reused).
+    assert fake_lint.calls[-1]["extra"]["cutsets"] == {
+        "truncated": True, "truncatedBy": ["maxOrder"], "count": 2}
     assert data["traceability"][0]["requirementId"] == "REQ-1"
     assert data["assumptions"]["repeatedEvents"] == ["Valve"]
     assert {m["model"] for m in data["assumptions"]["models"]} == {"fixed", "rate"}
@@ -323,6 +326,66 @@ def test_real_uncertainty_result_has_the_keys_the_report_reads():
                 "pointEstimate", "mean", "median", "p05", "p95", "std", "histogram"):
         assert key in result, key
     assert result["completed"] == 50 and result["truncatedByTime"] is False
+
+
+def _truncating_core(max_order):
+    """OR(AND(a, b), c): under maxOrder 1 the cut set {a, b} is dropped."""
+    from fta_web.engine import WebCore
+
+    core = WebCore()
+    core.set_data({"id": "root", "name": "t", "type": "Root", "logicGate": "OR", "links": [],
+                   "children": [
+                       {"id": "g", "name": "G", "logicGate": "AND", "links": [], "children": [
+                           {"id": "a", "name": "A", "probability": 0.1, "children": [], "links": []},
+                           {"id": "b", "name": "B", "probability": 0.2, "children": [], "links": []}]},
+                       {"id": "c", "name": "C", "probability": 0.3, "children": [], "links": []}]})
+    core.set_analysis({"cutsets": {"maxOrder": max_order}})
+    core.recalculate_probabilities()
+    return core
+
+
+def _validation_tab_issues(core):
+    """What GET /api/analysis/validate and `cli validate` report."""
+    from fta_web import cutsets, lint
+
+    signal = cutsets.truncation_signal(core.get_data(), core.analysis)
+    return lint.run(core.get_data(), core.analysis, [], extra={"cutsets": signal})
+
+
+def _truncated(issues):
+    return [i for i in issues if i["code"] == "CUTSETS_TRUNCATED"]
+
+
+@pytest.mark.parametrize("sections", [["validation"], ["cutsets", "validation"]])
+def test_report_validation_reports_truncation_like_the_validation_tab(sections):
+    """B2B: the report's validation section and the Validation tab must list
+    the same CUTSETS_TRUNCATED -- with the count of cut sets in its params
+    (the report passed the whole cut-set result, so lint found no "count"
+    and reported 0), and even when the cut-set section is not selected
+    (then the report had no cut sets at all and never reported it)."""
+    core = _truncating_core(1)
+    tab = _truncated(_validation_tab_issues(core))
+    assert tab and tab[0]["params"] == {"reason": "order", "count": 1}
+    data = report_docx.collect_report_data(core, [], {"sections": sections})
+    assert _truncated(data["validation"]) == tab
+
+
+def test_report_validation_uses_the_document_limits_not_an_override():
+    """USER_GUIDE: CUTSETS_TRUNCATED is about the cut sets "expanded with the
+    document's limits". A report run with the Cut Sets tab's override limits
+    must not change it (the cut-set section shows the override's own note)."""
+    doc_truncates = _truncating_core(1)
+    data = report_docx.collect_report_data(
+        doc_truncates, [], {"sections": ["cutsets", "validation"], "limits": {"maxOrder": 6}})
+    assert data["cutsets"]["truncated"] is False
+    assert _truncated(data["validation"]) == _truncated(_validation_tab_issues(doc_truncates))
+
+    override_truncates = _truncating_core(6)
+    data = report_docx.collect_report_data(
+        override_truncates, [], {"sections": ["cutsets", "validation"], "limits": {"maxOrder": 1}})
+    assert data["cutsets"]["truncated"] is True
+    assert _truncated(data["validation"]) == []
+    assert _truncated(_validation_tab_issues(override_truncates)) == []
 
 
 def test_real_importance_result_has_rrw_infinite():

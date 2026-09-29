@@ -157,10 +157,7 @@ def eval_op(op: tuple, vals: List[float], qs: List[float]) -> float:
             result *= vals[r]
         return result
     if kind == "or":
-        result = 1.0
-        for r in op[1]:
-            result *= 1.0 - vals[r]
-        return 1.0 - result
+        return engine.or_probability([vals[r] for r in op[1]])
     if kind == "kofn":
         return engine.kofn_probability([vals[r] for r in op[2]], op[1])
     if kind == "xor":

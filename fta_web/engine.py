@@ -14,7 +14,12 @@ overrides exactly three things:
   ``gate_only`` cycle fallback, AND-links then OR-links, ``_tidy`` at the same
   points, ``calculatedProbability`` written on the way out), then extended by
   ``gateType``/``eventKind``/``quant``. ``test_engine.py`` proves the legacy
-  equivalence on a few hundred random trees with links and cycles.
+  equivalence on a few hundred random trees with links and cycles. One
+  deliberate exception (1.7.1): an OR (gate or OR-links) whose result is
+  below ``OR_ACCURATE_BELOW`` is computed without cancellation by
+  :func:`or_probability`, because the core's ``1 - Π(1 - p)`` cancels there
+  (OR(1e-17, 1e-17) was exactly 0). Such values differ from the core by the
+  precision the core lost; every other value is bit-identical.
 * ``load_from_json`` -- the core drops unknown *top-level* keys, so the file is
   re-read to recover the ``analysis`` block.
 * ``prepare_export_data`` -- adds ``analysis`` beside ``tree``.
@@ -361,6 +366,38 @@ def _product(nums) -> float:
     return result
 
 
+#: An OR result below this is recomputed without cancellation (see or_probability).
+OR_ACCURATE_BELOW = 1e-3
+
+
+def or_probability(probs: List[float]) -> float:
+    """``1 - Π(1 - p)``: the OR of independent events (a gate or OR-links).
+
+    The 1.6 product form is exact enough for an ordinary result, and it is
+    kept there, so legacy trees give bit-identical numbers. For a small
+    result it cancels: ``1 - p`` rounds to within 1.1e-16 of 1, so
+    OR(1e-15, 1e-15) came out 1.998e-15 and OR(1e-17, 1e-17) exactly 0 --
+    the flush-to-zero D14 removed from the rounding, back through the
+    formula. Below :data:`OR_ACCURATE_BELOW` the value is therefore
+    recomputed as the union ``r <- r + p(1 - r)``: the same number without
+    the cancellation (a few ulp), and with + - * only, so -- unlike
+    log1p/expm1, whose last bit depends on the Python build's libm -- every
+    build gives the same result.
+    """
+    product = 1
+    for p in probs:
+        product *= 1 - p
+    naive = 1 - product
+    if naive >= OR_ACCURATE_BELOW:
+        return naive
+    result = 0.0
+    for p in probs:
+        if not 0.0 <= p < 1.0:  # a certain or malformed input: nothing to recover
+            return naive
+        result = result + p * (1.0 - result)
+    return result
+
+
 def kofn_probability(probs: List[float], k: int) -> float:
     """P(at least ``k`` of the independent events in ``probs`` occur).
 
@@ -577,7 +614,7 @@ class WebCore(FTACore):
                     warn("PAND_APPROX", node, n=len(child_probs))
                     base = _tidy(pand_divide(self._product(child_probs), len(child_probs)))
                 else:
-                    base = _tidy(1 - self._product([1 - p for p in child_probs]))
+                    base = _tidy(or_probability(child_probs))
             gate_only[key] = base
 
             links = node.get("links", []) or []
@@ -600,7 +637,7 @@ class WebCore(FTACore):
                 base = _tidy(base * self._product(and_probs))
             if or_probs:
                 vals = [base] + or_probs
-                base = _tidy(1 - self._product([1 - p for p in vals]))
+                base = _tidy(or_probability(vals))
 
             memo[key] = base
             visiting.remove(key)

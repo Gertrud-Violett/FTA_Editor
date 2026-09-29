@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Validation: `RATE_IMPLAUSIBLE`** (warning). A rate, standby or repairable
+  event with λ above 1e-2 /h (an MTBF under 100 h), or a rate event whose q
+  reaches 0.999, is flagged: almost always FIT or per-year values entered as
+  per hour. Before this, importing an FMEA sheet whose λ column held FIT
+  values (120, 45) with the default `/h` made both events certain (q = 1)
+  and Validation said nothing.
+
+### Changed
+
+- **Diagram, compact style: no gate text on leaf events.** A basic event's
+  meta row reads `P:<q> | P_calc:<Q>` instead of the 1.6
+  `Gate: OR | P:<q> | P_calc:<Q>` (a leaf has no gate; the OR was just the
+  default of an unused field). Gates, transfer gates and the house /
+  undeveloped / conditioning markers are unchanged. The compact parity test
+  against the 1.6 pipeline allows exactly this difference.
+- **FMEA import: λ unit suggestion.** When the λ header does not name a unit,
+  the suggestion now comes from the column's values: a median of 1 or more
+  suggests FIT, 1e-3 up to 1 suggests `/y`. A unit in the header (`FIT`,
+  `/y`, `per year`, `/h`, `per hour`, `年`, `時間`) still wins.
+
+### Fixed
+
+- **OR gates flushed very small probabilities to zero.** The OR formula
+  `1 − Π(1 − p)` cancels for small inputs: OR(1e-17, 1e-17) was exactly 0
+  (so OR(AND(1e-6 ×3), AND(1e-6 ×3)) made a tree-walk headline of 0 while
+  the MCUB said 2e-18), OR(1e-15, 1e-15) was 1.998e-15 and OR(1e-12, 3e-12)
+  4.00002e-12. An OR (gate or OR-links) whose result is below 1e-3 is now
+  accumulated as `r ← r + p(1 − r)` (`engine.or_probability`), in the tree
+  walk and in the Monte Carlo tree evaluator alike. Results at or above
+  1e-3 keep the 1.6 formula, so ordinary legacy trees give bit-identical
+  numbers; the others differ from 1.6 only by the precision 1.6 lost. Found
+  by a back-to-back comparison with a truth-table oracle.
+- **The MCUB headline differed in its last digit between the packaged app
+  and a source install** of the same file. Not hash randomisation (every
+  result is bit-identical under any `PYTHONHASHSEED`, now tested), but
+  `math.log1p`/`expm1`, whose last bit depends on the Python build's libm
+  (the 3.14 exe and a 3.10 venv differ). The MCUB (`cutsets.mcub_of`, and
+  per sample in Monte Carlo) is now accumulated as `Q ← Q + P(1 − Q)` with
+  + − × only, so a fixed-probability tree's headline has the same bits on
+  every build; it still keeps 1e-18 cut sets to ~1e-13 relative.
+- **Monte Carlo without uncertainty:** the reported mean could be one ulp
+  off the point estimate, with a standard deviation of ~1e-18, although
+  every sample equals the point estimate (`fsum(samples) / n` does not
+  always return the sample value; about 1 run in 12). The mean is now
+  pivoted on the first sample, so equal samples give exactly their value
+  and a standard deviation of 0.
+- **`LINKS_REMOVED` survived the undo that restored the link.** Deleting a
+  node that another node linked to, then undoing, brought the node and the
+  link back but kept "Link from … to deleted node … was removed" in
+  `sessionWarnings` and the Validation tab. The notice now belongs to the
+  delete (by hand or by the AI assistant): undo removes it, redo restores
+  it, as for the AI gate-type notices.
+- **Importance measures lost the digits of small contributions.** FV,
+  Birnbaum and RRW took the difference of two separately rounded log sums,
+  which cancels: in OR(A = 0.5, B = 1e-17) the FV of B was 0.0 (exactly
+  1e-17), and on the B2B corpus FV was off by up to 1.8e-8 relative. The
+  exponent difference is now summed directly from the changed terms; every
+  measure agrees with exact rational arithmetic to 1e-12.
+- **DOCX report, validation section:** `CUTSETS_TRUNCATED` did not match the
+  Validation tab. Its `params.count` was always 0 (the whole cut-set result
+  was handed to lint instead of the truncation signal); it followed the
+  report's override limits instead of the document's; and a report without
+  the cut-set section never reported truncation at all. It is now the
+  Validation tab's signal, reusing the report's cut sets when they were
+  expanded with the document's limits.
+- **Number formatting, server side (CLI, DOCX report, diagram labels)** now
+  reads the same as the browser. Found by a back-to-back comparison with
+  `static/js/numfmt.js`: a number with more integer digits than significant
+  figures kept all of them (RAW 9238.78 at 3 s.f. was `9239`, the browser
+  showed `9240`); exponents were written `1.23e+4` (browser `1.23e4`); and
+  exact ties rounded half-to-even (0.25 at 1 s.f. was `0.2`, the browser
+  showed `0.3`).
+- **Diagram, dark mode:** cross-link edges were pure blue on the dark
+  background (about 2:1 contrast) and barely visible. They are now `#6cb6ff`
+  in dark mode (8:1); light mode keeps the 1.6 blue. The transfer-gate fill
+  and the dotted edges to a transfer's ignored children were raised to at
+  least 3:1 against the background in both themes. `test_diagram_dot.py`
+  checks the contrast of every colour the DOT emits.
+- **Diagram, standard-symbols style:** a gate or event symbol could sit off to
+  the side of its own event box (near a neighbour's), making it ambiguous
+  which gate belonged to which event. Each box and its symbol now share a
+  Graphviz `group` and a heavy (`weight=100`) edge, so the symbol hangs
+  straight under (top-down) or beside (left-right) its box. The compact
+  style is unchanged.
+
 ## [1.7.0] - 2026-09-28
 
 Analysis release for the web app. Engineers can now enter failure rates, use

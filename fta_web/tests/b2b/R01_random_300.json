@@ -1,0 +1,5406 @@
+{
+"title": "R01_random_300",
+"date": "2026-09-28",
+"mode": "FTA",
+"tree": {
+"id": "root",
+"name": "Random top",
+"type": "Root",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g161",
+"name": "r_g161",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g152",
+"name": "r_g152",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g142",
+"name": "r_g142",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g135",
+"name": "r_g135",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g132",
+"name": "r_g132",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e135",
+"name": "Event 135",
+"type": "Event",
+"probability": 0.01751,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e158",
+"name": "Event 158",
+"type": "Event",
+"probability": 0.03295,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e92",
+"name": "Event 92",
+"type": "Event",
+"probability": 1.179e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g118",
+"name": "r_g118",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g92",
+"name": "r_g92",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g80",
+"name": "r_g80",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g71",
+"name": "r_g71",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e90",
+"name": "Event 90",
+"type": "Event",
+"probability": 1.074e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e31",
+"name": "Event 31",
+"type": "Event",
+"probability": 0.001141,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e270",
+"name": "Event 270",
+"type": "Event",
+"probability": 0.0001343,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e233",
+"name": "Event 233",
+"type": "Event",
+"probability": 0.0001745,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e48",
+"name": "Event 48",
+"type": "Event",
+"probability": 0.02075,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e110",
+"name": "Event 110",
+"type": "Event",
+"probability": 0.0001152,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e229",
+"name": "Event 229",
+"type": "Event",
+"probability": 9.342e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g104",
+"name": "r_g104",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e234",
+"name": "Event 234",
+"type": "Event",
+"probability": 1.283e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e265",
+"name": "Event 265",
+"type": "Event",
+"probability": 0.001825,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e241",
+"name": "Event 241",
+"type": "Event",
+"probability": 0.0001198,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_e164",
+"name": "Event 164",
+"type": "Event",
+"probability": 0.0001041,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 4.94e-06,
+"mttr": 8.0
+}
+}
+]
+},
+{
+"id": "r_g145",
+"name": "r_g145",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e214",
+"name": "Event 214",
+"type": "Event",
+"probability": 0.004238,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g91",
+"name": "r_g91",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e248",
+"name": "Event 248",
+"type": "Event",
+"probability": 0.005567,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e292",
+"name": "Event 292",
+"type": "Event",
+"probability": 0.0006996,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e294",
+"name": "Event 294",
+"type": "Event",
+"probability": 0.003951,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g134",
+"name": "r_g134",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e282",
+"name": "Event 282",
+"type": "Event",
+"probability": 0.002303,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g90",
+"name": "r_g90",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e132",
+"name": "Event 132",
+"type": "Event",
+"probability": 9.683e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g16",
+"name": "r_g16",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e230",
+"name": "Event 230",
+"type": "Event",
+"probability": 2.792e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e32",
+"name": "Event 32",
+"type": "Event",
+"probability": 0.001399,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 4.91e-07
+}
+}
+]
+}
+]
+},
+{
+"id": "r_e37",
+"name": "Event 37",
+"type": "Event",
+"probability": 1.481e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.79e-07,
+"tau": 730.0
+}
+}
+]
+}
+],
+"gateType": "KOFN",
+"k": 2
+}
+]
+},
+{
+"id": "r_g160",
+"name": "r_g160",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g154",
+"name": "r_g154",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g136",
+"name": "r_g136",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g110",
+"name": "r_g110",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e280",
+"name": "Event 280",
+"type": "Event",
+"probability": 0.004519,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g77",
+"name": "r_g77",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e107",
+"name": "Event 107",
+"type": "Event",
+"probability": 0.000149,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g75",
+"name": "r_g75",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e210",
+"name": "Event 210",
+"type": "Event",
+"probability": 2.777e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g65",
+"name": "r_g65",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e85",
+"name": "Event 85",
+"type": "Event",
+"probability": 0.0001127,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e262",
+"name": "Event 262",
+"type": "Event",
+"probability": 0.0002029,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.1e-06,
+"tau": 168.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e211",
+"name": "Event 211",
+"type": "Event",
+"probability": 7.818e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 5.66e-05,
+"mttr": 24.0
+}
+},
+{
+"id": "r_g8",
+"name": "r_g8",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e80",
+"name": "Event 80",
+"type": "Event",
+"probability": 4.312e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e25",
+"name": "Event 25",
+"type": "Event",
+"probability": 3.469e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g40",
+"name": "r_g40",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e212",
+"name": "Event 212",
+"type": "Event",
+"probability": 0.008435,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.57e-06
+}
+},
+{
+"id": "r_e131",
+"name": "Event 131",
+"type": "Event",
+"probability": 2.097e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e190",
+"name": "Event 190",
+"type": "Event",
+"probability": 2.01e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 2.9e-05,
+"mttr": 8.0,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+}
+]
+},
+{
+"id": "r_g131",
+"name": "r_g131",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g82",
+"name": "r_g82",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e281",
+"name": "Event 281",
+"type": "Event",
+"probability": 6.123e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 5.25e-06
+}
+},
+{
+"id": "r_e41",
+"name": "Event 41",
+"type": "Event",
+"probability": 2.988e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e277",
+"name": "Event 277",
+"type": "Event",
+"probability": 0.000174,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g111",
+"name": "r_g111",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e134",
+"name": "Event 134",
+"type": "Event",
+"probability": 0.0001157,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g99",
+"name": "r_g99",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g87",
+"name": "r_g87",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e298",
+"name": "Event 298",
+"type": "Event",
+"probability": 0.0007527,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e153",
+"name": "Event 153",
+"type": "Event",
+"probability": 8.31e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g10",
+"name": "r_g10",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e59",
+"name": "Event 59",
+"type": "Event",
+"probability": 0.0005506,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.27e-06,
+"mttr": 8.0
+}
+},
+{
+"id": "r_e52",
+"name": "Event 52",
+"type": "Event",
+"probability": 2.302e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e108",
+"name": "Event 108",
+"type": "Event",
+"probability": 1.202e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_e175",
+"name": "Event 175",
+"type": "Event",
+"probability": 2.069e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g147",
+"name": "r_g147",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g141",
+"name": "r_g141",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g25",
+"name": "r_g25",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e290",
+"name": "Event 290",
+"type": "Event",
+"probability": 0.0004666,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.07e-06
+}
+},
+{
+"id": "r_e140",
+"name": "Event 140",
+"type": "Event",
+"probability": 2.963e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g106",
+"name": "r_g106",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e261",
+"name": "Event 261",
+"type": "Event",
+"probability": 0.002159,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g100",
+"name": "r_g100",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e73",
+"name": "Event 73",
+"type": "Event",
+"probability": 0.0003265,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 9.66e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e79",
+"name": "Event 79",
+"type": "Event",
+"probability": 0.0001819,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e191",
+"name": "Event 191",
+"type": "Event",
+"probability": 0.0001769,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e272",
+"name": "Event 272",
+"type": "Event",
+"probability": 2.192e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 2.39e-06,
+"tau": 2190.0,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+},
+{
+"id": "r_e206",
+"name": "Event 206",
+"type": "Event",
+"probability": 0.009969,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g73",
+"name": "r_g73",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e102",
+"name": "Event 102",
+"type": "Event",
+"probability": 0.001772,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 5.3e-08,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+},
+{
+"id": "r_e187",
+"name": "Event 187",
+"type": "Event",
+"probability": 5.346e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 4.43e-08
+}
+},
+{
+"id": "r_g53",
+"name": "r_g53",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g22",
+"name": "r_g22",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e84",
+"name": "Event 84",
+"type": "Event",
+"probability": 0.03677,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e145",
+"name": "Event 145",
+"type": "Event",
+"probability": 0.0007972,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e223",
+"name": "Event 223",
+"type": "Event",
+"probability": 0.002834,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e198",
+"name": "Event 198",
+"type": "Event",
+"probability": 0.0001997,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 5.26e-06
+}
+},
+{
+"id": "r_e35",
+"name": "Event 35",
+"type": "Event",
+"probability": 2.798e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g43",
+"name": "r_g43",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g29",
+"name": "r_g29",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e293",
+"name": "Event 293",
+"type": "Event",
+"probability": 0.0002052,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e251",
+"name": "Event 251",
+"type": "Event",
+"probability": 1.764e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e271",
+"name": "Event 271",
+"type": "Event",
+"probability": 0.004495,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 4.08e-06,
+"tau": 168.0
+}
+}
+]
+},
+{
+"id": "r_e252",
+"name": "Event 252",
+"type": "Event",
+"probability": 1.305e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g88",
+"name": "r_g88",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e150",
+"name": "Event 150",
+"type": "Event",
+"probability": 0.02189,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 3.1e-06,
+"mttr": 8.0
+}
+},
+{
+"id": "r_g20",
+"name": "r_g20",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e237",
+"name": "Event 237",
+"type": "Event",
+"probability": 2.059e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e27",
+"name": "Event 27",
+"type": "Event",
+"probability": 1.396e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e259",
+"name": "Event 259",
+"type": "Event",
+"probability": 0.04021,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g38",
+"name": "r_g38",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e285",
+"name": "Event 285",
+"type": "Event",
+"probability": 9.41e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e188",
+"name": "Event 188",
+"type": "Event",
+"probability": 1.224e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g109",
+"name": "r_g109",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e3",
+"name": "Event 3",
+"type": "Event",
+"probability": 1.577e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e217",
+"name": "Event 217",
+"type": "Event",
+"probability": 1.22e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g69",
+"name": "r_g69",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e65",
+"name": "Event 65",
+"type": "Event",
+"probability": 5.301e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g32",
+"name": "r_g32",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e238",
+"name": "Event 238",
+"type": "Event",
+"probability": 4.182e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 3.66e-06,
+"tau": 168.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e112",
+"name": "Event 112",
+"type": "Event",
+"probability": 0.007534,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g159",
+"name": "r_g159",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g148",
+"name": "r_g148",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g120",
+"name": "r_g120",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g44",
+"name": "r_g44",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e9",
+"name": "Event 9",
+"type": "Event",
+"probability": 6.642e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g11",
+"name": "r_g11",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e67",
+"name": "Event 67",
+"type": "Event",
+"probability": 0.01373,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e115",
+"name": "Event 115",
+"type": "Event",
+"probability": 1.808e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.03e-05,
+"mttr": 72.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e296",
+"name": "Event 296",
+"type": "Event",
+"probability": 7.27e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e128",
+"name": "Event 128",
+"type": "Event",
+"probability": 0.03198,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e43",
+"name": "Event 43",
+"type": "Event",
+"probability": 1.001e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 3.52e-07
+}
+}
+]
+},
+{
+"id": "r_e86",
+"name": "Event 86",
+"type": "Event",
+"probability": 1.054e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 4.71e-07,
+"tau": 168.0
+}
+},
+{
+"id": "r_g23",
+"name": "r_g23",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e186",
+"name": "Event 186",
+"type": "Event",
+"probability": 0.006579,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 3.09e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+},
+{
+"id": "r_e136",
+"name": "Event 136",
+"type": "Event",
+"probability": 1.01e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g112",
+"name": "r_g112",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e244",
+"name": "Event 244",
+"type": "Event",
+"probability": 0.0001434,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g64",
+"name": "r_g64",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [
+{
+"target_id": "r_e253",
+"relation": "OR"
+}
+],
+"children": [
+{
+"id": "r_e287",
+"name": "Event 287",
+"type": "Event",
+"probability": 0.02131,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g62",
+"name": "r_g62",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e130",
+"name": "Event 130",
+"type": "Event",
+"probability": 0.0001884,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e68",
+"name": "Event 68",
+"type": "Event",
+"probability": 4.827e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 6.86e-08,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+}
+]
+},
+{
+"id": "r_e279",
+"name": "Event 279",
+"type": "Event",
+"probability": 0.000508,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 6.25e-08
+}
+}
+]
+},
+{
+"id": "r_g60",
+"name": "r_g60",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e71",
+"name": "Event 71",
+"type": "Event",
+"probability": 0.006874,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g51",
+"name": "r_g51",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g36",
+"name": "r_g36",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e151",
+"name": "Event 151",
+"type": "Event",
+"probability": 0.005717,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e219",
+"name": "Event 219",
+"type": "Event",
+"probability": 0.0001396,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 9.61e-08,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+}
+]
+},
+{
+"id": "r_e81",
+"name": "Event 81",
+"type": "Event",
+"probability": 2.04e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e278",
+"name": "Event 278",
+"type": "Event",
+"probability": 3.966e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.23e-07
+}
+},
+{
+"id": "r_g34",
+"name": "r_g34",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e56",
+"name": "Event 56",
+"type": "Event",
+"probability": 3.1e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e39",
+"name": "Event 39",
+"type": "Event",
+"probability": 1.343e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 2.56e-06,
+"mttr": 24.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e165",
+"name": "Event 165",
+"type": "Event",
+"probability": 0.00557,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e55",
+"name": "Event 55",
+"type": "Event",
+"probability": 6.559e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_e204",
+"name": "Event 204",
+"type": "Event",
+"probability": 4.856e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 5.3e-08,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+}
+]
+}
+]
+},
+{
+"id": "r_g33",
+"name": "r_g33",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e257",
+"name": "Event 257",
+"type": "Event",
+"probability": 1.273e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 7.08e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e240",
+"name": "Event 240",
+"type": "Event",
+"probability": 0.001796,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g116",
+"name": "r_g116",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e23",
+"name": "Event 23",
+"type": "Event",
+"probability": 0.01597,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 8.68e-06,
+"tau": 730.0
+}
+},
+{
+"id": "r_e193",
+"name": "Event 193",
+"type": "Event",
+"probability": 1.695e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e94",
+"name": "Event 94",
+"type": "Event",
+"probability": 0.001112,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g126",
+"name": "r_g126",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e122",
+"name": "Event 122",
+"type": "Event",
+"probability": 1.184e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 5.21e-07,
+"tau": 730.0
+}
+},
+{
+"id": "r_e254",
+"name": "Event 254",
+"type": "Event",
+"probability": 0.004351,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_e114",
+"name": "Event 114",
+"type": "Event",
+"probability": 0.0002196,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.07e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+},
+{
+"id": "r_g158",
+"name": "r_g158",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g151",
+"name": "r_g151",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g96",
+"name": "r_g96",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e125",
+"name": "Event 125",
+"type": "Event",
+"probability": 9.471e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 5.69e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e13",
+"name": "Event 13",
+"type": "Event",
+"probability": 0.004167,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 2.96e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+},
+{
+"id": "r_e111",
+"name": "Event 111",
+"type": "Event",
+"probability": 0.002012,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g137",
+"name": "r_g137",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g74",
+"name": "r_g74",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e146",
+"name": "Event 146",
+"type": "Event",
+"probability": 0.03705,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e166",
+"name": "Event 166",
+"type": "Event",
+"probability": 4.827e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e47",
+"name": "Event 47",
+"type": "Event",
+"probability": 0.0004636,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g123",
+"name": "r_g123",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e216",
+"name": "Event 216",
+"type": "Event",
+"probability": 0.0002349,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g35",
+"name": "r_g35",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e266",
+"name": "Event 266",
+"type": "Event",
+"probability": 0.01065,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e200",
+"name": "Event 200",
+"type": "Event",
+"probability": 1.462e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 2.27e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+},
+{
+"id": "r_e138",
+"name": "Event 138",
+"type": "Event",
+"probability": 5.675e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g24",
+"name": "r_g24",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e183",
+"name": "Event 183",
+"type": "Event",
+"probability": 4.36e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e269",
+"name": "Event 269",
+"type": "Event",
+"probability": 0.009403,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e273",
+"name": "Event 273",
+"type": "Event",
+"probability": 0.0003609,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.67e-08
+}
+}
+]
+}
+]
+},
+{
+"id": "r_e199",
+"name": "Event 199",
+"type": "Event",
+"probability": 1.11e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e147",
+"name": "Event 147",
+"type": "Event",
+"probability": 0.001208,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.17e-05,
+"mttr": 24.0
+}
+}
+]
+},
+{
+"id": "r_g157",
+"name": "r_g157",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g156",
+"name": "r_g156",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e38",
+"name": "Event 38",
+"type": "Event",
+"probability": 7.63e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g58",
+"name": "r_g58",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g50",
+"name": "r_g50",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g9",
+"name": "r_g9",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e171",
+"name": "Event 171",
+"type": "Event",
+"probability": 2.933e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e49",
+"name": "Event 49",
+"type": "Event",
+"probability": 1.206e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e264",
+"name": "Event 264",
+"type": "Event",
+"probability": 0.003361,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e54",
+"name": "Event 54",
+"type": "Event",
+"probability": 1.639e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 3.63e-06
+}
+}
+]
+},
+{
+"id": "r_g4",
+"name": "r_g4",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e249",
+"name": "Event 249",
+"type": "Event",
+"probability": 9.895e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e103",
+"name": "Event 103",
+"type": "Event",
+"probability": 0.001344,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e154",
+"name": "Event 154",
+"type": "Event",
+"probability": 3.738e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e179",
+"name": "Event 179",
+"type": "Event",
+"probability": 5.12e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g12",
+"name": "r_g12",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e34",
+"name": "Event 34",
+"type": "Event",
+"probability": 0.0002998,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.01e-06,
+"tau": 730.0
+}
+},
+{
+"id": "r_g6",
+"name": "r_g6",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e235",
+"name": "Event 235",
+"type": "Event",
+"probability": 0.007953,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 2.83e-06,
+"tau": 730.0,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+},
+{
+"id": "r_e250",
+"name": "Event 250",
+"type": "Event",
+"probability": 2.985e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 2.21e-08,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+},
+{
+"id": "r_e256",
+"name": "Event 256",
+"type": "Event",
+"probability": 0.006714,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e192",
+"name": "Event 192",
+"type": "Event",
+"probability": 0.00182,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 4.66e-07,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+},
+{
+"id": "r_e69",
+"name": "Event 69",
+"type": "Event",
+"probability": 0.001577,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g39",
+"name": "r_g39",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e247",
+"name": "Event 247",
+"type": "Event",
+"probability": 1.149e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e117",
+"name": "Event 117",
+"type": "Event",
+"probability": 0.002739,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e100",
+"name": "Event 100",
+"type": "Event",
+"probability": 0.008104,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e97",
+"name": "Event 97",
+"type": "Event",
+"probability": 0.0004813,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 6.67e-07,
+"tau": 2190.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+}
+]
+},
+{
+"id": "r_g149",
+"name": "r_g149",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g119",
+"name": "r_g119",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e255",
+"name": "Event 255",
+"type": "Event",
+"probability": 0.001841,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.29e-05,
+"mttr": 72.0,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+},
+{
+"id": "r_g78",
+"name": "r_g78",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e133",
+"name": "Event 133",
+"type": "Event",
+"probability": 0.0006491,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e4",
+"name": "Event 4",
+"type": "Event",
+"probability": 1.391e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g13",
+"name": "r_g13",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e156",
+"name": "Event 156",
+"type": "Event",
+"probability": 0.0003834,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 2.85e-06,
+"mttr": 72.0
+}
+},
+{
+"id": "r_e76",
+"name": "Event 76",
+"type": "Event",
+"probability": 3.964e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 2.05e-05,
+"mttr": 72.0
+}
+},
+{
+"id": "r_e139",
+"name": "Event 139",
+"type": "Event",
+"probability": 0.03672,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.61e-06,
+"mttr": 8.0
+}
+}
+]
+},
+{
+"id": "r_g49",
+"name": "r_g49",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e195",
+"name": "Event 195",
+"type": "Event",
+"probability": 0.0001636,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e141",
+"name": "Event 141",
+"type": "Event",
+"probability": 6.992e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e184",
+"name": "Event 184",
+"type": "Event",
+"probability": 0.005962,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e118",
+"name": "Event 118",
+"type": "Event",
+"probability": 0.0008114,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 6.08e-08
+}
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g144",
+"name": "r_g144",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g138",
+"name": "r_g138",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g125",
+"name": "r_g125",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [
+{
+"target_id": "r_e180",
+"relation": "OR"
+}
+],
+"children": [
+{
+"id": "r_e8",
+"name": "Event 8",
+"type": "Event",
+"probability": 0.0009477,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g114",
+"name": "r_g114",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g107",
+"name": "r_g107",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e232",
+"name": "Event 232",
+"type": "Event",
+"probability": 3.985e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 3.14e-06,
+"mttr": 8.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e124",
+"name": "Event 124",
+"type": "Event",
+"probability": 0.0001742,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.83e-07,
+"tau": 730.0
+}
+}
+]
+},
+{
+"id": "r_e82",
+"name": "Event 82",
+"type": "Event",
+"probability": 1.506e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.51e-07,
+"tau": 730.0
+}
+},
+{
+"id": "r_g55",
+"name": "r_g55",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e74",
+"name": "Event 74",
+"type": "Event",
+"probability": 0.003418,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e40",
+"name": "Event 40",
+"type": "Event",
+"probability": 4.281e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.14e-07,
+"tau": 730.0
+}
+},
+{
+"id": "r_e182",
+"name": "Event 182",
+"type": "Event",
+"probability": 0.000712,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g41",
+"name": "r_g41",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e286",
+"name": "Event 286",
+"type": "Event",
+"probability": 5.542e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.83e-07,
+"tau": 168.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e163",
+"name": "Event 163",
+"type": "Event",
+"probability": 0.0001358,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e189",
+"name": "Event 189",
+"type": "Event",
+"probability": 2.561e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_e6",
+"name": "Event 6",
+"type": "Event",
+"probability": 0.0003965,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g98",
+"name": "r_g98",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g94",
+"name": "r_g94",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e157",
+"name": "Event 157",
+"type": "Event",
+"probability": 0.008757,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.82e-08,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_g19",
+"name": "r_g19",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g14",
+"name": "r_g14",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e236",
+"name": "Event 236",
+"type": "Event",
+"probability": 0.01179,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.59e-08,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e202",
+"name": "Event 202",
+"type": "Event",
+"probability": 0.01097,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e172",
+"name": "Event 172",
+"type": "Event",
+"probability": 2.186e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e173",
+"name": "Event 173",
+"type": "Event",
+"probability": 5.008e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_e228",
+"name": "Event 228",
+"type": "Event",
+"probability": 0.01083,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.44e-06,
+"tau": 2190.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e42",
+"name": "Event 42",
+"type": "Event",
+"probability": 6.777e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e15",
+"name": "Event 15",
+"type": "Event",
+"probability": 0.0006332,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 4.29e-06,
+"mttr": 8.0,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+}
+]
+},
+{
+"id": "r_e33",
+"name": "Event 33",
+"type": "Event",
+"probability": 1.382e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.05e-06,
+"tau": 730.0,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+},
+{
+"id": "r_g143",
+"name": "r_g143",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e51",
+"name": "Event 51",
+"type": "Event",
+"probability": 0.0006857,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 3.54e-07
+}
+},
+{
+"id": "r_e16",
+"name": "Event 16",
+"type": "Event",
+"probability": 2.565e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g133",
+"name": "r_g133",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g93",
+"name": "r_g93",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e18",
+"name": "Event 18",
+"type": "Event",
+"probability": 6.378e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 3.61e-06
+}
+},
+{
+"id": "r_g30",
+"name": "r_g30",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e22",
+"name": "Event 22",
+"type": "Event",
+"probability": 9.34e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e137",
+"name": "Event 137",
+"type": "Event",
+"probability": 1.438e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e53",
+"name": "Event 53",
+"type": "Event",
+"probability": 0.0002124,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e21",
+"name": "Event 21",
+"type": "Event",
+"probability": 9.161e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g129",
+"name": "r_g129",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g127",
+"name": "r_g127",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e149",
+"name": "Event 149",
+"type": "Event",
+"probability": 1.783e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e113",
+"name": "Event 113",
+"type": "Event",
+"probability": 0.006502,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e29",
+"name": "Event 29",
+"type": "Event",
+"probability": 0.002109,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 2.1e-07,
+"tau": 730.0,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+},
+{
+"id": "r_e24",
+"name": "Event 24",
+"type": "Event",
+"probability": 2.095e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g108",
+"name": "r_g108",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g84",
+"name": "r_g84",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e5",
+"name": "Event 5",
+"type": "Event",
+"probability": 2.808e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e101",
+"name": "Event 101",
+"type": "Event",
+"probability": 1.771e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e222",
+"name": "Event 222",
+"type": "Event",
+"probability": 2.228e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g70",
+"name": "r_g70",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e72",
+"name": "Event 72",
+"type": "Event",
+"probability": 0.003034,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g61",
+"name": "r_g61",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e218",
+"name": "Event 218",
+"type": "Event",
+"probability": 0.0003185,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 8.91e-06,
+"mttr": 24.0
+}
+},
+{
+"id": "r_e14",
+"name": "Event 14",
+"type": "Event",
+"probability": 5.833e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g115",
+"name": "r_g115",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g83",
+"name": "r_g83",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e64",
+"name": "Event 64",
+"type": "Event",
+"probability": 5.298e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e93",
+"name": "Event 93",
+"type": "Event",
+"probability": 0.005622,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e246",
+"name": "Event 246",
+"type": "Event",
+"probability": 0.02377,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 5.1e-06,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+},
+{
+"id": "r_e109",
+"name": "Event 109",
+"type": "Event",
+"probability": 0.02233,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e45",
+"name": "Event 45",
+"type": "Event",
+"probability": 7.68e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g155",
+"name": "r_g155",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g15",
+"name": "r_g15",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e44",
+"name": "Event 44",
+"type": "Event",
+"probability": 5.903e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e170",
+"name": "Event 170",
+"type": "Event",
+"probability": 6e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e119",
+"name": "Event 119",
+"type": "Event",
+"probability": 0.001093,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 7.56e-06,
+"tau": 2190.0
+}
+},
+{
+"id": "r_e197",
+"name": "Event 197",
+"type": "Event",
+"probability": 0.002907,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g121",
+"name": "r_g121",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e194",
+"name": "Event 194",
+"type": "Event",
+"probability": 0.006164,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 8.38e-06
+}
+},
+{
+"id": "r_e155",
+"name": "Event 155",
+"type": "Event",
+"probability": 7.633e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e284",
+"name": "Event 284",
+"type": "Event",
+"probability": 0.01966,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g105",
+"name": "r_g105",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e11",
+"name": "Event 11",
+"type": "Event",
+"probability": 1.077e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g103",
+"name": "r_g103",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g97",
+"name": "r_g97",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g66",
+"name": "r_g66",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e95",
+"name": "Event 95",
+"type": "Event",
+"probability": 4.096e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 8.28e-07
+}
+},
+{
+"id": "r_e297",
+"name": "Event 297",
+"type": "Event",
+"probability": 0.02199,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e62",
+"name": "Event 62",
+"type": "Event",
+"probability": 3.81e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e70",
+"name": "Event 70",
+"type": "Event",
+"probability": 2.296e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 5.68e-06,
+"mttr": 8.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_g85",
+"name": "r_g85",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e123",
+"name": "Event 123",
+"type": "Event",
+"probability": 8.935e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 2.3e-07
+}
+},
+{
+"id": "r_e209",
+"name": "Event 209",
+"type": "Event",
+"probability": 1.063e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e28",
+"name": "Event 28",
+"type": "Event",
+"probability": 8.413e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g72",
+"name": "r_g72",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g68",
+"name": "r_g68",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e203",
+"name": "Event 203",
+"type": "Event",
+"probability": 0.0008641,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e196",
+"name": "Event 196",
+"type": "Event",
+"probability": 0.0007123,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e239",
+"name": "Event 239",
+"type": "Event",
+"probability": 3.79e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g18",
+"name": "r_g18",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e161",
+"name": "Event 161",
+"type": "Event",
+"probability": 7.104e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 4.26e-05,
+"mttr": 24.0
+}
+},
+{
+"id": "r_e274",
+"name": "Event 274",
+"type": "Event",
+"probability": 0.0005241,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g1",
+"name": "r_g1",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e178",
+"name": "Event 178",
+"type": "Event",
+"probability": 0.0007532,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e1",
+"name": "Event 1",
+"type": "Event",
+"probability": 0.0002083,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g57",
+"name": "r_g57",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e19",
+"name": "Event 19",
+"type": "Event",
+"probability": 2.163e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e127",
+"name": "Event 127",
+"type": "Event",
+"probability": 0.01374,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e57",
+"name": "Event 57",
+"type": "Event",
+"probability": 3.149e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e275",
+"name": "Event 275",
+"type": "Event",
+"probability": 1.639e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e208",
+"name": "Event 208",
+"type": "Event",
+"probability": 1.069e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e144",
+"name": "Event 144",
+"type": "Event",
+"probability": 0.001013,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g59",
+"name": "r_g59",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e263",
+"name": "Event 263",
+"type": "Event",
+"probability": 0.03222,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g17",
+"name": "r_g17",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e283",
+"name": "Event 283",
+"type": "Event",
+"probability": 3.162e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e105",
+"name": "Event 105",
+"type": "Event",
+"probability": 1.789e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g56",
+"name": "r_g56",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e60",
+"name": "Event 60",
+"type": "Event",
+"probability": 0.0002187,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 7.71e-05,
+"mttr": 24.0
+}
+},
+{
+"id": "r_e61",
+"name": "Event 61",
+"type": "Event",
+"probability": 0.0003784,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e162",
+"name": "Event 162",
+"type": "Event",
+"probability": 0.01626,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e180",
+"name": "Event 180",
+"type": "Event",
+"probability": 1.746e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g86",
+"name": "r_g86",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e227",
+"name": "Event 227",
+"type": "Event",
+"probability": 0.005537,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g26",
+"name": "r_g26",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e289",
+"name": "Event 289",
+"type": "Event",
+"probability": 0.009905,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.3e-06,
+"mttr": 72.0
+}
+},
+{
+"id": "r_e75",
+"name": "Event 75",
+"type": "Event",
+"probability": 1.719e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g139",
+"name": "r_g139",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g76",
+"name": "r_g76",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e0",
+"name": "Event 0",
+"type": "Event",
+"probability": 7.483e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e201",
+"name": "Event 201",
+"type": "Event",
+"probability": 2.412e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.92e-07,
+"tau": 168.0
+}
+}
+]
+},
+{
+"id": "r_g67",
+"name": "r_g67",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [
+{
+"target_id": "r_e34",
+"relation": "OR"
+}
+],
+"children": [
+{
+"id": "r_e185",
+"name": "Event 185",
+"type": "Event",
+"probability": 8.595e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e242",
+"name": "Event 242",
+"type": "Event",
+"probability": 0.0005064,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 3.3e-06,
+"mttr": 72.0,
+"unc": {
+"dist": "lognormal",
+"ef": 5.0
+}
+}
+}
+]
+}
+]
+},
+{
+"id": "r_g102",
+"name": "r_g102",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e96",
+"name": "Event 96",
+"type": "Event",
+"probability": 0.001704,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 6.96e-05,
+"mttr": 24.0,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+},
+{
+"id": "r_e260",
+"name": "Event 260",
+"type": "Event",
+"probability": 0.02402,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 4.3e-06,
+"mttr": 24.0
+}
+},
+{
+"id": "r_e213",
+"name": "Event 213",
+"type": "Event",
+"probability": 6.871e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g54",
+"name": "r_g54",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [
+{
+"target_id": "r_e143",
+"relation": "AND"
+}
+],
+"children": [
+{
+"id": "r_e2",
+"name": "Event 2",
+"type": "Event",
+"probability": 1.286e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e20",
+"name": "Event 20",
+"type": "Event",
+"probability": 2.515e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g153",
+"name": "r_g153",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g150",
+"name": "r_g150",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e299",
+"name": "Event 299",
+"type": "Event",
+"probability": 1.473e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g146",
+"name": "r_g146",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g140",
+"name": "r_g140",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g122",
+"name": "r_g122",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g31",
+"name": "r_g31",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e205",
+"name": "Event 205",
+"type": "Event",
+"probability": 0.01066,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e120",
+"name": "Event 120",
+"type": "Event",
+"probability": 0.0001455,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e83",
+"name": "Event 83",
+"type": "Event",
+"probability": 0.01712,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g81",
+"name": "r_g81",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e99",
+"name": "Event 99",
+"type": "Event",
+"probability": 1.45e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e174",
+"name": "Event 174",
+"type": "Event",
+"probability": 0.03644,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g28",
+"name": "r_g28",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e181",
+"name": "Event 181",
+"type": "Event",
+"probability": 0.004835,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 2.04e-06
+}
+},
+{
+"id": "r_e176",
+"name": "Event 176",
+"type": "Event",
+"probability": 9.706e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 1.82e-08
+}
+}
+]
+},
+{
+"id": "r_e231",
+"name": "Event 231",
+"type": "Event",
+"probability": 0.008535,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e89",
+"name": "Event 89",
+"type": "Event",
+"probability": 4.428e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 7.61e-07
+}
+}
+]
+},
+{
+"id": "r_e177",
+"name": "Event 177",
+"type": "Event",
+"probability": 3.94e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g113",
+"name": "r_g113",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e160",
+"name": "Event 160",
+"type": "Event",
+"probability": 0.0001121,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e26",
+"name": "Event 26",
+"type": "Event",
+"probability": 1.547e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 7.74e-06,
+"tau": 2190.0
+}
+}
+]
+}
+]
+},
+{
+"id": "r_e10",
+"name": "Event 10",
+"type": "Event",
+"probability": 0.006575,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g130",
+"name": "r_g130",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g124",
+"name": "r_g124",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e87",
+"name": "Event 87",
+"type": "Event",
+"probability": 2.665e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.47e-07,
+"tau": 730.0
+}
+},
+{
+"id": "r_g48",
+"name": "r_g48",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e152",
+"name": "Event 152",
+"type": "Event",
+"probability": 0.0001065,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g5",
+"name": "r_g5",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g3",
+"name": "r_g3",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e78",
+"name": "Event 78",
+"type": "Event",
+"probability": 0.005066,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e291",
+"name": "Event 291",
+"type": "Event",
+"probability": 7.321e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e225",
+"name": "Event 225",
+"type": "Event",
+"probability": 0.002234,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e58",
+"name": "Event 58",
+"type": "Event",
+"probability": 0.0002,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e104",
+"name": "Event 104",
+"type": "Event",
+"probability": 0.01382,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.14e-05,
+"mttr": 72.0
+}
+},
+{
+"id": "r_e116",
+"name": "Event 116",
+"type": "Event",
+"probability": 1.009e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 8.2e-06,
+"tau": 168.0
+}
+}
+]
+},
+{
+"id": "r_e142",
+"name": "Event 142",
+"type": "Event",
+"probability": 0.003306,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e66",
+"name": "Event 66",
+"type": "Event",
+"probability": 0.0002585,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e121",
+"name": "Event 121",
+"type": "Event",
+"probability": 0.02017,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 4.28e-07,
+"tau": 730.0,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+}
+]
+},
+{
+"id": "r_g117",
+"name": "r_g117",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e295",
+"name": "Event 295",
+"type": "Event",
+"probability": 0.0113,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 1.33e-05,
+"mttr": 8.0
+}
+},
+{
+"id": "r_g101",
+"name": "r_g101",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g63",
+"name": "r_g63",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e77",
+"name": "Event 77",
+"type": "Event",
+"probability": 9.192e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g27",
+"name": "r_g27",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e98",
+"name": "Event 98",
+"type": "Event",
+"probability": 0.01555,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 3.31e-07
+}
+},
+{
+"id": "r_e224",
+"name": "Event 224",
+"type": "Event",
+"probability": 0.01101,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e168",
+"name": "Event 168",
+"type": "Event",
+"probability": 0.01103,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 3.97e-06,
+"tau": 2190.0,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+}
+]
+}
+]
+},
+{
+"id": "r_e243",
+"name": "Event 243",
+"type": "Event",
+"probability": 1.121e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 1.14e-06,
+"tau": 2190.0,
+"unc": {
+"dist": "lognormal",
+"ef": 3.0
+}
+}
+}
+]
+},
+{
+"id": "r_e267",
+"name": "Event 267",
+"type": "Event",
+"probability": 0.001438,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g128",
+"name": "r_g128",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g95",
+"name": "r_g95",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [
+{
+"target_id": "r_e209",
+"relation": "OR"
+}
+],
+"children": [
+{
+"id": "r_e167",
+"name": "Event 167",
+"type": "Event",
+"probability": 1.812e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e143",
+"name": "Event 143",
+"type": "Event",
+"probability": 1.059e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e30",
+"name": "Event 30",
+"type": "Event",
+"probability": 5.911e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "repairable",
+"lambda": 9.45e-05,
+"mttr": 24.0
+}
+}
+],
+"gateType": "KOFN",
+"k": 2
+},
+{
+"id": "r_g79",
+"name": "r_g79",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e245",
+"name": "Event 245",
+"type": "Event",
+"probability": 0.0005092,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g46",
+"name": "r_g46",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g7",
+"name": "r_g7",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e50",
+"name": "Event 50",
+"type": "Event",
+"probability": 0.001453,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e258",
+"name": "Event 258",
+"type": "Event",
+"probability": 0.02818,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e169",
+"name": "Event 169",
+"type": "Event",
+"probability": 0.0002333,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e7",
+"name": "Event 7",
+"type": "Event",
+"probability": 0.009292,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g52",
+"name": "r_g52",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e148",
+"name": "Event 148",
+"type": "Event",
+"probability": 1.474e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_g21",
+"name": "r_g21",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e253",
+"name": "Event 253",
+"type": "Event",
+"probability": 2.797e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e226",
+"name": "Event 226",
+"type": "Event",
+"probability": 0.01852,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e126",
+"name": "Event 126",
+"type": "Event",
+"probability": 0.03487,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g42",
+"name": "r_g42",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e106",
+"name": "Event 106",
+"type": "Event",
+"probability": 2.198e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e207",
+"name": "Event 207",
+"type": "Event",
+"probability": 0.04075,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+},
+{
+"id": "r_g47",
+"name": "r_g47",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e46",
+"name": "Event 46",
+"type": "Event",
+"probability": 1.151e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e36",
+"name": "Event 36",
+"type": "Event",
+"probability": 1.758e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 3.61e-07,
+"tau": 168.0
+}
+},
+{
+"id": "r_e215",
+"name": "Event 215",
+"type": "Event",
+"probability": 0.0001373,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e17",
+"name": "Event 17",
+"type": "Event",
+"probability": 2.233e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+},
+{
+"id": "r_g45",
+"name": "r_g45",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g0",
+"name": "r_g0",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "AND",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e91",
+"name": "Event 91",
+"type": "Event",
+"probability": 0.01442,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e129",
+"name": "Event 129",
+"type": "Event",
+"probability": 0.0001569,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_e268",
+"name": "Event 268",
+"type": "Event",
+"probability": 3.963e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e276",
+"name": "Event 276",
+"type": "Event",
+"probability": 0.005251,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "standby",
+"lambda": 2.27e-06,
+"tau": 2190.0
+}
+}
+]
+}
+]
+},
+{
+"id": "r_e221",
+"name": "Event 221",
+"type": "Event",
+"probability": 0.001217,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 4e-07
+}
+}
+]
+},
+{
+"id": "r_g89",
+"name": "r_g89",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_g2",
+"name": "r_g2",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e88",
+"name": "Event 88",
+"type": "Event",
+"probability": 4.742e-06,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [],
+"quant": {
+"model": "rate",
+"lambda": 4.67e-07,
+"unc": {
+"dist": "lognormal",
+"ef": 10.0
+}
+}
+},
+{
+"id": "r_e159",
+"name": "Event 159",
+"type": "Event",
+"probability": 0.001481,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e63",
+"name": "Event 63",
+"type": "Event",
+"probability": 6.575e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e288",
+"name": "Event 288",
+"type": "Event",
+"probability": 1.809e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+},
+{
+"id": "r_g37",
+"name": "r_g37",
+"type": "Event",
+"probability": 1.0,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": [
+{
+"id": "r_e12",
+"name": "Event 12",
+"type": "Event",
+"probability": 0.0001414,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+},
+{
+"id": "r_e220",
+"name": "Event 220",
+"type": "Event",
+"probability": 4.417e-05,
+"logicGate": "OR",
+"notes": "",
+"links": [],
+"children": []
+}
+]
+}
+]
+}
+]
+}
+]
+},
+"analysis": {
+"mc": {
+"n": 2000,
+"seed": 301
+}
+}
+}

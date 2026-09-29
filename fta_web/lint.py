@@ -39,6 +39,9 @@ DEFAULT_PROBABILITY         warning   FTA   a basic leaf is exactly 1.0 with no 
 PARENT_PROBABILITY_IGNORED  warning   FTA   a gate's own ``probability`` is neither 1.0
                                             nor its calculated value (it is ignored)
 STANDBY_LARGE_LT            warning   FTA   standby λτ > 0.2 (engine)
+RATE_IMPLAUSIBLE            warning   FTA   a rate/standby/repairable λ above 1e-2 /h
+                                            (MTBF < 100 h), or a rate model whose q
+                                            is >= 0.999: most likely a unit mix-up
 NONCOHERENT_XOR             warning   FTA   the tree has an XOR gate (one issue, at the
                                             first XOR; cut sets are approximate)
 CUTSETS_TRUNCATED           warning   FTA   ``extra["cutsets"]["truncated"]`` is truthy
@@ -71,9 +74,9 @@ import string
 from typing import Any, Dict, Iterable, List, Optional
 
 try:  # normal package import: ``import fta_web.lint``
-    from .engine import WebCore, coerce_analysis
+    from .engine import WebCore, coerce_analysis, derive_quant
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
-    from engine import WebCore, coerce_analysis  # type: ignore[no-redef]
+    from engine import WebCore, coerce_analysis, derive_quant  # type: ignore[no-redef]
 
 
 SEVERITIES = ("error", "warning", "info")
@@ -93,6 +96,7 @@ SEVERITY: Dict[str, str] = {
     "DEFAULT_PROBABILITY": "warning",
     "PARENT_PROBABILITY_IGNORED": "warning",
     "STANDBY_LARGE_LT": "warning",
+    "RATE_IMPLAUSIBLE": "warning",
     "NONCOHERENT_XOR": "warning",
     "CUTSETS_TRUNCATED": "warning",
     "ETA_BRANCH_SUM": "warning",
@@ -126,6 +130,8 @@ MESSAGES: Dict[str, str] = {
                                   "value comes from the inputs ({calculated}).",
     "STANDBY_LARGE_LT": "Standby λτ = {lambdaTau} is above 0.2; the λτ/2 approximation "
                         "is poor.",
+    "RATE_IMPLAUSIBLE": "Failure rate λ = {lambda}/h looks implausibly high (q = {q}). "
+                        "Check the unit (FIT = 1e-9/h, /y = /8760 h).",
     "NONCOHERENT_XOR": "The tree has {count} XOR gate(s); cut-set results are approximate.",
     "CUTSETS_TRUNCATED": "The cut-set list was truncated ({reason}); results may be "
                          "underestimated.",
@@ -210,6 +216,32 @@ def _walk(root: Dict[str, Any]):
             continue
         yield node
         stack.extend(reversed(node.get("children") or []))
+
+
+#: λ above this (per hour, i.e. an MTBF under 100 h) is flagged RATE_IMPLAUSIBLE.
+IMPLAUSIBLE_LAMBDA = 1e-2
+#: ... as is a rate model whose derived q reaches this (the event is certain).
+IMPLAUSIBLE_Q = 0.999
+_RATE_MODELS = ("rate", "standby", "repairable")
+
+
+def _implausible_rate(node: Dict[str, Any], analysis: Any) -> Optional[Dict[str, Any]]:
+    """``{lambda, unit, q, model}`` when the event's failure rate looks like a
+    unit mix-up (FIT or /y entered as /h), else None."""
+    quant = node.get("quant")
+    if not isinstance(quant, dict):
+        return None
+    model = str(quant.get("model") or "fixed").lower()
+    if model not in _RATE_MODELS:
+        return None
+    derived = derive_quant(node, analysis)
+    lam = (derived.get("params") or {}).get("lambda")
+    if lam is None:
+        return None  # a missing λ is QUANT_PARAM_MISSING's business
+    q = derived.get("q")
+    if lam > IMPLAUSIBLE_LAMBDA or (model == "rate" and q is not None and q >= IMPLAUSIBLE_Q):
+        return {"lambda": lam, "unit": "h", "q": q, "model": model}
+    return None
 
 
 def _has_quant_model(node: Dict[str, Any]) -> bool:
@@ -437,6 +469,10 @@ def _fta_rules(root, nodes, index, add, core, extra) -> None:
         else:
             if kind == "undeveloped":
                 add("UNDEVELOPED_EVENT", node)
+            if kind != "house":
+                implausible = _implausible_rate(node, getattr(core, "analysis", None))
+                if implausible is not None:
+                    add("RATE_IMPLAUSIBLE", node, implausible)
             if (kind != "house" and id(node) != root_key and not _has_quant_model(node)
                     and _float(node.get("probability", 1.0), 1.0) == 1.0):
                 add("DEFAULT_PROBABILITY", node)

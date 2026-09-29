@@ -1,0 +1,169 @@
+{
+  "title": "O01 random (oracle)",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Random top",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "o1_g4",
+        "name": "o1_g4",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "o1_g2",
+            "name": "o1_g2",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "AND",
+            "notes": "",
+            "links": [],
+            "children": [
+              {
+                "id": "o1_e5",
+                "name": "Event 5",
+                "type": "Event",
+                "probability": 0.1181,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              },
+              {
+                "id": "o1_e6",
+                "name": "Event 6",
+                "type": "Event",
+                "probability": 0.1275,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "quant": {
+                  "model": "repairable",
+                  "lambda": 0.000541,
+                  "mttr": 72.0
+                }
+              }
+            ]
+          },
+          {
+            "id": "o1_g3",
+            "name": "o1_g3",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [
+              {
+                "id": "o1_e3",
+                "name": "Event 3",
+                "type": "Event",
+                "probability": 0.03994,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              },
+              {
+                "id": "o1_e1",
+                "name": "Event 1",
+                "type": "Event",
+                "probability": 0.151,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "o1_g1",
+        "name": "o1_g1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "o1_e7",
+            "name": "Event 7",
+            "type": "Event",
+            "probability": 0.01068,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "o1_g0",
+            "name": "o1_g0",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [
+              {
+                "id": "o1_e2",
+                "name": "Event 2",
+                "type": "Event",
+                "probability": 0.03645,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              },
+              {
+                "id": "o1_e0",
+                "name": "Event 0",
+                "type": "Event",
+                "probability": 0.1567,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "quant": {
+                  "model": "rate",
+                  "lambda": 1.97e-05,
+                  "unc": {
+                    "dist": "lognormal",
+                    "ef": 5.0
+                  }
+                }
+              },
+              {
+                "id": "o1_e4",
+                "name": "Event 4",
+                "type": "Event",
+                "probability": 0.0816,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "quant": {
+                  "model": "repairable",
+                  "lambda": 0.00089,
+                  "mttr": 72.0
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "title": "L09 zero/one",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Zero/one",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "and0",
+        "name": "and0",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "z",
+            "name": "z",
+            "type": "Event",
+            "probability": 0.0,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "h",
+            "name": "h",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "or1",
+        "name": "or1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "children": [
+          {
+            "id": "one",
+            "name": "one",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "q",
+            "name": "q",
+            "type": "Event",
+            "probability": 0.25,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "and1",
+        "name": "and1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "one2",
+            "name": "one2",
+            "type": "Event",
+            "probability": 1,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "q2",
+            "name": "q2",
+            "type": "Event",
+            "probability": "0.25",
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}
