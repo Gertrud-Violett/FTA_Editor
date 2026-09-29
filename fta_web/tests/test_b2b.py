@@ -137,6 +137,15 @@ def test_api_matches_engine(refs, api, name):
     assert_rows(B.relabel_timing(rows, refs[name], api[name]))
 
 
+def test_overrides_agree_across_engine_api_and_cli(root):
+    """A changed mission time (settings / --mission-time) and one-run cut-set
+    limits (the Cut Sets tab's body / --max-order --max-count --cutoff)."""
+    transport = B.ClientTransport(root)
+    rows = B.override_rows(list(B.OVERRIDE_TREES), transport, root, "overrides")
+    assert len(rows) == 6 * len(B.OVERRIDE_TREES)
+    assert_rows(rows)
+
+
 # ---- the CLI (subprocess) ----------------------------------------------------------------------
 
 

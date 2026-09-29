@@ -142,6 +142,10 @@ def main(argv=None) -> int:
         got = B.run_api(client, root, n, refs[n], per_node_limit=300 if n in large else None)
         rows += B.relabel_timing(B.api_rows(n, refs[n], got, "api:client"), refs[n], got)
 
+    over = [n for n in B.OVERRIDE_TREES if n in names]
+    phase("overrides (mission time, cut-set limits): engine vs API vs CLI")
+    rows += B.override_rows(over, client, root, "overrides:client")
+
     if not args.no_server:
         phase("api:server (run.py over HTTP)")
         server = B.ServerTransport(B.source_server_command(), root)
@@ -150,6 +154,7 @@ def main(argv=None) -> int:
                 got = B.run_api(server, root, n, refs[n],
                                 per_node_limit=300 if n in large else None)
                 rows += B.relabel_timing(B.api_rows(n, refs[n], got, "api:server"), refs[n], got)
+            rows += B.override_rows(over, server, root, "overrides:server")
         finally:
             server.close()
 

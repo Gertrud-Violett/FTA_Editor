@@ -46,6 +46,7 @@ find; it exits 1 on any mismatch.
 | `api:client` | `create_app()` test client: `/api/file/open`, `/api/state`, `/api/nodes/<id>` (incl. `quantDerived`), `/api/analysis/summary`, `cutsets`, `importance`, `uncertainty` (seeded), `validate`, `/api/dot` labels at 6 s.f., `/api/export/xlsx` (Events and Analysis sheets), `/api/export/xml`, `/api/export/json` (reloaded), `/api/report/docx` at 6 s.f. (python-docx), save-as → reopen |
 | `api:server` | the same over HTTP against a real `fta_web/run.py --root <copy> --no-browser` with the session token |
 | `cli`, `cli:csv` | `run.py quantify|cutsets|importance|mc|validate --json` in one batch per command; `--csv` spot checks |
+| `overrides:*` | a changed mission time (`POST /api/analysis/settings` / `--mission-time`) and one-run cut-set limits (the Cut Sets tab's body / `--max-order --max-count --cutoff`): engine = API = CLI |
 | `legacy_core` | `fta_web/core` FTACore (the 1.6 engine) on the legacy-only trees |
 | `desktop` | the frozen `desktop/src/FTA_Editor_core.py` (imported under another module name); every difference attributed to a DIVERGENCE.md entry by switching the documented changes on one at a time in an independent re-implementation of the walk |
 | `desktop_compat` | 1.7 files saved by the web app, read by the desktop core: the USER_GUIDE "Desktop app compatibility" claims (logicGate projection, derived `probability` for models/house/transfer, AND/OR-only trees equal up to D14, per-gate projection semantics, node keys kept and `analysis` dropped on a desktop save, reopen resets to defaults) |
@@ -128,11 +129,26 @@ XLSX at 16 significant digits (openpyxl writes `%.16g`).
 
 1. **OR gates flushed tiny probabilities to zero** (`engine.py`): `1 − Π(1 − p)`
    cancels; OR(1e-17, 1e-17) = 0, OR(1e-15, 1e-15) = 1.998e-15. Now
-   `engine.or_probability` (the union r <- r + p(1 - r) below 1e-3, + - * only). Found: oracle (L08).
+   `engine.or_probability` (the union `r ← r + p(1 − r)` below 1e-3, + − ×
+   only). Found: oracle (L08).
 2. **Monte Carlo without uncertainty** reported mean ≠ point estimate and std
    ≈ 1e-18 (`uncertainty.py`, `fsum/n`). Now pivoted. Found: `mc` checks.
 3. **Server-side number formatting ≠ the browser's** (`numfmt.py`): integer
    digits beyond the sig figs kept, `e+`, round-half-even. Found: `numfmt:js`.
+4. **Importance measures lost small contributions** (`importance.py`): the
+   difference of two rounded log sums cancelled (FV of a 1e-17 event next to
+   0.5 was 0; up to 1.8e-8 relative on the corpus). Found: oracle (exact
+   rational importance).
+5. **DOCX validation ≠ Validation tab** on `CUTSETS_TRUNCATED`
+   (`report_docx.py`): count always 0, override limits instead of the
+   document's, missing without the cut-set section. Found: `api:*` docx vs
+   validate on R00/R03.
+6. **MCUB headline differed between Python builds** (`cutsets.py`):
+   log1p/expm1 are libm-dependent; now + − × only. Hash-seed independence
+   verified and tested. (Reported by the lead; confirmed by `cli:py2`.)
+7. **`LINKS_REMOVED` survived its undo** (`routes/tree.py`, `routes/ai.py`;
+   reported by the lead): now an edit notice, undone and redone with the
+   delete.
 
 ## Intended divergences
 
@@ -141,7 +157,7 @@ XLSX at 16 significant digits (openpyxl writes `%.16g`).
 | D8, D14, D15, D16, D17 | `desktop` | fta_web/core/DIVERGENCE.md (the frozen desktop core rounds to 6 decimals, aliases duplicate ids, keeps the top id, saturates link cycles, cannot read minified JSON). Attributed per tree by the model, never waved through. |
 | OR-UNION | `legacy_core`, `desktop` | WebCore 1.7.1 computes an OR below 1e-3 as the union r <- r + p(1 - r); the 1.6 cores keep the cancelling product (differs by the precision they lose: up to 100 % below 1e-16, 2.3e-10 relative at 8e-7). |
 | LIBM | `cli:py2`, `exe:*` vs the 3.10 engine | Different Python builds link different libm: `math.expm1(-0.030149)` is `…917` on 3.14 and `…913` on 3.10. Values that go through log/exp -- rate models, importance, Monte Carlo sampling (and, in the 1.7.0 exe, the MCUB) -- then differ by a few ulp (max seen 3e-15 relative). The MCUB and the small-OR branch use + − × only since 1.7.1. The same build is bit-identical (`exe:*==src`), and nothing depends on PYTHONHASHSEED. |
-| FIXED:* | `release->branch`, `exe:*` | the three fixes above, relative to the 1.7.0 release the exe was built from. |
+| FIXED:* | `release->branch`, `exe:*` | this branch's numeric fixes relative to the 1.7.0 release the exe was built from: `FIXED:OR-UNION` (1), `FIXED:MC` (2, and the union in per-sample ORs/MCUB), `FIXED:NUMFMT` (3), `FIXED:IMPORTANCE` (4), `FIXED:MCUB` (6). Each is recognised by its signature (tree affected by the OR change; Monte Carlo mean/std or last-digit differences; FV/Birnbaum within 1e-12 absolute; MCUB keys within 1e-12 relative), anything else stays a mismatch. |
 | TIME | summary on large trees | the headline's own 2 s cut-set budget can stop at different points in different processes (reported as `capped`/`truncatedBy: time`). |
 | XLSX 16 digits | `api:*` `xlsx.*` | openpyxl writes floats with `%.16g` (≤ 5e-16 relative). |
 | _tidy | `engine` | `probability = _tidy(q)` keeps 12 s.f., so `quantDerived.q` (unrounded) and the stored probability differ below 1e-11 relative; the MC tree evaluator does not `_tidy`, so its point estimate matches the tree walk to 1e-10 relative. |

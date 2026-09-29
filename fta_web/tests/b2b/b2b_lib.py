@@ -1231,6 +1231,59 @@ def numfmt_rows(results: Iterable[Dict[str, Any]]) -> List[Row]:
     return rows
 
 
+#: Overrides fed through every path: the mission time (a setting, and the
+#: CLI's --mission-time) and one-run cut-set limits (the Cut Sets tab's body,
+#: the CLI's --max-order/--max-count/--cutoff).
+OVERRIDE_MISSION = 1000.0
+OVERRIDE_LIMITS = {"maxOrder": 2, "maxCount": 3, "cutoff": 1e-6}
+OVERRIDE_TREES = ("F01_quant_models.json", "F02_mission_default.json", "F14_mixed_plant.json",
+                  "O04_random_oracle.json", "T02_2oo3_expanded.json", "L06_deep_chain.json")
+
+
+def override_rows(names: Sequence[str], t: Transport, root: Path, path: str,
+                  exe: Optional[Path] = None) -> List[Row]:
+    """Engine vs API vs CLI with a changed mission time and cut-set limits."""
+    rows: List[Row] = []
+    files = [corpus_path(n) for n in names]
+    _c, quant, _e = run_cli_batch("quantify", files, exe=exe,
+                                  extra=["--mission-time", str(OVERRIDE_MISSION)])
+    _c, cuts, _e = run_cli_batch("cutsets", files, exe=exe, extra=[
+        "--max-order", str(OVERRIDE_LIMITS["maxOrder"]),
+        "--max-count", str(OVERRIDE_LIMITS["maxCount"]),
+        "--cutoff", repr(OVERRIDE_LIMITS["cutoff"])])
+    cli = cli_results({"quantify": quant, "cutsets": cuts})
+    for name in names:
+        core = load_web(corpus_path(name))
+        core.set_analysis({"missionTime": OVERRIDE_MISSION})
+        core.recalculate_probabilities()
+        ref = norm_tree(core.get_data())
+        ref_summary = norm_summary(engine.summary(copy.deepcopy(core.get_data()), core.analysis))
+        base = load_web(corpus_path(name))
+        ref_cut = norm_cutsets(cutsets_mod.compute(copy.deepcopy(base.get_data()), base.analysis,
+                                                   dict(OVERRIDE_LIMITS)))
+        t.post_json("/api/file/open", {"path": str(root / name)})
+        api_cut = norm_cutsets(t.post_json("/api/analysis/cutsets",
+                                           dict(OVERRIDE_LIMITS, limit=100000)))
+        settings = t.post_json("/api/analysis/settings", {"missionTime": OVERRIDE_MISSION})
+        api_tree = norm_tree(settings["tree"])
+        api_summary = norm_summary(t.get_json("/api/analysis/summary"))
+        got = cli.get(name, {})
+        rows += [
+            compare(name, path, "missionTime.calc (API settings)", ref["calc"], api_tree["calc"],
+                    keys="both"),
+            compare(name, path, "missionTime.summary (API)", ref_summary, api_summary,
+                    keys="both"),
+            compare(name, path, "missionTime.calc (CLI --mission-time)", ref["calc"],
+                    got.get("events.calc"), keys="common"),
+            compare(name, path, "missionTime.summary (CLI)", ref_summary, got.get("summary"),
+                    keys="both"),
+            compare(name, path, "limits.cutsets (API body)", ref_cut, api_cut, keys="both"),
+            compare(name, path, "limits.cutsets (CLI flags)", ref_cut, got.get("cutsets"),
+                    keys="both"),
+        ]
+    return rows
+
+
 def parse_cli_csv(text: str) -> List[Dict[str, str]]:
     import csv
 
