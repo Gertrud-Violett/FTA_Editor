@@ -64,3 +64,19 @@ def test_fit_uses_the_capped_scale_everywhere():
     body = re.search(r"  function fit\(\) \{(.*?)\n  \}", src, re.S).group(1)
     assert "fitScale(rect.width, rect.height, w, h)" in body
     assert "ZOOM_MAX" not in body, "fit() must not re-derive its own (uncapped) clamp"
+
+
+# ---- Tree: the keyboard hint never changes the layout under a mouse press ------------
+
+def test_tree_hint_is_keyboard_only_and_out_of_the_layout():
+    src = _read(STATIC / "tree.js")
+    # 1.7.0: shown on any focus-within -> a click on a bottom row hit the hint
+    assert ".fta-tree-panel:focus-within .fta-tree-hint" not in src
+    assert ".fta-tree-panel.is-kbd:focus-within .fta-tree-hint { display: block; }" in src
+    hint_css = re.search(r"\.fta-tree-hint \{(.*?)\}", src, re.S).group(1)
+    assert "position: absolute;" in hint_css
+    assert "pointer-events: none;" in hint_css
+    assert "trackModality(panel, host, hint);" in src
+    body = re.search(r"function trackModality\(panel, list, hint\) \{(.*?)\n\}", src, re.S).group(1)
+    assert "addEventListener('pointerdown', () => show(false), true)" in body
+    assert "addEventListener('keydown', () => show(true), true)" in body
