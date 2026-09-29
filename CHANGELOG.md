@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always return the sample value; about 1 run in 12). The mean is now
   pivoted on the first sample, so equal samples give exactly their value
   and a standard deviation of 0.
+- **Importance measures lost the digits of small contributions.** FV,
+  Birnbaum and RRW took the difference of two separately rounded log sums,
+  which cancels: in OR(A = 0.5, B = 1e-17) the FV of B was 0.0 (exactly
+  1e-17), and on the B2B corpus FV was off by up to 1.8e-8 relative. The
+  exponent difference is now summed directly from the changed terms; every
+  measure agrees with exact rational arithmetic to 1e-12.
 - **DOCX report, validation section:** `CUTSETS_TRUNCATED` did not match the
   Validation tab. Its `params.count` was always 0 (the whole cut-set result
   was handed to lint instead of the truncation signal); it followed the
