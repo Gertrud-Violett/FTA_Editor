@@ -723,10 +723,17 @@ class ClientTransport(Transport):
         import state as bare_state  # noqa: E402
 
         bare_state.reset_state()
+        self._bare_state = bare_state
         self.app = bare_app.create_app(fs_root=fs_root)
         self.app.config.update(TESTING=True)
         bare_state.get_state().fs_root = fs_root
         self.client = self.app.test_client()
+
+    def close(self):
+        """Leave the process-wide (bare-module) AppState as a fresh one:
+        other tests build create_app() apps on the same singleton and must
+        not inherit this document or its undo history."""
+        self._bare_state.reset_state()
 
     def get(self, url):
         r = self.client.get(url)

@@ -122,9 +122,12 @@ def test_the_oracle_covers_enough_trees(refs):
 @pytest.fixture(scope="module")
 def api(refs, root):
     transport = B.ClientTransport(root)
-    return {name: B.run_api(transport, root, name, refs[name],
-                            per_node_limit=300 if name in LARGE else None)
-            for name in NAMES}
+    try:
+        return {name: B.run_api(transport, root, name, refs[name],
+                                per_node_limit=300 if name in LARGE else None)
+                for name in NAMES}
+    finally:
+        transport.close()
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -141,7 +144,10 @@ def test_overrides_agree_across_engine_api_and_cli(root):
     """A changed mission time (settings / --mission-time) and one-run cut-set
     limits (the Cut Sets tab's body / --max-order --max-count --cutoff)."""
     transport = B.ClientTransport(root)
-    rows = B.override_rows(list(B.OVERRIDE_TREES), transport, root, "overrides")
+    try:
+        rows = B.override_rows(list(B.OVERRIDE_TREES), transport, root, "overrides")
+    finally:
+        transport.close()
     assert len(rows) == 6 * len(B.OVERRIDE_TREES)
     assert_rows(rows)
 
