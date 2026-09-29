@@ -119,7 +119,14 @@ def _col_or(cols):
     acc = [1.0 - v for v in cols[0]]
     for c in cols[1:]:
         acc = [a * (1.0 - b) for a, b in zip(acc, c)]
-    return [1.0 - a for a in acc]
+    out = [1.0 - a for a in acc]
+    # engine.or_probability's log-space branch, for the (rare) small samples,
+    # so the tree method still matches the tree walk sample for sample.
+    low = engine.OR_LOG_SPACE_BELOW
+    for s, value in enumerate(out):
+        if value < low:
+            out[s] = engine.or_probability([c[s] for c in cols])
+    return out
 
 
 def _tree_chunk(structure, plan, event_cols, m):

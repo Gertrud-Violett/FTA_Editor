@@ -376,6 +376,11 @@ OR Gate:
 Calculated = 1 - Product((1-Child1), (1-Child2), ...)
 ```
 
+In the web app an OR result below 1e-3 is computed in the mathematically
+equal form `−expm1(Σ log1p(−Child))`, which keeps every digit of very small
+values. (The product form cancels there: the legacy desktop app, and the web
+app before 1.7.1, gave OR(1e-17, 1e-17) = 0 and OR(1e-15, 1e-15) = 1.998e-15.)
+
 Once a node has children, its own (base) probability is **not used**. The
 Validation tab reports a gate whose entered value differs from the calculated
 one (`PARENT_PROBABILITY_IGNORED`).
