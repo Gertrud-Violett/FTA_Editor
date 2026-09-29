@@ -387,6 +387,8 @@ def test_every_code_is_localised_with_a_fix_hint():
         "STANDBY_LARGE_LT": {"lambdaTau"}, "NONCOHERENT_XOR": {"count"},
         "CUTSETS_TRUNCATED": {"reason"}, "ETA_BRANCH_SUM": {"sum"},
         "LINKS_REMOVED": {"targetId"}, "PAND_APPROX": {"n"},
+        # 1.7.1 (lint rule added on the backend branch): params {lambda, unit, q, model}
+        "RATE_IMPLAUSIBLE": {"lambda", "unit", "q", "model"},
     }
     for code, text in placeholders.items():
         used = set(re.findall(r"\{(\w+)\}", text))

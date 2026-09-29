@@ -80,3 +80,38 @@ def test_tree_hint_is_keyboard_only_and_out_of_the_layout():
     body = re.search(r"function trackModality\(panel, list, hint\) \{(.*?)\n\}", src, re.S).group(1)
     assert "addEventListener('pointerdown', () => show(false), true)" in body
     assert "addEventListener('keydown', () => show(true), true)" in body
+
+
+# ---- Validation: probability params always follow the sig-fig setting ---------------
+
+def _validation_format_source() -> str:
+    src = _read(TABS / "validation.js")
+    parts = [
+        re.search(r"export const PROBABILITY_PARAMS = [^;]+;", src).group(0),
+        re.search(r"export const RATE_PARAMS = [^;]+;", src).group(0),
+        re.search(r"export function formatNumberParam\(.*?\n\}", src, re.S).group(0),
+    ]
+    return "\n".join(p.replace("export ", "") for p in parts)
+
+
+@needs_node
+def test_validation_number_params_formatting():
+    fmt = ("(v) => { const n = Number(v); if (n === 0) return '0'; const m = Math.abs(n); "
+           "if (m < 1e-3 || m >= 1e4) return n.toExponential(2).replace('e+', 'e'); return n.toPrecision(3); }")
+    cases = [["calculated", 1], ["probability", 0.16], ["probability", 0], ["sum", 2],
+             ["q", 1], ["lambdaTau", 0.25], ["n", 3], ["k", 5], ["lambda", 120], ["lambda", 4.5e-6]]
+    script = _validation_format_source() + (
+        "\nconst fmt = %s;\nconsole.log(JSON.stringify(%s.map(([k, v]) => formatNumberParam(k, v, fmt, 3))));"
+        % (fmt, json.dumps(cases)))
+    got = _node(script)
+    # PARENT_PROBABILITY_IGNORED used to read "(1)" next to "(0.160)"
+    assert got == ["1.00", "0.160", "0", "2.00", "1.00", "0.250", "3", "5", "1.20e2", "4.50e-6"]
+
+
+def test_rate_implausible_is_translated_and_advanced():
+    cat = _read(STATIC / "i18n" / "val.js")
+    for key in ("'val.code.RATE_IMPLAUSIBLE'", "'val.fix.RATE_IMPLAUSIBLE'"):
+        assert cat.count(key) == 2, key  # en + ja
+    src = _read(TABS / "validation.js")
+    codes = re.search(r"const ADVANCED_CODES = new Set\(\[(.*?)\]\);", src, re.S).group(1)
+    assert "'RATE_IMPLAUSIBLE'" in codes

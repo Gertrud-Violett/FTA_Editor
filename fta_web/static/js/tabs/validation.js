@@ -40,6 +40,7 @@ const ADVANCED_CODES = new Set([
   'CUTSETS_TRUNCATED',
   'PAND_APPROX',
   'UNDEVELOPED_EVENT',
+  'RATE_IMPLAUSIBLE',
 ]);
 const DEBOUNCE_MS = 400;
 const HIGHLIGHT_SOURCE = 'validation';
@@ -114,6 +115,30 @@ function interpolate(text, vars) {
   );
 }
 
+/**
+ * Message params that are probabilities (or probability-like magnitudes such
+ * as λτ): always shown at the significant-figure setting, even when the value
+ * happens to be a whole number. PARENT_PROBABILITY_IGNORED used to read
+ * "(1)" for the entered probability next to "(0.160)" for the calculated one.
+ */
+export const PROBABILITY_PARAMS = Object.freeze(['probability', 'calculated', 'sum', 'lambdaTau', 'q']);
+
+/** Rates (per hour): always exponent form at the sig-fig setting, e.g. 120 -> 1.20e2. */
+export const RATE_PARAMS = Object.freeze(['lambda']);
+
+/**
+ * One numeric message param as displayed: probabilities through fmtProb,
+ * rates in exponent form, counts (n, k, ...) as integers.
+ */
+export function formatNumberParam(key, value, fmtProb, sigFigs) {
+  if (RATE_PARAMS.includes(key)) {
+    const digits = Math.min(6, Math.max(1, Math.round(Number(sigFigs) || 3)));
+    return Number.isFinite(value) ? value.toExponential(digits - 1).replace('e+', 'e') : String(value);
+  }
+  if (PROBABILITY_PARAMS.includes(key)) return fmtProb(value);
+  return Number.isInteger(value) ? String(value) : fmtProb(value);
+}
+
 function signature(issue) {
   return [issue.code, issue.nodeId, issue.message].join('\u0001');
 }
@@ -149,6 +174,13 @@ export function mount(panel, ctx) {
       return ctx && ctx.fmt && typeof ctx.fmt.prob === 'function' ? ctx.fmt.prob(v) : String(v);
     } catch (_err) {
       return String(v);
+    }
+  };
+  const sigFigs = () => {
+    try {
+      return ctx && ctx.fmt && typeof ctx.fmt.sigFigs === 'function' ? ctx.fmt.sigFigs() : 3;
+    } catch (_err) {
+      return 3;
     }
   };
   const isAdvanced = () => Boolean(ctx && typeof ctx.advanced === 'function' && ctx.advanced());
@@ -254,7 +286,7 @@ export function mount(panel, ctx) {
     const params = issue.params && typeof issue.params === 'object' ? issue.params : {};
     for (const [key, value] of Object.entries(params)) {
       if (typeof value === 'number') {
-        out[key] = Number.isInteger(value) ? String(value) : fmtProb(value);
+        out[key] = formatNumberParam(key, value, fmtProb, sigFigs());
       } else if (Array.isArray(value)) {
         out[key] = value.join(', ');
       } else if (value === null || value === undefined) {
