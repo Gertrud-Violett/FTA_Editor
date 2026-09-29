@@ -2093,6 +2093,15 @@ async function actionDelete() {
 }
 
 async function actionHistory(kind) {
+  // The store knows whether there is anything to undo/redo (the toolbar
+  // buttons are disabled on it). Asking the server anyway got a refused 400,
+  // which Chrome logs as a console error, for every Ctrl+Z on a fresh document.
+  const able = kind === 'undo' ? 'canUndo' : 'canRedo';
+  if (store.state && store.state[able] === false) {
+    const code = kind === 'undo' ? 'NOTHING_TO_UNDO' : 'NOTHING_TO_REDO';
+    toast(t(kind === 'undo' ? 'msg.nothingToUndo' : 'msg.nothingToRedo'), 'info', code);
+    return;
+  }
   try {
     const result = await api.post('/' + kind, {});
     store.applyMutation(result);
@@ -2677,6 +2686,18 @@ function wireTopbar() {
     el.addEventListener('change', queueMetadata);
     el.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') el.blur();
+      else if (event.key === 'Escape') {
+        // Escape discards the typing, as in the Details and analysis forms,
+        // instead of reaching the shell (which would only dismiss a toast and
+        // leave the edit to be committed on the next blur).
+        const meta = store.metadata();
+        const stored = String((sel === '#title-input' ? meta.title : meta.date) || '');
+        if (el.value !== stored) {
+          event.preventDefault();
+          event.stopPropagation();
+          el.value = stored;
+        }
+      }
     });
   }
 

@@ -50,6 +50,8 @@ export default {
     'tab.badgeWarnings': '{tab}, {n} warning(s)',
     'toast.showValidation': 'Show in Validation',
     'toast.dismiss': 'Dismiss',
+    'msg.nothingToUndo': 'There is nothing to undo.',
+    'msg.nothingToRedo': 'There is nothing to redo.',
   },
   ja: {
     'panel.bottom': '詳細と解析',
@@ -93,5 +95,7 @@ export default {
     'tab.badgeWarnings': '{tab}、警告 {n} 件',
     'toast.showValidation': '検証タブで表示',
     'toast.dismiss': '閉じる',
+    'msg.nothingToUndo': '元に戻せる操作はありません。',
+    'msg.nothingToRedo': 'やり直せる操作はありません。',
   },
 };

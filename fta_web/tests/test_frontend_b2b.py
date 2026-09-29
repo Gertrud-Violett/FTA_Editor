@@ -252,6 +252,24 @@ def test_no_untranslated_static_labels():
     assert "close.setAttribute('aria-label', 'Dismiss')" not in _read(STATIC / "main.js")
 
 
+# ---- Undo / redo with nothing to do; Escape in the top bar ------------------------------
+
+def test_history_without_steps_asks_nobody():
+    src = _read(STATIC / "main.js")
+    body = re.search(r"async function actionHistory\(kind\) \{(.*?)\n\}", src, re.S).group(1)
+    guard = body.index("store.state[able] === false")
+    assert guard < body.index("api.post('/' + kind"), "no refused 400 (a console error) for Ctrl+Z on a fresh document"
+    shell = _read(STATIC / "i18n" / "shell17.js")
+    for key in ("msg.nothingToUndo", "msg.nothingToRedo"):
+        assert shell.count("'%s'" % key) == 2, key
+
+
+def test_topbar_escape_discards_typing():
+    src = _read(STATIC / "main.js")
+    wire = re.search(r"function wireTopbar\(\) \{(.*?)\n\}", src, re.S).group(1)
+    assert "event.key === 'Escape'" in wire and "el.value = stored;" in wire
+
+
 # ---- Report tab: "Save … again" survives other exports ---------------------------------
 
 def test_report_save_again_url_is_not_revoked_by_other_exports():
