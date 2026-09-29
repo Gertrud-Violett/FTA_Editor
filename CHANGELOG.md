@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-09-29
+
+Back-to-back test release. The same inputs were run through every path: the
+GUI in real Google Chrome (716 scripted checks plus a hands-on session), the
+HTTP API, the CLI, the packaged 1.7.0 exe, the legacy desktop engine and a
+truth-table oracle. That is 49 test trees and 1.4 million compared values,
+now kept as `fta_web/tests/b2b/`. Every remaining difference is either fixed
+below or a documented, intended divergence (`fta_web/tests/b2b/README.md`).
+The packaged 1.7.0 exe computed exactly what its source computes.
+
 ### Added
 
 - **Validation: `RATE_IMPLAUSIBLE`** (warning). A rate, standby or repairable
@@ -27,9 +37,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FMEA import: λ unit suggestion.** When the λ header does not name a unit,
   the suggestion now comes from the column's values: a median of 1 or more
   suggests FIT, 1e-3 up to 1 suggests `/y`. A unit in the header (`FIT`,
-  `/y`, `per year`, `/h`, `per hour`, `年`, `時間`) still wins.
+  `/y`, `per year`, `/h`, `per hour`, `年`, `時間`) still wins. The FMEA tab
+  also warns, without blocking, when the mapped λ values look too high for
+  the chosen unit ("Did you mean FIT?").
+- **New analysis is Alt+N.** Chrome and Edge reserve Ctrl+N for a new
+  browser window, so the page never received it. Ctrl+N still works where a
+  browser delivers it. Every Ctrl shortcut the editor handles now calls
+  `preventDefault`. The web-app shortcut table is in `docs/USER_GUIDE.md`.
+- **Numeric fields select their value on click or focus**, so typing replaces
+  a default such as the Add dialog's `1.0`. Before this, typing `1e-3` after a
+  click produced `1.01e-3`.
+- **Confirmations name their consequence:** "Discard and start new" /
+  "Discard and open" instead of a generic OK / 決定.
+- **The headline number explains an MCUB value on hover in basic mode too.**
+  Basic mode hides the MCUB badge, but the headline can still differ from the
+  root's tree-walk value in Node Details.
+- **The diagram's caption says what drew the picture:** the on-screen diagram
+  is always drawn in the browser (Graphviz WASM). Native Graphviz is used only
+  for PNG export.
 
 ### Fixed
+
+- **GUI, found in real Chrome:**
+  - A one-node diagram auto-fitted to 675% zoom, with giant title letters.
+    Fit never enlarges beyond 100% now.
+  - A first click on a tree row near the bottom of the panel selected the
+    root. The keyboard hint appeared on mouse focus and covered the row. It
+    now appears only for keyboard focus, as an overlay that never shifts rows.
+  - Validation messages printed some probabilities unformatted ("(1)" next
+    to "(0.160)"). Every probability parameter now follows the sig-figs
+    setting.
+  - Switching language live left the AI panel intro and the action bar's
+    screen-reader label in English.
+  - The diagram's Font & box size popover ignored Escape.
+  - New on a document with unsaved changes logged a console error before
+    asking.
+  - Ctrl+Z / Ctrl+Y with nothing to undo logged a 400 error.
+  - Escape in Title/Date did not discard the typing.
+  - The Validation badge still counted dismissed notices.
+  - Cut Sets / Importance lost an edit made during their first run.
+  - Every tree selection re-ran the whole diagram layout.
+  - The Report tab's "Save again" link broke after another download.
+- **The browser and the server formatted boundary numbers differently.**
+  `numfmt.js` chose plain or exponent form from the raw value, so 0.00099996
+  at 3 s.f. read "1.00e-3" in the GUI but "0.00100" in the DOCX and CLI. Both
+  now decide from the rounded magnitude, and the parity test is strict.
 
 - **OR gates flushed very small probabilities to zero.** The OR formula
   `1 − Π(1 − p)` cancels for small inputs: OR(1e-17, 1e-17) was exactly 0
