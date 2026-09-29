@@ -59,6 +59,22 @@ def test_fit_scale_never_enlarges_a_small_diagram():
     assert got[3] == 1
 
 
+def test_selection_does_not_relayout_the_diagram():
+    src = _read(STATIC / "diagram.js")
+    body = re.search(r"const unsubscribe = store\.subscribe\(\(\) => \{(.*?)\n  \}\);", src, re.S).group(1)
+    assert "markSelection();" in body
+    # schedule() (a /api/dot fetch + a full WASM layout) only for a new state object
+    assert body.index("if (store.state === renderedState) return;") < body.index("schedule();")
+
+
+def test_diagram_meta_says_what_drew_the_picture():
+    src = _read(STATIC / "diagram.js")
+    assert "t('diagram.rendererNative'" not in src, "the on-screen SVG is never drawn by system Graphviz"
+    assert "'diagram17.pngNative'" in src
+    main = _read(STATIC / "main.js")
+    assert "if (!diagramPanel) {\n    $('#diagram-meta').textContent" in main
+
+
 def test_fit_uses_the_capped_scale_everywhere():
     src = _read(STATIC / "diagram.js")
     body = re.search(r"  function fit\(\) \{(.*?)\n  \}", src, re.S).group(1)

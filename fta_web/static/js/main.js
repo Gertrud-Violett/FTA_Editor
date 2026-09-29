@@ -2749,7 +2749,11 @@ function renderShell(state) {
   $('#details-meta').textContent = store.selectedId
     ? t('meta.selected', { id: store.selectedId })
     : t('meta.noSelection');
-  $('#diagram-meta').textContent = state.nativeDot ? t('meta.dotReady') : t('meta.dotMissing');
+  // diagram.js owns this line once it is up (it states what drew the picture);
+  // writing it here too made it flip between two texts on every click.
+  if (!diagramPanel) {
+    $('#diagram-meta').textContent = state.nativeDot ? t('meta.dotReady') : t('meta.dotMissing');
+  }
 
   const aiDot = $('#ai-status');
   aiDot.dataset.on = String(Boolean(state.aiConfigured));

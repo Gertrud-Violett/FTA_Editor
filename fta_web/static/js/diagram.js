@@ -1039,11 +1039,13 @@ export function initDiagram(container) {
         jumpTo(id);
       }
       setStatusMessage('');
-      setMeta(
-        renderer === 'native'
-          ? t('diagram.rendererNative', 'Rendered by system Graphviz')
-          : t('diagram.rendererWasm', 'Rendered in-browser (Graphviz WASM)')
-      );
+      // What is on screen always comes from the in-browser renderer; a
+      // system Graphviz (renderer 'native') only serves the PNG export of the
+      // compact style. 1.7.0 said "Rendered by system Graphviz" instead.
+      const onScreen = t('diagram.rendererWasm', 'Rendered in-browser (Graphviz WASM)');
+      setMeta(renderer === 'native' && renderedStyle !== 'symbols'
+        ? onScreen + ' · ' + t('diagram17.pngNative', 'PNG export: system Graphviz')
+        : onScreen);
     } catch (err) {
       if (mine !== generation || destroyed) return;
       svgEl = null;
@@ -1159,7 +1161,17 @@ export function initDiagram(container) {
   }
 
   // ---- wiring ------------------------------------------------------------
-  const unsubscribe = store.subscribe(() => { markSelection(); schedule(); });
+  // A selection change (store.select) or a display-only touch() notifies with
+  // the same state object: that is a new outline, not a new graph. Only a new
+  // document state (every mutation, open, undo) re-fetches the DOT and
+  // re-runs the layout -- 1.7.0 re-laid-out the whole diagram on every click.
+  let renderedState;
+  const unsubscribe = store.subscribe(() => {
+    markSelection();
+    if (store.state === renderedState) return;
+    renderedState = store.state;
+    schedule();
+  });
   const unsubscribeHighlight = typeof store.onHighlight === 'function'
     ? store.onHighlight((next) => { highlight = next || { ids: [], source: null }; applyHighlight(); })
     : null;
