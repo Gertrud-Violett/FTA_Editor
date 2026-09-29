@@ -206,6 +206,28 @@ def _repeated_names(repeated: Any, names: Dict[str, str]) -> List[str]:
     return out
 
 
+def _truncation_signal(tree: Any, analysis: Dict[str, Any], cut_result: Optional[Dict[str, Any]],
+                       limits: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """``{truncated, truncatedBy, count}`` for lint's CUTSETS_TRUNCATED, as
+    the Validation tab gets it (``cutsets.truncation_signal``): about the
+    cut sets expanded with the *document's* limits.
+
+    The report's own cut sets are reused when they were expanded with those
+    limits (no override): same answer, and with the report's longer budget
+    they can complete where the tab's 2 s ran out. Otherwise -- an override,
+    or no cut-set section -- the document's signal is computed. None when it
+    cannot be (lint then says nothing about truncation, as the tab does).
+    """
+    doc = analysis.get("cutsets") if isinstance(analysis.get("cutsets"), dict) else {}
+    own_limits = not limits or all(doc.get(k) == v for k, v in limits.items())
+    if cut_result is not None and own_limits:
+        return {"truncated": bool(cut_result.get("truncated")),
+                "truncatedBy": list(cut_result.get("truncatedBy") or []),
+                "count": cut_result.get("total", len(cut_result.get("cutSets") or []))}
+    signal, _reason = try_call("cutsets", "truncation_signal", tree, analysis)
+    return signal
+
+
 def collect_report_data(core, session_warnings: Optional[List[Dict[str, Any]]] = None,
                         options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Everything the report shows, as plain data. Does not modify ``core``."""
@@ -310,9 +332,12 @@ def collect_report_data(core, session_warnings: Optional[List[Dict[str, Any]]] =
         data["uncertainty"] = result
 
     if "validation" in wanted:
+        extra = None
+        if not eta:
+            signal = _truncation_signal(tree, analysis, cut_result, opts.get("limits"))
+            extra = {"cutsets": signal} if signal else None
         issues, reason = try_call("lint", "run", tree, analysis, list(session_warnings or []),
-                                 mode=mode,
-                                 extra={"cutsets": cut_result} if cut_result is not None else None)
+                                 mode=mode, extra=extra)
         if issues is None:
             data["unavailable"]["validation"] = reason
             issues = list(session_warnings or [])

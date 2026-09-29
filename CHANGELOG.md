@@ -41,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always return the sample value; about 1 run in 12). The mean is now
   pivoted on the first sample, so equal samples give exactly their value
   and a standard deviation of 0.
+- **DOCX report, validation section:** `CUTSETS_TRUNCATED` did not match the
+  Validation tab. Its `params.count` was always 0 (the whole cut-set result
+  was handed to lint instead of the truncation signal); it followed the
+  report's override limits instead of the document's; and a report without
+  the cut-set section never reported truncation at all. It is now the
+  Validation tab's signal, reusing the report's cut sets when they were
+  expanded with the document's limits.
 - **Number formatting, server side (CLI, DOCX report, diagram labels)** now
   reads the same as the browser. Found by a back-to-back comparison with
   `static/js/numfmt.js`: a number with more integer digits than significant

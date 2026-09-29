@@ -1000,7 +1000,7 @@ Sections (tick the ones you want; the choice is remembered):
 | Cut sets | The top 50 by default, with totals, MCUB, rare-event value and a truncation note |
 | Importance | The top 30 by FV, by default |
 | Uncertainty | **Off by default.** When selected, a Monte Carlo run of at most 5,000 samples (30 s) is made for the report. |
-| Validation | Every issue, including `CUTSETS_TRUNCATED` |
+| Validation | Every issue, as the Validation tab lists them, including `CUTSETS_TRUNCATED` (judged with the document's cut-set limits, not the report's override; the report's own cut sets are reused when they use the document's limits, so a large tree that exceeds the tab's 2 s budget is still judged) |
 | Traceability | Every node that has trace data |
 
 Choose the language (English or Japanese). In Japanese, the report uses
