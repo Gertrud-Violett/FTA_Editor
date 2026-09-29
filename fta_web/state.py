@@ -198,15 +198,16 @@ class AppState:
         self.native_dot: Optional[str] = _probe_native_dot()
         self.excel_export: bool = _probe_excel_export()
         self.report_export: bool = _probe_report_export()
-        # Load repairs and removed links, for the Validation tab. Session
-        # facts, not document state: deliberately NOT part of undo/redo, and
-        # cleared by reset() (new/open/import).
+        # Load repairs, for the Validation tab. Session facts, not document
+        # state: deliberately NOT part of undo/redo, and cleared by reset()
+        # (new/open/import).
         self._session_warnings: List[Dict[str, Any]] = []
         # Notices raised *by an edit* about what that edit did to the
-        # document (an AI rewrite whose stale gateType was dropped). They
-        # describe document state, so they ARE part of undo/redo: undoing the
-        # AI update removes its notice, redoing it brings the notice back.
-        # Reported after the session notices in ``session_warnings``.
+        # document (links removed by a delete, an AI rewrite whose stale
+        # gateType was dropped). They describe document state, so they ARE
+        # part of undo/redo: undoing the edit removes its notice, redoing it
+        # brings the notice back. Reported after the session notices in
+        # ``session_warnings``.
         self._edit_warnings: List[Dict[str, Any]] = []
         self.language: str = config.DEFAULT_LANGUAGE
         self.fs_root: Path = Path(config.DEFAULT_FS_ROOT)

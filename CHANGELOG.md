@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always return the sample value; about 1 run in 12). The mean is now
   pivoted on the first sample, so equal samples give exactly their value
   and a standard deviation of 0.
+- **`LINKS_REMOVED` survived the undo that restored the link.** Deleting a
+  node that another node linked to, then undoing, brought the node and the
+  link back but kept "Link from … to deleted node … was removed" in
+  `sessionWarnings` and the Validation tab. The notice now belongs to the
+  delete (by hand or by the AI assistant): undo removes it, redo restores
+  it, as for the AI gate-type notices.
 - **Importance measures lost the digits of small contributions.** FV,
   Birnbaum and RRW took the difference of two separately rounded log sums,
   which cancels: in OR(A = 0.5, B = 1e-17) the FV of B was 0.0 (exactly

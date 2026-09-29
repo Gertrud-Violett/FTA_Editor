@@ -868,10 +868,11 @@ its one cause is normal practice. An empty document is never
 notices are reported.
 
 `LOAD_REPAIR` and `LINKS_REMOVED` are *session notices*. They are collected
-while the document is open and are not saved in the file or undone. The one
-exception is a stale gate type dropped after an AI edit (the notice says
-*The AI assistant set this gate to …*): it belongs to that edit, so undoing
-the AI update removes the notice and redo brings it back.
+while the document is open and are not saved in the file. A load repair is
+not undone. A notice raised by an edit belongs to that edit: `LINKS_REMOVED`
+(from a delete, by hand or by the AI assistant) and a stale gate type dropped
+after an AI edit (the notice says *The AI assistant set this gate to …*).
+Undoing the edit removes its notice, and redo brings it back.
 
 ### Traceability and tree search
 

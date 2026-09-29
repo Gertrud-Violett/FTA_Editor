@@ -115,9 +115,10 @@ app reads `probability`, so it shows the same values. It still computes a
 - `analysis`: the block above.
 - `sessionWarnings`: the load repairs and removed links collected this
   session, as issue objects `{severity, code, nodeId, message, params}`.
-  They are not saved and not undone, except the `gate_type_reset` notices of
-  an AI edit (`params.cause: "ai"`), which are undone with that edit. At most
-  500 are kept.
+  They are not saved. Load repairs are not undone; the notices an edit raises
+  about itself -- `LINKS_REMOVED` from a delete (by hand or by the AI) and the
+  `gate_type_reset` notices of an AI edit (`params.cause: "ai"`) -- are undone
+  and redone with that edit. At most 500 are kept.
 - `capabilities.reportExport`: whether `python-docx` is installed.
 - `capabilities.fmeaXlsx`: whether `openpyxl` is installed, which `.xlsx`
   FMEA import needs.
@@ -512,6 +513,8 @@ text is the server's own message; `fta_web/i18n.py` supplies the Japanese:
 **Session warnings from deletes.** Each `DELETE /api/nodes/<id>` returns
 `removedLinks` and adds a `LINKS_REMOVED` session warning for every link it
 stripped. These appear in `sessionWarnings` and in the Validation issues.
+They belong to the delete: `POST /api/undo` (which restores the links)
+removes them, and `POST /api/redo` brings them back.
 
 - A `transferTo` that names a deleted node is removed too and reported the
   same way, with `relation: "TRANSFER"` (`{nodeId, targetId, relation}`). The
