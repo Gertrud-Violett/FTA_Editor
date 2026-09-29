@@ -1065,10 +1065,12 @@ def cli_rows(name: str, ref: Dict[str, Any], got: Dict[str, Any], path: str,
 #: A different Python build (the packaged exe is CPython 3.14, the default
 #: venv 3.10) links a different libm: math.log1p / expm1 / exp may differ in
 #: the last bit (expm1(-0.030149) is ...917 on 3.14, ...913 on 3.10). Every
-#: value that goes through them -- MCUB, importance, Monte Carlo samples, the
-#: log-space OR -- can then differ by a few ulp. Same build: bit-identical.
+#: value that goes through them -- rate models, importance, Monte Carlo
+#: sampling (and the 1.7.0 release's MCUB) -- can then differ by a few ulp.
+#: Same build: bit-identical.
 LIBM = "LIBM"
-LIBM_REL = 1e-13
+#: (Largest seen between 3.10 and 3.14 on this corpus: 4.6e-16.)
+LIBM_REL = 1e-14
 
 
 def cross_build(exact: List[Row], loose: List[Row]) -> List[Row]:
@@ -1094,7 +1096,9 @@ TIME = "TIME"
 
 def relabel_timing(rows: List[Row], ref: Dict[str, Any], got: Dict[str, Any]) -> List[Row]:
     def timed(s):
-        return bool(s) and bool(s.get("capped") or "time" in (s.get("truncatedBy") or ()))
+        # Only the time budget is nondeterministic; the 2000-set count cap
+        # ("capped" without "time") is not.
+        return bool(s) and "time" in (s.get("truncatedBy") or ())
 
     if not (timed(ref.get("summary")) or timed(got.get("summary"))):
         return rows
