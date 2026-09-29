@@ -128,7 +128,7 @@ XLSX at 16 significant digits (openpyxl writes `%.16g`).
 
 1. **OR gates flushed tiny probabilities to zero** (`engine.py`): `1 − Π(1 − p)`
    cancels; OR(1e-17, 1e-17) = 0, OR(1e-15, 1e-15) = 1.998e-15. Now
-   `engine.or_probability` (log space below 1e-3). Found: oracle (L08).
+   `engine.or_probability` (the union r <- r + p(1 - r) below 1e-3, + - * only). Found: oracle (L08).
 2. **Monte Carlo without uncertainty** reported mean ≠ point estimate and std
    ≈ 1e-18 (`uncertainty.py`, `fsum/n`). Now pivoted. Found: `mc` checks.
 3. **Server-side number formatting ≠ the browser's** (`numfmt.py`): integer
@@ -139,8 +139,8 @@ XLSX at 16 significant digits (openpyxl writes `%.16g`).
 | Tag | Where | What |
 |---|---|---|
 | D8, D14, D15, D16, D17 | `desktop` | fta_web/core/DIVERGENCE.md (the frozen desktop core rounds to 6 decimals, aliases duplicate ids, keeps the top id, saturates link cycles, cannot read minified JSON). Attributed per tree by the model, never waved through. |
-| OR-LOG | `legacy_core`, `desktop` | WebCore 1.7.1 computes an OR below 1e-3 in log space; the 1.6 cores keep the cancelling product (differs by the precision they lose: up to 100 % below 1e-16, 2.3e-10 relative at 8e-7). |
-| LIBM | `cli:py2`, `exe:*` vs the 3.10 engine | Different Python builds link different libm: `math.expm1(-0.030149)` is `…917` on 3.14 and `…913` on 3.10. MCUB, importance, Monte Carlo and log-space ORs then differ by a few ulp (max seen 3e-15 relative). The same build is bit-identical (`exe:*==src`). |
+| OR-UNION | `legacy_core`, `desktop` | WebCore 1.7.1 computes an OR below 1e-3 as the union r <- r + p(1 - r); the 1.6 cores keep the cancelling product (differs by the precision they lose: up to 100 % below 1e-16, 2.3e-10 relative at 8e-7). |
+| LIBM | `cli:py2`, `exe:*` vs the 3.10 engine | Different Python builds link different libm: `math.expm1(-0.030149)` is `…917` on 3.14 and `…913` on 3.10. Values that go through log/exp -- rate models, importance, Monte Carlo sampling (and, in the 1.7.0 exe, the MCUB) -- then differ by a few ulp (max seen 3e-15 relative). The MCUB and the small-OR branch use + − × only since 1.7.1. The same build is bit-identical (`exe:*==src`), and nothing depends on PYTHONHASHSEED. |
 | FIXED:* | `release->branch`, `exe:*` | the three fixes above, relative to the 1.7.0 release the exe was built from. |
 | TIME | summary on large trees | the headline's own 2 s cut-set budget can stop at different points in different processes (reported as `capped`/`truncatedBy: time`). |
 | XLSX 16 digits | `api:*` `xlsx.*` | openpyxl writes floats with `%.16g` (≤ 5e-16 relative). |

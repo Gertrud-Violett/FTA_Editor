@@ -120,9 +120,9 @@ def _col_or(cols):
     for c in cols[1:]:
         acc = [a * (1.0 - b) for a, b in zip(acc, c)]
     out = [1.0 - a for a in acc]
-    # engine.or_probability's log-space branch, for the (rare) small samples,
+    # engine.or_probability's small-result branch, for the (rare) small samples,
     # so the tree method still matches the tree walk sample for sample.
-    low = engine.OR_LOG_SPACE_BELOW
+    low = engine.OR_ACCURATE_BELOW
     for s, value in enumerate(out):
         if value < low:
             out[s] = engine.or_probability([c[s] for c in cols])
@@ -162,6 +162,7 @@ def _tree_chunk(structure, plan, event_cols, m):
 
 
 def _mcub_chunk(compiled, event_cols, m):
+    """cutsets.mcub_of per sample, set by set in the same order."""
     acc = [0.0] * m
     ones = [False] * m
     for const, vars_ in compiled:
@@ -175,8 +176,9 @@ def _mcub_chunk(compiled, event_cols, m):
             if p >= 1.0:
                 ones[s] = True
             elif p > 0.0:
-                acc[s] += math.log1p(-p)
-    return [1.0 if one else -math.expm1(a) for a, one in zip(acc, ones)]
+                q = acc[s]
+                acc[s] = q + p * (1.0 - q)
+    return [1.0 if one else min(1.0, a) for a, one in zip(acc, ones)]
 
 
 # ---- statistics ----------------------------------------------------------------------
@@ -296,8 +298,9 @@ def run(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
         for row in chosen:
             const = 1.0
             vars_ = []
-            for ev in row["events"]:
-                idx = s.event_index[ev["id"]]
+            # In event-index order, the order cutsets multiplies P(C) in, so
+            # without uncertainty each sample is bit for bit the point value.
+            for idx in sorted(s.event_index[ev["id"]] for ev in row["events"]):
                 if idx in samplers:
                     vars_.append(idx)
                 else:

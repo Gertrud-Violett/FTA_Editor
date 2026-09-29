@@ -228,16 +228,22 @@ def _limits(analysis: Optional[Dict[str, Any]], limits: Optional[Dict[str, Any]]
 
 
 def mcub_of(probs) -> float:
-    """``1 - Π(1 - P)`` in log space; any P >= 1 makes it 1."""
-    acc = 0.0
+    """``1 - Π(1 - P)``; any P >= 1 makes it 1.
+
+    Accumulated as the union ``Q <- Q + P(1 - Q)``: no cancellation, so
+    1e-18 cut sets keep their digits (to ~1e-13 relative over hundreds of
+    sets), and only + - * -- which IEEE 754 rounds identically everywhere --
+    so the MCUB headline has the same bits on every Python build. The 1.7.0
+    log1p/expm1 form differed in the last digit between the 3.14 exe and a
+    3.10 venv (libm). The callers pass the sets in a fixed order.
+    """
+    q = 0.0
     for p in probs:
         if p >= 1.0:
             return 1.0
         if p > 0.0:
-            acc += math.log1p(-p)
-    # ``0.0 -`` rather than unary minus: no cut sets must be 0.0, not -0.0
-    # (which JSON would carry as "-0.0").
-    return 0.0 - math.expm1(acc)
+            q = q + p * (1.0 - q)
+    return min(1.0, q)
 
 
 def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,

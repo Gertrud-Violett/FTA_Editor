@@ -394,3 +394,53 @@ def test_quant_models_feed_the_cut_sets():
     result = cutsets.compute(tree, {"missionTime": 100})
     q = {e["id"]: e["q"] for cs in result["cutSets"] for e in cs["events"]}
     assert q["A"] == pytest.approx(-math.expm1(-1e-2))
+
+
+# ---- the MCUB: accurate, and the same bits on every Python build ---------------------------
+
+
+def _exact_mcub(probs):
+    from fractions import Fraction
+
+    prod = Fraction(1)
+    for p in probs:
+        prod *= 1 - Fraction(p)
+    return float(1 - prod)
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_mcub_matches_exact_rational_arithmetic(seed):
+    rng = random.Random(seed)
+    probs = sorted((rng.choice([0.5, 0.1, 1e-3, 1e-7, 1e-12, 1e-18]) * rng.uniform(0.5, 1.5)
+                    for _ in range(rng.randint(1, 400))), reverse=True)
+    assert cutsets.mcub_of(probs) == pytest.approx(_exact_mcub(probs), rel=1e-13, abs=0)
+
+
+def test_mcub_edge_cases():
+    assert cutsets.mcub_of([]) == 0.0 and str(cutsets.mcub_of([])) == "0.0"
+    assert cutsets.mcub_of([0.3, 1.0, 0.2]) == 1.0
+    assert cutsets.mcub_of([0.0, 0.0]) == 0.0
+    assert cutsets.mcub_of([1e-18, 1e-18]) == pytest.approx(2e-18, rel=1e-15, abs=0)
+
+
+def test_headline_numbers_do_not_use_libm(monkeypatch):
+    """log1p/expm1/exp differ in the last bit between Python builds (the
+    3.14 exe vs a 3.10 venv: expm1(-0.030149) is ...917 vs ...913), which
+    made the same file's MCUB headline differ in its last digit between the
+    two. The MCUB and the engine's small-OR branch use + - * only, so a
+    fixed-probability tree gives the same bits on every build."""
+    def boom(*_args):
+        raise AssertionError("libm used")
+
+    tree = gate("root", "OR", [gate("g", "AND", [leaf("A", 1e-9), leaf("B", 2e-9)]),
+                               leaf("C", 3e-9)])
+    tree["children"][0]["links"] = [{"target_id": "C", "relation": "OR"}]
+    for name in ("log1p", "expm1", "exp", "log"):
+        monkeypatch.setattr(math, name, boom)
+    assert cutsets.mcub_of([0.1, 1e-17, 3e-9]) > 0
+    assert engine.or_probability([1e-17, 2e-17]) == pytest.approx(3e-17, rel=1e-15, abs=0)
+    core = WebCore()
+    core.set_data(copy.deepcopy(tree))
+    core.recalculate_probabilities()
+    summary = engine.summary(core.get_data(), core.analysis)
+    assert summary["headlineMethod"] == "mcub" and summary["headline"] > 0

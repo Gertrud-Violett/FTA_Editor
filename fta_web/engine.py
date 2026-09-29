@@ -16,7 +16,7 @@ overrides exactly three things:
   ``gateType``/``eventKind``/``quant``. ``test_engine.py`` proves the legacy
   equivalence on a few hundred random trees with links and cycles. One
   deliberate exception (1.7.1): an OR (gate or OR-links) whose result is
-  below ``OR_LOG_SPACE_BELOW`` is computed in log space by
+  below ``OR_ACCURATE_BELOW`` is computed without cancellation by
   :func:`or_probability`, because the core's ``1 - Π(1 - p)`` cancels there
   (OR(1e-17, 1e-17) was exactly 0). Such values differ from the core by the
   precision the core lost; every other value is bit-identical.
@@ -366,8 +366,8 @@ def _product(nums) -> float:
     return result
 
 
-#: An OR result below this is recomputed in log space (see or_probability).
-OR_LOG_SPACE_BELOW = 1e-3
+#: An OR result below this is recomputed without cancellation (see or_probability).
+OR_ACCURATE_BELOW = 1e-3
 
 
 def or_probability(probs: List[float]) -> float:
@@ -378,22 +378,24 @@ def or_probability(probs: List[float]) -> float:
     result it cancels: ``1 - p`` rounds to within 1.1e-16 of 1, so
     OR(1e-15, 1e-15) came out 1.998e-15 and OR(1e-17, 1e-17) exactly 0 --
     the flush-to-zero D14 removed from the rounding, back through the
-    formula. Below :data:`OR_LOG_SPACE_BELOW` the value is therefore
-    recomputed as ``-expm1(Σ log1p(-p))``, accurate to the last digit.
+    formula. Below :data:`OR_ACCURATE_BELOW` the value is therefore
+    recomputed as the union ``r <- r + p(1 - r)``: the same number without
+    the cancellation (a few ulp), and with + - * only, so -- unlike
+    log1p/expm1, whose last bit depends on the Python build's libm -- every
+    build gives the same result.
     """
     product = 1
     for p in probs:
         product *= 1 - p
     naive = 1 - product
-    if naive >= OR_LOG_SPACE_BELOW:
+    if naive >= OR_ACCURATE_BELOW:
         return naive
-    logs = []
+    result = 0.0
     for p in probs:
         if not 0.0 <= p < 1.0:  # a certain or malformed input: nothing to recover
             return naive
-        logs.append(math.log1p(-p))
-    # ``0.0 -``: an OR of nothing is 0.0, never -0.0.
-    return 0.0 - math.expm1(math.fsum(logs))
+        result = result + p * (1.0 - result)
+    return result
 
 
 def kofn_probability(probs: List[float], k: int) -> float:

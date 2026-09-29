@@ -321,13 +321,13 @@ def report(rows, names, elapsed, details):
         print("%-28s %s" % (t[:28], " ".join(cells)))
 
     div = defaultdict(list)
-    fixed_tags = (B.FIX_MC, B.FIX_OR, B.FIX_FMT)
-    plain_tags = ("LIBM", "TIME", "FRONTEND BUG", "OR-LOG", "D8", "D14", "D15", "D16", "D17")
+    fixed_tags = (B.FIX_MC, B.FIX_OR, B.FIX_FMT, B.FIX_MCUB, B.FIX_IMP)
+    plain_tags = ("LIBM", "TIME", "FRONTEND BUG", B.OR_LOG, "D8", "D14", "D15", "D16", "D17")
     for r in rows:
         if r.status != "divergence":
             continue
         tags = [t for t in fixed_tags if t in r.note][:1]
-        if not tags:  # a row can carry several (desktop: D14 and OR-LOG)
+        if not tags:  # a row can carry several (desktop: D14 and OR-UNION)
             tags = [t for t in plain_tags if t in r.note]
         for tag in tags or [r.note.split(":")[0] if r.note else r.metric]:
             div[tag].append(r)

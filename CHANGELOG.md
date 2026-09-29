@@ -36,11 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (so OR(AND(1e-6 ×3), AND(1e-6 ×3)) made a tree-walk headline of 0 while
   the MCUB said 2e-18), OR(1e-15, 1e-15) was 1.998e-15 and OR(1e-12, 3e-12)
   4.00002e-12. An OR (gate or OR-links) whose result is below 1e-3 is now
-  computed as `−expm1(Σ log1p(−p))` (`engine.or_probability`), in the tree
+  accumulated as `r ← r + p(1 − r)` (`engine.or_probability`), in the tree
   walk and in the Monte Carlo tree evaluator alike. Results at or above
   1e-3 keep the 1.6 formula, so ordinary legacy trees give bit-identical
   numbers; the others differ from 1.6 only by the precision 1.6 lost. Found
   by a back-to-back comparison with a truth-table oracle.
+- **The MCUB headline differed in its last digit between the packaged app
+  and a source install** of the same file. Not hash randomisation (every
+  result is bit-identical under any `PYTHONHASHSEED`, now tested), but
+  `math.log1p`/`expm1`, whose last bit depends on the Python build's libm
+  (the 3.14 exe and a 3.10 venv differ). The MCUB (`cutsets.mcub_of`, and
+  per sample in Monte Carlo) is now accumulated as `Q ← Q + P(1 − Q)` with
+  + − × only, so a fixed-probability tree's headline has the same bits on
+  every build; it still keeps 1e-18 cut sets to ~1e-13 relative.
 - **Monte Carlo without uncertainty:** the reported mean could be one ulp
   off the point estimate, with a standard deviation of ~1e-18, although
   every sample equals the point estimate (`fsum(samples) / n` does not

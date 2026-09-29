@@ -1132,11 +1132,15 @@ def cli_csv_rows(name: str, ref: Dict[str, Any], exe: Optional[Path] = None) -> 
 
 #: What this branch changed on purpose since the release the exe was built
 #: from; a 1.7.0-vs-1.7.1 difference must be one of these.
-FIX_OR = "FIXED:OR-LOG"      # engine.or_probability (OR gates flushed tiny values)
+FIX_OR = "FIXED:OR-UNION"      # engine.or_probability (OR gates flushed tiny values)
 #: uncertainty: the mean pivot (constant samples: mean == point, std == 0), and
-#: samples whose OR is below 1e-3 now evaluated in log space (last digits).
-FIX_MC = "FIXED:MC-MEAN/OR-LOG"
+#: samples whose OR is below 1e-3 now accumulated as a union, and (1.7.1)
+#: the per-sample MCUB accumulated with + - * (last digits).
+FIX_MC = "FIXED:MC"
 FIX_FMT = "FIXED:NUMFMT"     # numfmt.format_prob mirrors numfmt.js
+FIX_MCUB = "FIXED:MCUB"      # cutsets.mcub_of: union with + - * (was log1p/expm1)
+FIX_IMP = "FIXED:IMPORTANCE"  # importance: exponent differences summed directly
+_MCUB_KEYS = {"mcub", "headline", "MCUB", "Top event (headline)", "cs/mcub"}
 
 
 def or_affected(names: Iterable[str]) -> set:
@@ -1178,6 +1182,17 @@ def classify_release(rows: List[Row], or_trees: set) -> List[Row]:
         elif row.metric == "mc" and len(row.diffs) < MAX_DIFFS and all(
                 d[0] in ("mean", "std") or tiny(d[1], d[2]) for d in row.diffs):
             row.status, row.note = "divergence", FIX_MC
+        elif row.diffs and all(str(d[0]) in _MCUB_KEYS and tiny(d[1], d[2])
+                               for d in row.diffs):
+            row.status, row.note = "divergence", FIX_MCUB
+        elif row.metric == "importance" and len(row.diffs) < MAX_DIFFS and all(
+                tiny(d[1], d[2]) or d[0] == "order"
+                or (str(d[0]).endswith(("/fv", "/birnbaum")) and _num(d[1]) and _num(d[2])
+                    and abs(d[1] - d[2]) <= 1e-12)
+                for d in row.diffs):
+            # The 1.7.0 cancellation error is absolute (~1e-16 / Q); the
+            # ranking can change where FV values tie up to that error.
+            row.status, row.note = "divergence", FIX_IMP
         elif row.metric.startswith(("docx", "dot")) and all(
                 "e+" in t or "e" in t for t in texts):
             row.status, row.note = "divergence", FIX_FMT
@@ -1278,7 +1293,7 @@ def legacy_walk(tree: Dict[str, Any], rounding: str, memo_by: str, cycles: str,
     * ``cycles``: ``base`` -- re-entry returns and memoises the node's own
       probability (baseline) -- or ``gate_only`` (D17);
     * ``or_mode``: ``product`` -- ``1 - Π(1 - p)`` (the cores) -- or ``web``
-      (``engine.or_probability``: log space below 1e-3, WebCore 1.7.1).
+      (``engine.or_probability``: the union r <- r + p(1 - r) below 1e-3, WebCore 1.7.1).
 
     Writes ``calculatedProbability`` like the engines do.
     """
@@ -1386,10 +1401,10 @@ def _dedupe(tree: Dict[str, Any]) -> None:
         n["id"] = new
 
 
-#: WebCore 1.7.1: an OR result below 1e-3 is computed in log space
+#: WebCore 1.7.1: an OR result below 1e-3 is accumulated as a union
 #: (engine.or_probability) -- the one intended difference from the vendored
 #: 1.6 core's tree walk.
-OR_LOG = "OR-LOG"
+OR_LOG = "OR-UNION"
 
 
 @dataclass
@@ -1465,14 +1480,14 @@ def desktop_attribution(name: str) -> Attribution:
     ok = last == web_pos
     if not ok:
         diff = [k for k in web_pos if web_pos[k] != (last or {}).get(k)]
-        detail.append("UNEXPLAINED: %d node(s) differ after D14/D15/D17/OR-LOG, e.g. #%s web=%r model=%r"
+        detail.append("UNEXPLAINED: %d node(s) differ after D14/D15/D17/OR-UNION, e.g. #%s web=%r model=%r"
                       % (len(diff), diff[0], web_pos[diff[0]], (last or {}).get(diff[0])))
     return Attribution(name, ok, sorted(set(divergences)), detail)
 
 
 def vendored_attribution(name: str) -> Attribution:
     """The vendored 1.6 engine (fta_web/core FTACore) vs WebCore on a legacy
-    file: identical except for OR-LOG, which is measured and attributed."""
+    file: identical except for OR-UNION, which is measured and attributed."""
     path = corpus_path(name)
     web = load_web(path)
     vendored = VendoredFTACore()

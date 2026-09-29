@@ -37,7 +37,7 @@ LEGACY = [n for n in NAMES if B.is_legacy(n)]
 V17 = [n for n in NAMES if not B.is_legacy(n)]
 
 #: What the frozen desktop core may differ by (fta_web/core/DIVERGENCE.md,
-#: plus the 1.7.1 OR-LOG change), and what some trees must show.
+#: plus the 1.7.1 OR-UNION change), and what some trees must show.
 DESKTOP_ALLOWED = {"D8", "D14", "D15", "D16", "D17", B.OR_LOG}
 DESKTOP_MUST = {"L05_link_cycle.json": {"D17"}, "L07_eta_mode.json": {"D14"},
                 "L08_prob_span.json": {"D14"}, "L10_duplicate_ids.json": {"D15"},
@@ -205,6 +205,53 @@ def test_engine_save_reopen_is_stable(refs, name, tmp_path):
             for m in ("calc", "prob", "keys", "analysis")]
     assert_rows(rows)
     assert again["loadWarnings"]["kinds"] == ()  # the saved file needs no repair
+
+
+# ---- determinism -------------------------------------------------------------------------------------
+
+_HASHSEED_CHILD = r'''
+import copy, json, sys
+sys.path[:0] = [%(repo)r, %(core)r]
+from fta_web import engine, cutsets, importance, uncertainty, lint
+out = {}
+for path in %(files)r:
+    core = engine.WebCore(); core.load_from_json(path)
+    tree, analysis = core.get_data(), core.analysis
+    r = {"calc": [n.get("calculatedProbability") for n in core._walk(tree)],
+         "lint": lint.run(tree, analysis)}
+    if core.mode != "ETA":
+        r["summary"] = engine.summary(copy.deepcopy(tree), analysis)
+        r["cutsets"] = cutsets.compute(copy.deepcopy(tree), analysis)
+        r["importance"] = importance.compute(r["cutsets"])
+        r["mc"] = uncertainty.run(copy.deepcopy(tree), analysis, n=300, seed=7)
+    out[path] = r
+def strip(v):
+    if isinstance(v, dict):
+        return {k: strip(x) for k, x in v.items() if k != "elapsedMs"}
+    if isinstance(v, list):
+        return [strip(x) for x in v]
+    return v
+sys.stdout.write(json.dumps(strip(out), sort_keys=True))
+'''
+
+
+def test_results_do_not_depend_on_the_hash_seed():
+    """Two processes with different PYTHONHASHSEED (string hashing, hence
+    set/dict-of-str iteration order) must give bit-identical results."""
+    import subprocess
+
+    files = [str(B.corpus_path(n)) for n in FAST
+             if n.startswith(("F14", "L04", "L05", "L10", "O04", "T02", "F12", "F16"))]
+    code = _HASHSEED_CHILD % {"repo": str(B.REPO), "core": str(B.CORE_DIR), "files": files}
+    outputs = []
+    for seed in ("0", "4242"):
+        env = dict(os.environ, PYTHONHASHSEED=seed, PYTHONUTF8="1")
+        proc = subprocess.run([sys.executable, "-c", code], capture_output=True, env=env,
+                              timeout=600)
+        assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")[-2000:]
+        outputs.append(proc.stdout)
+    assert outputs[0] == outputs[1]
+    assert len(json.loads(outputs[0])) == len(files) == 8
 
 
 # ---- formatted output parity with the browser ------------------------------------------------------

@@ -5,7 +5,7 @@ The load-bearing test is the first one: on a legacy tree (no 1.7 keys) the
 subclass must produce *exactly* the numbers ``FTACore`` does -- same floats,
 not approximately -- including through links, dangling links, self links,
 cycles and duplicate ids. The one exception (1.7.1) is an OR result below
-``engine.OR_LOG_SPACE_BELOW``, which the web engine computes in log space
+``engine.OR_ACCURATE_BELOW``, which the web engine computes without cancellation
 because the 1.6 product form loses digits there (see ``assert_matches_ftacore``).
 Everything else then checks the additions.
 """
@@ -137,7 +137,7 @@ def _without_calcs(tree):
 
 def assert_matches_ftacore(web, legacy):
     """Identical numbers, except (1.7.1) where an OR result is below
-    engine.OR_LOG_SPACE_BELOW: the web engine computes that OR in log space,
+    engine.OR_ACCURATE_BELOW: the web engine computes that OR without cancellation,
     because the 1.6 product form had cancelled digits away there (all of
     them below ~1e-16). Those nodes, and what depends on them, may differ by
     that lost precision only; every other node is bit-identical."""
@@ -153,7 +153,7 @@ def assert_matches_ftacore(web, legacy):
 
 def test_legacy_trees_without_small_or_results_are_bit_identical():
     """The random legacy trees whose OR values all stay at or above
-    OR_LOG_SPACE_BELOW (most of them) still match FTACore exactly."""
+    OR_ACCURATE_BELOW (most of them) still match FTACore exactly."""
     exact = 0
     for seed in range(200):
         tree = random_tree(random.Random(seed))
@@ -161,7 +161,7 @@ def test_legacy_trees_without_small_or_results_are_bit_identical():
         for core in (legacy, web):
             core.set_data(copy.deepcopy(tree))
             core.recalculate_probabilities()
-        if all(v is None or v >= engine.OR_LOG_SPACE_BELOW or v == 0.0
+        if all(v is None or v >= engine.OR_ACCURATE_BELOW or v == 0.0
                for _nid, v in all_calcs(legacy.get_data())):
             assert web.get_data() == legacy.get_data(), seed
             exact += 1
@@ -213,13 +213,13 @@ def test_or_links_keep_full_precision_too():
 
 
 def test_ordinary_or_results_are_bit_identical_to_the_16_formula():
-    """At or above OR_LOG_SPACE_BELOW the 1.6 product form is kept, so every
+    """At or above OR_ACCURATE_BELOW the 1.6 product form is kept, so every
     ordinary tree gives exactly the 1.6 numbers."""
     rng = random.Random(3)
     for _ in range(300):
         probs = [rng.random() for _ in range(rng.randint(1, 6))]
         naive = 1 - FTACore()._product([1 - p for p in probs])
-        if naive >= engine.OR_LOG_SPACE_BELOW:
+        if naive >= engine.OR_ACCURATE_BELOW:
             assert engine.or_probability(probs) == naive
     assert engine.or_probability([]) == 0.0 and str(engine.or_probability([])) == "0.0"
     assert engine.or_probability([1.0, 1e-20]) == 1.0
