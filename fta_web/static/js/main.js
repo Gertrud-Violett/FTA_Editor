@@ -1147,8 +1147,12 @@ function renderHeadline() {
     let title = t('headline.mcubTitle', { alt, reason });
     if (headline.pand) title += '\n' + t('headline.pandNote');
     badge.title = title;
+    // Basic mode hides the badge, but the number can still differ from the
+    // root's tree-walk value in Node Details; hovering the number explains why.
+    valueEl.title = title;
   } else {
     badge.removeAttribute('title');
+    valueEl.removeAttribute('title');
   }
   const marker = $('#headline-marker');
   if (marker) {
