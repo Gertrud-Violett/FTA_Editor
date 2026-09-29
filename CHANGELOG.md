@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1e-3 keep the 1.6 formula, so ordinary legacy trees give bit-identical
   numbers; the others differ from 1.6 only by the precision 1.6 lost. Found
   by a back-to-back comparison with a truth-table oracle.
+- **Monte Carlo without uncertainty:** the reported mean could be one ulp
+  off the point estimate, with a standard deviation of ~1e-18, although
+  every sample equals the point estimate (`fsum(samples) / n` does not
+  always return the sample value; about 1 run in 12). The mean is now
+  pivoted on the first sample, so equal samples give exactly their value
+  and a standard deviation of 0.
 - **Number formatting, server side (CLI, DOCX report, diagram labels)** now
   reads the same as the browser. Found by a back-to-back comparison with
   `static/js/numfmt.js`: a number with more integer digits than significant

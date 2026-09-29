@@ -350,9 +350,16 @@ def run(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
 
     completed = len(samples)
     ordered = sorted(samples)
-    # math.fsum, not sum(): only 3.12+ compensates a float sum(), and the
-    # mean/std of constant samples must be exact on every supported Python.
-    mean = math.fsum(samples) / completed if completed else None
+    # math.fsum, not sum(): only 3.12+ compensates a float sum(). And pivoted
+    # on the first sample: fsum(samples) / n alone is not always the sample
+    # value when all n samples are equal (about 1 run in 12), so a run
+    # without uncertainty reported a mean one ulp off its point estimate and
+    # a std of ~1e-18. Pivoted, equal samples give exactly their value and 0.
+    if completed:
+        pivot = samples[0]
+        mean = pivot + math.fsum(v - pivot for v in samples) / completed
+    else:
+        mean = None
     if completed > 1:
         var = math.fsum((v - mean) ** 2 for v in samples) / (completed - 1)
         std = math.sqrt(max(0.0, var))

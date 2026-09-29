@@ -112,6 +112,28 @@ def test_events_without_uncertainty_are_constants_and_reported():
     assert [w["code"] for w in none["warnings"]] == ["MC_NO_UNCERTAINTY"]
 
 
+@pytest.mark.parametrize("n", [100, 500, 2000, 1999])
+def test_without_uncertainty_every_statistic_is_the_point_estimate_exactly(n):
+    """USER_GUIDE: with no uncertain event "every sample equals the point
+    estimate" -- so must the mean, and the std must be 0. Found back to back
+    (B2B): fsum(samples)/n is not always the sample value (0.01097 over 2000
+    samples came back one ulp low, with std 1.7e-18)."""
+    values = [(0.01, 0.5, 0.1, 0.2, 0.3), (0.001, 0.2, 0.3, 0.1, 0.02)]
+    rng = random.Random(n)
+    values += [tuple(rng.random() ** 3 for _ in range(5)) for _ in range(40)]
+    for a, b, c, d, e in values:
+        tree = {"id": "root", "name": "top", "logicGate": "OR", "links": [], "children": [
+            {"id": "g", "name": "g", "logicGate": "AND", "links": [],
+             "children": [leaf("A", a), leaf("B", b)]},
+            {"id": "h", "name": "h", "logicGate": "AND", "links": [],
+             "children": [leaf("C", c), leaf("D", d), leaf("E", e)]}]}
+        out = uncertainty.run(tree, None, n=n, seed=1)
+        point = out["pointEstimate"]
+        for key in ("mean", "median", "p05", "p95"):
+            assert out[key] == point, (key, out[key], point)
+        assert out["std"] == 0.0
+
+
 def test_tree_method_matches_the_engine_sample_for_sample():
     """With EF=1 the samples are the nominal values: the tree method must then
     reproduce the tree walk, KOFN, XOR-free links and all."""
