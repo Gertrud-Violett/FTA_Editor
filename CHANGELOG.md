@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Number formatting, server side (CLI, DOCX report, diagram labels)** now
+  reads the same as the browser. Found by a back-to-back comparison with
+  `static/js/numfmt.js`: a number with more integer digits than significant
+  figures kept all of them (RAW 9238.78 at 3 s.f. was `9239`, the browser
+  showed `9240`); exponents were written `1.23e+4` (browser `1.23e4`); and
+  exact ties rounded half-to-even (0.25 at 1 s.f. was `0.2`, the browser
+  showed `0.3`).
 - **Diagram, dark mode:** cross-link edges were pure blue on the dark
   background (about 2:1 contrast) and barely visible. They are now `#6cb6ff`
   in dark mode (8:1); light mode keeps the 1.6 blue. The transfer-gate fill

@@ -462,7 +462,11 @@ The format follows JavaScript's `toPrecision`:
 
 - Trailing zeros are kept, so 0.5 at 3 figures is `0.500`.
 - Exponent form is used when the rounded magnitude is below 1e-3 or at least
-  1e4: `1.00e-7`, `2.35e-4`.
+  1e4: `1.00e-7`, `2.35e-4`, `1.23e4`.
+- A number with more integer digits than significant figures is rounded and
+  written plain: 1234 at 3 figures is `1230` (importance measures such as
+  RAW can be that large).
+- An exact tie rounds up, as `toPrecision` does: 0.25 at 1 figure is `0.3`.
 - `0` is shown as `0`, and a missing value as `—`.
 
 The CLI (`--sig-figs`), the DOCX report and the Excel number formats use the
