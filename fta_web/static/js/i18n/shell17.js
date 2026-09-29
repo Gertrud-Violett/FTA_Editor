@@ -49,6 +49,7 @@ export default {
     'tab.badgeErrors': '{tab}, {n} error(s)',
     'tab.badgeWarnings': '{tab}, {n} warning(s)',
     'toast.showValidation': 'Show in Validation',
+    'toast.dismiss': 'Dismiss',
   },
   ja: {
     'panel.bottom': '詳細と解析',
@@ -91,5 +92,6 @@ export default {
     'tab.badgeErrors': '{tab}、エラー {n} 件',
     'tab.badgeWarnings': '{tab}、警告 {n} 件',
     'toast.showValidation': '検証タブで表示',
+    'toast.dismiss': '閉じる',
   },
 };

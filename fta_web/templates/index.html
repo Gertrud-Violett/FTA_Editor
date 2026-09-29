@@ -69,7 +69,7 @@
            editor may hold a non-ISO value that a date picker would silently
            blank on the next save. -->
       <input id="date-input" type="text" autocomplete="off" spellcheck="false"
-             inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9\/.\-]*">
+             inputmode="numeric" data-keep-caret placeholder="YYYY-MM-DD" pattern="[0-9\/.\-]*">
     </div>
 
     <label class="checkbox" for="hide-zero"
@@ -269,10 +269,11 @@
   <!-- Action bar. Buttons whose phase has not landed carry                  -->
   <!-- aria-disabled + data-phase: still focusable, still explain themselves.-->
   <!-- ==================================================================== -->
-  <footer class="actionbar" role="toolbar" aria-label="Document actions" aria-busy="true">
+  <footer class="actionbar" role="toolbar" data-i18n-aria="a11y.actionbar"
+          aria-label="Document actions" aria-busy="true">
     <button type="button" class="btn btn--primary" data-action="new"
             data-i18n="btn.new" data-i18n-title="tip.new"
-            title="New analysis (Ctrl+N)">New</button>
+            title="New analysis (Alt+N)">New</button>
     <button type="button" class="btn" data-action="add"
             data-i18n="btn.add" data-i18n-title="tip.add"
             title="Add a child node (Ctrl+A)">Add</button>

@@ -155,6 +155,56 @@ def test_fmea_unit_warning_is_wired_and_translated():
         assert cat.count("'%s'" % key) == 2, key
 
 
+# ---- Shortcuts: Alt+N is the browser-safe New ----------------------------------------
+
+def test_alt_n_starts_a_new_analysis():
+    src = _read(STATIC / "main.js")
+    body = re.search(r"function onKeyDown\(event\) \{(.*?)\n\}", src, re.S).group(1)
+    alt = re.search(r"if \(event\.altKey && !ctrl && !event\.shiftKey && "
+                    r"\(key === 'n' \|\| event\.code === 'KeyN'\)\) \{(.*?)\}", body, re.S)
+    assert alt and "event.preventDefault();" in alt.group(1) and "actionNew();" in alt.group(1)
+    # every Ctrl shortcut that acts also calls preventDefault
+    switch = re.search(r"switch \(key\) \{(.*?)\n  \}", body, re.S).group(1)
+    cases = re.findall(r"case '(\w)':(.*?)break;", switch, re.S)
+    assert {c[0] for c in cases} >= {"n", "a", "e", "d", "z", "y"}
+    for key, code in cases:
+        assert "event.preventDefault();" in code, key
+    assert "'tip.new': 'New analysis (Alt+N)'" in src
+    assert "'tip.new': '新規解析 (Alt+N)'" in src
+    assert 'title="New analysis (Alt+N)"' in _read(REPO / "fta_web" / "templates" / "index.html")
+
+
+# ---- Numeric fields select their value on a click ------------------------------------
+
+def test_numeric_fields_select_on_click():
+    dialogs = _read(STATIC / "dialogs.js")
+    assert "export function installSelectOnFocus(doc)" in dialogs
+    prob = re.search(r"const probabilityField = field\((.*?)\n  \);", dialogs, re.S).group(1)
+    assert "inputmode: 'decimal'" in prob
+    assert "modules.dialogs.installSelectOnFocus(document);" in _read(STATIC / "main.js")
+    details = _read(STATIC / "details.js")
+    assert "spec.key === 'probability') control = el('input', { type: 'text', inputmode: 'decimal' })" in details
+    assert "data-keep-caret" in _read(REPO / "fta_web" / "templates" / "index.html")
+
+
+# ---- New / Open confirmations ----------------------------------------------------------
+
+def test_new_asks_before_posting_when_dirty():
+    src = _read(STATIC / "main.js")
+    body = re.search(r"async function actionNew\(\) \{(.*?)\n\}", src, re.S).group(1)
+    assert body.index("store.state.dirty") < body.index("api.post('/new'"), \
+        "a dirty document is confirmed before the first POST (no refused 409 in the console)"
+    assert "await flushPendingEdits();" in body
+
+
+def test_discard_confirmations_name_the_consequence():
+    src = _read(STATIC / "main.js")
+    for key in ("confirm.discardNewOk", "confirm.discardOpenOk"):
+        assert src.count("    '%s': " % key) == 2, key  # en + ja catalog entries
+    assert "confirmLabel: t('confirm.discardNewOk')" in src
+    assert "confirmLabel: t('confirm.discardOpenOk')" in src
+
+
 # ---- Diagram Aa popover closes on Escape ----------------------------------------------
 
 def test_diagram_popover_closes_on_escape():
