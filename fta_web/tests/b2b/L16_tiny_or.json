@@ -1,0 +1,165 @@
+{
+  "title": "L16 tiny OR inputs",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Tiny OR",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "t1",
+        "name": "t1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "children": [
+          {
+            "id": "x1",
+            "name": "x1",
+            "type": "Event",
+            "probability": 1e-17,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "x2",
+            "name": "x2",
+            "type": "Event",
+            "probability": 1e-17,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "t2",
+        "name": "t2",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "y0",
+            "name": "y0",
+            "type": "Event",
+            "probability": 1e-06,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "y1",
+            "name": "y1",
+            "type": "Event",
+            "probability": 1e-06,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "y2",
+            "name": "y2",
+            "type": "Event",
+            "probability": 1e-06,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "t3",
+        "name": "t3",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "z0",
+            "name": "z0",
+            "type": "Event",
+            "probability": 1e-06,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "z1",
+            "name": "z1",
+            "type": "Event",
+            "probability": 1e-06,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "z2",
+            "name": "z2",
+            "type": "Event",
+            "probability": 1e-06,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "t4",
+        "name": "t4",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "children": [
+          {
+            "id": "w1",
+            "name": "w1",
+            "type": "Event",
+            "probability": 1e-15,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [
+          {
+            "target_id": "w2",
+            "relation": "OR"
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": "w2",
+        "name": "w2",
+        "type": "Event",
+        "probability": 3e-15,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

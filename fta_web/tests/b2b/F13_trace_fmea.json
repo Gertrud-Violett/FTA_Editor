@@ -1,0 +1,74 @@
+{
+  "title": "F13 trace/FMEA",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "t1",
+        "name": "t1",
+        "type": "Event",
+        "probability": 0.01,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "trace": {
+          "requirementId": "SR-12",
+          "testRef": "TP-3",
+          "owner": "tanaka",
+          "status": "reviewed",
+          "evidence": "https://example.com/e",
+          "tags": [
+            "hydraulic",
+            "hot section"
+          ]
+        },
+        "fmea": {
+          "id": "P-07",
+          "item": "Pump",
+          "mode": "Seal leak",
+          "cause": "Wear",
+          "severity": 7,
+          "occurrence": 4,
+          "detection": 3
+        }
+      },
+      {
+        "id": "t2",
+        "name": "t2",
+        "type": "Event",
+        "probability": 0.02,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "rate",
+          "lambda": 1e-06,
+          "source": "OREDA 2015 p.123"
+        },
+        "fmea": {
+          "id": "P-08",
+          "item": "Valve",
+          "mode": "Stuck",
+          "severity": 5,
+          "occurrence": 2,
+          "detection": 2,
+          "rpn": 21
+        }
+      }
+    ],
+    "trace": {
+      "requirementId": "HZ-1",
+      "status": "draft"
+    }
+  }
+}

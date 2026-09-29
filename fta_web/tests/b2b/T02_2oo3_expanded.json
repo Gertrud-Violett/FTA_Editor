@@ -1,0 +1,108 @@
+{
+  "title": "T02 2oo3 expanded (repeated events)",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "AB",
+        "name": "AB",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "A",
+            "name": "A",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "B",
+            "name": "B",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "AC",
+        "name": "AC",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [
+          {
+            "target_id": "A",
+            "relation": "AND"
+          }
+        ],
+        "children": [
+          {
+            "id": "C",
+            "name": "C",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "BC",
+        "name": "BC",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "TB",
+            "name": "TB",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "gateType": "TRANSFER",
+            "transferTo": "B"
+          },
+          {
+            "id": "TC",
+            "name": "TC",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "gateType": "TRANSFER",
+            "transferTo": "C"
+          }
+        ]
+      }
+    ]
+  }
+}

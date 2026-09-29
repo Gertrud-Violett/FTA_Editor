@@ -1,0 +1,67 @@
+{
+  "title": "L10 duplicate ids",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Dups",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "e1",
+        "name": "e1",
+        "type": "Event",
+        "probability": 0.1,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "e1",
+        "name": "e1",
+        "type": "Event",
+        "probability": 0.9,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "g",
+        "name": "g",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "e2",
+            "name": "e2",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "e2",
+            "name": "e2",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

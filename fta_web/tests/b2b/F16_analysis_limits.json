@@ -1,0 +1,166 @@
+{
+  "title": "F16 analysis limits",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "g0",
+        "name": "g0",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "x0",
+            "name": "x0",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "y0",
+            "name": "y0",
+            "type": "Event",
+            "probability": 0.05,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "z0",
+            "name": "z0",
+            "type": "Event",
+            "probability": 0.02,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "g1",
+        "name": "g1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "x1",
+            "name": "x1",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "y1",
+            "name": "y1",
+            "type": "Event",
+            "probability": 0.05,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "z1",
+            "name": "z1",
+            "type": "Event",
+            "probability": 0.04,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "g2",
+        "name": "g2",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "x2",
+            "name": "x2",
+            "type": "Event",
+            "probability": 0.30000000000000004,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "y2",
+            "name": "y2",
+            "type": "Event",
+            "probability": 0.05,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "z2",
+            "name": "z2",
+            "type": "Event",
+            "probability": 0.06,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "single",
+        "name": "single",
+        "type": "Event",
+        "probability": 1e-11,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": []
+      }
+    ]
+  },
+  "analysis": {
+    "missionTime": 100.0,
+    "timeUnit": "d",
+    "cutsets": {
+      "maxOrder": 2,
+      "maxCount": 50,
+      "cutoff": 1e-10
+    },
+    "mc": {
+      "n": 1000,
+      "seed": 99
+    },
+    "fmeaOccurrenceTable": {
+      "5": 0.001
+    },
+    "bogus": 1
+  }
+}

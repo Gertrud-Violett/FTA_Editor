@@ -1,0 +1,138 @@
+{
+  "title": "F08 house events",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "h_and_on",
+        "name": "h_and_on",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "hon",
+            "name": "hon",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "eventKind": "house",
+            "houseState": true
+          },
+          {
+            "id": "a",
+            "name": "a",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "h_and_off",
+        "name": "h_and_off",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "hoff",
+            "name": "hoff",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "eventKind": "house",
+            "houseState": false
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "h_or_off",
+        "name": "h_or_off",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "hoff2",
+            "name": "hoff2",
+            "type": "Event",
+            "probability": 0.7,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "eventKind": "house",
+            "houseState": false
+          },
+          {
+            "id": "c",
+            "name": "c",
+            "type": "Event",
+            "probability": 0.05,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "h_kids",
+        "name": "h_kids",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "k1",
+            "name": "k1",
+            "type": "Event",
+            "probability": 0.01,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "eventKind": "house",
+        "houseState": true
+      }
+    ]
+  }
+}

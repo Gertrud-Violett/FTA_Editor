@@ -1,0 +1,72 @@
+{
+  "title": "L05 link cycle",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Cycle",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "G",
+        "name": "G",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "children": [
+          {
+            "id": "x",
+            "name": "x",
+            "type": "Event",
+            "probability": 0.01,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [
+          {
+            "target_id": "B",
+            "relation": "OR"
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": "B",
+        "name": "B",
+        "type": "Event",
+        "probability": 0.02,
+        "logicGate": "OR",
+        "children": [],
+        "links": [
+          {
+            "target_id": "G",
+            "relation": "OR"
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": "S",
+        "name": "S",
+        "type": "Event",
+        "probability": 0.05,
+        "logicGate": "OR",
+        "children": [],
+        "links": [
+          {
+            "target_id": "S",
+            "relation": "OR"
+          }
+        ],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}
