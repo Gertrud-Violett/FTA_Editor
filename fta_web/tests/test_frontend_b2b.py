@@ -266,6 +266,16 @@ def test_validation_badge_skips_dismissed_notices():
     assert "visibleValidationCounts(res)" in body
 
 
+# ---- Cut Sets / Importance: an edit during the first run is not lost -------------------
+
+@pytest.mark.parametrize("tab", ["cutsets", "importance"])
+def test_stale_during_first_run_reruns(tab):
+    src = _read(TABS / (tab + ".js"))
+    body = re.search(r"    onStale\(\) \{(.*?)\n    \},", src, re.S).group(1)
+    assert "if (!hasRun && !running)" in body, "a first run in flight answers for the old tree"
+    assert "if (!hasRun) return;" not in body and "if (!hasRun) {" not in body
+
+
 # ---- Undo / redo with nothing to do; Escape in the top bar ------------------------------
 
 def test_history_without_steps_asks_nobody():

@@ -301,7 +301,9 @@ export function mount(panel, ctx) {
       ctx.setOverlay(null);
     },
     onStale() {
-      if (!hasRun) return;
+      // A first run still in flight answers for the tree before this change:
+      // run again rather than keep that answer (see cutsets.js).
+      if (!hasRun && !running) return;
       stale = true;
       paint();
       if (active && justActivated) {
