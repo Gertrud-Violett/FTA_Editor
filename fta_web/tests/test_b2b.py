@@ -80,8 +80,26 @@ def test_corpus_is_what_make_corpus_writes(tmp_path):
     module.EXPECTED.clear()
     module.main()
     for path in sorted(tmp_path.glob("*.json")):
+        if path.name == "expected.json":
+            continue
         assert path.read_bytes() == (B.HERE / path.name).read_bytes(), path.name
     assert len(list(tmp_path.glob("*.json"))) == len(B.corpus_names()) + 1
+    # The hand-computed answers go through math.exp/expm1/log1p, whose last
+    # bit depends on the Python build's libm: equal to 1e-14, same keys.
+    fresh = json.loads((tmp_path / "expected.json").read_text(encoding="utf-8"))
+    kept = B.load_expected()
+
+    def flat(value, prefix=""):
+        if isinstance(value, dict):
+            out = {}
+            for key, item in value.items():
+                out.update(flat(item, "%s/%s" % (prefix, key)))
+            return out
+        return {prefix: value}
+
+    row = B.compare("expected.json", "make_corpus", "values", flat(kept), flat(fresh),
+                    rel=1e-14, keys="both")
+    assert row.status == "match", row.diffs
 
 
 def test_corpus_size_and_coverage():
