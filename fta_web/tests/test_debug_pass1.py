@@ -322,6 +322,13 @@ def test_ai_delete_strips_links_and_transfers_to_the_removed_nodes(
     assert "transferTo" not in by_id[t]
     codes = [(w["code"], w["nodeId"]) for w in get_state().session_warnings]
     assert ("LINKS_REMOVED", b) in codes and ("LINKS_REMOVED", t) in codes
+    # The notices belong to the AI edit: undo removes them with it, redo
+    # brings them back.
+    undone = api_json(c.post("/api/undo"))
+    assert not [w for w in undone["sessionWarnings"] if w["code"] == "LINKS_REMOVED"]
+    redone = api_json(c.post("/api/redo"))
+    assert {(w["code"], w["nodeId"]) for w in redone["sessionWarnings"]} >= {
+        ("LINKS_REMOVED", b), ("LINKS_REMOVED", t)}
 
 
 # ---- report options: whitelisted and validated -------------------------------------------

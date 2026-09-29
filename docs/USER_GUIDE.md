@@ -183,7 +183,8 @@ switch with it. Two things deliberately stay the same in both themes —
 - **Node boxes** keep their light background colours, because those colours
   carry meaning rather than styling (see the table below).
 - **Link edges** stay blue, because colour is how a cross-tree link is told
-  apart from a normal parent/child edge.
+  apart from a normal parent/child edge. In dark mode they are a lighter blue
+  (`#6cb6ff`), since pure blue is barely visible on the dark background.
 
 #### What the Node Colours Mean
 
@@ -375,6 +376,12 @@ OR Gate:
 Calculated = 1 - Product((1-Child1), (1-Child2), ...)
 ```
 
+In the web app an OR result below 1e-3 is computed in the mathematically
+equal form `r ← r + Child × (1 − r)`, one input at a time, which keeps every
+digit of very small values. (The product form cancels there: the legacy
+desktop app, and the web app before 1.7.1, gave OR(1e-17, 1e-17) = 0 and
+OR(1e-15, 1e-15) = 1.998e-15.) The MCUB is accumulated the same way.
+
 Once a node has children, its own (base) probability is **not used**. The
 Validation tab reports a gate whose entered value differs from the calculated
 one (`PARENT_PROBABILITY_IGNORED`).
@@ -461,7 +468,11 @@ The format follows JavaScript's `toPrecision`:
 
 - Trailing zeros are kept, so 0.5 at 3 figures is `0.500`.
 - Exponent form is used when the rounded magnitude is below 1e-3 or at least
-  1e4: `1.00e-7`, `2.35e-4`.
+  1e4: `1.00e-7`, `2.35e-4`, `1.23e4`.
+- A number with more integer digits than significant figures is rounded and
+  written plain: 1234 at 3 figures is `1230` (importance measures such as
+  RAW can be that large).
+- An exact tie rounds up, as `toPrecision` does: 0.25 at 1 figure is `0.3`.
 - `0` is shown as `0`, and a missing value as `—`.
 
 The CLI (`--sig-figs`), the DOCX report and the Excel number formats use the
@@ -594,6 +605,9 @@ Notes for reliability engineers:
 - **Missing parameters.** If a model's parameters are missing or invalid, the
   event keeps its previous probability, and Validation reports
   `QUANT_PARAM_MISSING` as an error.
+- **Implausible rates.** A λ above 1e-2 /h (an MTBF under 100 h), or a rate
+  event whose q reaches 0.999, is reported as `RATE_IMPLAUSIBLE`. It usually
+  means FIT or per-year values were entered as per hour.
 - **Data source.** The free-text *Data source* field (`quant.source`) keeps
   provenance, such as "OREDA 2015 p. 123" or "vendor data sheet", in the file.
   It is exported in the Excel **Events** sheet (`Source` column).
@@ -840,6 +854,7 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `DEFAULT_PROBABILITY` | warning | A basic leaf is exactly 1.0 with no model, so it has probably never been quantified. | Enter the real probability. |
 | `PARENT_PROBABILITY_IGNORED` | warning | A gate's own probability is neither 1.0 nor its calculated value, and it is ignored. | Clear it (set it to 1.0), or make the node a leaf. |
 | `STANDBY_LARGE_LT` | warning | Standby λτ > 0.2, where λτ/2 is inaccurate. | Shorten τ, or use the rate model. |
+| `RATE_IMPLAUSIBLE` | warning | A rate, standby or repairable event has λ above 1e-2 /h (an MTBF under 100 h), or a rate event's q is 0.999 or more. This is almost always a unit mix-up, for example FIT or per-year values entered (or imported) as per hour. `params: {lambda, unit, q, model}`. | Check the unit: 1 FIT = 1e-9 /h, 1 /y = 1/8760 /h. Re-enter λ, or re-import with the right λ unit. |
 | `NONCOHERENT_XOR` | warning | The tree has XOR gate(s), so cut-set results are approximate. | Use OR if both events can happen together. |
 | `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so the results may be underestimated. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
 | `ETA_BRANCH_SUM` | warning | ETA only: the children's probabilities do not sum to 1 (±1e-6). | Adjust the branch probabilities. |
@@ -854,10 +869,11 @@ its one cause is normal practice. An empty document is never
 notices are reported.
 
 `LOAD_REPAIR` and `LINKS_REMOVED` are *session notices*. They are collected
-while the document is open and are not saved in the file or undone. The one
-exception is a stale gate type dropped after an AI edit (the notice says
-*The AI assistant set this gate to …*): it belongs to that edit, so undoing
-the AI update removes the notice and redo brings it back.
+while the document is open and are not saved in the file. A load repair is
+not undone. A notice raised by an edit belongs to that edit: `LINKS_REMOVED`
+(from a delete, by hand or by the AI assistant) and a stale gate type dropped
+after an AI edit (the notice says *The AI assistant set this gate to …*).
+Undoing the edit removes its notice, and redo brings it back.
 
 ### Traceability and tree search
 
@@ -913,7 +929,11 @@ FMEA row id on each node so the two analyses stay linked.
      node. If the parent is a leaf, it becomes an OR gate. It cannot be a
      transfer gate.
    - *λ unit*: `/h`, `/y` or `FIT`. It is suggested from the λ header, for
-     example `λ (FIT)` or `故障率 [/年]`. λ is converted and stored per hour.
+     example `λ (FIT)`, `故障率 [/年]` or `rate per hour`. When the header does
+     not name a unit, it is suggested from the size of the values: a median
+     of 1 or more suggests FIT, a median from 1e-3 up to 1 suggests `/y`,
+     anything smaller `/h`. λ is converted and stored per hour. If FIT values
+     are imported as `/h` anyway, Validation reports `RATE_IMPLAUSIBLE`.
    - *Update existing rows*: see the rules below.
    - *Occurrence table*: the editable map from occurrence rank to
      probability.
@@ -982,7 +1002,7 @@ Sections (tick the ones you want; the choice is remembered):
 | Cut sets | The top 50 by default, with totals, MCUB, rare-event value and a truncation note |
 | Importance | The top 30 by FV, by default |
 | Uncertainty | **Off by default.** When selected, a Monte Carlo run of at most 5,000 samples (30 s) is made for the report. |
-| Validation | Every issue, including `CUTSETS_TRUNCATED` |
+| Validation | Every issue, as the Validation tab lists them, including `CUTSETS_TRUNCATED` (judged with the document's cut-set limits, not the report's override; the report's own cut sets are reused when they use the document's limits, so a large tree that exceeds the tab's 2 s budget is still judged) |
 | Traceability | Every node that has trace data |
 
 Choose the language (English or Japanese). In Japanese, the report uses
@@ -1021,9 +1041,11 @@ remembered per browser (`fta.diagram.settings`) and are not saved in the file.
 
 - **Style**
   - **Compact boxes** (default): the 1.6 two-row boxes. The meta row reads
-    `Gate: <gate> | P:<q> | P_calc:<Q>`. The 1.7 gates appear as `2/3`,
-    `XOR`, `INHIBIT`, `PAND` or `TRANSFER→<target>`. A non-basic leaf shows
-    `House: ON|OFF`, `Undeveloped` or `Conditioning`.
+    `Gate: <gate> | P:<q> | P_calc:<Q>` for a gate and `P:<q> | P_calc:<Q>`
+    for a basic event (1.6 also showed a meaningless `Gate: OR` there). The
+    1.7 gates appear as `2/3`, `XOR`, `INHIBIT`, `PAND` or
+    `TRANSFER→<target>`. A non-basic leaf shows `House: ON|OFF`,
+    `Undeveloped` or `Conditioning` in front of the probabilities.
   - **Standard symbols**: a description rectangle for every node, with an
     IEC 61025 / NUREG-0492 gate or event symbol under it. A transfer gate's
     ignored children are drawn dotted. A conditioning event is drawn as an
@@ -1229,6 +1251,29 @@ Standard fault tree XML format, compatible with other FTA tools.
 
 ## Keyboard Shortcuts
 
+### Web app (1.7.1)
+
+| Shortcut | Action |
+|----------|--------|
+| `Alt+N` | New analysis (Chrome and Edge reserve `Ctrl+N` for a new browser window, so the page never receives it) |
+| `Ctrl+A` | Add a child to the selected node |
+| `Ctrl+E` | Edit the selected node (Details tab) |
+| `Ctrl+D` / `Delete` | Delete the selected node (`Delete` only from the tree) |
+| `Ctrl+S` | Save (also with the caret still in a field) |
+| `Ctrl+Shift+S` | Save As |
+| `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / Redo |
+| `Ctrl+F` | Search the tree |
+| `Escape` | Discard what was typed in a field; close a dialog or the diagram's Aa popover; dismiss a toast |
+
+Inside a text field `Ctrl+A` and `Ctrl+Z` keep their usual meaning (select
+all, undo typing). In the tree: arrows move, `Enter` / `Space` select, `F2`
+renames, `Ctrl+Shift+arrows` move the focused node. In the bottom tab strip:
+`Left` / `Right` / `Home` / `End`. In the diagram: `Ctrl+=` / `Ctrl+-` zoom,
+`Ctrl+0` fits (never above 100%).
+
+### Desktop app
+
+- `Ctrl+N` - New Analysis
 - `Ctrl+A` - Add Node
 - `Ctrl+E` - Edit Node
 - `Ctrl+D` - Delete Node

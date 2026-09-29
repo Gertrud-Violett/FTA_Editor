@@ -686,7 +686,9 @@ def delete_node(node_id: str):
         doomed = subtree_ids(core, node_id)
         core.delete_node_from_data(node_id)
         removed_links = strip_references_to(core, doomed)
-        state.add_session_warnings(removed_link_issues(removed_links, node_id))
+        # An edit notice, like the AI gate-type reset: undoing the delete
+        # (which restores the links) removes it, redo brings it back.
+        state.add_edit_warnings(removed_link_issues(removed_links, node_id))
         core.recalculate_probabilities()
         state.mark_dirty()
 

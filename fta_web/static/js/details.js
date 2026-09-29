@@ -277,6 +277,9 @@ export function initDetails(container) {
     let control;
     if (spec.kind === 'textarea') control = el('textarea', { rows: '4' });
     else if (spec.kind === 'gate') control = createGateSelect({ value: 'OR', advanced: isAdvancedMode() });
+    // The probability is numeric: inputmode brings the numeric keyboard and
+    // opts it into select-on-click (dialogs.js installSelectOnFocus).
+    else if (spec.key === 'probability') control = el('input', { type: 'text', inputmode: 'decimal' });
     else control = el('input', { type: 'text' });
 
     const id = uid('fta-details');

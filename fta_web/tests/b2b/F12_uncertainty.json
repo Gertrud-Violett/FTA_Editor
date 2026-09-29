@@ -1,0 +1,133 @@
+{
+  "title": "F12 uncertainty",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "series",
+        "name": "series",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "A",
+            "name": "A",
+            "type": "Event",
+            "probability": 0.001,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "quant": {
+              "model": "fixed",
+              "unc": {
+                "dist": "lognormal",
+                "ef": 3.0
+              }
+            }
+          },
+          {
+            "id": "B",
+            "name": "B",
+            "type": "Event",
+            "probability": 0.0005,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "quant": {
+              "model": "fixed",
+              "unc": {
+                "dist": "lognormal",
+                "ef": 3.0,
+                "mean": 0.002
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "parallel",
+        "name": "parallel",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "C",
+            "name": "C",
+            "type": "Event",
+            "probability": 0.01,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "quant": {
+              "model": "fixed",
+              "unc": {
+                "dist": "lognormal",
+                "ef": 2.0,
+                "median": 0.01
+              }
+            }
+          },
+          {
+            "id": "D",
+            "name": "D",
+            "type": "Event",
+            "probability": 0.02,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "quant": {
+              "model": "fixed",
+              "unc": {
+                "dist": "lognormal",
+                "ef": 5.0
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "R",
+        "name": "R",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "rate",
+          "lambda": 1e-07,
+          "T": 100.0,
+          "unc": {
+            "dist": "lognormal",
+            "ef": 10.0
+          }
+        }
+      }
+    ]
+  },
+  "analysis": {
+    "mc": {
+      "n": 20000,
+      "seed": 12345
+    }
+  }
+}

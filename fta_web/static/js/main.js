@@ -166,6 +166,7 @@ const STRINGS = {
     'a11y.splitTree': 'Resize the fault tree panel',
     'a11y.splitAi': 'Resize the AI assistant panel',
     'a11y.splitDetails': 'Resize the node details panel',
+    'a11y.actionbar': 'Document actions',
 
     'bar.mode': 'Mode',
     'bar.modeTitle': 'Switching mode recalculates every probability',
@@ -203,7 +204,7 @@ const STRINGS = {
     'btn.xml': 'XML',
     'btn.excel': 'Excel',
     'btn.render': 'Render',
-    'tip.new': 'New analysis (Ctrl+N)',
+    'tip.new': 'New analysis (Alt+N)',
     'tip.add': 'Add a child node (Ctrl+A)',
     'tip.edit': 'Edit the selected node (Ctrl+E)',
     'tip.delete': 'Delete the selected node (Ctrl+D)',
@@ -258,6 +259,8 @@ const STRINGS = {
     'confirm.delete': 'Delete "{name}" and everything beneath it?',
     'confirm.discard': 'Discard the unsaved changes and start a new analysis?',
     'confirm.discardOpen': 'Discard the unsaved changes and open another file?',
+    'confirm.discardNewOk': 'Discard and start new',
+    'confirm.discardOpenOk': 'Discard and open',
 
     'file.openTitle': 'Open Analysis',
     'file.saveTitle': 'Save Analysis As',
@@ -582,6 +585,7 @@ const STRINGS = {
     'a11y.splitTree': 'フォルトツリーパネルの幅を変更',
     'a11y.splitAi': 'AIアシスタントパネルの幅を変更',
     'a11y.splitDetails': 'ノード詳細パネルの高さを変更',
+    'a11y.actionbar': '文書の操作',
 
     'bar.mode': 'モード',
     'bar.modeTitle': 'モードを変更すると確率が再計算されます',
@@ -619,7 +623,7 @@ const STRINGS = {
     'btn.xml': 'XML',
     'btn.excel': 'Excel',
     'btn.render': '画像',
-    'tip.new': '新規解析 (Ctrl+N)',
+    'tip.new': '新規解析 (Alt+N)',
     'tip.add': '子ノードを追加 (Ctrl+A)',
     'tip.edit': '選択中のノードを編集 (Ctrl+E)',
     'tip.delete': '選択中のノードを削除 (Ctrl+D)',
@@ -674,6 +678,8 @@ const STRINGS = {
     'confirm.delete': '「{name}」と配下のノードを削除しますか？',
     'confirm.discard': '未保存の変更を破棄して新規作成しますか？',
     'confirm.discardOpen': '未保存の変更を破棄して別のファイルを開きますか？',
+    'confirm.discardNewOk': '破棄して新規作成',
+    'confirm.discardOpenOk': '破棄して開く',
 
     'file.openTitle': '解析を開く',
     'file.saveTitle': '名前を付けて保存',
@@ -1141,8 +1147,12 @@ function renderHeadline() {
     let title = t('headline.mcubTitle', { alt, reason });
     if (headline.pand) title += '\n' + t('headline.pandNote');
     badge.title = title;
+    // Basic mode hides the badge, but the number can still differ from the
+    // root's tree-walk value in Node Details; hovering the number explains why.
+    valueEl.title = title;
   } else {
     badge.removeAttribute('title');
+    valueEl.removeAttribute('title');
   }
   const marker = $('#headline-marker');
   if (marker) {
@@ -1180,6 +1190,33 @@ let validationTimer = null;
 let validationSeq = 0;
 /** Last {errors, warnings} from /analysis/validate, or null before the first. */
 let validationCounts = null;
+/** Last issue list from /analysis/validate (null when the server gave none). */
+let validationIssues = null;
+/** Issues the Validation tab dismissed (session notices), by signature. */
+let validationDismissed = new Set();
+
+/** Same identity as tabs/validation.js signature(). */
+function validationSignature(issue) {
+  return [issue.code, issue.nodeId, issue.message].join('\u0001');
+}
+
+/**
+ * {errors, warnings} as the Validation list shows them: dismissed session
+ * notices do not count. Without an issue list, the server's counts.
+ */
+function visibleValidationCounts(res) {
+  if (Array.isArray(validationIssues)) {
+    const out = { errors: 0, warnings: 0 };
+    for (const issue of validationIssues) {
+      if (validationDismissed.has(validationSignature(issue))) continue;
+      if (issue.severity === 'error') out.errors += 1;
+      else if (issue.severity === 'warning') out.warnings += 1;
+    }
+    return out;
+  }
+  const counts = (res && res.counts) || {};
+  return { errors: Number(counts.error) || 0, warnings: Number(counts.warning) || 0 };
+}
 
 function rootCalculated() {
   const tree = store.state && store.state.tree;
@@ -1271,13 +1308,11 @@ async function refreshValidationBadge() {
   try {
     const res = await api.get('/analysis/validate');
     if (seq !== validationSeq) return;
-    const counts = (res && res.counts) || {};
-    validationCounts = {
-      errors: Number(counts.error) || 0,
-      warnings: Number(counts.warning) || 0,
-    };
+    validationIssues = res && Array.isArray(res.issues) ? res.issues : null;
+    validationCounts = visibleValidationCounts(res);
   } catch (_err) {
     if (seq !== validationSeq) return;
+    validationIssues = null;
     validationCounts = null;
   }
   renderValidationBadge();
@@ -1509,7 +1544,7 @@ function toast(message, kind = 'info', code = null, options = null) {
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'toast__close';
-  close.setAttribute('aria-label', 'Dismiss');
+  close.setAttribute('aria-label', t('toast.dismiss'));
   close.textContent = '×';
   close.addEventListener('click', () => node.remove());
 
@@ -1683,6 +1718,11 @@ async function loadPanels() {
   // its absence shows up when the gear is pressed, so nothing is said here.
   if (modules.dialogs) {
     callInit(modules.dialogs, ['initDialogs', 'init'], document.body, 'dialogs', true);
+  }
+  // Numeric fields select their whole value on a click, so typing replaces
+  // a default such as the Add dialog's 1.0 instead of appending to it.
+  if (modules.dialogs && typeof modules.dialogs.installSelectOnFocus === 'function') {
+    modules.dialogs.installSelectOnFocus(document);
   }
 
   // The tab strip last: the Details tab wraps #details-root, which must
@@ -1933,20 +1973,36 @@ async function askConfirm(message, options) {
 function confirmDiscard(message) {
   const fn = dialogFn('new');
   if (fn) return fn();
-  return askConfirm(message || t('confirm.discard'));
+  // The button names the consequence, like Delete's does -- not a bare OK.
+  return askConfirm(message || t('confirm.discard'), {
+    title: t('btn.new'),
+    confirmLabel: t('confirm.discardNewOk'),
+    danger: true,
+  });
 }
 
 async function actionNew() {
   if (dispatchAction('new')) return;
+  // A field still being typed in is part of "unsaved changes": commit it
+  // first so the question below is asked when it should be.
+  await flushPendingEdits();
+  // Ask BEFORE the request when the document is known to be dirty, so the
+  // common case is one clean POST with force instead of a refused 409 (which
+  // Chrome logs as a console error) followed by the retry.
+  let force = false;
+  if (store.state && store.state.dirty) {
+    if (!(await confirmDiscard(t('confirm.discard')))) return;
+    force = true;
+  }
   try {
-    const result = await api.post('/new', {});
+    const result = await api.post('/new', force ? { force: true } : {});
     store.applyMutation(result);
     announceDocument();
     store.select(rootId());
     toast(t('msg.newCreated'), 'ok');
   } catch (err) {
-    if (err instanceof ApiError && err.code === 'UNSAVED_CHANGES') {
-      // The backend refuses to discard unsaved work unless forced (409).
+    if (!force && err instanceof ApiError && err.code === 'UNSAVED_CHANGES') {
+      // The server knew of changes the client did not (409): ask after all.
       const proceed = await confirmDiscard(t('confirm.discard'));
       if (!proceed) return;
       try {
@@ -2066,6 +2122,15 @@ async function actionDelete() {
 }
 
 async function actionHistory(kind) {
+  // The store knows whether there is anything to undo/redo (the toolbar
+  // buttons are disabled on it). Asking the server anyway got a refused 400,
+  // which Chrome logs as a console error, for every Ctrl+Z on a fresh document.
+  const able = kind === 'undo' ? 'canUndo' : 'canRedo';
+  if (store.state && store.state[able] === false) {
+    const code = kind === 'undo' ? 'NOTHING_TO_UNDO' : 'NOTHING_TO_REDO';
+    toast(t(kind === 'undo' ? 'msg.nothingToUndo' : 'msg.nothingToRedo'), 'info', code);
+    return;
+  }
   try {
     const result = await api.post('/' + kind, {});
     store.applyMutation(result);
@@ -2219,7 +2284,8 @@ async function actionLoad() {
   if (store.state && store.state.dirty) {
     const proceed = await askConfirm(t('confirm.discardOpen'), {
       title: t('btn.load'),
-      confirmLabel: t('btn.load'),
+      confirmLabel: t('confirm.discardOpenOk'),
+      danger: true,
     });
     if (!proceed) return;
   }
@@ -2649,6 +2715,18 @@ function wireTopbar() {
     el.addEventListener('change', queueMetadata);
     el.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') el.blur();
+      else if (event.key === 'Escape') {
+        // Escape discards the typing, as in the Details and analysis forms,
+        // instead of reaching the shell (which would only dismiss a toast and
+        // leave the edit to be committed on the next blur).
+        const meta = store.metadata();
+        const stored = String((sel === '#title-input' ? meta.title : meta.date) || '');
+        if (el.value !== stored) {
+          event.preventDefault();
+          event.stopPropagation();
+          el.value = stored;
+        }
+      }
     });
   }
 
@@ -2721,7 +2799,11 @@ function renderShell(state) {
   $('#details-meta').textContent = store.selectedId
     ? t('meta.selected', { id: store.selectedId })
     : t('meta.noSelection');
-  $('#diagram-meta').textContent = state.nativeDot ? t('meta.dotReady') : t('meta.dotMissing');
+  // diagram.js owns this line once it is up (it states what drew the picture);
+  // writing it here too made it flip between two texts on every click.
+  if (!diagramPanel) {
+    $('#diagram-meta').textContent = state.nativeDot ? t('meta.dotReady') : t('meta.dotMissing');
+  }
 
   const aiDot = $('#ai-status');
   aiDot.dataset.on = String(Boolean(state.aiConfigured));
@@ -2805,6 +2887,17 @@ function onKeyDown(event) {
   // keep meaning select-all and undo-my-typing.
   if (isTextEntry(event.target)) return;
 
+  // Alt+N is New. Chrome and Edge keep Ctrl+N for themselves (a new browser
+  // window; the page never sees the key), so the documented shortcut is the
+  // one a browser lets through. event.code, not key: with Option held macOS
+  // reports a dead key instead of 'n'. Ctrl+N stays below for the
+  // environments that do deliver it (an embedded webview, some kiosks).
+  if (event.altKey && !ctrl && !event.shiftKey && (key === 'n' || event.code === 'KeyN')) {
+    event.preventDefault();
+    actionNew();
+    return;
+  }
+
   if (!ctrl) {
     if (event.key === 'Delete' || event.key === 'Del') {
       // Bare Delete belongs to the tree. From the diagram stage or a top-bar
@@ -2821,9 +2914,8 @@ function onKeyDown(event) {
   if (event.altKey) return;
 
   // preventDefault on every one of these: Ctrl+A selects the page, Ctrl+D
-  // bookmarks it, Ctrl+E focuses a search bar. (Ctrl+N is reserved by most
-  // browsers and cannot be intercepted at all -- the button bar is the
-  // reliable path for New.)
+  // bookmarks it, Ctrl+E focuses a search bar. (Ctrl+N is reserved by Chrome
+  // and Edge and never arrives there -- Alt+N above is the browser-safe New.)
   switch (key) {
     case 'n':
       event.preventDefault();
@@ -2881,6 +2973,14 @@ async function boot() {
     // import repairs and the like) -- offer a link there.
     toast(detail.message || '', detail.kind || 'info', detail.code || null,
       detail.showValidation ? showInValidation() : null);
+  });
+  window.addEventListener('fta:validation-dismissed', (event) => {
+    const sigs = event && event.detail && Array.isArray(event.detail.signatures) ? event.detail.signatures : [];
+    validationDismissed = new Set(sigs);
+    if (validationCounts) {
+      validationCounts = visibleValidationCounts(null);
+      renderValidationBadge();
+    }
   });
   window.addEventListener('fta:ai-settings', (event) => {
     // preventDefault is how the asker (chat.js) learns the shell has this; an

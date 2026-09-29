@@ -1,0 +1,188 @@
+{
+  "title": "F03 k-out-of-n",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "v2oo3",
+        "name": "v2oo3",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "a1",
+            "name": "a1",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "a2",
+            "name": "a2",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "a3",
+            "name": "a3",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "KOFN",
+        "k": 2
+      },
+      {
+        "id": "v1oo2",
+        "name": "v1oo2",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "b1",
+            "name": "b1",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "b2",
+            "name": "b2",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "KOFN",
+        "k": 1
+      },
+      {
+        "id": "v3oo3",
+        "name": "v3oo3",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "c1",
+            "name": "c1",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "c2",
+            "name": "c2",
+            "type": "Event",
+            "probability": 0.4,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "c3",
+            "name": "c3",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "KOFN",
+        "k": 3
+      },
+      {
+        "id": "v2oo4",
+        "name": "v2oo4",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "d1",
+            "name": "d1",
+            "type": "Event",
+            "probability": 0.01,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "d2",
+            "name": "d2",
+            "type": "Event",
+            "probability": 0.02,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "d3",
+            "name": "d3",
+            "type": "Event",
+            "probability": 0.03,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "d4",
+            "name": "d4",
+            "type": "Event",
+            "probability": 0.04,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "KOFN",
+        "k": 2.0
+      }
+    ]
+  }
+}

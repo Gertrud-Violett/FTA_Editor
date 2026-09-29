@@ -58,6 +58,22 @@ const DIAGRAM_RANKDIRS = ['LR', 'TB'];
 const RENDER_DEBOUNCE_MS = 150; // config.RENDER_DEBOUNCE_MS
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 8;
+// Fitting only ever shrinks: a one-node document on a wide screen used to be
+// blown up to ~700%, painting the title in giant letters across the panel.
+// Zooming in past 100% stays available through +, Ctrl+wheel and Ctrl+=.
+const FIT_MAX = 1;
+const FIT_MARGIN_PX = 24;
+
+/**
+ * The zoom that fits a `width` x `height` diagram into a stage of
+ * `stageWidth` x `stageHeight` pixels: shrink to fit, never enlarge past 100%.
+ * Shared by auto-fit (each render, stage resize) and the Fit button / Ctrl+0.
+ */
+export function fitScale(stageWidth, stageHeight, width, height) {
+  const fitted = Math.min((stageWidth - FIT_MARGIN_PX) / width, (stageHeight - FIT_MARGIN_PX) / height);
+  if (!Number.isFinite(fitted)) return FIT_MAX;
+  return Math.min(FIT_MAX, Math.max(ZOOM_MIN, fitted));
+}
 const ZOOM_STEP = 1.1;
 const PAN_SLOP_PX = 4; // movement below this is a click, not a pan
 
@@ -472,7 +488,7 @@ export function initDiagram(container) {
     class: 'diagram__popoverHead__close',
     'aria-label': t('diagram.fontSettingsClose', 'Close'),
     text: '×',
-    onclick: () => closePopover(),
+    onclick: () => closePopover(true),
   });
   const popoverTitle = el('span', { text: t('diagram.fontSettings', 'Font & box size') });
   const fontLabel = el('span', { text: t('diagram.fontLabel', 'Font') });
@@ -566,9 +582,31 @@ export function initDiagram(container) {
     );
   }
 
-  function closePopover() {
+  function closePopover(returnFocus) {
+    const wasOpen = !popover.hidden;
     popover.hidden = true;
+    if (wasOpen && returnFocus) aaBtn.focus();
   }
+
+  // Escape closes the popover and hands focus back to the Aa button. Handled
+  // here (and stopped) while focus is inside it, so the shell's global Escape
+  // -- toast dismissal -- does not also fire; an open native <select> list
+  // swallows its own Escape before this sees it.
+  popover.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape' || popover.hidden) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    closePopover(true);
+  });
+  // Escape with focus elsewhere (the Aa button, the stage): the shell asks
+  // first through the cancelable fta:escape; an open popover claims it.
+  const onShellEscape = (ev) => {
+    if (popover.hidden) return;
+    const inside = popover.contains(document.activeElement) || document.activeElement === aaBtn;
+    closePopover(inside);
+    ev.preventDefault();
+  };
+  window.addEventListener('fta:escape', onShellEscape);
 
   // ---- dragging: pointerdown on the header moves the whole popover -------
   let dragOffsetX = 0;
@@ -733,7 +771,7 @@ export function initDiagram(container) {
       : svgEl.getBoundingClientRect().height / (scale || 1);
     if (!w || !h) return;
     autoFit = true;
-    scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min((rect.width - 24) / w, (rect.height - 24) / h)));
+    scale = fitScale(rect.width, rect.height, w, h);
     tx = (rect.width - w * scale) / 2;
     ty = 12;
     applyTransform();
@@ -1001,11 +1039,13 @@ export function initDiagram(container) {
         jumpTo(id);
       }
       setStatusMessage('');
-      setMeta(
-        renderer === 'native'
-          ? t('diagram.rendererNative', 'Rendered by system Graphviz')
-          : t('diagram.rendererWasm', 'Rendered in-browser (Graphviz WASM)')
-      );
+      // What is on screen always comes from the in-browser renderer; a
+      // system Graphviz (renderer 'native') only serves the PNG export of the
+      // compact style. 1.7.0 said "Rendered by system Graphviz" instead.
+      const onScreen = t('diagram.rendererWasm', 'Rendered in-browser (Graphviz WASM)');
+      setMeta(renderer === 'native' && renderedStyle !== 'symbols'
+        ? onScreen + ' · ' + t('diagram17.pngNative', 'PNG export: system Graphviz')
+        : onScreen);
     } catch (err) {
       if (mine !== generation || destroyed) return;
       svgEl = null;
@@ -1121,7 +1161,17 @@ export function initDiagram(container) {
   }
 
   // ---- wiring ------------------------------------------------------------
-  const unsubscribe = store.subscribe(() => { markSelection(); schedule(); });
+  // A selection change (store.select) or a display-only touch() notifies with
+  // the same state object: that is a new outline, not a new graph. Only a new
+  // document state (every mutation, open, undo) re-fetches the DOT and
+  // re-runs the layout -- 1.7.0 re-laid-out the whole diagram on every click.
+  let renderedState;
+  const unsubscribe = store.subscribe(() => {
+    markSelection();
+    if (store.state === renderedState) return;
+    renderedState = store.state;
+    schedule();
+  });
   const unsubscribeHighlight = typeof store.onHighlight === 'function'
     ? store.onHighlight((next) => { highlight = next || { ids: [], source: null }; applyHighlight(); })
     : null;
@@ -1196,6 +1246,7 @@ export function initDiagram(container) {
       window.removeEventListener('fta:theme', onThemeChange);
       if (darkMediaQuery) darkMediaQuery.removeEventListener('change', onThemeChange);
       window.removeEventListener('resize', onWindowResizeClosePopover);
+      window.removeEventListener('fta:escape', onShellEscape);
       document.removeEventListener('click', onDocClickClosePopover);
       if (popover.parentNode) popover.parentNode.removeChild(popover);
       if (typeof unsubscribe === 'function') unsubscribe();

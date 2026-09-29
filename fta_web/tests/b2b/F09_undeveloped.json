@@ -1,0 +1,49 @@
+{
+  "title": "F09 undeveloped",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "u1",
+        "name": "u1",
+        "type": "Event",
+        "probability": 0.01,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "eventKind": "undeveloped"
+      },
+      {
+        "id": "u2",
+        "name": "u2",
+        "type": "Event",
+        "probability": 0.02,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "eventKind": "undeveloped"
+      },
+      {
+        "id": "b1",
+        "name": "b1",
+        "type": "Event",
+        "probability": 0.03,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "eventKind": "basic"
+      }
+    ]
+  }
+}

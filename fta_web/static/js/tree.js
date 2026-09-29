@@ -144,6 +144,7 @@ const TREE_CSS = `
    panel claims the free space as a flex item; height:100% is the fallback for
    any container that is not one. */
 .fta-tree-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -191,22 +192,34 @@ const TREE_CSS = `
   color: var(--fta-muted-fg);
   white-space: nowrap;
 }
+/* The keyboard hint NEVER takes part in the layout. In 1.7.0 it was a flex item
+   shown on :focus-within; focus arrives on mousedown, so the list shrank
+   between mousedown and mouseup, a click on a row near the bottom of the panel
+   landed on the hint, and the browser retargeted it away from the row (the
+   root got selected). Now it is an overlay that clicks pass through, shown
+   only for keyboard focus (.is-kbd, see trackModality), and the list keeps
+   its size whatever the hint does. --fta-tree-hint-h (measured when the hint
+   first shows, never shrinking) pads the end of the list and the scroll
+   snapping so the focused / last row can always be brought clear of it.
+   aria-describedby points at it either way, so a screen reader hears it on
+   the tree regardless of display. */
 .fta-tree-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
   margin: 0;
   padding: 0.25rem 0.45rem;
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--fta-muted-fg);
+  background: var(--fta-surface);
   border-top: 1px solid var(--fta-border);
-  flex: 0 0 auto;
+  pointer-events: none;
   display: none;
 }
-/* The hint is a reminder, not decoration: it appears while the panel has focus
-   and stays out of the way otherwise. aria-describedby points at it either way,
-   so a screen reader hears it on the tree regardless of this rule. It sits
-   under the list (see panel.append in initTree) so that appearing never moves
-   the row that is being clicked. */
-.fta-tree-panel:focus-within .fta-tree-hint { display: block; }
+.fta-tree-panel.is-kbd:focus-within .fta-tree-hint { display: block; }
 
 .fta-tree {
   overflow: auto;
@@ -215,7 +228,9 @@ const TREE_CSS = `
   color: var(--fta-tree-fg);
   font-size: 0.9rem;
   line-height: 1.45;
+  scroll-padding-bottom: var(--fta-tree-hint-h, 0px);
 }
+.fta-tree::after { content: ''; display: block; height: var(--fta-tree-hint-h, 0px); }
 .fta-tree ul { list-style: none; margin: 0; padding: 0; }
 .fta-tree-empty {
   margin: 0;
@@ -666,6 +681,55 @@ function branchIds(node, into) {
  * Non-destructive: an existing heading in the container is left alone and the
  * panel is appended (or reused, if this is a re-init).
  */
+/*
+ * Input modality, for the keyboard hint under the list. The hint must never
+ * appear because of a mouse press (see the .is-kbd rule in TREE_CSS): that
+ * changes the layout between mousedown and mouseup. Module-level so the two
+ * document listeners exist once however often initTree runs.
+ */
+let lastModality = 'pointer';
+let modalityWired = false;
+
+function wireModality() {
+  if (modalityWired) return;
+  modalityWired = true;
+  document.addEventListener('keydown', () => { lastModality = 'keyboard'; }, true);
+  document.addEventListener('pointerdown', () => { lastModality = 'pointer'; }, true);
+}
+
+/**
+ * Toggle `.is-kbd` on the panel: keyboard focus shows the hint overlay, a
+ * pointer never does. Neither changes the layout (the hint is absolutely
+ * positioned and click-through), so nothing moves under a pressed button.
+ */
+function trackModality(panel, list, hint) {
+  wireModality();
+  let reserved = 0;
+  // The overlay covers the bottom of the list: reserve that much room at the
+  // list's end and in its scroll snapping (grow-only, so a later, shorter
+  // hint never pulls a scrolled-to-the-end list down), then keep the focused
+  // row clear of it.
+  const reveal = () => {
+    const height = hint ? hint.offsetHeight : 0;
+    if (height > reserved) {
+      reserved = height;
+      panel.style.setProperty('--fta-tree-hint-h', reserved + 'px');
+    }
+    const focused = document.activeElement;
+    if (!focused || !list.contains(focused)) return;
+    const row = focused.querySelector(':scope > .fta-tree-row') || focused;
+    if (typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  };
+  const show = (on) => {
+    const was = panel.classList.contains('is-kbd');
+    panel.classList.toggle('is-kbd', on);
+    if (on && !was) reveal();
+  };
+  panel.addEventListener('pointerdown', () => show(false), true);
+  panel.addEventListener('keydown', () => show(true), true);
+  panel.addEventListener('focusin', () => show(lastModality === 'keyboard'));
+}
+
 export function initTree(container) {
   if (!container) throw new Error('initTree(container): container is required');
   ensureBaseStyles();
@@ -703,13 +767,13 @@ export function initTree(container) {
     'aria-multiselectable': 'true',
     'aria-describedby': hintId,
   });
-  // The hint goes BELOW the rows, not above them. It appears on focus-within,
-  // and focus arrives on mousedown -- so a hint above the list would push
-  // every row down under a pressed mouse button, mouseup would land on a
-  // different row than mousedown, and the browser would retarget the click
-  // to their common ancestor (the root item). At the bottom it only shortens
-  // the scrollable list; nothing under the pointer moves.
+  // The hint goes BELOW the rows, and it is shown only for keyboard focus.
+  // Focus arrives on mousedown: a hint that appeared then -- above the list or
+  // below it -- changed the layout under a pressed mouse button, mouseup
+  // landed somewhere else than mousedown (on the hint itself for a row near
+  // the bottom) and the browser retargeted the click away from the row.
   panel.append(toolbar, host, hint);
+  trackModality(panel, host, hint);
 
   /** Re-read every string in the chrome. Called on boot and on a language flip. */
   function applyStrings() {

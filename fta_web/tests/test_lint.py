@@ -260,6 +260,48 @@ def test_standby_large_lambda_tau():
     assert issue["severity"] == "warning" and issue["params"]["lambdaTau"] == pytest.approx(0.5)
 
 
+def test_rate_implausible_flags_fit_values_entered_per_hour():
+    # 120 and 45 FIT imported as /h: q = 1 for both, MTBF of minutes.
+    tree = top(leaf("r", 1.0, quant={"model": "rate", "lambda": 120.0}),
+               leaf("s", 1.0, quant={"model": "standby", "lambda": 45.0, "tau": 730.0}),
+               leaf("m", 1.0, quant={"model": "repairable", "lambda": 0.05, "mttr": 8.0}))
+    issues = only(lint.run(tree, None), "RATE_IMPLAUSIBLE")
+    assert [i["nodeId"] for i in issues] == ["r", "s", "m"]
+    first = issues[0]
+    assert first["severity"] == "warning"
+    assert first["params"] == {"lambda": 120.0, "unit": "h", "q": 1.0, "model": "rate"}
+    assert first["message"] == ("Failure rate λ = 120/h looks implausibly high (q = 1). "
+                                "Check the unit (FIT = 1e-9/h, /y = /8760 h).")
+    assert issues[2]["params"]["q"] == pytest.approx(0.05 / (0.05 + 1 / 8.0))
+
+
+def test_rate_implausible_q_near_one_from_a_long_mission():
+    # λ = 1e-3/h is plausible on its own; over 10,000 h the event is certain.
+    tree = top(leaf("r", 0.5, quant={"model": "rate", "lambda": 1e-3, "T": 10000.0}), leaf("b"))
+    issue = only(lint.run(tree, None), "RATE_IMPLAUSIBLE")[0]
+    assert issue["params"]["q"] >= 0.999 and issue["params"]["lambda"] == 1e-3
+    # ... and the mission time counts when T is not set.
+    tree = top(leaf("r", 0.5, quant={"model": "rate", "lambda": 1e-3}), leaf("b"))
+    assert "RATE_IMPLAUSIBLE" in codes(lint.run(tree, {"missionTime": 10000.0}))
+    assert "RATE_IMPLAUSIBLE" not in codes(lint.run(tree, {"missionTime": 100.0}))
+
+
+def test_rate_implausible_boundaries_and_exemptions():
+    ok = top(
+        leaf("a", 0.5, quant={"model": "rate", "lambda": 1e-6}),
+        leaf("b", 0.5, quant={"model": "standby", "lambda": 1e-2, "tau": 10.0}),  # == limit
+        leaf("c", 0.5, quant={"model": "rate", "T": 100.0}),        # λ missing: not this rule
+        leaf("d", 0.5, quant={"model": "fixed", "lambda": 50.0}),   # fixed ignores λ
+        leaf("e", 0.5, eventKind="house", houseState=True,
+             quant={"model": "rate", "lambda": 50.0}),              # a house is a switch
+    )
+    found = codes(lint.run(ok, None))
+    assert "RATE_IMPLAUSIBLE" not in found
+    assert "QUANT_PARAM_MISSING" in found
+    assert "RATE_IMPLAUSIBLE" not in codes(lint.run(
+        top(leaf("r", 1.0, quant={"model": "rate", "lambda": 120.0})), None, mode="ETA"))
+
+
 def test_cutsets_truncated_only_when_passed_in():
     assert "CUTSETS_TRUNCATED" not in codes(lint.run(clean(), None))
     assert lint.run(clean(), None, extra={"cutsets": {"truncated": False}}) == []
@@ -338,7 +380,7 @@ def test_every_code_has_one_severity_and_the_plan_list_is_complete():
         "XOR_ARITY", "PAND_APPROX", "TRANSFER_MISSING", "TRANSFER_CYCLE",
         "TRANSFER_HAS_CHILDREN", "HOUSE_HAS_CHILDREN", "ETA_BRANCH_SUM",
         "PARENT_PROBABILITY_IGNORED", "QUANT_PARAM_MISSING", "STANDBY_LARGE_LT",
-        "NONCOHERENT_XOR", "CUTSETS_TRUNCATED",
+        "NONCOHERENT_XOR", "CUTSETS_TRUNCATED", "RATE_IMPLAUSIBLE",
     }
     assert set(lint.CODES) == frozen
     assert set(lint.SEVERITY.values()) == set(lint.SEVERITIES)
@@ -385,8 +427,11 @@ def test_every_code_is_localised_with_a_fix_hint():
         "TRANSFER_HAS_CHILDREN": {"n"}, "HOUSE_HAS_CHILDREN": {"n"}, "SINGLE_INPUT_GATE": {"gate"},
         "PARENT_PROBABILITY_IGNORED": {"probability", "calculated"},
         "STANDBY_LARGE_LT": {"lambdaTau"}, "NONCOHERENT_XOR": {"count"},
+        "RATE_IMPLAUSIBLE": {"lambda", "unit", "q", "model"},
         "CUTSETS_TRUNCATED": {"reason"}, "ETA_BRANCH_SUM": {"sum"},
         "LINKS_REMOVED": {"targetId"}, "PAND_APPROX": {"n"},
+        # 1.7.1 (lint rule added on the backend branch): params {lambda, unit, q, model}
+        "RATE_IMPLAUSIBLE": {"lambda", "unit", "q", "model"},
     }
     for code, text in placeholders.items():
         used = set(re.findall(r"\{(\w+)\}", text))

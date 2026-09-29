@@ -244,6 +244,13 @@ export function initChat(host) {
    * always written with textContent, because a model's reply is untrusted input
    * exactly like a node name is.
    */
+  /**
+   * Messages written from a catalog key remember it (key -> {key, vars}), so a
+   * live language switch re-translates them along with every role label.
+   * Text typed by the user or returned by the AI is never touched.
+   */
+  const keyed = new WeakMap();
+
   function addMessage(role, text) {
     const kind = ROLE_KEY[role] ? role : 'system';
     const body = el('div', { class: 'chat-msg__body' });
@@ -255,6 +262,24 @@ export function initChat(host) {
     log.appendChild(row);
     scrollToEnd();
     return row;
+  }
+
+  /** addMessage for a catalog string: re-translated on a language switch. */
+  function say(role, key, vars) {
+    const row = addMessage(role, t(key, vars));
+    keyed.set(row, { key, vars });
+    return row;
+  }
+
+  /** Re-translate the role labels and every catalog-keyed message in the log. */
+  function relabelLog() {
+    for (const row of log.querySelectorAll('.chat-msg')) {
+      const role = row.querySelector('.chat-msg__role');
+      if (role && ROLE_KEY[row.dataset.role]) role.textContent = t(ROLE_KEY[row.dataset.role]);
+      const entry = keyed.get(row);
+      const body = row.querySelector('.chat-msg__body');
+      if (entry && body) body.textContent = t(entry.key, entry.vars);
+    }
   }
 
   /** A long block (an AI output excerpt, a rejected node) kept readable. */
@@ -336,7 +361,7 @@ export function initChat(host) {
       cancelable: true,
     });
     window.dispatchEvent(event);
-    if (!event.defaultPrevented) addMessage('error', t('ai.err.noSettings'));
+    if (!event.defaultPrevented) say('error', 'ai.err.noSettings');
   }
 
   function showInvitation(on) {
@@ -354,7 +379,7 @@ export function initChat(host) {
   function ensureConfigured() {
     if (aiConfigured() === false) {
       showInvitation(true);
-      addMessage('system', t('ai.msg.notConfigured'));
+      say('system', 'ai.msg.notConfigured');
       return false;
     }
     return true;
@@ -363,7 +388,7 @@ export function initChat(host) {
   function handleError(err) {
     if (err instanceof ApiError && err.code === 'AI_NOT_CONFIGURED') {
       showInvitation(true);
-      addMessage('system', t('ai.msg.notConfigured'));
+      say('system', 'ai.msg.notConfigured');
       return;
     }
     addMessage('error', err && err.message ? err.message : String(err));
@@ -511,7 +536,7 @@ export function initChat(host) {
       await refreshDocument(result);
       retireChanges(handle, t('ai.changes.applied', { n: applied, total: total }));
       if (openChanges === handle) openChanges = null;
-      addMessage('system', t('ai.changes.applied', { n: applied, total: total }));
+      say('system', 'ai.changes.applied', { n: applied, total: total });
     } catch (err) {
       if (destroyed) return;
       handle.status.textContent = '';
@@ -529,7 +554,7 @@ export function initChat(host) {
    */
   function blocked() {
     if (busy) {
-      addMessage('system', t('ai.msg.busy'));
+      say('system', 'ai.msg.busy');
       return true;
     }
     return !ensureConfigured();
@@ -555,7 +580,7 @@ export function initChat(host) {
   function actionSend() {
     const text = input.value.trim();
     if (!text) {
-      addMessage('system', t('ai.msg.empty'));
+      say('system', 'ai.msg.empty');
       input.focus();
       return;
     }
@@ -578,7 +603,7 @@ export function initChat(host) {
    */
   function actionAnalyze() {
     if (blocked()) return;
-    addMessage('user', t('ai.msg.analyzePrompt'));
+    say('user', 'ai.msg.analyzePrompt');
     run(t('ai.msg.analyzing'), async () => {
       const result = await api.post('/ai/analyze', {});
       if (destroyed) return;
@@ -589,14 +614,14 @@ export function initChat(host) {
 
   function actionUpdate() {
     if (blocked()) return;
-    addMessage('user', t('ai.msg.updatePrompt'));
+    say('user', 'ai.msg.updatePrompt');
     run(t('ai.msg.updating'), async () => {
       const result = await api.post('/ai/update', {});
       if (destroyed) return;
       const reply = replyFrom(result);
       if (reply) addMessage('assistant', reply);
       await refreshDocument(result);
-      addMessage('system', t('ai.msg.updated'));
+      say('system', 'ai.msg.updated');
     });
   }
 
@@ -607,7 +632,7 @@ export function initChat(host) {
    */
   async function actionClear() {
     if (busy) {
-      addMessage('system', t('ai.msg.busy'));
+      say('system', 'ai.msg.busy');
       return;
     }
     setBusy(true, t('ai.msg.clearing'));
@@ -632,7 +657,7 @@ export function initChat(host) {
   function greet() {
     if (welcomed) return;
     welcomed = true;
-    addMessage('system', t('ai.msg.welcome'));
+    say('system', 'ai.msg.welcome');
   }
 
   /**
@@ -667,7 +692,10 @@ export function initChat(host) {
     actionSend();
   });
 
-  const onLanguage = () => applyLabels();
+  const onLanguage = () => {
+    applyLabels();
+    relabelLog();
+  };
   window.addEventListener('fta:language', onLanguage);
 
   applyLabels();

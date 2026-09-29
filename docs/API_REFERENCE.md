@@ -115,9 +115,10 @@ app reads `probability`, so it shows the same values. It still computes a
 - `analysis`: the block above.
 - `sessionWarnings`: the load repairs and removed links collected this
   session, as issue objects `{severity, code, nodeId, message, params}`.
-  They are not saved and not undone, except the `gate_type_reset` notices of
-  an AI edit (`params.cause: "ai"`), which are undone with that edit. At most
-  500 are kept.
+  They are not saved. Load repairs are not undone; the notices an edit raises
+  about itself -- `LINKS_REMOVED` from a delete (by hand or by the AI) and the
+  `gate_type_reset` notices of an AI edit (`params.cause: "ai"`) -- are undone
+  and redone with that edit. At most 500 are kept.
 - `capabilities.reportExport`: whether `python-docx` is installed.
 - `capabilities.fmeaXlsx`: whether `openpyxl` is installed, which `.xlsx`
   FMEA import needs.
@@ -321,6 +322,10 @@ It works in both modes and does not return `MODE_UNSUPPORTED`.
   count}`, reason such as `"count"` or `"cutoff, order"`) appears when they
   truncate. If the expansion fails or runs out of time, nothing is reported
   about truncation.
+- `RATE_IMPLAUSIBLE` (warning, FTA) flags an event whose rate, standby or
+  repairable model has λ > 1e-2 /h, or whose rate model gives q ≥ 0.999
+  (`params: {lambda, unit: "h", q, model}`): usually FIT or per-year values
+  entered as per hour.
 - `message` is English. The UI localises it with `val.code.<CODE>` and
   `params`.
 - The codes and their severities are listed in the
@@ -394,6 +399,11 @@ endpoint is read-only.
 
 `rows` holds at most the first 50 rows. `occurrenceTable` is the document's
 table; `defaultOccurrenceTable` is the AIAG default.
+
+`suggestedLambdaUnit` is the unit the λ header names (`FIT`; `/y`, `per year`,
+`年`; `/h`, `per hour`, `時間`). When the header names none, it comes from the
+median of the column's non-empty values (all rows, not only the preview):
+at least 1 gives `FIT`, 1e-3 up to 1 gives `y`, anything else `h`.
 
 #### `POST /api/fmea/import`
 
@@ -503,6 +513,8 @@ text is the server's own message; `fta_web/i18n.py` supplies the Japanese:
 **Session warnings from deletes.** Each `DELETE /api/nodes/<id>` returns
 `removedLinks` and adds a `LINKS_REMOVED` session warning for every link it
 stripped. These appear in `sessionWarnings` and in the Validation issues.
+They belong to the delete: `POST /api/undo` (which restores the links)
+removes them, and `POST /api/redo` brings them back.
 
 - A `transferTo` that names a deleted node is removed too and reported the
   same way, with `relation: "TRANSFER"` (`{nodeId, targetId, relation}`). The

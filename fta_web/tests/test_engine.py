@@ -4,7 +4,10 @@ Tests for fta_web/engine.py -- ``WebCore``, the 1.7 probability engine.
 The load-bearing test is the first one: on a legacy tree (no 1.7 keys) the
 subclass must produce *exactly* the numbers ``FTACore`` does -- same floats,
 not approximately -- including through links, dangling links, self links,
-cycles and duplicate ids. Everything else then checks the additions.
+cycles and duplicate ids. The one exception (1.7.1) is an OR result below
+``engine.OR_ACCURATE_BELOW``, which the web engine computes without cancellation
+because the 1.6 product form loses digits there (see ``assert_matches_ftacore``).
+Everything else then checks the additions.
 """
 import copy
 import itertools
@@ -118,9 +121,119 @@ def test_matches_ftacore_exactly_on_random_legacy_trees(seed):
     web.set_data(copy.deepcopy(tree))
     web.recalculate_probabilities()
 
-    assert all_calcs(web.get_data()) == all_calcs(legacy.get_data())
-    assert web.get_data() == legacy.get_data()
+    assert_matches_ftacore(web, legacy)
     assert web.quant_warnings == []
+
+
+def _without_calcs(tree):
+    tree = copy.deepcopy(tree)
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        node.pop("calculatedProbability", None)
+        stack.extend(node.get("children") or [])
+    return tree
+
+
+def assert_matches_ftacore(web, legacy):
+    """Identical numbers, except (1.7.1) where an OR result is below
+    engine.OR_ACCURATE_BELOW: the web engine computes that OR without cancellation,
+    because the 1.6 product form had cancelled digits away there (all of
+    them below ~1e-16). Those nodes, and what depends on them, may differ by
+    that lost precision only; every other node is bit-identical."""
+    web_calcs, legacy_calcs = all_calcs(web.get_data()), all_calcs(legacy.get_data())
+    assert [nid for nid, _ in web_calcs] == [nid for nid, _ in legacy_calcs]
+    for (nid, w), (_, l) in zip(web_calcs, legacy_calcs):
+        if w == l:
+            continue
+        assert w is not None and l is not None, nid
+        assert abs(w - l) <= 1e-9 * max(abs(w), abs(l)) + 1e-15, (nid, w, l)
+    assert _without_calcs(web.get_data()) == _without_calcs(legacy.get_data())
+
+
+def test_legacy_trees_without_small_or_results_are_bit_identical():
+    """The random legacy trees whose OR values all stay at or above
+    OR_ACCURATE_BELOW (most of them) still match FTACore exactly."""
+    exact = 0
+    for seed in range(200):
+        tree = random_tree(random.Random(seed))
+        legacy, web = FTACore(), WebCore()
+        for core in (legacy, web):
+            core.set_data(copy.deepcopy(tree))
+            core.recalculate_probabilities()
+        if all(v is None or v >= engine.OR_ACCURATE_BELOW or v == 0.0
+               for _nid, v in all_calcs(legacy.get_data())):
+            assert web.get_data() == legacy.get_data(), seed
+            exact += 1
+    assert exact > 50
+
+
+def _or_tree(children, **extra):
+    node = gate("root", "OR", children)
+    node.update(extra)
+    return node
+
+
+@pytest.mark.parametrize("probs, expected", [
+    # 1 - (1 - 1e-17) is exactly 0 in floating point: the 1.6 OR flushed these.
+    ([1e-17, 1e-17], 2e-17),
+    ([1e-17], 1e-17),                      # a single-input OR (a restating top event)
+    ([1e-15, 1e-15], 2e-15 - 1e-30),       # the product form gave 1.9984e-15
+    ([1e-12, 3e-12], 4e-12 - 3e-24),       # ... and 4.00002e-12
+    ([3e-7, 4e-7], 7e-7 - 1.2e-13),
+])
+def test_or_gate_keeps_full_precision_for_small_inputs(probs, expected):
+    core = calc(_or_tree([leaf("e%d" % i, p) for i, p in enumerate(probs)]))
+    assert core.get_data()["calculatedProbability"] == pytest.approx(expected, rel=1e-11, abs=0)
+
+
+def test_or_of_tiny_and_gates_is_not_zero_and_matches_the_mcub():
+    """OR(AND(1e-6 x3), AND(1e-6 x3)): 2e-18, not the 0 the 1.6 OR formula
+    gave -- which made the tree-walk headline 0 while the MCUB said 2e-18."""
+    from fta_web import cutsets
+
+    tree = _or_tree([gate("g%d" % j, "AND", [leaf("a%d%d" % (j, i), 1e-6) for i in range(3)])
+                     for j in range(2)])
+    core = calc(tree)
+    top = core.get_data()["calculatedProbability"]
+    assert top == pytest.approx(2e-18, rel=1e-11, abs=0)
+    summary = engine.summary(core.get_data(), core.analysis)
+    assert summary["headlineMethod"] == "treeWalk" and summary["headline"] == top
+    # (The default 1e-15 cutoff drops both 1e-18 cut sets; without it the
+    # MCUB -- exact here, no repeated events -- is the same number.)
+    full = cutsets.compute(core.get_data(), core.analysis, {"cutoff": 0.0})
+    assert full["mcub"] == pytest.approx(top, rel=1e-11, abs=0)
+
+
+def test_or_links_keep_full_precision_too():
+    tree = gate("root", "AND", [gate("g", "OR", [leaf("a", 1e-17)], links=[
+        {"target_id": "b", "relation": "OR"}]), leaf("b", 1e-17)])
+    core = calc(tree)
+    assert core.find_node_by_id("g")["calculatedProbability"] == pytest.approx(2e-17, rel=1e-11, abs=0)
+
+
+def test_ordinary_or_results_are_bit_identical_to_the_16_formula():
+    """At or above OR_ACCURATE_BELOW the 1.6 product form is kept, so every
+    ordinary tree gives exactly the 1.6 numbers."""
+    rng = random.Random(3)
+    for _ in range(300):
+        probs = [rng.random() for _ in range(rng.randint(1, 6))]
+        naive = 1 - FTACore()._product([1 - p for p in probs])
+        if naive >= engine.OR_ACCURATE_BELOW:
+            assert engine.or_probability(probs) == naive
+    assert engine.or_probability([]) == 0.0 and str(engine.or_probability([])) == "0.0"
+    assert engine.or_probability([1.0, 1e-20]) == 1.0
+
+
+def test_mc_tree_method_uses_the_same_or():
+    from fta_web import logic, uncertainty
+
+    tree = _or_tree([leaf("a", 1e-17), leaf("b", 3e-17)])
+    s = logic.compile_tree(tree)
+    assert s.evaluate() == pytest.approx(4e-17, rel=1e-11, abs=0)
+    out = uncertainty.run(tree, None, n=50, seed=1)
+    assert out["method"] == "tree" and out["pointEstimate"] == s.evaluate()
+    assert out["mean"] == s.evaluate()
 
 
 def test_matches_ftacore_on_the_sample_file(sample_fta_path):
@@ -161,7 +274,8 @@ def test_rate_model_T_defaults_to_mission_time():
 
 def test_small_rates_are_not_flushed_to_zero():
     core = calc(gate("root", "OR", [leaf("a", 0.5, quant={"model": "rate", "lambda": 1e-12, "T": 1})]))
-    assert core.find_node_by_id("a")["probability"] == pytest.approx(1e-12, rel=1e-9)
+    # abs=0: pytest.approx adds abs=1e-12 by default, which would accept 0.
+    assert core.find_node_by_id("a")["probability"] == pytest.approx(1e-12, rel=1e-9, abs=0)
 
 
 def test_standby_model_and_large_lambda_tau_warning():

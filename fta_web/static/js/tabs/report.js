@@ -237,16 +237,27 @@ export function mount(panel, ctx) {
   root.append(heading, intro, missing, etaNote, fieldset, limits, options, actions, otherHeading, other);
   panel.appendChild(root);
 
-  let lastUrl = null;
-  const offer = (blob, name) => {
-    if (lastUrl) URL.revokeObjectURL(lastUrl);
-    lastUrl = URL.createObjectURL(blob);
-    const link = el('a', { href: lastUrl, download: name });
+  // The report's object URL lives as long as the "Save … again" link shows
+  // it; every other download gets its own short-lived URL. One shared URL
+  // (1.7.0) meant exporting Excel or CSV revoked the report the link still
+  // pointed at, so "Save again" failed with a network error.
+  let reportUrl = null;
+  let reportLabel = null; // {name} for the link text, re-translated on a language switch
+  const offer = (blob, name, keep) => {
+    const url = URL.createObjectURL(blob);
+    const link = el('a', { href: url, download: name });
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
     link.remove();
-    return lastUrl;
+    if (keep) {
+      if (reportUrl) URL.revokeObjectURL(reportUrl);
+      reportUrl = url;
+    } else {
+      // Revoked late: a download still starting must not lose its blob.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+    return url;
   };
 
   function applyCapabilities() {
@@ -288,11 +299,11 @@ export function mount(panel, ctx) {
       }
       const { blob, filename } = await ctx.api.download('POST', '/report/docx', body);
       const name = filename || safeStem(ctx.store?.metadata?.().title) + '_report.docx';
-      saveAgain.href = offer(blob, name);
+      saveAgain.href = offer(blob, name, true);
       saveAgain.setAttribute('download', name);
       saveAgain.hidden = false;
-      labels.push([saveAgain, 'report.saveAgain', { name }]);
-      saveAgain.textContent = t('report.saveAgain', { name });
+      reportLabel = { name };
+      saveAgain.textContent = t('report.saveAgain', reportLabel);
       ctx.toast(t('report.done', { name }), 'ok');
     } catch (err) {
       ctx.showError(err);
@@ -335,6 +346,7 @@ export function mount(panel, ctx) {
 
   const repaint = () => {
     for (const [node, key, vars] of labels) node.textContent = t(key, vars);
+    if (reportLabel) saveAgain.textContent = t('report.saveAgain', reportLabel);
     if (!langTouched) langSelect.value = window.ftaShell?.language === 'ja' ? 'ja' : 'en';
     applyCapabilities();
   };
@@ -349,7 +361,7 @@ export function mount(panel, ctx) {
     dispose() {
       window.removeEventListener('fta:language', repaint);
       if (typeof unsubscribe === 'function') unsubscribe();
-      if (lastUrl) URL.revokeObjectURL(lastUrl);
+      if (reportUrl) URL.revokeObjectURL(reportUrl);
       root.remove();
     },
   };

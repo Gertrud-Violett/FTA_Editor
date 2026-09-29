@@ -317,7 +317,7 @@ browser exists. The spec builds a console application (`console=True`), so
 output and exit codes reach the shell:
 
 ```
-./build/dist/fta_editor/fta_editor --version                                  # FTA Editor 1.7.0
+./build/dist/fta_editor/fta_editor --version                                  # FTA Editor 1.7.1
 ./build/dist/fta_editor/fta_editor validate fta_web/examples/sampleFTA.json   # exit 0 (warnings only)
 ./build/dist/fta_editor/fta_editor quantify fta_web/examples/sampleFTA.json --json | head -c 200
 ./build/dist/fta_editor/fta_editor report fta_web/examples/sampleFTA.json --out /tmp/r.docx   # needs python-docx

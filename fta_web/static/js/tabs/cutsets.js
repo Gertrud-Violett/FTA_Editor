@@ -436,7 +436,11 @@ export function mount(panel, ctx) {
       for (const tr of tableWrap.querySelectorAll('tr.is-selected')) tr.classList.remove('is-selected');
     },
     onStale() {
-      if (!hasRun) {
+      // Not run yet AND nothing in flight: only the document limits may have
+      // changed. With the first run still in flight its answer describes the
+      // tree before this change, so fall through and run again (1.7.0 returned
+      // here and kept showing that stale first answer).
+      if (!hasRun && !running) {
         if (!isEta(ctx) && root.contains(toolbar)) paintToolbar(); // document limits may have changed
         return;
       }

@@ -238,8 +238,9 @@ class _TreeHolder:
 
 def _strip_references_to_removed(state, old_tree: Any) -> None:
     """Links/transfers into ids that ``old_tree`` had and the live tree has
-    lost, removed and reported as ``LINKS_REMOVED`` session notices (as
-    DELETE /api/nodes does). Caller holds the lock."""
+    lost, removed and reported as ``LINKS_REMOVED`` notices of this edit (as
+    DELETE /api/nodes does): undoing the edit removes them. Caller holds the
+    lock, after ``push_undo``."""
     gone = all_ids(_TreeHolder(old_tree)) - all_ids(state.core)
     if not gone:
         return
@@ -248,7 +249,7 @@ def _strip_references_to_removed(state, old_tree: Any) -> None:
         issues = []
         for entry in removed:
             issues.extend(removed_link_issues([entry], entry["targetId"]))
-        state.add_session_warnings(issues)
+        state.add_edit_warnings(issues)
 
 
 def _mutation_payload(state) -> Dict[str, Any]:

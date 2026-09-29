@@ -14,6 +14,10 @@ bare dict tree and reusable from the CLI:
     ``{field: column}`` for the import fields (see :data:`FIELDS`), guessed
     from English and Japanese header keywords. A column is used at most once.
 
+``suggest_lambda_unit(column, values=None)``
+    ``FIT``/``y``/``h`` for the λ column: the unit its header names, else
+    guessed from the magnitude of its values (median >= 1: FIT; 1e-3..1: /y).
+
 ``apply_import(tree, rows, mapping, parent_id, occurrence_table, source_label,
 update=True, lambda_unit="h", columns=None, row_numbers=None)``
     Mutates ``tree`` (the root node dict) and returns
@@ -58,6 +62,7 @@ import datetime as _dt
 import io
 import math
 import re
+import statistics
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -340,14 +345,66 @@ def suggest_mapping(columns: Sequence[Any]) -> Dict[str, str]:
     return {field: mapping[field] for field in FIELDS if field in mapping}
 
 
-def suggest_lambda_unit(column: Any) -> str:
-    """``FIT``/``y``/``h`` from a λ header such as ``λ (FIT)`` or ``故障率 [/年]``."""
+_UNIT_YEAR = re.compile(r"/\s*(y|yr|year)\b|per[ -]?year|/年|年")
+_UNIT_HOUR = re.compile(r"/\s*(h|hr|hour)\b|per[ -]?hour|/時|時間")
+
+#: A median λ at or above this is almost certainly FIT (1 FIT = 1e-9/h: a
+#: per-hour rate of 1 means an MTBF of one hour).
+FIT_MEDIAN_THRESHOLD = 1.0
+#: ... and at or above this (but below 1) most likely per year: 1e-3..1 /y is
+#: the normal component range, while 1e-3..1 /h is an MTBF of 1 h..1000 h.
+YEAR_MEDIAN_THRESHOLD = 1e-3
+
+
+def header_lambda_unit(column: Any) -> Optional[str]:
+    """``FIT``/``y``/``h`` when the λ header names its unit (``λ (FIT)``,
+    ``故障率 [/年]``, ``rate per hour``), else None."""
     text = _norm(column)
     if _word("fit").search(text):
         return "FIT"
-    if re.search(r"/\s*(y|yr|year)\b|per year|/年|年", text):
+    if _UNIT_YEAR.search(text):
         return "y"
+    if _UNIT_HOUR.search(text):
+        return "h"
+    return None
+
+
+def suggest_lambda_unit(column: Any, values: Optional[Iterable[Any]] = None) -> str:
+    """``FIT``/``y``/``h`` for a λ column.
+
+    A unit named in the header wins. Otherwise the magnitude of the column's
+    values decides: a median of 1 or more is FIT, 1e-3 up to 1 is per year,
+    anything smaller per hour. Importing FIT values as per-hour rates makes
+    every such event certain (q = 1), so guessing from the numbers is much
+    safer than always defaulting to ``/h``.
+    """
+    unit = header_lambda_unit(column)
+    if unit is not None:
+        return unit
+    numbers = []
+    for value in values or ():
+        try:
+            number = _number(value)
+        except (TypeError, ValueError):
+            continue
+        if number is not None and number >= 0:
+            numbers.append(number)
+    if numbers:
+        median = statistics.median(numbers)
+        if median >= FIT_MEDIAN_THRESHOLD:
+            return "FIT"
+        if median >= YEAR_MEDIAN_THRESHOLD:
+            return "y"
     return "h"
+
+
+def column_values(table: Dict[str, Any], column: Any) -> List[Any]:
+    """Every row's cell in ``column`` (a header of ``table``)."""
+    columns = list(table.get("columns") or [])
+    if column not in columns:
+        return []
+    index = columns.index(column)
+    return [row[index] if index < len(row) else None for row in table.get("rows") or []]
 
 
 # ---- value parsing ---------------------------------------------------------------
@@ -702,6 +759,8 @@ __all__ = [
     "openpyxl_available",
     "read_table",
     "rows_as_dicts",
+    "column_values",
+    "header_lambda_unit",
     "suggest_lambda_unit",
     "suggest_mapping",
 ]

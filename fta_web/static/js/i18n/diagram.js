@@ -17,6 +17,7 @@ export default {
     'diagram17.legendHigh': 'high',
     'diagram17.fontAuto': 'Auto-detect',
     'diagram17.fontSystem': 'System default',
+    'diagram17.pngNative': 'PNG export: system Graphviz',
   },
   ja: {
     'diagram17.style': '表示形式',
@@ -31,5 +32,6 @@ export default {
     'diagram17.legendHigh': '高',
     'diagram17.fontAuto': '自動検出',
     'diagram17.fontSystem': 'システムの既定',
+    'diagram17.pngNative': 'PNG 出力: システムの Graphviz',
   },
 };

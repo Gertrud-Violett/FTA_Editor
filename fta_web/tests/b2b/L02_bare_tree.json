@@ -1,0 +1,104 @@
+{
+  "id": "root",
+  "name": "System failure",
+  "type": "Root",
+  "probability": 1.0,
+  "logicGate": "OR",
+  "children": [
+    {
+      "id": "g1",
+      "name": "Pumps",
+      "type": "Event",
+      "probability": 1.0,
+      "logicGate": "AND",
+      "children": [
+        {
+          "id": "a",
+          "name": "a",
+          "type": "Event",
+          "probability": 0.1,
+          "logicGate": "OR",
+          "children": [],
+          "links": [],
+          "notes": ""
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "type": "Event",
+          "probability": 0.2,
+          "logicGate": "OR",
+          "children": [],
+          "links": [],
+          "notes": ""
+        }
+      ],
+      "links": [],
+      "notes": ""
+    },
+    {
+      "id": "g2",
+      "name": "g2",
+      "type": "Event",
+      "probability": 1.0,
+      "logicGate": "OR",
+      "children": [
+        {
+          "id": "c",
+          "name": "c",
+          "type": "Event",
+          "probability": 0.05,
+          "logicGate": "OR",
+          "children": [],
+          "links": [],
+          "notes": ""
+        },
+        {
+          "id": "d",
+          "name": "d",
+          "type": "Event",
+          "probability": 0.01,
+          "logicGate": "OR",
+          "children": [],
+          "links": [],
+          "notes": ""
+        },
+        {
+          "id": "g3",
+          "name": "g3",
+          "type": "Event",
+          "probability": 1.0,
+          "logicGate": "AND",
+          "children": [
+            {
+              "id": "e",
+              "name": "e",
+              "type": "Event",
+              "probability": 0.3,
+              "logicGate": "OR",
+              "children": [],
+              "links": [],
+              "notes": ""
+            },
+            {
+              "id": "f",
+              "name": "f",
+              "type": "Event",
+              "probability": 0.4,
+              "logicGate": "OR",
+              "children": [],
+              "links": [],
+              "notes": ""
+            }
+          ],
+          "links": [],
+          "notes": ""
+        }
+      ],
+      "links": [],
+      "notes": ""
+    }
+  ],
+  "links": [],
+  "notes": ""
+}

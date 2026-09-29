@@ -209,9 +209,45 @@ def test_validate_reports_links_removed_by_a_delete(client):
     assert issues[0]["nodeId"] == b
     assert issues[0]["params"]["targetId"] == a
 
-    # Session warnings are not document state: undo does not remove them.
+    # The notice belongs to the delete: undo (which brings the link back)
+    # removes it, redo brings both back.
+    undone = body(api(client, "POST", "/api/undo"))
+    assert undone["sessionWarnings"] == []
+    assert body(api(client, "GET", "/api/analysis/validate"))["issues"] == []
+    redone = body(api(client, "POST", "/api/redo"))
+    assert [w["code"] for w in redone["sessionWarnings"]] == ["LINKS_REMOVED"]
+    assert [i["code"] for i in body(api(client, "GET", "/api/analysis/validate"))["issues"]] \
+        == ["LINKS_REMOVED"]
+
+
+def test_links_removed_notice_is_undone_with_the_delete_that_raised_it(client):
+    """The lead's repro: B AND-links to A; delete A; undo. A and the link are
+    back, so "Link from B to deleted node A was removed" must be gone too --
+    from sessionWarnings, /api/state and the Validation tab. Redo restores
+    it; an unrelated later edit does not bring it back."""
+    api(client, "POST", "/api/new", json={"force": True})
+    a = add(client, probability=0.1)
+    b = add(client, probability=0.2)
+    patched = api(client, "PATCH", "/api/nodes/%s" % b,
+                  json={"links": [{"target_id": a, "relation": "AND"}]})
+    assert patched.status_code == 200, body(patched)
+    api(client, "DELETE", "/api/nodes/%s" % a)
+    state = body(api(client, "GET", "/api/state"))
+    assert [w["code"] for w in state["sessionWarnings"]] == ["LINKS_REMOVED"]
+
+    undone = body(api(client, "POST", "/api/undo"))
+    assert undone["sessionWarnings"] == []
+    node_b = body(api(client, "GET", "/api/nodes/%s" % b))["node"]
+    assert [(l["target_id"], l["relation"]) for l in node_b["links"]] == [(a, "AND")]
+    assert body(api(client, "GET", "/api/state"))["sessionWarnings"] == []
+    assert body(api(client, "GET", "/api/analysis/validate"))["issues"] == []
+
+    body(api(client, "POST", "/api/redo"))
+    assert [w["code"] for w in body(api(client, "GET", "/api/state"))["sessionWarnings"]] \
+        == ["LINKS_REMOVED"]
     api(client, "POST", "/api/undo")
-    assert len(body(api(client, "GET", "/api/analysis/validate"))["issues"]) == 1
+    add(client, probability=0.3)  # a new edit clears the redo stack
+    assert body(api(client, "GET", "/api/state"))["sessionWarnings"] == []
 
 
 def test_session_warnings_helpers():

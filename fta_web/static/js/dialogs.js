@@ -1105,6 +1105,59 @@ export function confirmDialog(message, options) {
   return modal.done.then((value) => value === true);
 }
 
+/* ------------------------------------------------- numeric field focusing ---- */
+
+/**
+ * Numeric fields: the ones that hold a value the user usually replaces
+ * rather than edits (a probability, λ, a limit). Tab already selects a
+ * field's text; this makes a mouse click do the same. data-keep-caret opts a
+ * field out (the top bar's date is edited piecewise).
+ */
+export const SELECT_ON_FOCUS = [
+  'input[inputmode="decimal"]',
+  'input[inputmode="numeric"]',
+  'input[type="number"]',
+].map((sel) => sel + ':not([data-keep-caret])').join(', ');
+
+let selectOnFocusInstalled = false;
+
+/**
+ * Select a numeric field's whole value when a mouse click focuses it, so
+ * typing replaces the value. The Add dialog's probability starts as "1.0";
+ * clicking into it left the caret at the end and typing 1e-3 stored
+ * "1.01e-3" = 0.00101. A click into a field that already has focus still
+ * places the caret, and a drag that selects part of the text is kept.
+ * Installed once, on the document, for every present and future field.
+ */
+export function installSelectOnFocus(doc) {
+  const root = doc || document;
+  if (selectOnFocusInstalled) return;
+  selectOnFocusInstalled = true;
+  let pending = null;
+  root.addEventListener('mousedown', (event) => {
+    const input = event.target instanceof Element ? event.target.closest(SELECT_ON_FOCUS) : null;
+    pending = input && input !== root.activeElement && !input.readOnly && !input.disabled ? input : null;
+  }, true);
+  root.addEventListener('mouseup', (event) => {
+    const input = pending;
+    pending = null;
+    if (!input || root.activeElement !== input) return;
+    let partial = false;
+    try {
+      partial = input.selectionStart !== null && input.selectionStart !== input.selectionEnd;
+    } catch (_err) {
+      partial = false; // type=number has no selection API
+    }
+    if (partial) return;
+    event.preventDefault(); // keep the mouseup from collapsing the selection to a caret
+    try {
+      input.select();
+    } catch (_err) {
+      /* nothing selectable */
+    }
+  }, true);
+}
+
 /* -------------------------------------------------------- add node dialog ---- */
 
 function field(labelText, control) {

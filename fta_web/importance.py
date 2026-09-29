@@ -38,15 +38,18 @@ def _exp(lp: _LogProd) -> float:
     return 0.0 if lp[0] > 0 else math.exp(lp[1])
 
 
-def _diff(a: _LogProd, b: _LogProd) -> float:
-    """exp(a) - exp(b), accurately when the two are close."""
+def _diff(a: _LogProd, b: _LogProd, delta: float) -> float:
+    """exp(a) - exp(b), accurately when the two are close. ``delta`` is
+    ``b[1] - a[1]`` computed directly from the few terms that differ: taking
+    it as the difference of the two rounded sums would cancel (the sums can
+    be ~1 while their difference is ~1e-17)."""
     if a[0] > 0 and b[0] > 0:
         return 0.0
     if a[0] > 0:
         return -math.exp(b[1])
     if b[0] > 0:
         return math.exp(a[1])
-    return math.exp(a[1]) * (-math.expm1(b[1] - a[1]))
+    return math.exp(a[1]) * (-math.expm1(delta))
 
 
 def _partials(values) -> List[float]:
@@ -111,31 +114,34 @@ def compute(cutset_result: Dict[str, Any]) -> List[Dict[str, Any]]:
     base: _LogProd = (zeros, math.fsum(partials))  # log(1 - Q)
     top = 1.0 - _exp(base) if base[0] else -math.expm1(base[1])
 
-    def with_value(i: int, x: float) -> _LogProd:
+    def with_value(i: int, x: float) -> Tuple[_LogProd, List[float]]:
+        """log(1 - Q(q_i = x)) and the change against ``base`` as terms."""
         z = zeros
-        terms = list(partials)
+        change: List[float] = []
         for j in inverted[i]:
             z -= factors[j][0]
-            terms.append(-factors[j][1])
+            change.append(-factors[j][1])
             rest = 1.0
             for other in members[j]:
                 if other != i:
                     rest *= q[other]
             f = _factor(rest * x)
             z += f[0]
-            terms.append(f[1])
-        return (z, math.fsum(terms))
+            change.append(f[1])
+        return (z, math.fsum(partials + change)), change
 
     out = []
     for eid in order:
         info = events[eid]
         i = info["index"]
-        l0 = with_value(i, 0.0)
-        l1 = with_value(i, 1.0)
+        l0, change0 = with_value(i, 0.0)
+        l1, change1 = with_value(i, 1.0)
         q0 = 1.0 - _exp(l0) if l0[0] else -math.expm1(l0[1])
         q1 = 1.0 - _exp(l1) if l1[0] else -math.expm1(l1[1])
-        birnbaum = _diff(l0, l1)             # Q1 - Q0 = (1-Q0) - (1-Q1)
-        reduction = _diff(l0, base)          # Q - Q0
+        # Q1 - Q0 = (1-Q0) - (1-Q1); Q - Q0 = (1-Q0) - (1-Q). The exponent
+        # differences come straight from the changed terms (exact via fsum).
+        birnbaum = _diff(l0, l1, math.fsum(change1 + [-t for t in change0]))
+        reduction = _diff(l0, base, math.fsum([-t for t in change0]))
         fv = reduction / top if top > 0 else None
         raw = q1 / top if top > 0 else None
         rrw_infinite = False

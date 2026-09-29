@@ -108,7 +108,22 @@ def test_compact_legacy_node_names_and_edges_match_the_16_pipeline(legacy):
     assert set(id_map) == _node_names(new)
 
 
+def _without_leaf_gate_text(dot, leaf_names):
+    """The 1.6 labels with "Gate: <gate> | " dropped from leaf events (1.7.1)."""
+    parts = re.split(r"(?m)^(?=  [A-Za-z0-9_]+ \[label=<<TABLE)", dot)
+    out = []
+    for part in parts:
+        m = re.match(r"  ([A-Za-z0-9_]+) \[label=", part)
+        if m and m.group(1) in leaf_names:
+            part = re.sub(r"Gate: [^|<]+ \| ", "", part)
+        out.append(part)
+    return "".join(out)
+
+
 def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
+    """Apart from the sig-fig probabilities, the padding and -- deliberately,
+    since 1.7.1 -- the gate text on leaf events (a leaf has no gate; 1.6
+    showed its default "Gate: OR")."""
     old = build_dot_text(legacy)
     new, _ = build_dot_text2(legacy, sig_figs=2)
     strip = re.compile(r"P:[^ |<]+ \| P_calc:[^ <]+")
@@ -118,7 +133,27 @@ def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
         dot = re.sub(r" +</FONT>", "</FONT>", dot)
         return re.sub(r'(<FONT POINT-SIZE="[0-9]+">) +', r"\1", dot)
 
-    assert unpad(strip.sub("P", new)) == unpad(strip.sub("P", old))
+    leaves = {sanitize_id(n["id"]) for n in legacy.get_data()["children"][0:1]
+              + legacy.get_data()["children"][1]["children"]}
+    assert unpad(strip.sub("P", new)) == unpad(strip.sub("P", _without_leaf_gate_text(old, leaves)))
+
+
+def test_compact_leaf_labels_have_no_gate_text(legacy, rich):
+    for core in (legacy, rich):
+        dot, id_map = build_dot_text2(core, style="compact")
+        for name, node_id in id_map.items():
+            node = core.find_node_by_id(node_id)
+            block = re.search(r"(?ms)^  %s \[label=<<TABLE.*?</TABLE>>\];" % re.escape(name), dot)
+            text = block.group(0)
+            is_transfer = str(node.get("gateType") or "").upper() == "TRANSFER"
+            if node.get("children") or is_transfer:
+                # (A gate whose logicGate is "" -- FTACore's fresh root --
+                # never showed one, in 1.6 either.)
+                has_gate = bool(node.get("logicGate") or node.get("gateType"))
+                assert ("Gate: " in text) == has_gate, node_id
+            else:
+                assert "Gate: " not in text, node_id
+                assert "P:" in text and "P_calc:" in text
 
 
 def test_padding_is_proportional_and_split_evenly_around_the_text(legacy):
@@ -208,9 +243,9 @@ def test_symbols_event_nodes_have_shapes_and_classes(rich):
 
 def test_symbols_transfer_children_are_dotted_and_edges_run_through_gates(rich):
     dot, _ = build_dot_text2(rich, style="symbols")
-    assert re.search(r"^\s{2}root -> root__gate;$", dot, re.M)
+    assert re.search(r"^\s{2}root -> root__gate \[weight=100\];$", dot, re.M)
     assert re.search(r"^\s{2}root__gate -> k;$", dot, re.M)
-    assert re.search(r"^\s{2}k -> k__gate;$", dot, re.M)
+    assert re.search(r"^\s{2}k -> k__gate \[weight=100\];$", dot, re.M)
     assert re.search(r"^\s{2}k__gate -> k0;$", dot, re.M)
     assert "dir=none" in dot
 
@@ -271,6 +306,155 @@ def test_dark_mode_colours(rich):
     assert 'bgcolor="#1b1f23"' in dot and 'color="white"' in dot
     dot, _ = build_dot_text2(rich, style="compact", dark=True)
     assert 'fontcolor="white"' in dot
+
+
+# ---- colour contrast (WCAG: 4.5:1 text, 3:1 graphics) -------------------------------
+
+_NAMED = {"white": "#ffffff", "black": "#000000", "blue": "#0000ff", "pink": "#ffc0cb",
+          "lightblue": "#add8e6", "lightyellow": "#ffffe0"}
+
+
+def _luminance(colour):
+    hexa = _NAMED.get(colour, colour).lstrip("#")
+    channels = [int(hexa[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _contrast(a, b):
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+@pytest.fixture
+def linked(rich):
+    """The rich tree plus an OR- and an AND-link (dashed edges)."""
+    data = rich.get_data()
+    data["children"][0]["links"] = [{"target_id": "x0", "relation": "OR"}]
+    data["children"][1]["links"] = [{"target_id": "i0", "relation": "AND"}]
+    rich.recalculate_probabilities()
+    return rich
+
+
+def _link_colours(dot):
+    return re.findall(r'-> \S+ \[style=dashed,.*color="([^"]+)"\];', dot)
+
+
+@pytest.mark.parametrize("style", ["compact", "symbols"])
+def test_link_colour_is_readable_on_the_dark_background(linked, style):
+    from fta_web.diagram_dot import DARK_BG
+
+    light, _ = build_dot_text2(linked, style=style)
+    dark, _ = build_dot_text2(linked, style=style, dark=True)
+    light_colours, dark_colours = set(_link_colours(light)), set(_link_colours(dark))
+    assert len(_link_colours(dark)) == 2
+    assert light_colours == {"blue"}  # 1.6's colour, unchanged in light mode
+    assert len(dark_colours) == 1 and dark_colours != light_colours
+    assert _contrast(dark_colours.pop(), DARK_BG) >= 4.5
+    assert _contrast("blue", "white") >= 4.5
+
+
+def _default_attr(dot, kind, attr):
+    m = re.search(r"^\s{2}%s \[(.*)\];$" % kind, dot, re.M)
+    found = re.search(r'\b%s="([^"]+)"' % attr, m.group(1)) if m else None
+    return found.group(1) if found else None
+
+
+@pytest.mark.parametrize("dark", [False, True])
+def test_every_symbols_colour_meets_contrast(linked, dark):
+    """Text 4.5:1 on whatever it sits on; outlines, fills and edges 3:1 on the
+    background (a shape counts as visible when its outline *or* fill is)."""
+    dot, _ = build_dot_text2(linked, style="symbols", dark=dark)
+    bg = re.search(r'bgcolor="([^"]+)"', dot).group(1)
+    node_fg = _default_attr(dot, "node", "fontcolor")
+    node_line = _default_attr(dot, "node", "color")
+    edge_line = _default_attr(dot, "edge", "color")
+    checked = 0
+    for name, attrs in re.findall(r"^\s{2}([A-Za-z0-9_]+) \[(.*)\];$", dot, re.M):
+        if name in ("graph", "node", "edge"):
+            continue
+        get = lambda a, d=None: (re.findall(r'\b%s="([^"]+)"' % a, attrs) or [d])[-1]  # noqa: E731
+        fill = get("fillcolor", bg) if "filled" in attrs else bg
+        outline = get("color", node_line)
+        assert max(_contrast(outline, bg), _contrast(fill, bg)) >= 3.0, (name, outline, fill)
+        if 'label=""' not in attrs:
+            assert _contrast(get("fontcolor", node_fg), fill) >= 4.5, (name, attrs)
+        if "fta-gate-transfer" in attrs:
+            assert _contrast(fill, bg) >= 3.0, ("transfer fill", fill)
+        checked += 1
+    assert checked > 10
+    for src, dst, attrs in _TREE_EDGE.findall(dot):
+        if "invis" in (attrs or ""):
+            continue
+        colour = (re.findall(r'color="([^"]+)"', attrs or "") or [edge_line])[-1]
+        need = 4.5 if "dashed" in (attrs or "") else 3.0
+        assert _contrast(colour, bg) >= need, (src, dst, colour)
+
+
+@pytest.mark.parametrize("dark", [False, True])
+def test_compact_colours_meet_contrast(linked, dark):
+    dot, _ = build_dot_text2(linked, style="compact", dark=dark)
+    bg = re.search(r'bgcolor="([^"]+)"', dot).group(1)
+    for fill in set(re.findall(r'BGCOLOR="([^"]+)"', dot)):
+        # Light mode: the black cell border outlines the box. Dark mode: that
+        # border is invisible, so the fill itself must stand out.
+        assert _contrast(fill, bg) >= 3.0 or not dark
+        assert _contrast("black", fill) >= 4.5  # the box text is black
+    for src, dst, attrs in _TREE_EDGE.findall(dot):
+        if "invis" in (attrs or ""):
+            continue
+        colour = re.findall(r'color="([^"]+)"', attrs or "")[-1]
+        assert _contrast(colour, bg) >= (4.5 if "dashed" in attrs else 3.0), (src, dst, colour)
+
+
+def test_transfer_children_edges_are_visible(rich):
+    rich.find_node_by_id("t")["children"] = [_leaf("tc", "Ignored", 0.5)]
+    rich.recalculate_probabilities()
+    for dark in (False, True):
+        dot, _ = build_dot_text2(rich, style="symbols", dark=dark)
+        bg = re.search(r'bgcolor="([^"]+)"', dot).group(1)
+        colour = re.search(r'-> tc \[style=dotted, color="([^"]+)"\]', dot).group(1)
+        assert _contrast(colour, bg) >= 3.0
+
+
+# ---- symbols: each gate / event symbol hangs straight off its own box ---------------
+
+
+@pytest.mark.parametrize("rankdir", ["LR", "TB"])
+def test_symbol_shares_a_group_with_its_box(rich, rankdir):
+    from fta_web.diagram_dot import SYMBOL_EDGE_WEIGHT
+
+    dot, id_map = build_dot_text2(rich, style="symbols", rankdir=rankdir)
+    pairs = 0
+    for name, node_id in id_map.items():
+        if not (name.endswith("__gate") or name.endswith("__event")):
+            continue
+        box = sanitize_id(node_id)
+        assert 'group="%s"' % box in _attrs_of(dot, name)
+        assert 'group="%s"' % box in _attrs_of(dot, box)
+        assert re.search(r"^\s{2}%s -> %s \[weight=%d\];$" % (box, name, SYMBOL_EDGE_WEIGHT),
+                         dot, re.M), name
+        pairs += 1
+    assert pairs == len([n for n in id_map if "__" in n]) > 10
+
+
+def test_compact_style_has_no_groups(rich):
+    dot, _ = build_dot_text2(rich, style="compact")
+    assert "group=" not in dot and "weight=" not in dot
+
+
+@needs_graphviz
+@pytest.mark.parametrize("style", ["compact", "symbols"])
+@pytest.mark.parametrize("rankdir", ["LR", "TB"])
+def test_native_dot_parses_dark_links_and_groups(linked, style, rankdir):
+    dot, _ = build_dot_text2(linked, style=style, rankdir=rankdir, dark=True)
+    done = subprocess.run(["dot", "-Tsvg"], input=dot.encode("utf-8"), capture_output=True,
+                          timeout=60)
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+    svg = done.stdout.decode("utf-8", "replace")
+    from fta_web.diagram_dot import DARK_LINK_COLOR
+
+    assert DARK_LINK_COLOR in svg and 'stroke="blue"' not in svg
 
 
 def test_empty_tree():
