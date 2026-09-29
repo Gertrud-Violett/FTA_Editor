@@ -214,3 +214,23 @@ def test_diagram_popover_closes_on_escape():
     assert "closePopover(true);" in handler
     assert "window.addEventListener('fta:escape', onShellEscape);" in src
     assert "window.removeEventListener('fta:escape', onShellEscape);" in src
+
+
+# ---- Live language switch ---------------------------------------------------------------
+
+def test_chat_log_relabels_on_language_switch():
+    src = _read(STATIC / "chat.js")
+    on_lang = re.search(r"const onLanguage = \(\) => \{(.*?)\};", src, re.S).group(1)
+    assert "relabelLog();" in on_lang
+    assert "say('system', 'ai.msg.welcome');" in src
+    assert "addMessage('system', t(" not in src, "catalog messages must go through say()"
+
+
+def test_no_untranslated_static_labels():
+    html = _read(REPO / "fta_web" / "templates" / "index.html")
+    for tag in re.findall(r"<[a-zA-Z][^>]*>", html):
+        if re.search(r'\baria-label="', tag):
+            assert "data-i18n-aria=" in tag, tag
+        if re.search(r'\stitle="', tag):
+            assert "data-i18n-title=" in tag, tag
+    assert "close.setAttribute('aria-label', 'Dismiss')" not in _read(STATIC / "main.js")
