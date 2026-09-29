@@ -25,9 +25,11 @@ Styles
     D13 escaping, the probability colour code). The meta row now reads
     ``Gate: <gate> | P:<q> | P_calc:<Q>`` with probabilities through
     ``numfmt.format_prob(sig_figs)`` and the 1.7 gate shown as ``2/3`` (KOFN),
-    ``XOR``, ``INHIBIT``, ``PAND`` or ``TRANSFER→<target name>``. A leaf with
-    a non-basic ``eventKind`` shows ``House: ON|OFF``, ``Undeveloped`` or
-    ``Conditioning`` in place of the (meaningless) leaf gate.
+    ``XOR``, ``INHIBIT``, ``PAND`` or ``TRANSFER→<target name>``. A leaf has
+    no gate, so (since 1.7.1) a basic event reads ``P:<q> | P_calc:<Q>``
+    (1.6 showed its default ``Gate: OR``) and a leaf with a non-basic
+    ``eventKind`` shows ``House: ON|OFF``, ``Undeveloped`` or
+    ``Conditioning`` in front instead.
 
 ``symbols``
     Standard fault-tree drawing. Every node is a description rectangle
@@ -258,9 +260,12 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     is_transfer = _gate_type(node) == "TRANSFER"
     if kind is not None and not is_transfer:
         head = kind + " | "
-    elif node.get("logicGate") or node.get("gateType"):
+    elif (node.get("children") or is_transfer) and (node.get("logicGate")
+                                                    or node.get("gateType")):
         head = "Gate: " + ctx.gate_text(node) + " | "
     else:
+        # A leaf event has no gate: 1.6 showed its default "Gate: OR" (1.7.1
+        # drops it; the symbols style never drew a gate for a leaf either).
         head = ""
     name_plain = str(name)
     meta_plain = f"{head}P:{p_str} | P_calc:{cp_str}"

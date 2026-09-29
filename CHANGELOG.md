@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Diagram, compact style: no gate text on leaf events.** A basic event's
+  meta row reads `P:<q> | P_calc:<Q>` instead of the 1.6
+  `Gate: OR | P:<q> | P_calc:<Q>` (a leaf has no gate; the OR was just the
+  default of an unused field). Gates, transfer gates and the house /
+  undeveloped / conditioning markers are unchanged. The compact parity test
+  against the 1.6 pipeline allows exactly this difference.
 - **FMEA import: λ unit suggestion.** When the λ header does not name a unit,
   the suggestion now comes from the column's values: a median of 1 or more
   suggests FIT, 1e-3 up to 1 suggests `/y`. A unit in the header (`FIT`,

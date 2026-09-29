@@ -108,7 +108,22 @@ def test_compact_legacy_node_names_and_edges_match_the_16_pipeline(legacy):
     assert set(id_map) == _node_names(new)
 
 
+def _without_leaf_gate_text(dot, leaf_names):
+    """The 1.6 labels with "Gate: <gate> | " dropped from leaf events (1.7.1)."""
+    parts = re.split(r"(?m)^(?=  [A-Za-z0-9_]+ \[label=<<TABLE)", dot)
+    out = []
+    for part in parts:
+        m = re.match(r"  ([A-Za-z0-9_]+) \[label=", part)
+        if m and m.group(1) in leaf_names:
+            part = re.sub(r"Gate: [^|<]+ \| ", "", part)
+        out.append(part)
+    return "".join(out)
+
+
 def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
+    """Apart from the sig-fig probabilities, the padding and -- deliberately,
+    since 1.7.1 -- the gate text on leaf events (a leaf has no gate; 1.6
+    showed its default "Gate: OR")."""
     old = build_dot_text(legacy)
     new, _ = build_dot_text2(legacy, sig_figs=2)
     strip = re.compile(r"P:[^ |<]+ \| P_calc:[^ <]+")
@@ -118,7 +133,27 @@ def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
         dot = re.sub(r" +</FONT>", "</FONT>", dot)
         return re.sub(r'(<FONT POINT-SIZE="[0-9]+">) +', r"\1", dot)
 
-    assert unpad(strip.sub("P", new)) == unpad(strip.sub("P", old))
+    leaves = {sanitize_id(n["id"]) for n in legacy.get_data()["children"][0:1]
+              + legacy.get_data()["children"][1]["children"]}
+    assert unpad(strip.sub("P", new)) == unpad(strip.sub("P", _without_leaf_gate_text(old, leaves)))
+
+
+def test_compact_leaf_labels_have_no_gate_text(legacy, rich):
+    for core in (legacy, rich):
+        dot, id_map = build_dot_text2(core, style="compact")
+        for name, node_id in id_map.items():
+            node = core.find_node_by_id(node_id)
+            block = re.search(r"(?ms)^  %s \[label=<<TABLE.*?</TABLE>>\];" % re.escape(name), dot)
+            text = block.group(0)
+            is_transfer = str(node.get("gateType") or "").upper() == "TRANSFER"
+            if node.get("children") or is_transfer:
+                # (A gate whose logicGate is "" -- FTACore's fresh root --
+                # never showed one, in 1.6 either.)
+                has_gate = bool(node.get("logicGate") or node.get("gateType"))
+                assert ("Gate: " in text) == has_gate, node_id
+            else:
+                assert "Gate: " not in text, node_id
+                assert "P:" in text and "P_calc:" in text
 
 
 def test_padding_is_proportional_and_split_evenly_around_the_text(legacy):
