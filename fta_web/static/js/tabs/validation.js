@@ -139,6 +139,7 @@ export function formatNumberParam(key, value, fmtProb, sigFigs) {
   return Number.isInteger(value) ? String(value) : fmtProb(value);
 }
 
+/** An issue's identity for dismissal. main.js validationSignature() must match. */
 function signature(issue) {
   return [issue.code, issue.nodeId, issue.message].join('\u0001');
 }
@@ -227,8 +228,14 @@ export function mount(panel, ctx) {
   const dismissBtn = document.createElement('button');
   dismissBtn.type = 'button';
   dismissBtn.className = 'val__btn val__dismiss';
+  // The tab strip's count badge (main.js) must count what this list shows:
+  // tell it which issues are dismissed (fta:validation-dismissed).
+  const announceDismissed = () => {
+    window.dispatchEvent(new CustomEvent('fta:validation-dismissed', { detail: { signatures: Array.from(dismissed) } }));
+  };
   dismissBtn.addEventListener('click', () => {
     for (const issue of issues) if (SESSION_CODES.has(issue.code)) dismissed.add(signature(issue));
+    announceDismissed();
     render();
   });
   const recheckBtn = document.createElement('button');
@@ -487,6 +494,7 @@ export function mount(panel, ctx) {
   // New / Open: dismissals belonged to the old document's session.
   const onDocument = () => {
     dismissed.clear();
+    announceDismissed();
     render();
   };
   window.addEventListener('fta:document', onDocument);

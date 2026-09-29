@@ -252,6 +252,20 @@ def test_no_untranslated_static_labels():
     assert "close.setAttribute('aria-label', 'Dismiss')" not in _read(STATIC / "main.js")
 
 
+# ---- Validation badge counts what the list shows ------------------------------------
+
+def test_validation_badge_skips_dismissed_notices():
+    main = _read(STATIC / "main.js")
+    tab = _read(TABS / "validation.js")
+    sig = r"\[issue\.code, issue\.nodeId, issue\.message\]\.join\('\\u0001'\)"
+    assert re.search(r"function validationSignature\(issue\) \{\s*return " + sig, main)
+    assert re.search(r"function signature\(issue\) \{\s*return " + sig, tab)
+    assert "window.addEventListener('fta:validation-dismissed'" in main
+    assert tab.count("announceDismissed();") == 2  # dismiss button + new document
+    body = re.search(r"async function refreshValidationBadge\(\) \{(.*?)\n\}", main, re.S).group(1)
+    assert "visibleValidationCounts(res)" in body
+
+
 # ---- Undo / redo with nothing to do; Escape in the top bar ------------------------------
 
 def test_history_without_steps_asks_nobody():

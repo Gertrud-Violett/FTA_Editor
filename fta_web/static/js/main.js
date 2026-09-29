@@ -1186,6 +1186,33 @@ let validationTimer = null;
 let validationSeq = 0;
 /** Last {errors, warnings} from /analysis/validate, or null before the first. */
 let validationCounts = null;
+/** Last issue list from /analysis/validate (null when the server gave none). */
+let validationIssues = null;
+/** Issues the Validation tab dismissed (session notices), by signature. */
+let validationDismissed = new Set();
+
+/** Same identity as tabs/validation.js signature(). */
+function validationSignature(issue) {
+  return [issue.code, issue.nodeId, issue.message].join('\u0001');
+}
+
+/**
+ * {errors, warnings} as the Validation list shows them: dismissed session
+ * notices do not count. Without an issue list, the server's counts.
+ */
+function visibleValidationCounts(res) {
+  if (Array.isArray(validationIssues)) {
+    const out = { errors: 0, warnings: 0 };
+    for (const issue of validationIssues) {
+      if (validationDismissed.has(validationSignature(issue))) continue;
+      if (issue.severity === 'error') out.errors += 1;
+      else if (issue.severity === 'warning') out.warnings += 1;
+    }
+    return out;
+  }
+  const counts = (res && res.counts) || {};
+  return { errors: Number(counts.error) || 0, warnings: Number(counts.warning) || 0 };
+}
 
 function rootCalculated() {
   const tree = store.state && store.state.tree;
@@ -1277,13 +1304,11 @@ async function refreshValidationBadge() {
   try {
     const res = await api.get('/analysis/validate');
     if (seq !== validationSeq) return;
-    const counts = (res && res.counts) || {};
-    validationCounts = {
-      errors: Number(counts.error) || 0,
-      warnings: Number(counts.warning) || 0,
-    };
+    validationIssues = res && Array.isArray(res.issues) ? res.issues : null;
+    validationCounts = visibleValidationCounts(res);
   } catch (_err) {
     if (seq !== validationSeq) return;
+    validationIssues = null;
     validationCounts = null;
   }
   renderValidationBadge();
@@ -2944,6 +2969,14 @@ async function boot() {
     // import repairs and the like) -- offer a link there.
     toast(detail.message || '', detail.kind || 'info', detail.code || null,
       detail.showValidation ? showInValidation() : null);
+  });
+  window.addEventListener('fta:validation-dismissed', (event) => {
+    const sigs = event && event.detail && Array.isArray(event.detail.signatures) ? event.detail.signatures : [];
+    validationDismissed = new Set(sigs);
+    if (validationCounts) {
+      validationCounts = visibleValidationCounts(null);
+      renderValidationBadge();
+    }
   });
   window.addEventListener('fta:ai-settings', (event) => {
     // preventDefault is how the asker (chat.js) learns the shell has this; an
