@@ -72,7 +72,11 @@ export function formatProb(v, sf) {
   if (!Number.isFinite(num)) return '—';
   if (num === 0) return '0';
   const digits = clampSigFigs(sf === undefined || sf === null ? getSigFigs() : sf);
-  const mag = Math.abs(num);
+  // Decide plain vs exponent form from the ROUNDED magnitude, exactly like the
+  // server (numfmt.py): 0.00099996 at 3 s.f. rounds to 0.00100 (plain), and
+  // 9999.7 rounds to 1.00e4 (exponent). Deciding on the raw value made the
+  // browser and the DOCX/CLI print the same number differently.
+  const mag = Math.abs(Number(num.toExponential(digits - 1)));
   if (mag < 1e-3 || mag >= 1e4) return exponent(num, digits);
   const text = num.toPrecision(digits);
   // toPrecision itself switches to exponent form when the integer part has

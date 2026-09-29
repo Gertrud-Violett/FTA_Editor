@@ -411,18 +411,10 @@ def test_issue_shape():
         assert "{" not in issue["message"], issue["message"]
 
 
-#: Codes added on the Python side whose UI strings land from the frontend
-#: branch in parallel (1.7.1). Checked like every other code as soon as
-#: val.js has them; drop an entry once both branches are merged.
-PENDING_I18N = {"RATE_IMPLAUSIBLE"}
-
-
 def test_every_code_is_localised_with_a_fix_hint():
     src = VAL_JS.read_text(encoding="utf-8")
     en_block, ja_block = src.split("\n  ja:", 1)
     for code in lint.CODES:
-        if code in PENDING_I18N and "'val.code.%s'" % code not in src:
-            continue
         for block in (en_block, ja_block):
             assert "'val.code.%s'" % code in block, code
             assert "'val.fix.%s'" % code in block, code

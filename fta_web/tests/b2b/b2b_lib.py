@@ -1210,13 +1210,13 @@ def classify_release(rows: List[Row], or_trees: set) -> List[Row]:
     return rows
 
 
-FRONTEND_BUG_NUMFMT = ("FRONTEND BUG: numfmt.js picks the plain/exponent form from the "
-                       "unrounded magnitude (USER_GUIDE: rounded)")
+FRONTEND_BUG_NUMFMT = ("plain/exponent boundary: both formatters decide from the rounded "
+                       "magnitude (numfmt.js fixed in 1.7.1)")
 
 
 def numfmt_rows(results: Iterable[Dict[str, Any]]) -> List[Row]:
     """static/js/numfmt.js vs numfmt.format_prob at 1..6 s.f. on every corpus
-    number. The documented frontend bug is reported as its own row."""
+    number. The plain/exponent boundary cases are reported as their own row."""
     values = format_probe_values(results)
     sfs = [1, 2, 3, 4, 5, 6]
     js = js_format(values, sfs)
@@ -1236,8 +1236,8 @@ def numfmt_rows(results: Iterable[Dict[str, Any]]) -> List[Row]:
     rows = [compare("*", "numfmt:js", "formatProb", ok_ref, ok_got, keys="both", parse=True)]
     bug = compare("*", "numfmt:js", "formatProb@1e-3/1e4 boundary", bug_ref, bug_got,
                   keys="both", parse=True, note=FRONTEND_BUG_NUMFMT)
-    if bug.status == "mismatch":
-        bug.status = "divergence"
+    # Fixed in 1.7.1: numfmt.js now decides the form from the rounded
+    # magnitude too, so a boundary difference is a real mismatch again.
     rows.append(bug)
     return rows
 

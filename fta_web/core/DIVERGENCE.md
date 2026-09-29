@@ -14,6 +14,14 @@
 > `prepare_export_data`, and reproduces the core's tree walk exactly on
 > legacy trees (`fta_web/tests/test_engine.py`). The hashes in
 > `BASELINE.json` are unchanged.
+>
+> **1.7.1 addendum.** Still no edits here. One deliberate behavioural
+> difference now exists *in `engine.py`*, not in this fork: an OR whose
+> result is below 1e-3 is accumulated as r ← r + p(1 − r) instead of
+> 1 − Π(1 − p), which cancels to 0 for tiny inputs (OR(1e-17, 1e-17) was 0).
+> At or above 1e-3 the core formula is used, so ordinary legacy trees stay
+> bit-identical; `test_engine.py` pins exactly this difference and the
+> back-to-back suite (`fta_web/tests/b2b/`) reports it as `OR-UNION`.
 
 `fta_web/core/` holds a **vendored fork** of four modules copied from `src/` at baseline
 commit **`e5f655f`**. `src/`, `tests/` and `data/` are frozen and pinned by hash; the fork

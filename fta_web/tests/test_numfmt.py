@@ -67,12 +67,13 @@ def test_clamp_sig_figs(value, expected):
     assert clamp_sig_figs(value) == expected
 
 
-def test_matches_numfmt_js_except_the_documented_boundary():
+def test_matches_numfmt_js_exactly():
     """Back-to-back with the browser's formatter (static/js/numfmt.js, run by
-    node). The only allowed difference: numfmt.js picks the plain/exponent
-    form from the *unrounded* magnitude, so 0.00099996 at 3 s.f. is "1.00e-3"
-    there and "0.00100" here, and 9999.7 is "10000" there and "1.00e4" here.
-    USER_GUIDE ("Significant figures") specifies the rounded magnitude."""
+    node): identical text for every value and every sig-fig setting,
+    including the plain/exponent boundary, which both decide from the
+    *rounded* magnitude (0.00099996 at 3 s.f. is "0.00100", 9999.7 is
+    "1.00e4"; USER_GUIDE "Significant figures"). 1.7.0's numfmt.js decided
+    from the raw value, so the GUI and the DOCX/CLI disagreed there."""
     import json
     import math
     import random
@@ -102,15 +103,10 @@ def test_matches_numfmt_js_except_the_documented_boundary():
     js = json.loads(proc.stdout.decode("utf-8"))
     py = {"%d@%d" % (i, sf): format_prob(v, sf) for i, v in enumerate(values) for sf in sfs}
 
-    def boundary(value, sf):
-        mag = abs(value)
-        rounded = float("%.*e" % (sf - 1, mag))
-        return (mag < 1e-3) != (rounded < 1e-3) or (mag >= 1e4) != (rounded >= 1e4)
-
     bad = []
     for key, text in py.items():
         i, sf = (int(x) for x in key.split("@"))
-        if text != js[key] and not boundary(values[i], sf):
+        if text != js[key]:
             bad.append((values[i], sf, text, js[key]))
     assert not bad, bad[:10]
     assert all(math.isfinite(v) for v in values)
