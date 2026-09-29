@@ -234,3 +234,16 @@ def test_no_untranslated_static_labels():
         if re.search(r'\stitle="', tag):
             assert "data-i18n-title=" in tag, tag
     assert "close.setAttribute('aria-label', 'Dismiss')" not in _read(STATIC / "main.js")
+
+
+# ---- Report tab: "Save … again" survives other exports ---------------------------------
+
+def test_report_save_again_url_is_not_revoked_by_other_exports():
+    src = _read(TABS / "report.js")
+    offer = re.search(r"const offer = \(blob, name, keep\) => \{(.*?)\n  \};", src, re.S).group(1)
+    # only a newer REPORT replaces (and revokes) the link's URL
+    assert "if (keep) {" in offer and "URL.revokeObjectURL(reportUrl)" in offer
+    assert "saveAgain.href = offer(blob, name, true);" in src
+    # Excel / CSV downloads must not pass keep
+    assert src.count("offer(blob, name);") == 2
+    assert "labels.push([saveAgain" not in src, "one link label, not one per generated report"
