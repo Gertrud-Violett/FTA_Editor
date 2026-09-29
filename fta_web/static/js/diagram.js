@@ -58,6 +58,22 @@ const DIAGRAM_RANKDIRS = ['LR', 'TB'];
 const RENDER_DEBOUNCE_MS = 150; // config.RENDER_DEBOUNCE_MS
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 8;
+// Fitting only ever shrinks: a one-node document on a wide screen used to be
+// blown up to ~700%, painting the title in giant letters across the panel.
+// Zooming in past 100% stays available through +, Ctrl+wheel and Ctrl+=.
+const FIT_MAX = 1;
+const FIT_MARGIN_PX = 24;
+
+/**
+ * The zoom that fits a `width` x `height` diagram into a stage of
+ * `stageWidth` x `stageHeight` pixels: shrink to fit, never enlarge past 100%.
+ * Shared by auto-fit (each render, stage resize) and the Fit button / Ctrl+0.
+ */
+export function fitScale(stageWidth, stageHeight, width, height) {
+  const fitted = Math.min((stageWidth - FIT_MARGIN_PX) / width, (stageHeight - FIT_MARGIN_PX) / height);
+  if (!Number.isFinite(fitted)) return FIT_MAX;
+  return Math.min(FIT_MAX, Math.max(ZOOM_MIN, fitted));
+}
 const ZOOM_STEP = 1.1;
 const PAN_SLOP_PX = 4; // movement below this is a click, not a pan
 
@@ -733,7 +749,7 @@ export function initDiagram(container) {
       : svgEl.getBoundingClientRect().height / (scale || 1);
     if (!w || !h) return;
     autoFit = true;
-    scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min((rect.width - 24) / w, (rect.height - 24) / h)));
+    scale = fitScale(rect.width, rect.height, w, h);
     tx = (rect.width - w * scale) / 2;
     ty = 12;
     applyTransform();
