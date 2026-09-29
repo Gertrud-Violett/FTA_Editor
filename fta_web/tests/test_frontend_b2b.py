@@ -153,3 +153,14 @@ def test_fmea_unit_warning_is_wired_and_translated():
     cat = _read(STATIC / "i18n" / "fmea.js")
     for key in ("fmea.lambdaHighH", "fmea.lambdaHigh", "fmea.lambdaHighSuggest", "fmea.unitDiffers"):
         assert cat.count("'%s'" % key) == 2, key
+
+
+# ---- Diagram Aa popover closes on Escape ----------------------------------------------
+
+def test_diagram_popover_closes_on_escape():
+    src = _read(STATIC / "diagram.js")
+    handler = re.search(r"popover\.addEventListener\('keydown', \(ev\) => \{(.*?)\n  \}\);", src, re.S).group(1)
+    assert "ev.key !== 'Escape'" in handler and "ev.stopPropagation();" in handler
+    assert "closePopover(true);" in handler
+    assert "window.addEventListener('fta:escape', onShellEscape);" in src
+    assert "window.removeEventListener('fta:escape', onShellEscape);" in src

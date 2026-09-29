@@ -488,7 +488,7 @@ export function initDiagram(container) {
     class: 'diagram__popoverHead__close',
     'aria-label': t('diagram.fontSettingsClose', 'Close'),
     text: '×',
-    onclick: () => closePopover(),
+    onclick: () => closePopover(true),
   });
   const popoverTitle = el('span', { text: t('diagram.fontSettings', 'Font & box size') });
   const fontLabel = el('span', { text: t('diagram.fontLabel', 'Font') });
@@ -582,9 +582,31 @@ export function initDiagram(container) {
     );
   }
 
-  function closePopover() {
+  function closePopover(returnFocus) {
+    const wasOpen = !popover.hidden;
     popover.hidden = true;
+    if (wasOpen && returnFocus) aaBtn.focus();
   }
+
+  // Escape closes the popover and hands focus back to the Aa button. Handled
+  // here (and stopped) while focus is inside it, so the shell's global Escape
+  // -- toast dismissal -- does not also fire; an open native <select> list
+  // swallows its own Escape before this sees it.
+  popover.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape' || popover.hidden) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    closePopover(true);
+  });
+  // Escape with focus elsewhere (the Aa button, the stage): the shell asks
+  // first through the cancelable fta:escape; an open popover claims it.
+  const onShellEscape = (ev) => {
+    if (popover.hidden) return;
+    const inside = popover.contains(document.activeElement) || document.activeElement === aaBtn;
+    closePopover(inside);
+    ev.preventDefault();
+  };
+  window.addEventListener('fta:escape', onShellEscape);
 
   // ---- dragging: pointerdown on the header moves the whole popover -------
   let dragOffsetX = 0;
@@ -1212,6 +1234,7 @@ export function initDiagram(container) {
       window.removeEventListener('fta:theme', onThemeChange);
       if (darkMediaQuery) darkMediaQuery.removeEventListener('change', onThemeChange);
       window.removeEventListener('resize', onWindowResizeClosePopover);
+      window.removeEventListener('fta:escape', onShellEscape);
       document.removeEventListener('click', onDocClickClosePopover);
       if (popover.parentNode) popover.parentNode.removeChild(popover);
       if (typeof unsubscribe === 'function') unsubscribe();
