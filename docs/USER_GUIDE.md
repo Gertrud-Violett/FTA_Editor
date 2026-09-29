@@ -183,7 +183,8 @@ switch with it. Two things deliberately stay the same in both themes —
 - **Node boxes** keep their light background colours, because those colours
   carry meaning rather than styling (see the table below).
 - **Link edges** stay blue, because colour is how a cross-tree link is told
-  apart from a normal parent/child edge.
+  apart from a normal parent/child edge. In dark mode they are a lighter blue
+  (`#6cb6ff`), since pure blue is barely visible on the dark background.
 
 #### What the Node Colours Mean
 

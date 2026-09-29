@@ -125,6 +125,18 @@ EVENT_SHAPES: Dict[str, str] = {
 
 _GATE_LABEL = {"PAND": "PAND", "INHIBIT": "INH", "TRANSFER": ""}
 
+#: Dark-mode diagram background, and the theme colours drawn on it (or on
+#: white). Every one is checked for contrast in test_diagram_dot.py.
+DARK_BG = "#1b1f23"
+LIGHT_LINK_COLOR = "blue"
+DARK_LINK_COLOR = "#6cb6ff"
+LIGHT_MUTED = "#8c959f"
+DARK_MUTED = "#8b949e"
+
+#: Weight of the box -> gate/event-symbol edge in the symbols style (tree
+#: edges keep Graphviz' default 1): the symbol hangs straight off its box.
+SYMBOL_EDGE_WEIGHT = 100
+
 
 def _gate_type(node: Dict[str, Any]) -> str:
     """The node's effective gate: ``gateType`` when valid, else ``logicGate``."""
@@ -176,8 +188,14 @@ class _Ctx:
         self.names: Dict[str, str] = {}
         self._index(data)
         self.fg = "white" if dark else "black"
-        self.bg = "#1b1f23" if dark else "white"
-        self.muted = "#59636e" if dark else "#d0d7de"
+        self.bg = DARK_BG if dark else "white"
+        # Non-text graphics (the transfer fill, a transfer's dotted ignored
+        # children) need >= 3:1 against the background (WCAG 1.4.11): the
+        # 1.7.0 greys were 2.7:1 (dark) and 1.5:1 (light) and all but vanished.
+        self.muted = DARK_MUTED if dark else LIGHT_MUTED
+        # Cross-link edges and their arrowheads. Pure blue is 2.2:1 on the dark
+        # background; the light blue is ~8:1 there. Light mode keeps 1.6's blue.
+        self.link = DARK_LINK_COLOR if dark else LIGHT_LINK_COLOR
         # Tree edge ports: they must follow the layout direction or every
         # edge doubles back around its own node.
         # LR keeps 1.6's east->west ports; TB uses none (Graphviz then picks
@@ -391,13 +409,13 @@ def _header(lines: List[str], title: str, date: str, font_name: str, dark: bool)
     lines.insert(5, f'  fontcolor="{"white" if dark else "black"}";')
 
 
-def _link_lines(edges, names: _Names) -> List[str]:
+def _link_lines(edges, names: _Names, ctx: _Ctx) -> List[str]:
     out = []
     for e in edges:
         if len(e) > 3 and e[3] is True:
             out.append(
                 f'  {names.plain(e[0])} -> {names.plain(e[1])} [style=dashed, '
-                'constraint=false, splines=polyline, penwidth=1.5, color="blue"];'
+                f'constraint=false, splines=polyline, penwidth=1.5, color="{ctx.link}"];'
             )
     return out
 
@@ -434,7 +452,7 @@ def _compact(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
             f'  {names.plain(e[0])}{ctx.out_port} -> {names.plain(e[1])}{ctx.in_port} '
             f'[style=solid, splines=line, penwidth=1.5, color="{ctx.fg}"];'
         )
-    lines.extend(_link_lines(edges, names))
+    lines.extend(_link_lines(edges, names, ctx))
     lines.append('}')
     return lines
 
@@ -479,8 +497,12 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
             )
             attach[nid] = box
             continue
+        # The box and its gate/event symbol share a group, and the edge between
+        # them is heavy, so Graphviz keeps the symbol straight under (TB) /
+        # beside (LR) its own box instead of drifting toward a neighbour's.
         body.append(
-            f'  {box} [shape=box, class="fta-box", style=filled, fillcolor="{_bgcolor(cp)}", '
+            f'  {box} [shape=box, class="fta-box", group="{box}", style=filled, '
+            f'fillcolor="{_bgcolor(cp)}", '
             f'fontcolor="black", margin="0.2,0.05", label={_box_label(node, ctx)}];'
         )
         if gate == "TRANSFER" or node.get("children"):
@@ -491,6 +513,7 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
             attrs = [
                 f'shape={shape}',
                 f'class="fta-gate fta-gate-{gate_class}"',
+                f'group="{box}"',
                 'width=0.55, height=0.55, fixedsize=true, fontsize=9',
                 f'fillcolor="{ctx.bg}", style=filled',
                 f'label="{_escape_label(label)}"',
@@ -507,11 +530,11 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
             if kind == "house":
                 label = "ON" if node.get("houseState") is True else "OFF"
             body.append(
-                f'  {sym} [shape={shape}, class="fta-event fta-event-{kind}", '
+                f'  {sym} [shape={shape}, class="fta-event fta-event-{kind}", group="{box}", '
                 f'width={size}, height={size}, fixedsize=true, fontsize=8, '
                 f'style=filled, fillcolor="{ctx.bg}", label="{label}"{orient}];'
             )
-        body.append(f'  {box} -> {sym};')
+        body.append(f'  {box} -> {sym} [weight={SYMBOL_EDGE_WEIGHT}];')
         attach[nid] = sym
 
     lines.extend(body)
@@ -526,7 +549,7 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
             # The engine ignores a transfer gate's own children.
             style = f' [style=dotted, color="{ctx.muted}"]'
         lines.append(f'  {src} -> {names.plain(e[1])}{style};')
-    lines.extend(_link_lines(edges, names))
+    lines.extend(_link_lines(edges, names, ctx))
     lines.append('}')
     return lines
 

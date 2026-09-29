@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Diagram, dark mode:** cross-link edges were pure blue on the dark
+  background (about 2:1 contrast) and barely visible. They are now `#6cb6ff`
+  in dark mode (8:1); light mode keeps the 1.6 blue. The transfer-gate fill
+  and the dotted edges to a transfer's ignored children were raised to at
+  least 3:1 against the background in both themes. `test_diagram_dot.py`
+  checks the contrast of every colour the DOT emits.
+- **Diagram, standard-symbols style:** a gate or event symbol could sit off to
+  the side of its own event box (near a neighbour's), making it ambiguous
+  which gate belonged to which event. Each box and its symbol now share a
+  Graphviz `group` and a heavy (`weight=100`) edge, so the symbol hangs
+  straight under (top-down) or beside (left-right) its box. The compact
+  style is unchanged.
+
 ## [1.7.0] - 2026-09-28
 
 Analysis release for the web app. Engineers can now enter failure rates, use
