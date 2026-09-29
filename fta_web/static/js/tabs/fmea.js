@@ -64,6 +64,7 @@ const CSS = `
 .fmea-msg { margin: 0; font-size: 0.8rem; }
 .fmea-msg.is-error { color: var(--fta-danger-fg); }
 .fmea-msg.is-busy { color: var(--fta-muted-fg); }
+.fmea-msg.is-warn { color: var(--fta-warn-fg, #9a5d00); }
 .fmea-preview { max-height: 14rem; overflow: auto; border: 1px solid var(--fta-border); border-radius: var(--fta-radius); }
 .fmea-preview table, .fmea-occ table { border-collapse: collapse; }
 .fmea-preview th, .fmea-preview td, .fmea-occ th, .fmea-occ td { border-bottom: 1px solid var(--fta-border);
@@ -88,6 +89,44 @@ const CSS = `
 .fmea-skipped { margin: 0; padding-left: 1.2rem; max-height: 10rem; overflow: auto; }
 .fmea-skipped li { margin: 0.1rem 0; }
 `;
+
+/** Divide a λ typed in this unit by the divisor to get a rate per hour. */
+const UNIT_DIVISOR = Object.freeze({ h: 1, y: 8760, FIT: 1e9 });
+/** A failure rate above this (per hour) is almost certainly in the wrong unit. */
+export const LAMBDA_HIGH_PER_HOUR = 1e-2;
+
+/** A preview cell as a number (numbers, '1.0e-6', ' 120 ', '1,5'), else NaN. */
+export function cellNumber(value) {
+  if (typeof value === 'number') return value;
+  const text = String(value === null || value === undefined ? '' : value).trim().replace(',', '.');
+  if (!text) return NaN;
+  const num = Number(text);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+/**
+ * Plausibility of the chosen λ unit for the mapped λ values (the preview rows).
+ * Returns {high, differs}: high = {max, perHour, suggest} when the largest
+ * value converted with the chosen unit exceeds LAMBDA_HIGH_PER_HOUR (suggest: FIT for
+ * values >= 1, else /y; null when that is already the unit), differs = the
+ * server's suggested unit when it is not the chosen one. Advisory only: the
+ * import is never blocked (120 FIT stored as 120/h gives q = 1 silently).
+ */
+export function lambdaUnitCheck(values, unit, suggested) {
+  const nums = (values || []).map(cellNumber).filter((v) => Number.isFinite(v) && v > 0);
+  const divisor = UNIT_DIVISOR[unit] || 1;
+  let high = null;
+  if (nums.length) {
+    const max = Math.max(...nums);
+    const perHour = max / divisor;
+    if (perHour > LAMBDA_HIGH_PER_HOUR) {
+      const guess = max >= 1 ? 'FIT' : 'y';
+      high = { max, perHour, suggest: guess === unit ? null : guess };
+    }
+  }
+  const differs = suggested && UNIT_DIVISOR[suggested] && suggested !== unit ? suggested : null;
+  return { high, differs };
+}
 
 function registerStrings() {
   const shell = window.ftaShell;
@@ -375,6 +414,7 @@ export function mount(panel, ctx) {
           }
           keyHint.hidden = keyMapped();
           refreshImportButton();
+          if (field === 'lambda') paintUnitWarning();
         });
         return el('label', {}, [t('fmea.field.' + field), select]);
       })
@@ -434,6 +474,37 @@ export function mount(panel, ctx) {
     ]);
   }
 
+  /** The mapped λ column's preview values. */
+  function lambdaValues() {
+    const preview = state.preview;
+    const column = state.mapping.lambda;
+    if (!preview || !column) return [];
+    const index = (preview.columns || []).indexOf(column);
+    if (index < 0) return [];
+    return (preview.rows || []).map((cells) => (Array.isArray(cells) ? cells[index] : undefined));
+  }
+
+  let unitWarning = null;
+  function paintUnitWarning() {
+    if (!unitWarning) return;
+    const unit = state.lambdaUnit;
+    const suggested = state.preview ? state.preview.suggestedLambdaUnit : null;
+    const check = lambdaUnitCheck(lambdaValues(), unit, suggested);
+    const unitLabel = (u) => t('fmea.unit.' + u);
+    const lines = [];
+    if (check.high) {
+      const vars = { max: ctx.fmt.prob(check.high.max), perHour: ctx.fmt.prob(check.high.perHour), unit: unitLabel(unit) };
+      let text = t(unit === 'h' ? 'fmea.lambdaHighH' : 'fmea.lambdaHigh', vars);
+      if (check.high.suggest) text += ' ' + t('fmea.lambdaHighSuggest', { suggest: unitLabel(check.high.suggest) });
+      lines.push(text);
+    }
+    if (check.differs && !(check.high && check.high.suggest === check.differs)) {
+      lines.push(t('fmea.unitDiffers', { suggested: unitLabel(check.differs), chosen: unitLabel(unit) }));
+    }
+    unitWarning.textContent = lines.join(' ');
+    unitWarning.hidden = !lines.length;
+  }
+
   let parentSelect = null;
   function fillParentSelect() {
     if (!parentSelect) return;
@@ -467,7 +538,10 @@ export function mount(panel, ctx) {
     unitSelect.value = state.lambdaUnit;
     unitSelect.addEventListener('change', () => {
       state.lambdaUnit = unitSelect.value;
+      paintUnitWarning();
     });
+    unitWarning = el('p', { class: 'fmea-msg is-warn fmea-unit-warning', role: 'status', 'aria-live': 'polite' });
+    paintUnitWarning();
     const update = el('input', { type: 'checkbox' });
     update.checked = state.update;
     update.addEventListener('change', () => {
@@ -480,6 +554,7 @@ export function mount(panel, ctx) {
       el('label', {}, [t('fmea.parent'), parentSelect]),
       el('p', { class: 'fmea-hint', text: t('fmea.parentHint') }),
       el('label', {}, [t('fmea.lambdaUnit'), unitSelect]),
+      unitWarning,
       el('label', { title: t('fmea.updateHint') }, [update, t('fmea.update')]),
       el('p', { class: 'fmea-hint', text: t('fmea.updateHint') }),
       el('p', { class: 'fmea-hint', text: t('fmea.quantHint') }),
@@ -556,6 +631,7 @@ export function mount(panel, ctx) {
     clear(root);
     importButton = null;
     parentSelect = null;
+    unitWarning = null;
     root.appendChild(el('p', { class: 'fmea-intro', text: t('fmea.intro') }));
     root.appendChild(fileSection());
     paintMessage();

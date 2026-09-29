@@ -115,3 +115,41 @@ def test_rate_implausible_is_translated_and_advanced():
     src = _read(TABS / "validation.js")
     codes = re.search(r"const ADVANCED_CODES = new Set\(\[(.*?)\]\);", src, re.S).group(1)
     assert "'RATE_IMPLAUSIBLE'" in codes
+
+
+# ---- FMEA: the λ unit plausibility warning ------------------------------------------
+
+@needs_node
+def test_fmea_lambda_unit_check():
+    src = _read(TABS / "fmea.js")
+    parts = [
+        re.search(r"const UNIT_DIVISOR = [^;]+;", src).group(0),
+        re.search(r"export const LAMBDA_HIGH_PER_HOUR = [^;]+;", src).group(0),
+        re.search(r"export function cellNumber\(.*?\n\}", src, re.S).group(0),
+        re.search(r"export function lambdaUnitCheck\(.*?\n\}", src, re.S).group(0),
+    ]
+    code = "\n".join(p.replace("export ", "") for p in parts)
+    cases = [
+        [["120", 45, ""], "h", "FIT"],       # the sample CSV: FIT read as /h
+        [["120", "45"], "FIT", "FIT"],       # right unit: nothing
+        [["1.0e-6", "5e-7"], "h", "h"],      # per-hour rates: nothing
+        [["0.5", "0.2"], "h", "y"],          # per-year values read as /h
+        [["0.5"], "y", "y"],                 # 0.5/y = 5.7e-5/h: fine
+        [["2e-3"], "h", "y"],                # plausible value, but the server suggests /y
+    ]
+    got = _node(code + "\nconsole.log(JSON.stringify(%s.map((c) => lambdaUnitCheck(...c))));" % json.dumps(cases))
+    assert got[0]["high"]["suggest"] == "FIT" and got[0]["high"]["max"] == 120
+    assert got[1] == {"high": None, "differs": None}
+    assert got[2] == {"high": None, "differs": None}
+    assert got[3]["high"]["suggest"] == "y" and got[3]["differs"] == "y"
+    assert got[4] == {"high": None, "differs": None}
+    assert got[5] == {"high": None, "differs": "y"}
+
+
+def test_fmea_unit_warning_is_wired_and_translated():
+    src = _read(TABS / "fmea.js")
+    assert "paintUnitWarning();" in src
+    assert "if (field === 'lambda') paintUnitWarning();" in src
+    cat = _read(STATIC / "i18n" / "fmea.js")
+    for key in ("fmea.lambdaHighH", "fmea.lambdaHigh", "fmea.lambdaHighSuggest", "fmea.unitDiffers"):
+        assert cat.count("'%s'" % key) == 2, key
