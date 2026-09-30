@@ -21,7 +21,7 @@ same commit.
 ## Setup
 `bash .loop/init.sh`: idempotent. What it does:
 - Checks git and python3 >= 3.10 (exit 10 if missing).
-- Notes (does not fail) when Graphviz `dot` is absent: 4 native-render tests then skip.
+- Notes (does not fail) when Graphviz `dot` is absent: the native-render tests (mainly `test_api_render.py` and `test_diagram_dot.py`) then skip.
 - If uv is on PATH: `uv sync --locked --extra all --extra test` into `.venv` (same as CI; fails if `uv.lock` is out of sync with `pyproject.toml`).
 - Otherwise: `python3 -m venv .venv` and `pip install -r requirements.txt -r fta_web/requirements.txt` (unlocked fallback).
 - Reinstalls only when `pyproject.toml`, `uv.lock` or either requirements file is newer than `.venv/.installed`. Second run: under 1 s.
@@ -31,7 +31,7 @@ same commit.
 
 ## Verify (what "working" means mechanically)
 Same as `prd.json → verify.commands`:
-- `.venv/bin/python -m pytest -q -p no:cacheprovider`: the full suite (fta_web/tests + desktop/tests, from pytest.ini), including the hash-pin guards in `fta_web/tests/test_vendor_integrity.py`. Baseline on origin/main (2026-09-23): 630 passed, 4 skipped (no `dot`), exit 0, about 12 s (uv) / 29 s (pip). Confirmed non-zero exit when a pinned file is modified.
+- `.venv/bin/python -m pytest -q -p no:cacheprovider`: the full suite (fta_web/tests + desktop/tests, from pytest.ini), including the hash-pin guards in `fta_web/tests/test_vendor_integrity.py`. Baseline on main at v1.7.1 (2026-09-29, Windows with `dot`): 2063 passed, 24 skipped (POSIX-only file tests and oversize brute-force cases), exit 0, about 40 s. Without `dot` more tests skip. (First measured 2026-09-23 at 1.6.4: 630 passed.) The slow checks (`FTA_B2B_FULL=1` back-to-back run, real-browser GUI suite) are not part of this command. Confirmed non-zero exit when a pinned file is modified.
 
 ## Secrets and accounts
 Names only, never values. Values go in
@@ -42,7 +42,7 @@ Names only, never values. Values go in
 
 ## Owner-only steps (the agent can't do these)
 - [ ] On the host: `apt install python3 python3-venv git` if not already present (or install uv, which is preferred: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
-- [ ] Optional: `apt install graphviz` so the 4 native-`dot` render tests run instead of skipping.
+- [ ] Optional: `apt install graphviz` so the native-`dot` render tests run instead of skipping.
 - [ ] `gh auth login` on the host so the loop can open draft PRs.
 
 ## Off-limits for the loop

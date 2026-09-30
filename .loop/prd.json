@@ -23,7 +23,7 @@
       "description": "Baseline check: after `bash .loop/init.sh` on a fresh clone, the whole suite (fta_web/tests + desktop/tests) must pass with no display and no API keys. If anything fails, triage and fix the real cause in non-frozen code; never weaken, skip or xfail tests, and never edit desktop/** or re-pin BASELINE.json to hide a failure.",
       "acceptance": [
         "`bash .loop/init.sh` exits 0 twice in a row on a fresh clone",
-        "`.venv/bin/python -m pytest -q -p no:cacheprovider` exits 0 with 0 failed and at least 630 passed (4 Graphviz-dependent skips allowed when `dot` is absent)",
+        "`.venv/bin/python -m pytest -q -p no:cacheprovider` exits 0 with 0 failed and at least 2000 passed (Graphviz-dependent skips allowed when `dot` is absent)",
         "`git diff --stat main -- desktop fta_web/core/BASELINE.json` is empty",
         "No test was newly skipped, xfailed or deleted"
       ],
@@ -31,7 +31,7 @@
       "tier": "auto",
       "passes": false,
       "attempts": 0,
-      "notes": "Measured 2026-09-23 on origin/main: 630 passed, 4 skipped (no dot), ~12 s with uv, ~29 s with pip fallback."
+      "notes": "Measured 2026-09-23 on origin/main (1.6.4): 630 passed, 4 skipped (no dot). Re-baselined 2026-09-29 on v1.7.1: 2063 passed, 24 skipped (Windows, with dot), ~40 s."
     },
     {
       "id": "T2",
