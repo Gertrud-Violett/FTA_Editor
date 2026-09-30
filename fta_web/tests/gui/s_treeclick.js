@@ -87,20 +87,28 @@ async function run(url, label, root, viewport) {
   // then a mouse click on the last visible row right after keyboard use
   const rows2 = await visibleRows(page);
   const last = rows2[rows2.length - 1];
-  await page.mouse.move(last.x, last.y);
-  await page.mouse.down();
-  await page.waitForTimeout(80);
-  await page.mouse.up();
-  await page.waitForTimeout(250);
-  L.check(`click on last row ${last.id} right after keyboard use selects it`, (await app.selectedId()) === last.id, await app.selectedId());
+  if (last) {
+    await page.mouse.move(last.x, last.y);
+    await page.mouse.down();
+    await page.waitForTimeout(80);
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+  }
+  // no row fully visible is a failure of this check, not an exception that
+  // would skip the remaining window sizes
+  L.check(`click on last row ${last ? last.id : '(none fully visible)'} right after keyboard use selects it`, !!last && (await app.selectedId()) === last.id, { selected: await app.selectedId(), visibleRows: rows2.length });
   const errs = app.errorsSince(0);
   L.check('no console errors', errs.length === 0, errs);
   await app.shot(`treeclick_${label}_${viewport.width}x${viewport.height}`);
   await app.context.close();
 }
 
+// The short window is 1366x600, not 560: with Linux fonts the top bar wraps to
+// two lines at 1366 px, and at 560 px the tree list was ~70 px tall, fewer rows
+// than this section needs and less than the three-line keyboard hint (56 px)
+// covers. At 600 px Linux gets the ~112 px list Windows has at 560.
 L.runSection('treeclick', async (url, label, root) => {
-  for (const vp of [{ width: 1568, height: 778 }, { width: 1366, height: 560 }, { width: 900, height: 700 }]) {
+  for (const vp of [{ width: 1568, height: 778 }, { width: 1366, height: 600 }, { width: 900, height: 700 }]) {
     await run(url, label, root, vp);
   }
 });
