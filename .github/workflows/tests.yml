@@ -14,6 +14,10 @@ name: tests
 # Windows-only (a registry association making Flask serve .js as text/plain, so
 # every button in the app appeared dead -- see fta_web/app.py's mimetypes call):
 # invisible from Linux, and only found by a user running a real build.
+#
+# The slow suites -- the full back-to-back numeric matrix and the real-browser
+# GUI suite -- are not part of this gate. They run in extended.yml (weekly, on
+# demand, and on pull requests that change them).
 
 on:
   push:
