@@ -18,7 +18,15 @@ user-facing description is in
 The implementation did not edit the hash-pinned core: everything lives in
 `fta_web/engine.py` (`WebCore(FTACore)`) and new modules beside it.
 
-**What remains** after 1.7.0:
+**Status 2026-09-29 — release 1.7.1:** a back-to-back test release. The GUI in a
+real browser, the HTTP API, the CLI, the packaged exe and a truth-table oracle
+were compared value by value (`fta_web/tests/b2b/`, `fta_web/tests/gui/`). 1.7.1
+adds the `RATE_IMPLAUSIBLE` validation warning (λ entered in the wrong unit) and
+fixes the GUI and numeric defects that comparison found (`CHANGELOG.md` →
+`[1.7.1]`). No roadmap item changed status: the ✅ / ◐ / ⬜ marks below and the
+open items are the same as for 1.7.0.
+
+**What remains** after 1.7.1 (unchanged since 1.7.0):
 
 - common-cause failure groups (1.5)
 - sensitivity sliders and scenario compare (1.7)

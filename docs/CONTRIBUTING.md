@@ -197,6 +197,42 @@ python desktop/tests/test_core_module.py      # a single file, the old way
 python -m pytest fta_web/tests/ --cov=fta_web --cov-report=html
 ```
 
+### Extended checks
+
+Two slower suites sit beside pytest. They are not part of the merge gate
+(`.github/workflows/tests.yml`); `.github/workflows/extended.yml` runs them
+weekly, on demand (Actions → extended → Run workflow) and on pull requests
+that change them. Run the matching one locally when you touch the engine or
+number formatting (B2B) or the frontend (GUI).
+
+- **Back-to-back numeric suite** (`fta_web/tests/b2b/`): one corpus of trees
+  through every independent path (engine, API test client, a real `run.py`
+  server, the CLI, the vendored and the frozen desktop cores, the browser's
+  number formatter under Node, and the packaged exe when it is present),
+  compared value by value. `pytest` runs the fast part; the whole matrix,
+  including the large random trees, is
+
+  ```bash
+  FTA_B2B_FULL=1 uv run --frozen --extra all --extra test python fta_web/tests/b2b/run_b2b.py
+  ```
+
+  Every intended difference is documented in `fta_web/tests/b2b/README.md`.
+
+- **Real-browser GUI suite** (`fta_web/tests/gui/`): Playwright drives
+  Chromium (or an installed Google Chrome) with real mouse and keyboard
+  input and checks what the GUI shows against what the API computes, about
+  700 checks. It needs Node 20 or newer and starts its own dev server:
+
+  ```bash
+  cd fta_web/tests/gui
+  npm ci
+  npx playwright install chromium
+  node run.mjs                         # FTA_GUI_CHANNEL=chrome: Google Chrome
+  ```
+
+  `fta_web/tests/gui/README.md` covers single sections, running against the
+  packaged exe, and what the suite cannot see.
+
 ### Writing Tests
 
 - Use pytest framework

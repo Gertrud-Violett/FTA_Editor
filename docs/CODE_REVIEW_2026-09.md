@@ -1,4 +1,4 @@
-# Code review — critical bugs (2026-09-19, status updated 2026-09-20)
+# Code review — critical bugs (2026-09-19, status updated 2026-09-29)
 
 **Scope:** the whole repository as of `main` at `fd44067` (PR #8 merged), reviewed in
 three independent passes — web backend (`fta_web/*.py`, `fta_web/routes/`,
@@ -72,6 +72,26 @@ in the tables is closed or explicitly deferred to the desktop known-defect list.
   `fta_web/engine.py` (`WebCore(FTACore)`) and new sibling modules.
   `fta_web/core/` and `desktop/` keep their pinned hashes, and no new
   divergence was recorded.
+
+### Update 2026-09-29 — release 1.7.1
+
+- **Back-to-back test release.** The same inputs went through the GUI in a
+  real browser, the HTTP API, the CLI, the packaged 1.7.0 exe, the legacy
+  desktop core and a truth-table oracle, compared value by value. The corpus
+  and harness are `fta_web/tests/b2b/`, the browser suite is
+  `fta_web/tests/gui/`, and both now run in the weekly `extended` CI
+  workflow (`.github/workflows/extended.yml`).
+- **Added:** the `RATE_IMPLAUSIBLE` validation warning (a λ that is almost
+  certainly FIT or per-year entered as per hour).
+- **Fixed:** GUI defects found in the browser (auto-fit zoom, the first click
+  on a bottom tree row, an edit lost by Cut Sets / Importance during their
+  first run, Escape in the diagram popover and the title box, the live
+  language switch) and numeric ones found by the comparison (OR gates
+  flushing tiny probabilities to zero, MCUB last-bit differences between
+  builds, importance cancellation, browser/server formatting at the
+  plain/exponent boundary). The full list is `CHANGELOG.md` → `[1.7.1]`.
+- The feature status under
+  [Recommended feature upgrades](#recommended-feature-upgrades) is unchanged.
 
 ---
 
@@ -350,7 +370,7 @@ PR #8, worth watching for.
 
 ## Recommended feature upgrades
 
-> **Status 1.7.0 (2026-09-28).**
+> **Status 1.7.1 (2026-09-29; unchanged since 1.7.0, 2026-09-28).**
 >
 > *Done*:
 >
