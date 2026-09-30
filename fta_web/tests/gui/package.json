@@ -1,0 +1,15 @@
+{
+  "name": "fta-editor-gui-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-browser GUI back-to-back suite for FTA Editor (see README.md)",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
