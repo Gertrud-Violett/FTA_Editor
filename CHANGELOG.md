@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The real-browser GUI suite is part of the repository**
+  (`fta_web/tests/gui/`). The 716 checks the 1.7.1 release was tested with:
+  Playwright drives Chromium, or an installed Google Chrome, with real mouse
+  and keyboard input and compares what the GUI shows with what the API
+  computes. `node run.mjs` starts its own dev server with an isolated home,
+  runs every section and stops the server again; it can also target the
+  packaged exe. The README lists what it checks and what it cannot see.
+  Porting it fixed a harness race that made it flaky on a slow server:
+  `addViaDialog` could return the previous selection, because
+  `page.waitForFunction` with an async predicate does not wait.
+- **Extended CI workflow** (`.github/workflows/extended.yml`): the full
+  back-to-back numeric matrix (`FTA_B2B_FULL=1 run_b2b.py`) and the GUI suite
+  on ubuntu-latest, weekly, on demand and on pull requests that change
+  either suite, with their output uploaded as artifacts. Tests and CI only;
+  the application is unchanged.
+
 ## [1.7.1] - 2026-09-29
 
 Back-to-back test release. The same inputs were run through every path: the
