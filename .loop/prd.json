@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "project": "fta-editor",
+  "goal": "Baseline: keep FTA_Editor loop-ready. Owner adds feature tasks with the loop-init skill.",
+  "context": [
+    "Stack: Python 3.10+. Primary app is the Flask web app in fta_web/ (run: .venv/bin/python fta_web/run.py); legacy Tkinter desktop app in desktop/ is a frozen fallback.",
+    "FROZEN / hash-pinned: desktop/src/**, desktop/tests/**, desktop/data/** and the vendored copies in fta_web/core/*.py + fta_web/examples/sampleFTA.json are SHA-256 pinned in fta_web/core/BASELINE.json. Editing a vendored file requires re-pinning it AND a written divergence entry in fta_web/core/DIVERGENCE.md; fta_web/tests/test_vendor_integrity.py enforces this. Never edit desktop/**.",
+    "Tests: bare `pytest` from repo root (pytest.ini sets testpaths fta_web/tests desktop/tests and --import-mode=importlib, which is required because fta_web/tests/core/ duplicates desktop/tests/ basenames).",
+    "Dependencies: pyproject.toml extras + uv.lock are the source of truth (CI runs `uv sync --locked --extra all --extra test`); requirements.txt + fta_web/requirements.txt are the hand-maintained pip fallback.",
+    "Graphviz `dot` is optional; 4 tests skip without it. AI provider tests use mocks, no API keys needed.",
+    "Project docs: README.md, docs/CONTRIBUTING.md, docs/API_REFERENCE.md, docs/V1.6_WEB_SPEC.md, fta_web/core/DIVERGENCE.md, .github/copilot-instructions.md."
+  ],
+  "verify": {
+    "commands": [
+      ".venv/bin/python -m pytest -q -p no:cacheprovider"
+    ],
+    "timeout_sec": 900
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Keep the full test suite green headless on a clean checkout",
+      "description": "Baseline check: after `bash .loop/init.sh` on a fresh clone, the whole suite (fta_web/tests + desktop/tests) must pass with no display and no API keys. If anything fails, triage and fix the real cause in non-frozen code; never weaken, skip or xfail tests, and never edit desktop/** or re-pin BASELINE.json to hide a failure.",
+      "acceptance": [
+        "`bash .loop/init.sh` exits 0 twice in a row on a fresh clone",
+        "`.venv/bin/python -m pytest -q -p no:cacheprovider` exits 0 with 0 failed and at least 2000 passed (Graphviz-dependent skips allowed when `dot` is absent)",
+        "`git diff --stat main -- desktop fta_web/core/BASELINE.json` is empty",
+        "No test was newly skipped, xfailed or deleted"
+      ],
+      "depends_on": [],
+      "tier": "auto",
+      "passes": false,
+      "attempts": 0,
+      "notes": "Measured 2026-09-23 on origin/main (1.6.4): 630 passed, 4 skipped (no dot). Re-baselined 2026-09-29 on v1.7.1: 2063 passed, 24 skipped (Windows, with dot), ~40 s."
+    },
+    {
+      "id": "T2",
+      "title": "Add a test that the pip requirements files stay in sync with pyproject extras",
+      "description": "requirements.txt and fta_web/requirements.txt say they must be kept in sync with pyproject.toml by hand and that 'there is no tool wiring the two together'. Add fta_web/tests/test_requirements_sync.py that parses pyproject.toml and both requirements files and asserts that every package in the `all` extra (plus pytest from `test`) appears in the union of the two requirements files with the same minimum version, and that the requirements files list nothing absent from pyproject. Must run (not skip) on Python 3.10, where tomllib does not exist: use tomllib when available, otherwise a minimal parser of the [project.optional-dependencies] block. Do not change any dependency versions.",
+      "acceptance": [
+        "fta_web/tests/test_requirements_sync.py exists and passes on the current tree",
+        "Temporarily removing `openpyxl>=3.1.0` from requirements.txt makes that test fail (checked, then reverted)",
+        "Test runs without network and without new dependencies",
+        "`.venv/bin/python -m pytest -q -p no:cacheprovider` exits 0"
+      ],
+      "depends_on": ["T1"],
+      "tier": "auto",
+      "passes": false,
+      "attempts": 0,
+      "notes": ""
+    }
+  ]
+}

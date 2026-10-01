@@ -160,3 +160,10 @@ test_output.png
 
 # Claude Code agent worktrees and local session scratch (never committed)
 .claude/worktrees/
+
+# Loop-engineering run state (never committed)
+.loop/logs/
+.loop/STOP
+.loop/status.json
+.loop/iteration-result.json
+.loop/artifacts/
