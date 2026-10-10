@@ -573,7 +573,8 @@ summary(tree, analysis)                  # {treeWalk, mcub, rareEvent, headline,
 cs = cutsets.compute(tree, analysis, {"maxOrder": 4})   # may raise cutsets.CutsetError
 importance.compute(cs)                   # [{id, name, q, fv, birnbaum, raw, rrw, rrwInfinite, cutSetCount}]
 uncertainty.run(tree, analysis, n=10000, seed=1, time_limit=30.0)
-lint.run(tree, analysis, session_warnings=[], mode="FTA", extra={"cutsets": cs})
+lint.run(tree, analysis, session_warnings=[], mode="FTA",     # as GET /api/analysis/validate:
+         extra={"cutsets": cutsets.truncation_signal(tree, analysis)})  # document's own limits
 core.save_to_json("plant.json")          # writes `analysis` beside `tree`
 ```
 
@@ -591,10 +592,16 @@ core.save_to_json("plant.json")          # writes `analysis` beside `tree`
 
 Main class for fault tree and event tree analysis operations.
 
+The core modules import each other by bare name, so put the web app's copy,
+`fta_web/core/` (the one with the documented fixes), on `sys.path`. The
+examples below assume this was done.
+
 ### Constructor
 
 ```python
-from src.FTA_Editor_core import FTACore
+import sys
+sys.path.insert(0, "fta_web/core")   # run from the repository root
+from FTA_Editor_core import FTACore
 
 core = FTACore()
 ```
@@ -670,24 +677,30 @@ core.set_data(tree_data)
 
 ### Node Operations
 
-#### `add_node(parent_id, node_data)`
+#### `add_node_to_data(parent_id, new_node)`
 
-Add a new node as child of specified parent.
+Append a node as the last child of the specified parent.
 
 **Parameters**:
 - `parent_id` (str): ID of parent node
-- `node_data` (dict): Node data (name, type, probability, etc.)
+- `new_node` (dict): The node, stored as given. Nothing is validated and no
+  ID is generated, so give it a unique `id` and the usual keys. If no node
+  has `parent_id`, nothing happens.
 
-**Returns**: tuple (success: bool, error: str or None)
+**Returns**: None
 
 **Example**:
 ```python
-success, error = core.add_node("root", {
+core.add_node_to_data("root", {
+    "id": "root_0",
     "name": "Hardware Failure",
     "type": "Event",
     "probability": 0.1,
-    "logicGate": "OR"
+    "logicGate": "OR",
+    "children": [],
+    "links": []
 })
+core.recalculate_probabilities()
 ```
 
 #### `update_node(node_id, updates)`
@@ -698,28 +711,29 @@ Update an existing node.
 - `node_id` (str): ID of node to update
 - `updates` (dict): Fields to update
 
-**Returns**: tuple (success: bool, error: str or None)
+**Returns**: bool - True if the node was found and updated
 
 **Example**:
 ```python
-success, error = core.update_node("root_0", {
+found = core.update_node("root_0", {
     "name": "Updated Name",
     "probability": 0.15
 })
 ```
 
-#### `delete_node(node_id)`
+#### `delete_node_from_data(node_id)`
 
-Delete a node and all its children.
+Delete a node and all its children. Links that point into the deleted
+subtree are not removed.
 
 **Parameters**:
 - `node_id` (str): ID of node to delete
 
-**Returns**: tuple (success: bool, error: str or None)
+**Returns**: None
 
 **Example**:
 ```python
-success, error = core.delete_node("root_0_1")
+core.delete_node_from_data("root_0_1")
 ```
 
 #### `find_node_by_id(node_id)`
@@ -830,7 +844,9 @@ success, error = core.export_to_excel("output.xlsx")
 ## Complete Usage Example
 
 ```python
-from src.FTA_Editor_core import FTACore
+import sys
+sys.path.insert(0, "fta_web/core")
+from FTA_Editor_core import FTACore
 
 # Initialize
 core = FTACore()
@@ -974,7 +990,8 @@ if zero_nodes:
 
 ## Error Handling
 
-All methods return tuples `(success, error)`:
+The file methods (`load_from_json`, `save_to_json`, `export_to_xml`,
+`export_to_excel`) return tuples `(success, error)`:
 
 ```python
 success, error = core.save_to_json("output.json")
@@ -997,7 +1014,7 @@ Remove extra whitespace from strings.
 
 **Example**:
 ```python
-from src.FTA_Editor_core import sanitize_name
+from FTA_Editor_core import sanitize_name
 
 clean = sanitize_name("  Spaced   Text  ")
 # Returns: "Spaced Text"
@@ -1005,7 +1022,8 @@ clean = sanitize_name("  Spaced   Text  ")
 
 ## Constants
 
-None - all configuration is data-driven.
+`ROOT_ID = "root"`: the id of the top-level node. `load_from_json` renames
+any other top-level id to it and records the change in `last_load_warnings`.
 
 ## Thread Safety
 
@@ -1026,7 +1044,7 @@ New in v1.5.0. Handles AI assistant functionality.
 ### Constructor
 
 ```python
-from src.AI_agent_handler import AIAgentHandler
+from AI_agent_handler import AIAgentHandler   # fta_web/core on sys.path, as above
 
 handler = AIAgentHandler()
 ```
@@ -1044,14 +1062,16 @@ if handler.is_configured():
     print("AI is ready")
 ```
 
-#### `configure(api_key, api_endpoint, model)`
+#### `configure(api_key, api_endpoint, model, provider)`
 
 Configure AI credentials.
 
 **Parameters**:
-- `api_key` (str): OpenAI API key
+- `api_key` (str): The provider's API key
 - `api_endpoint` (str): API endpoint URL (default: "https://api.openai.com/v1")
 - `model` (str): Model name (default: "gpt-4o")
+- `provider` (str): "OpenAI" (default), "Anthropic Claude", "Google Gemini"
+  or "Microsoft Copilot"
 
 **Returns**: tuple (success, error_message)
 
@@ -1059,7 +1079,8 @@ Configure AI credentials.
 success, error = handler.configure(
     api_key="sk-...",
     api_endpoint="https://api.openai.com/v1",
-    model="gpt-4o"
+    model="gpt-4o",
+    provider="OpenAI"
 )
 ```
 
@@ -1133,9 +1154,10 @@ Credentials are stored at:
 
 ### Methods
 
-#### `save_credentials(api_key, api_endpoint, model)`
+#### `save_credentials(api_key, api_endpoint, model, provider)`
 
-Save credentials to local storage.
+Save credentials to local storage. One provider's credentials are stored at a
+time; saving replaces them.
 
 **Returns**: tuple (success, error_message)
 
@@ -1178,7 +1200,7 @@ Convert FTA data to human-readable text.
 **Returns**: str - Formatted text representation
 
 ```python
-from src.AI_agent_handler import FTAStructureAnalyzer
+from AI_agent_handler import FTAStructureAnalyzer
 
 text = FTAStructureAnalyzer.fta_to_text(
     core.get_data(), "FTA", "My Analysis"
