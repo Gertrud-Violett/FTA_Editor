@@ -160,7 +160,16 @@ def _validate_name(value: Any, field: str = "name") -> str:
             400,
             {"field": field},
         )
-    return sanitize_name(value)
+    return node_schema.refuse_unsavable_text(sanitize_name(value), field)
+
+
+def _validate_type(value: Any) -> str:
+    """A node's ``type``: a non-empty string, stored stripped."""
+    if not isinstance(value, str) or not value.strip():
+        raise ApiError(
+            INVALID_FIELD, "'type' must be a non-empty string.", 400, {"field": "type"}
+        )
+    return node_schema.refuse_unsavable_text(value.strip(), "type")
 
 
 def _validate_probability(value: Any) -> float:
@@ -230,7 +239,7 @@ def _validate_notes(value: Any) -> str:
         raise ApiError(
             INVALID_FIELD, "'notes' must be a string.", 400, {"field": "notes"}
         )
-    return value
+    return node_schema.refuse_unsavable_text(value, "notes")
 
 
 def _validate_links(value: Any) -> List[Dict[str, Any]]:
@@ -265,6 +274,7 @@ def _validate_links(value: Any) -> List[Dict[str, Any]]:
                 400,
                 {"field": "links", "index": position},
             )
+        node_schema.refuse_unsavable_text(str(target_id), "links")
         relation = raw.get("relation") or "OR"
         if not isinstance(relation, str):
             relation = str(relation)
@@ -458,7 +468,7 @@ def update_metadata():
             raise ApiError(
                 INVALID_FIELD, "'date' must be a string.", 400, {"field": "date"}
             )
-        date = payload["date"].strip()
+        date = node_schema.refuse_unsavable_text(payload["date"].strip(), "date")
 
     mode = None
     if "mode" in payload:
@@ -573,11 +583,7 @@ def create_node():
         raise ApiError(INVALID_FIELD, "'name' is required.", 400, {"field": "name"})
 
     name = _validate_name(payload["name"])
-    node_type = payload.get("type", "Event")
-    if not isinstance(node_type, str) or not node_type.strip():
-        raise ApiError(
-            INVALID_FIELD, "'type' must be a non-empty string.", 400, {"field": "type"}
-        )
+    node_type = _validate_type(payload.get("type", "Event"))
     # Desktop default for a new node is 1.0 (desktop/src/FTA_Editor_UI.py:1431).
     probability = _validate_probability(payload.get("probability", 1.0))
     gate = _validate_gate(payload.get("logicGate", "OR"))
@@ -597,7 +603,7 @@ def create_node():
         new_node = {
             "id": new_id,
             "name": name,
-            "type": node_type.strip(),
+            "type": node_type,
             "probability": probability,
             "logicGate": gate,
             "notes": notes,
@@ -695,15 +701,7 @@ def update_node(node_id: str):
     if "name" in payload:
         updates["name"] = _validate_name(payload["name"])
     if "type" in payload:
-        node_type = payload["type"]
-        if not isinstance(node_type, str) or not node_type.strip():
-            raise ApiError(
-                INVALID_FIELD,
-                "'type' must be a non-empty string.",
-                400,
-                {"field": "type"},
-            )
-        updates["type"] = node_type.strip()
+        updates["type"] = _validate_type(payload["type"])
     if "probability" in payload:
         updates["probability"] = _validate_probability(payload["probability"])
     if "logicGate" in payload:

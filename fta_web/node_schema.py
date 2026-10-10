@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from typing import Any, Dict, List, Optional
 
 try:  # normal package import: ``import fta_web.node_schema``
@@ -133,12 +134,33 @@ def _number(value: Any, field: str, *, minimum: float = 0.0,
     return number
 
 
+#: An unpaired UTF-16 surrogate. Python keeps one that JSON spells
+#: (``"\\ud83d"``, half of an emoji) -- a *paired* escape becomes one astral
+#: character -- but it cannot be encoded as UTF-8, so a document holding one
+#: could not be saved, exported or printed any more.
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def refuse_unsavable_text(value: str, field: str) -> str:
+    """``value``, or a 400 ``INVALID_FIELD`` naming ``field`` when it holds an
+    unpaired surrogate (see :data:`_LONE_SURROGATE`). Every validator of
+    stored text goes through here."""
+    found = _LONE_SURROGATE.search(value)
+    if found:
+        raise _invalid(
+            field,
+            "'%s' contains an unpaired surrogate (U+%04X), which cannot be saved."
+            % (field, ord(found.group())),
+        )
+    return value
+
+
 def _text(value: Any, field: str) -> str:
     if not isinstance(value, str):
         raise _invalid(field, "'%s' must be a string." % field, value)
     if len(value) > MAX_TEXT:
         raise _invalid(field, "'%s' is longer than %d characters." % (field, MAX_TEXT))
-    return value
+    return refuse_unsavable_text(value, field)
 
 
 def _object(value: Any, field: str) -> Dict[str, Any]:
@@ -191,7 +213,7 @@ def validate_transfer_to(value: Any) -> Optional[str]:
         return None
     if isinstance(value, bool) or not isinstance(value, (str, int)):
         raise _invalid("transferTo", "'transferTo' must be a node id.", value)
-    text = str(value).strip()
+    text = refuse_unsavable_text(str(value).strip(), "transferTo")
     if not text:
         return None
     return text
@@ -300,7 +322,7 @@ def validate_trace(partial: Any) -> Optional[Dict[str, Any]]:
             for tag in value:
                 if not isinstance(tag, str):
                     raise _invalid(field, "'trace.tags' must be a list of strings.")
-                tag = tag.strip()
+                tag = refuse_unsavable_text(tag.strip(), field)
                 if tag and tag not in tags:
                     tags.append(tag[:200])
             out[key] = tags
@@ -489,6 +511,95 @@ def drop_duplicate_links(tree: Any) -> List[Dict[str, Any]]:
             kept.append(link)
         if len(kept) != len(links):
             node["links"] = kept
+    return warnings
+
+
+def _scrub(value: Any, path: str, changed: List[str], skip: Optional[str] = None) -> Any:
+    """``value`` with every unpaired surrogate -- in strings and dict keys, at
+    any depth -- replaced by U+FFFD. Dicts and lists are repaired in place
+    (and returned); the dotted path of every repaired text is appended to
+    ``changed``. ``skip`` names a dict key left alone (a node's children)."""
+    if isinstance(value, str):
+        fixed = _LONE_SURROGATE.sub("\ufffd", value)
+        if fixed != value:
+            changed.append(path)
+        return fixed
+    if isinstance(value, list):
+        for position, item in enumerate(value):
+            value[position] = _scrub(item, path, changed)
+        return value
+    if isinstance(value, dict):
+        before = len(changed)
+        entries = []
+        for key, item in value.items():
+            new_key = _LONE_SURROGATE.sub("\ufffd", key) if isinstance(key, str) else key
+            sub_path = "%s.%s" % (path, new_key) if path else str(new_key)
+            if new_key != key:
+                changed.append(sub_path)
+            entries.append((new_key, item if key == skip else _scrub(item, sub_path, changed)))
+        if len(changed) != before:
+            value.clear()
+            value.update(entries)
+        return value
+    return value
+
+
+def repair_unsavable_text(core: Any) -> List[Dict[str, Any]]:
+    """Replace every unpaired surrogate in a loaded document with U+FFFD.
+
+    Python keeps one that JSON spells, but it cannot be encoded: the document
+    could not be saved, exported or printed. Every node's text (ids, links
+    and nested objects included), the title and the date are repaired in
+    place, as are the load warnings already recorded (they reach the page,
+    the CLI and the report). Returns load warnings (``kind:
+    "invalid_text"``, ``fields``: the dotted keys repaired): one per node,
+    one for the title/date. Two ids that become equal are told apart again
+    the way the core tells duplicate ids apart.
+    """
+    warnings: List[Dict[str, Any]] = []
+    ids_changed = False
+    tree = getattr(core, "fta_data", None)
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        old_id = node.get("id")
+        changed: List[str] = []
+        _scrub(node, "", changed, skip="children")
+        if changed:
+            ids_changed = ids_changed or node.get("id") != old_id
+            fields = list(dict.fromkeys(changed))
+            node_id = str(node.get("id"))
+            warnings.append({
+                "kind": "invalid_text",
+                "old_id": node_id,
+                "new_id": node_id,
+                "name": node.get("name"),
+                "fields": fields,
+                "message": "Node %r: text that cannot be saved (an unpaired surrogate) "
+                           "was replaced with U+FFFD in %s." % (node_id, ", ".join(fields)),
+            })
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+
+    fields = []
+    for attr in ("title", "date"):
+        changed = []
+        setattr(core, attr, _scrub(getattr(core, attr, None), attr, changed))
+        if changed:
+            fields.append(attr)
+    if fields:
+        warnings.append({
+            "kind": "invalid_text",
+            "old_id": None,
+            "new_id": None,
+            "fields": fields,
+            "message": "The document's %s held text that cannot be saved (an unpaired "
+                       "surrogate); it was replaced with U+FFFD." % " and ".join(fields),
+        })
+    _scrub(getattr(core, "last_load_warnings", None), "", [])
+    if ids_changed:
+        core._dedupe_node_ids(tree, warnings)
     return warnings
 
 

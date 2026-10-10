@@ -61,12 +61,14 @@ from typing import Any, Dict, List, Optional, Tuple
 try:  # normal package import: ``import fta_web.engine``
     from . import config  # noqa: F401  (puts fta_web/core on sys.path)
     from .node_schema import project_logic_gate  # noqa: F401  (re-exported)
-    from .node_schema import canonical_mode, drop_duplicate_links, reconcile_gate_types
+    from .node_schema import (
+        canonical_mode, drop_duplicate_links, reconcile_gate_types, repair_unsavable_text,
+    )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]  # noqa: F401
     from node_schema import project_logic_gate  # type: ignore[no-redef]  # noqa: F401
     from node_schema import (  # type: ignore[no-redef]
-        canonical_mode, drop_duplicate_links, reconcile_gate_types,
+        canonical_mode, drop_duplicate_links, reconcile_gate_types, repair_unsavable_text,
     )
 
 from FTA_Editor_core import FTACore, _tidy  # noqa: E402
@@ -486,6 +488,8 @@ class WebCore(FTACore):
                     "message": "Invalid analysis setting(s) were reset to their "
                                "defaults: %s." % ", ".join(problems),
                 })
+        # Text that cannot be encoded (an unpaired surrogate) blocks every save.
+        self.last_load_warnings.extend(repair_unsavable_text(self))
         # A repeated link would be counted twice.
         self.last_load_warnings.extend(drop_duplicate_links(self.fta_data))
         # A desktop edit changes only logicGate: trust it over a stale gateType.

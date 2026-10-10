@@ -925,8 +925,9 @@ class TestDownloadNameIsEncodable:
 
     def test_the_xml_export_downloads(self, files_client):
         c = files_client
-        assert c.post("/api/metadata", data=json.dumps({"title": "Pump \ud83d"}),
-                      content_type="application/json").status_code == 200
+        # Set directly: since B-16 the API refuses such a title and the loader
+        # repairs it, so only a path that bypasses both could still hold one.
+        get_state().core.title = "Pump \ud83d"
         exported = c.get("/api/export/xml")
         assert exported.status_code == 200, exported.get_data()[:300]
         assert "attachment" in exported.headers["Content-Disposition"]
@@ -1134,3 +1135,120 @@ class TestDuplicateLinks:
         en, ja = _val_catalog_keys()
         key = "val.code.LOAD_REPAIR.duplicate_link"
         assert key in en and key in ja and en[key] != ja[key]
+
+
+# --------------------------------------------------------------------------
+# B-16: an unpaired surrogate in the document made it unsaveable
+# --------------------------------------------------------------------------
+
+
+def _send(client, method, url, payload):
+    """``payload`` as JSON with every unpaired surrogate spelled ``\\udXXX``,
+    exactly as the browser's JSON.stringify sends one."""
+    return client.open(url, method=method, data=json.dumps(payload),
+                       content_type="application/json")
+
+
+class TestUnpairedSurrogates:
+    """JSON can spell an unpaired surrogate (``"\\ud83d"``, half of an emoji)
+    and Python keeps it, but it cannot be encoded as UTF-8: a name, title or
+    trace field holding one made Save, Save As, the JSON export and the CLI's
+    output fail for good ("surrogates not allowed"), and nothing said which
+    text was the culprit. The API refuses such text, naming the field; a
+    loaded document has it replaced with U+FFFD and reported."""
+
+    @pytest.mark.parametrize("payload, field", [
+        ({"name": "Pump \ud83d"}, "name"),
+        ({"notes": "x\udc00"}, "notes"),
+        ({"type": "Ev\ud800ent"}, "type"),
+        ({"links": [{"target_id": "t\ud800"}]}, "links"),
+        ({"quant": {"source": "OREDA \ud83d"}}, "quant.source"),
+        ({"trace": {"owner": "QA\ud800"}}, "trace.owner"),
+        ({"trace": {"tags": ["ok", "t\ud800"]}}, "trace.tags"),
+        ({"fmea": {"item": "\udfff"}}, "fmea.item"),
+        ({"transferTo": "x\ud800"}, "transferTo"),
+    ])
+    def test_patch_refuses_it_naming_the_field(self, tree_client, payload, field):
+        assert tree_client.post("/api/nodes", json={"parentId": "root", "name": "A"}).status_code == 200
+        refused = _send(tree_client, "PATCH", "/api/nodes/root_0", payload)
+        assert refused.status_code == 400, body(refused)
+        error = body(refused)["error"]
+        assert error["code"] == "INVALID_FIELD" and error["detail"]["field"] == field, error
+        assert len(get_state()._undo) == 1  # only the add
+
+    def test_create_and_metadata_refuse_it(self, tree_client):
+        refused = _send(tree_client, "POST", "/api/nodes", {"parentId": "root", "name": "\ud83d"})
+        assert refused.status_code == 400 and body(refused)["error"]["detail"]["field"] == "name"
+        for field in ("title", "date"):
+            refused = _send(tree_client, "POST", "/api/metadata", {field: "x\ud800"})
+            assert refused.status_code == 400, body(refused)
+            assert body(refused)["error"]["detail"]["field"] == field
+        assert get_state().can_undo is False
+
+    def test_a_whole_emoji_is_fine(self, tree_client):
+        made = _send(tree_client, "POST", "/api/nodes", {"parentId": "root", "name": "Pump \U0001f600"})
+        assert made.status_code == 200, body(made)
+
+    _RAW = ('{"title": "Plant \\ud83d", "date": "2026-10-10", "tree": {"id": "root", "name": "Top",'
+            ' "children": [{"id": "a\\ud800", "name": "Pump \\udc00", "probability": 0.1,'
+            ' "trace": {"owner": "QA\\ud800"}}, {"id": "b", "name": "B", "probability": 0.2,'
+            ' "links": [{"target_id": "a\\ud800", "relation": "OR"}]}]}}')
+
+    def test_a_loaded_document_is_repaired_reported_and_saves(self, files_client, sandbox):
+        (sandbox / "s.json").write_text(self._RAW, encoding="utf-8")
+        opened = files_client.post("/api/file/open", json={"path": "s.json"})
+        assert opened.status_code == 200, body(opened)
+        doc = body(opened)
+        assert doc["metadata"]["title"] == "Plant �"
+        a, b = doc["tree"]["children"]
+        assert (a["id"], a["name"], a["trace"]["owner"]) == ("a�", "Pump �", "QA�")
+        # the link followed its target's id, so it still counts
+        assert b["links"] == [{"target_id": "a�", "relation": "OR"}]
+        assert b["calculatedProbability"] == pytest.approx(1 - 0.8 * 0.9)
+        notices = [w for w in doc["warnings"] if w["kind"] == "invalid_text"]
+        by_node = {w["new_id"]: w for w in notices}
+        assert set(by_node) == {"a�", "b", None}
+        assert set(by_node["a�"]["fields"]) == {"id", "name", "trace.owner"}
+        assert by_node["b"]["fields"] == ["links.target_id"]
+        assert by_node[None]["fields"] == ["title"]
+        json.dumps(doc["warnings"], ensure_ascii=False).encode("utf-8")  # encodable now
+        issues = body(files_client.get("/api/analysis/validate"))["issues"]
+        assert any(i["code"] == "LOAD_REPAIR" and i["params"].get("kind") == "invalid_text"
+                   for i in issues)
+
+        saved = files_client.post("/api/file/save-as", json={"path": "out.json"})
+        assert saved.status_code == 200, body(saved)
+        reopened = files_client.post("/api/file/open", json={"path": "out.json"})
+        assert body(reopened)["warnings"] == []
+        assert files_client.get("/api/export/json").status_code == 200
+
+    def test_ids_that_become_equal_stay_unique(self, tmp_path):
+        from fta_web.engine import WebCore
+
+        path = tmp_path / "c.json"
+        path.write_text('{"tree": {"id": "root", "name": "R", "children": ['
+                        '{"id": "a\\ud800", "name": "one"}, {"id": "a\\ud801", "name": "two"}]}}',
+                        encoding="utf-8")
+        core = WebCore()
+        assert core.load_from_json(str(path)) == (True, None)
+        ids = [child["id"] for child in core.get_data()["children"]]
+        assert len(set(ids)) == 2 and ids[0] == "a�", ids
+        assert "duplicate_id" in [w["kind"] for w in core.last_load_warnings]
+        # every warning can be encoded (they reach the page, the CLI and the report)
+        json.dumps(core.last_load_warnings, ensure_ascii=False).encode("utf-8")
+
+    def test_the_cli_output_can_be_written(self, tmp_path, capsys):
+        from fta_web import cli
+
+        path = tmp_path / "s.json"
+        path.write_text(self._RAW, encoding="utf-8")
+        assert cli.main(["quantify", str(path), "--json"]) == 0
+        out = capsys.readouterr().out
+        out.encode("utf-8")
+        assert json.loads(out)["title"] == "Plant �"
+
+    def test_the_validation_tab_has_text_for_the_notice(self):
+        en, ja = _val_catalog_keys()
+        key = "val.code.LOAD_REPAIR.invalid_text"
+        assert key in en and key in ja and en[key] != ja[key]
+        assert "{fields}" in en[key] and "{fields}" in ja[key]
