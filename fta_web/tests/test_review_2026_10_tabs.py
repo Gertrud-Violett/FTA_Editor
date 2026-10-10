@@ -260,3 +260,19 @@ def test_validation_truncation_reason_is_translated():
     cat = _read(STATIC / "i18n" / "cutsets.js")
     for token in ("order", "count", "cutoff"):
         assert cat.count("'anl.by.%s'" % token) == 2, token
+
+
+# ---- Cut Sets / Importance: an answer that crossed an edit is stale --------------------
+# onStale marks the results stale and debounces a re-run (700 ms). An answer
+# already in flight that lands before that re-run started set stale = false:
+# the pre-edit results showed as current (Importance also coloured the changed
+# tree with them), for good when the re-run then failed (422).
+
+@pytest.mark.parametrize("tab,endpoint", [("cutsets", "'/analysis/cutsets', payload"),
+                                          ("importance", "'/analysis/importance', {}")])
+def test_answer_that_crossed_an_edit_is_stale(tab, endpoint):
+    src = _read(TABS / (tab + ".js"))
+    run = _block(src, "async function run()")
+    assert run.index("const asked = ctx.store.state || {};") < run.index("await ctx.api.post(%s)" % endpoint)
+    assert "stale = now.tree !== asked.tree || now.analysis !== asked.analysis;" in run
+    assert "stale = false;" not in run

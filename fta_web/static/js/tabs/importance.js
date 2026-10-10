@@ -103,12 +103,16 @@ export function mount(panel, ctx) {
     const mine = ++seq;
     running = true;
     paintToolbar();
+    const asked = ctx.store.state || {}; // the tree this answer describes
     try {
       const res = await ctx.api.post('/analysis/importance', {});
       if (mine !== seq) return;
       result = res;
       hasRun = true;
-      stale = false;
+      // An edit made while the request was in flight leaves the answer stale
+      // (onStale has scheduled the re-run that replaces it, which may fail).
+      const now = ctx.store.state || {};
+      stale = now.tree !== asked.tree || now.analysis !== asked.analysis;
     } catch (err) {
       if (mine !== seq) return;
       reportError(ctx, err);
