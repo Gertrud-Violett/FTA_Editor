@@ -109,3 +109,31 @@ def test_cutsets_top_applies_to_json(tmp_path, capsys):
     assert results["total"] == 5  # the totals still describe the whole list
     assert cli.main(["cutsets", str(doc), "--top", "2", "--csv"]) == 0
     assert len(list(csv.DictReader(io.StringIO(capsys.readouterr().out)))) == 2
+
+
+# ---- IO-4: an output that cannot be written -------------------------------------------
+
+
+def test_unwritable_out_is_an_error_message_not_a_traceback(tmp_path, capsys):
+    """``--out`` under a regular file (or any OSError while writing) escaped
+    main() as FileExistsError / NotADirectoryError with a traceback."""
+    doc = write_doc(tmp_path / "t.json")
+    blocker = tmp_path / "taken.txt"
+    blocker.write_text("not a folder", encoding="utf-8")
+    assert cli.main(["quantify", str(doc), "--json", "--out", str(blocker / "r.json")]) == 1
+    err = capsys.readouterr().err
+    assert "cannot write" in err and "r.json" in err
+
+
+def test_report_that_cannot_be_written_fails_that_file_only(tmp_path, capsys):
+    pytest.importorskip("docx")
+    good = write_doc(tmp_path / "good.json")
+    blocker = tmp_path / "taken.txt"
+    blocker.write_text("not a folder", encoding="utf-8")
+    # A non-.docx --out is a folder; here it names an existing file.
+    code = cli.main(["report", str(good), "--out", str(blocker), "--sections", "metadata",
+                     "--json"])
+    assert code == 1
+    captured = capsys.readouterr()
+    assert "cannot write" in captured.err
+    assert "cannot write" in json.loads(captured.out)["error"]

@@ -333,8 +333,11 @@ def cmd_report(core, args, out_path: Path):
             report_docx.diagram_dot_text(core, options["sigFigs"]))
     data = report_docx.collect_report_data(core, session_issues(core), options)
     blob = report_docx.build_report(data, options)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(blob)
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(blob)
+    except OSError as exc:  # this file fails; the batch goes on
+        raise AnalysisFailure("cannot write %s: %s" % (out_path, exc.strerror or exc))
     results = {"out": str(out_path), "bytes": len(blob),
                "unavailable": data.get("unavailable") or {},
                "diagram": bool(options.get("diagramPng"))}
@@ -512,9 +515,16 @@ def _stdout_unicode() -> bool:
     return encoding.replace("-", "").replace("_", "").startswith("utf")
 
 
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="")
+def _write(path: Path, text: str) -> bool:
+    """Write ``text`` to ``path``; False (and a message) when that fails --
+    ``--out`` under a regular file, no permission, a full disk."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="")
+    except OSError as exc:
+        print("error: cannot write %s: %s" % (path, exc.strerror or exc), file=sys.stderr)
+        return False
+    return True
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -598,10 +608,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if many and out_is_dir:
             for entry, rows in entries:
                 target = out / ("%s.%s%s" % (Path(entry["file"]).stem, command, ext))
-                _write(target, render_output(fmt, command, [(entry, rows)], sf))
+                if not _write(target, render_output(fmt, command, [(entry, rows)], sf)):
+                    worst = max(worst, EXIT_FAIL)
         else:
             target = out / ("%s.%s%s" % (Path(files[0]).stem, command, ext)) if out_is_dir else out
-            _write(target, render_output(fmt, command, entries, sf))
+            if not _write(target, render_output(fmt, command, entries, sf)):
+                worst = max(worst, EXIT_FAIL)
     else:
         sys.stdout.write(render_output(fmt, command, entries, sf,
                                        ascii_only=not _stdout_unicode()))
