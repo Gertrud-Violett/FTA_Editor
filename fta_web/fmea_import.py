@@ -107,7 +107,9 @@ FIELDS = (
 #: 1000 FIT is exactly 1e-06 rather than 1.0000000000000002e-06).
 LAMBDA_UNITS = {"h": 1.0, "y": 8760.0, "FIT": 1e9}
 
-CSV_ENCODINGS = ("utf-8-sig", "utf-8", "cp932", "latin-1")
+#: The encodings a CSV is read in, in this order (see :func:`_decode`: cp932
+#: only for text with kana, UTF-16/32 only with a byte-order mark).
+CSV_ENCODINGS = ("utf-8-sig", "utf-16", "utf-32", "cp932", "cp1252", "latin-1")
 
 #: Hard ceiling on rows read from one sheet (the file size cap is the other).
 MAX_ROWS = 20000
@@ -205,19 +207,38 @@ _WIDE_BOMS = (
 )
 
 
+#: Kana: what tells a Japanese cp932 file from a Western cp1252 one that also
+#: decodes as cp932 without an error ('Défaut' -> 'D馭aut', 'Válvula' ->
+#: 'V疝vula'). A half-width katakana counts only next to another: each of
+#: cp1252's 0xA6-0xDF (°, ±, µ, ², Ä, Ö, Ü, ß ...) decodes as a lone one
+#: ('80°C' -> '80ｰC', 'Überhitzung' -> 'ﾜberhitzung'), while half-width
+#: Japanese words are runs ('ﾎﾟﾝﾌﾟ').
+_KANA = re.compile("[぀-ヿ]|[ｦ-ﾟ]{2}")
+
+
 def _decode(data: bytes) -> str:
+    """UTF-8 (BOM or not), UTF-16/32 by their BOM, cp932 when the text has
+    kana, else cp1252, else latin-1."""
     for bom, encoding in _WIDE_BOMS:
         if data.startswith(bom):
             try:
                 return data.decode(encoding)  # the codec reads and drops the BOM
             except UnicodeDecodeError:
                 break
-    for encoding in CSV_ENCODINGS:
-        try:
-            return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("latin-1", errors="replace")  # pragma: no cover - latin-1 never fails
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    try:
+        text = data.decode("cp932")
+        if _KANA.search(text):
+            return text
+    except UnicodeDecodeError:
+        pass
+    try:
+        return data.decode("cp1252")
+    except UnicodeDecodeError:
+        return data.decode("latin-1")  # never fails
 
 
 CSV_DELIMITERS = ",;\t|"

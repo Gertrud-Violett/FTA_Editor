@@ -814,6 +814,45 @@ def test_fmea_tab_shows_the_rows_no_longer_in_the_sheet():
         assert "{n}" in line and "{names}" in line
 
 
+@pytest.mark.parametrize("text", [
+    "ID,Item,Mode\nF-1,Pumpe,Défaut d'étanchéité\n",      # was 'D馭aut'
+    "ID,Item,Mode\nF-1,Válvula,Fuga\n",                  # was 'V疝vula'
+    "ID,Item,Mode\nF-1,Mötor,Überhitzung\n",             # was 'M\\ue49cor', 'ﾜberhitzung'
+    "ID,Item,Mode\nF-1,Heater,Overheat above 80°C ±5\n",  # '°' alone was 'ｰ'
+    "ID,Item,Mode\nF-1,Lüfter,Lagerschaden – laut\n",      # cp1252-only bytes (–)
+])
+def test_fmea_cp1252_csv_is_not_read_as_cp932(tmp_path, text):
+    """cp932 was tried before latin-1, and many cp1252 files decode as cp932
+    without an error: silent mojibake in every name."""
+    from fta_web import fmea_import
+
+    path = tmp_path / "w.csv"
+    path.write_bytes(text.encode("cp1252"))
+    rows = [line.split(",") for line in text.strip().split("\n")[1:]]
+    assert fmea_import.read_table(path)["rows"] == rows
+
+
+@pytest.mark.parametrize("text", [
+    "番号,部品,故障モード\nJ-1,ポンプ,漏れ\n",              # katakana
+    "番号,部品,故障\nJ-1,弁,もれる\n",                     # hiragana only
+    "番号,部品,故障\nJ-1,ﾎﾟﾝﾌﾟ,ﾓｰﾀ過熱\n",                 # half-width katakana words
+])
+def test_fmea_cp932_csv_is_still_read_as_cp932(tmp_path, text):
+    from fta_web import fmea_import
+
+    path = tmp_path / "j.csv"
+    path.write_bytes(text.encode("cp932"))
+    rows = [line.split(",") for line in text.strip().split("\n")[1:]]
+    assert fmea_import.read_table(path)["rows"] == rows
+
+
+def test_fmea_bytes_outside_cp1252_fall_back_to_latin1():
+    from fta_web import fmea_import
+
+    data = "ID,Mode\nA,x\x81y\n".encode("latin-1")  # 0x81: undefined in cp1252
+    assert fmea_import._decode(data) == "ID,Mode\nA,x\x81y\n"
+
+
 def _xlsx_with_dimension(path, ref):
     """A workbook whose sheet XML declares ``<dimension ref=ref/>``, as some
     exporters write it regardless of the data."""
