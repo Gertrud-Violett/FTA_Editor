@@ -118,6 +118,22 @@ def test_fmea_parent_select_follows_the_tree_selection():
     assert run.index("state.parentExplicit = true;") < run.index("ctx.jumpTo(")
 
 
+# ---- FMEA: the newest preview wins -------------------------------------------------------
+# Loading a.csv and then b.csv before a.csv answered: the slower a.csv answer
+# replaced b.csv's preview, mapping and path, and Import would read a.csv.
+
+def test_fmea_older_preview_answer_is_dropped():
+    src = _read(TABS / "fmea.js")
+    body = _block(src, "async function loadPreview(path, sheet, fresh)")
+    assert body.index("const mine = ++previewSeq;") < body.index("await ctx.api.post('/fmea/preview', body);")
+    after = body[body.index("await ctx.api.post('/fmea/preview', body);"):]
+    assert after.index("if (mine !== previewSeq) return;") < after.index("state.preview = res;")
+    catch = _block(body, "} catch (err)")
+    assert "if (mine !== previewSeq) return;" in catch
+    final = _block(body, "} finally")
+    assert "if (mine === previewSeq) {" in final, "only the newest load clears busy and repaints"
+
+
 # ---- Uncertainty: a run that overlapped an edit is stale -------------------------------
 # The server samples the tree as it is when the request arrives (a deep copy,
 # outside the lock), so editing during a run is allowed. onStale only marked

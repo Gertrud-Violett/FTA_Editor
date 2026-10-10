@@ -232,15 +232,18 @@ export function mount(panel, ctx) {
     if (path) await loadPreview(path, null, true);
   }
 
+  let previewSeq = 0;
   async function loadPreview(path, sheet, fresh) {
     const target = String(path || '').trim();
     if (!target) return;
+    const mine = ++previewSeq; // the newest load wins: an older answer is dropped
     state.busy = true;
     setMessage(t('fmea.loading'), 'busy');
     try {
       const body = { path: target };
       if (sheet) body.sheet = sheet;
       const res = await ctx.api.post('/fmea/preview', body);
+      if (mine !== previewSeq) return;
       state.path = res.path || target;
       state.preview = res;
       state.sheet = res.sheet || null;
@@ -254,10 +257,13 @@ export function mount(panel, ctx) {
       state.result = null;
       state.message = null;
     } catch (err) {
+      if (mine !== previewSeq) return;
       state.message = { text: errorText(err), kind: 'error' };
     } finally {
-      state.busy = false;
-      renderAll();
+      if (mine === previewSeq) {
+        state.busy = false;
+        renderAll();
+      }
     }
   }
 
