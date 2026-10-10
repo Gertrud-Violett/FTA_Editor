@@ -196,6 +196,20 @@ def temp_files(prefix):
     return set(Path(tempfile.gettempdir()).glob(prefix + "*"))
 
 
+@pytest.fixture
+def own_temp_dir(monkeypatch, tmp_path):
+    """The temp folder, for this test alone.
+
+    The tests that use it look at what a request left in the temp folder. The
+    machine's own temp folder is shared: a second test run at the same time
+    (the suite on two Python versions, for one) puts its export files there
+    and takes them away again between the two looks, and the test failed."""
+    folder = tmp_path / "temp"
+    folder.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(folder))
+    return folder
+
+
 # --------------------------------------------------------------------------
 # fs browsing
 # --------------------------------------------------------------------------
@@ -776,14 +790,14 @@ def test_export_names_the_download_after_the_title_when_unsaved(client):
     assert "Untitled Analysis.json" in disposition
 
 
-def test_export_leaves_no_temp_files_behind(opened):
+def test_export_leaves_no_temp_files_behind(opened, own_temp_dir):
     before = temp_files("fta_export_")
     for fmt in ("json", "xml", "xlsx"):
         assert opened.get("/api/export/%s" % fmt).status_code == 200
     assert temp_files("fta_export_") == before
 
 
-def test_failed_export_leaves_no_temp_files_behind(opened, monkeypatch):
+def test_failed_export_leaves_no_temp_files_behind(opened, monkeypatch, own_temp_dir):
     monkeypatch.setattr(
         FTACore, "export_to_xml", lambda self, path: (False, "disk on fire")
     )
@@ -958,7 +972,7 @@ def test_import_without_a_file_is_a_bad_request(client):
     assert body(response)["error"]["code"] == "INVALID_FIELD"
 
 
-def test_import_leaves_no_temp_files_and_no_temp_path_behind(client):
+def test_import_leaves_no_temp_files_and_no_temp_path_behind(client, own_temp_dir):
     before = temp_files("fta_import_")
     assert upload(client, dumps(DOCUMENT)).status_code == 200
     assert temp_files("fta_import_") == before

@@ -139,6 +139,35 @@ async function main(url, label, root) {
   const parsed2 = L.parseExports(docxPath, xlsx2);
   L.check('action-bar Excel == Report-tab Excel (events + analysis)', JSON.stringify(parsed2.xlsx.events) === JSON.stringify(parsed.xlsx.events) && JSON.stringify(parsed2.xlsx.analysis) === JSON.stringify(parsed.xlsx.analysis));
 
+  // ---- a path entered while the dialog is still reading its start folder -------------------
+  // The first listing is held back, as a slow disk would. Enter on a typed path was dropped
+  // then: the path stayed in the box over the start folder's list.
+  const typedDir = path.join(root, 'b2b_typed_' + label);
+  fs.mkdirSync(typedDir, { recursive: true });
+  fs.writeFileSync(path.join(typedDir, 'typed_here.json'), '{}');
+  let heldListings = 0;
+  const holdFirstListing = async (route) => {
+    heldListings += 1;
+    if (heldListings === 1) await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  };
+  await page.route('**/api/fs/list**', holdFirstListing);
+  await page.locator('.actionbar [data-action="load"]').click();
+  await page.waitForTimeout(300);
+  if (await page.locator('.fta-modal:not(.fta-filedialog)').count()) await page.locator('.fta-modal:not(.fta-filedialog) .fta-btn.is-primary').click();
+  await page.locator('.fta-filedialog').waitFor({ state: 'visible' });
+  const pathBox = page.locator('.fta-filedialog .fdlg-path');
+  await pathBox.fill(typedDir);
+  await pathBox.press('Enter');
+  const listedBeforeEnter = await page.locator('.fta-filedialog .fdlg-row').count();
+  const reached = await page.locator('.fta-filedialog .fdlg-row', { hasText: 'typed_here.json' }).waitFor({ state: 'visible', timeout: 8000 }).then(() => true, () => false);
+  const typedShown = { rows: await page.$$eval('.fta-filedialog .fdlg-row__name', (els) => els.map((e) => e.textContent)), box: await pathBox.inputValue() };
+  L.check('Enter on a typed path while the first listing is on its way: that folder is listed', listedBeforeEnter === 0 && reached, { listedBeforeEnter, heldListings, typedShown });
+  L.check('... and the path box shows that folder', path.basename(typedShown.box) === path.basename(typedDir), typedShown.box);
+  await page.unroute('**/api/fs/list**', holdFirstListing);
+  await page.keyboard.press('Escape');
+  await page.locator('.fta-filedialog').waitFor({ state: 'detached' });
+
   const errs = app.errorsSince(0);
   L.check('no console errors in the files run', errs.length === 0, errs);
   fs.writeFileSync(path.join(L.OUT, 'files_' + label + '.json'), JSON.stringify({ docx: parsed.docx, xlsx: parsed.xlsx.analysis, fmea: { nums, n2 } }, null, 1));
