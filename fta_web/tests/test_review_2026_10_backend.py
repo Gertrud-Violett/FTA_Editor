@@ -905,3 +905,45 @@ class TestDownloadNameIsEncodable:
         exported = c.get("/api/export/xml")
         assert exported.status_code == 200, exported.get_data()[:300]
         assert "attachment" in exported.headers["Content-Disposition"]
+
+
+# --------------------------------------------------------------------------
+# B-17: the move cycle check walked the whole tree once per moved node
+# --------------------------------------------------------------------------
+
+
+class TestMoveCycleCheckIsLinear:
+    """``_is_descendant_of`` re-found every node of the moved subtree with a
+    whole-tree ``find_node_by_id`` walk: O(subtree x tree), under the state
+    lock, and done twice per move. Moving a 3,000-event branch of a 6,000-node
+    tree froze every request for over a second (quadratic beyond that)."""
+
+    def _wide(self, leaves):
+        return {"id": "root", "name": "Top", "logicGate": "OR", "children": [
+            {"id": "b%d" % b, "name": "B%d" % b, "logicGate": "OR", "children": [
+                _leaf("b%d_%d" % (b, i), "leaf") for i in range(leaves)]}
+            for b in range(2)]}
+
+    def test_the_check_does_not_search_once_per_descendant(self, monkeypatch):
+        from fta_web import tree_ops
+
+        core = _core(self._wide(300))
+        calls = []
+        real_find = core.find_node_by_id
+        monkeypatch.setattr(core, "find_node_by_id",
+                            lambda node_id: calls.append(node_id) or real_find(node_id))
+        assert tree_ops.would_create_cycle(core, "b0", "b1") is False
+        assert len(calls) < 10, len(calls)
+
+    def test_answers_are_unchanged(self):
+        from fta_web import tree_ops
+
+        core = _core(self._wide(3))
+        assert tree_ops.would_create_cycle(core, "b0", "b0") is True
+        assert tree_ops.would_create_cycle(core, "b0", "b0_1") is True
+        assert tree_ops.would_create_cycle(core, "root", "b0_1") is True
+        assert tree_ops.would_create_cycle(core, "b0_1", "b0") is False   # reorder in place
+        assert tree_ops.would_create_cycle(core, "b0_1", "b1") is False
+        assert tree_ops.would_create_cycle(core, "b0", "root") is False
+        assert tree_ops.would_create_cycle(core, "ghost", "b0") is False
+        assert tree_ops.would_create_cycle(core, "b0", "ghost") is False

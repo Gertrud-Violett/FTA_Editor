@@ -274,22 +274,20 @@ def find_parent_id(core, node_id: str) -> Optional[str]:
 def _is_descendant_of(core, node_id: str, potential_ancestor_id: str) -> bool:
     """True if ``node_id`` sits anywhere in ``potential_ancestor_id``'s subtree.
 
-    Same signature and recursion as
+    Same signature as
     ``AI_agent_handler.AIAgentHandler._is_descendant_of`` (vendored core, line
     833), reimplemented here only so tree_ops does not have to instantiate an
     AI handler to ask a structural question.
+
+    One walk of the ancestor's subtree. The vendored recursion re-finds every
+    descendant with a whole-tree ``find_node_by_id`` -- O(subtree x tree),
+    which a move ran twice under the state lock (over a second for a
+    3,000-event branch).
     """
-    ancestor = core.find_node_by_id(potential_ancestor_id)
-    if not ancestor:
-        return False
-
-    for child in _children(ancestor):
-        if str(child.get("id")) == str(node_id):
-            return True
-        if _is_descendant_of(core, node_id, child.get("id")):
-            return True
-
-    return False
+    node_id = str(node_id)
+    return node_id != str(potential_ancestor_id) and node_id in subtree_ids(
+        core, potential_ancestor_id
+    )
 
 
 def would_create_cycle(core, node_id: str, new_parent_id: str) -> bool:
