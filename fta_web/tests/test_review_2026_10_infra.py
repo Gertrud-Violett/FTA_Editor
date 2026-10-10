@@ -81,3 +81,30 @@ def test_pip_test_run_uses_this_interpreter(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": next(replies))
     installer.main()
     assert commands[-1][:3] == [sys.executable, "-m", "pytest"]
+
+
+# ---- fta_web/tests/b2b/run_b2b.py: the printed divergence summary ----------------------
+
+def _runner():
+    from fta_web.tests.b2b import run_b2b
+
+    return run_b2b
+
+
+def test_b2b_summary_counts_mcub_rows_under_their_own_tag():
+    # "FIXED:MC" is a substring of "FIXED:MCUB", and the first matching tag
+    # won, so the summary printed "FIXED:MC 42 rows" for 10 MC + 32 MCUB rows.
+    runner = _runner()
+    B = runner.B
+    assert runner.divergence_tags(B.Row("t", "release->branch", "mcub", "divergence", 1,
+                                        note=B.FIX_MCUB)) == [B.FIX_MCUB]
+    assert runner.divergence_tags(B.Row("t", "release->branch", "mc", "divergence", 1,
+                                        note=B.FIX_MC)) == [B.FIX_MC]
+
+
+def test_b2b_summary_keeps_every_plain_tag_of_a_desktop_row():
+    runner = _runner()
+    B = runner.B
+    row = B.Row("t", "desktop", "calculatedProbability", "divergence", 1,
+                note="D14 / %s: ..." % B.OR_LOG)
+    assert runner.divergence_tags(row) == [B.OR_LOG, "D14"]

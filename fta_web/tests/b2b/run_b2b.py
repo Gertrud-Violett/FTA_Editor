@@ -23,9 +23,11 @@ print, default 40).
 from __future__ import annotations
 
 import argparse
+import atexit
 import fnmatch
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -92,6 +94,17 @@ def cross(name, ref, got, maker):
     return B.relabel_timing(B.cross_build(exact, loose), ref, got)
 
 
+def divergence_tags(row) -> list:
+    """The DOCUMENTED DIVERGENCES keys a divergence row is counted under."""
+    # FIX_MCUB before FIX_MC: "FIXED:MC" is a substring of "FIXED:MCUB".
+    fixed_tags = (B.FIX_MCUB, B.FIX_MC, B.FIX_OR, B.FIX_FMT, B.FIX_IMP)
+    plain_tags = ("LIBM", "TIME", "FRONTEND BUG", B.OR_LOG, "D8", "D14", "D15", "D16", "D17")
+    tags = [t for t in fixed_tags if t in row.note][:1]
+    if not tags:  # a row can carry several (desktop: D14 and OR-UNION)
+        tags = [t for t in plain_tags if t in row.note]
+    return tags or [row.note.split(":")[0] if row.note else row.metric]
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--only", help="fnmatch pattern on tree names")
@@ -134,6 +147,7 @@ def main(argv=None) -> int:
         rows += B.check_engine_internal(n, ref)
 
     tmp = Path(tempfile.mkdtemp(prefix="fta_b2b_"))
+    atexit.register(shutil.rmtree, tmp, ignore_errors=True)  # ~15 MB per run otherwise
     root = B.copy_corpus(tmp / "root", B.corpus_names())
 
     phase("api:client (create_app test client)")
@@ -326,15 +340,10 @@ def report(rows, names, elapsed, details):
         print("%-28s %s" % (t[:28], " ".join(cells)))
 
     div = defaultdict(list)
-    fixed_tags = (B.FIX_MC, B.FIX_OR, B.FIX_FMT, B.FIX_MCUB, B.FIX_IMP)
-    plain_tags = ("LIBM", "TIME", "FRONTEND BUG", B.OR_LOG, "D8", "D14", "D15", "D16", "D17")
     for r in rows:
         if r.status != "divergence":
             continue
-        tags = [t for t in fixed_tags if t in r.note][:1]
-        if not tags:  # a row can carry several (desktop: D14 and OR-UNION)
-            tags = [t for t in plain_tags if t in r.note]
-        for tag in tags or [r.note.split(":")[0] if r.note else r.metric]:
+        for tag in divergence_tags(r):
             div[tag].append(r)
     if div:
         print()
