@@ -35,7 +35,7 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
 **D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**,
-**D24**.
+**D24**, **D25**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -709,6 +709,38 @@ about `2 * 120 s` (OpenAI, Azure, Anthropic) or `120 s` (Gemini).
 **Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
 
 **Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D25 — An empty provider reply is an error, not a conversation turn
+
+**Defect (review AI-10):** `AIAgentHandler.send_message` appended the
+provider's reply to `conversation_history` before anything looked at it. A reply
+with no text -- `None` from Gemini when a 2.5 model spends `max_output_tokens` on
+thinking or the answer is safety-blocked, an empty string from a reasoning
+model cut short -- became `{"role": "assistant", "content": None}`. Parsing it
+then raised, so the user read `AI Error: expected string or bytes-like object,
+got 'NoneType'`, and every later request carried the null turn
+(`"content": null` to Anthropic, which rejects it).
+
+Repro: a Gemini candidate without parts (`finishReason: MAX_TOKENS`) -> the
+error above; the history holds `[user, {assistant: None}]`.
+
+**Fix:** After the provider error check, a reply that is not a non-blank string
+returns `AI Error: the AI provider returned an empty reply, so nothing was added
+to the conversation. ...` and leaves the history and the pending changes as
+they were.
+
+**Why it is safe:** Only a reply that could not be used is affected; every
+non-empty reply follows the unchanged path. The in-band `AI Error:` convention is
+the one the chat panel and the web app's routes already handle.
+
+**Behavior change:** An empty answer reads as one, and the conversation stays
+usable after it.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/AI_agent_handler.py`
 
 ---
 

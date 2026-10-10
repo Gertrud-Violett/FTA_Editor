@@ -949,3 +949,41 @@ class TestEveryProviderCallHasADeadline:
 
         assert ai_providers.REQUEST_TIMEOUT_SECONDS == config.AI_TIMEOUT_SECONDS
         assert ai_providers.MAX_RETRIES <= 1
+
+
+# --------------------------------------------------------------------------
+# AI-10, divergence D25: an empty reply is not an assistant turn
+# --------------------------------------------------------------------------
+
+
+class TestAnEmptyReplyIsNotKept:
+    """A reply with no text (a Gemini 2.5 model that spent max_output_tokens on
+    thinking, a safety block) was appended to the history as
+    {"role": "assistant", "content": None} before parsing failed on it, so the
+    user read "expected string or bytes-like object" and every later request
+    carried a null turn."""
+
+    @pytest.mark.parametrize("empty", [None, "", "  \n"])
+    def test_the_user_is_told_and_the_history_is_unchanged(self, client, provider, monkeypatch, empty):
+        monkeypatch.setattr(provider, "send_message", lambda *a, **k: (empty, None))
+        before = list(ai_bridge.get_handler().conversation_history)
+
+        reply = body(client.post("/api/ai/chat", json={"message": "first"}))["reply"]
+
+        assert reply.startswith("AI Error:") and "empty reply" in reply
+        assert ai_bridge.get_handler().conversation_history == before
+
+    def test_the_next_request_carries_no_empty_turn(self, client, provider, monkeypatch):
+        monkeypatch.setattr(provider, "send_message", lambda *a, **k: (None, None))
+        client.post("/api/ai/chat", json={"message": "first"})
+        seen = {}
+
+        def capture(api_key, endpoint, model, messages, max_tokens=2000):
+            seen["messages"] = messages
+            return "fine", None
+
+        monkeypatch.setattr(provider, "send_message", capture)
+        client.post("/api/ai/chat", json={"message": "second"})
+
+        assert [m["role"] for m in seen["messages"]] == ["system", "user"]
+        assert all(isinstance(m["content"], str) and m["content"] for m in seen["messages"])
