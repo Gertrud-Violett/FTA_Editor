@@ -53,8 +53,10 @@ def test_cli_survives_a_console_that_cannot_encode_the_output(tmp_path, encoding
 
     code, out, err = run_cli("quantify", doc, "--json", encoding=encoding)
     assert code == 0, err
-    # Still valid JSON, and lossless: non-ASCII is escaped, not replaced.
-    payload = json.loads(out.decode("ascii"))
+    # Still valid JSON, and lossless. Windows switches stdout to UTF-8 by
+    # design (cli._force_utf8, whatever PYTHONIOENCODING says); elsewhere the
+    # encoding is kept and --json escapes the non-ASCII instead of replacing it.
+    payload = json.loads(out.decode("utf-8" if sys.platform == "win32" else "ascii"))
     assert payload["results"]["events"][0]["name"] == "Pump ü"
 
 
