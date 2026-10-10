@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tests: three temp-folder checks no longer fail when two test runs
+  overlap** (tests only). `test_export_leaves_no_temp_files_behind` and two
+  more compared the machine's shared temp folder before and after a request,
+  so a second run on the same machine made them fail. Each now has a temp
+  folder of its own.
+
 ## [1.7.2] - 2026-10-10
 
 Review release. It carries the October 2026 code review, in three parts: the
