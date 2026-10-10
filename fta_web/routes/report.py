@@ -216,7 +216,8 @@ def _limits(value: Any) -> Dict[str, Any]:
 def _stem(state) -> str:
     if state.current_path is not None:
         return Path(state.current_path).stem
-    return state.core.title or "fta"
+    # str(): a file can hold a non-string title ("title": 123).
+    return str(state.core.title or "fta")
 
 
 @report_bp.post("/docx")

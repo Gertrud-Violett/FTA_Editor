@@ -92,7 +92,7 @@ try:  # normal package import: ``import fta_web.routes.files``
         ok_response,
     )
     from ..engine import WebCore
-    from ..excel_events import export_xlsx
+    from ..excel_events import export_view, export_xlsx
     from ..numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs
     from ..state import get_state, load_warning_issues
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
@@ -111,7 +111,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ok_response,
     )
     from engine import WebCore  # type: ignore[no-redef]
-    from excel_events import export_xlsx  # type: ignore[no-redef]
+    from excel_events import export_view, export_xlsx  # type: ignore[no-redef]
     from numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs  # type: ignore[no-redef]
     from state import get_state, load_warning_issues  # type: ignore[no-redef]
 
@@ -488,7 +488,10 @@ def _export_json(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
 
 
 def _export_xml(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
-    return core.export_to_xml(path)
+    # From a cleaned copy (excel_events.export_view): the pinned writer puts
+    # a control character into the file as is -- a download no XML parser
+    # accepts -- and raises on a non-string type or notes.
+    return export_view(core).export_to_xml(path)
 
 
 def _export_xlsx(core: FTACore, path: str, sig_figs: int = DEFAULT_SIG_FIGS

@@ -9,11 +9,13 @@ path the client picked with the sandboxed file dialog -- exactly like
 is 4xx ``PATH_REJECTED`` with ``detail.reason``.
 
 ``POST /api/fmea/preview``
-    Body ``{path, sheet?}``. Returns ``{path, name, sheets: [names], sheet,
-    columns: [header], rows: [[cell]] (first 50), rowNumbers, rowCount,
+    Body ``{path, sheet?, mapping?}``. Returns ``{path, name, sheets: [names],
+    sheet, columns: [header], rows: [[cell]] (first 50), rowNumbers, rowCount,
     suggestedMapping: {field: column}, suggestedLambdaUnit: h|y|FIT, fields,
     occurrenceTable}`` -- the table is the document's
-    ``analysis.fmeaOccurrenceTable``. Read-only.
+    ``analysis.fmeaOccurrenceTable``. ``rows`` are as the import reads them:
+    a blank item is filled down (``fmea_import.fill_down``) for ``mapping``,
+    else for the suggested mapping. Read-only.
 
 ``POST /api/fmea/import``
     Body ``{path, sheet?, mapping: {field: column}, lambdaUnit: h|y|FIT,
@@ -24,7 +26,9 @@ is 4xx ``PATH_REJECTED`` with ``detail.reason``.
     that differs from the document's is saved into
     ``analysis.fmeaOccurrenceTable`` in the same undo step. Returns the
     mutation payload plus ``{created: [ids], updated: [ids], unchanged: [ids],
-    skipped: [{row, fmeaId, reason, field?, value?, message}], changed}``.
+    skipped: [{row, fmeaId, reason, field?, value?, message}], notInSheet:
+    [{id, name, fmeaId}], changed}`` -- ``notInSheet`` lists the nodes of an
+    earlier import of the sheet whose rows are gone (kept, not deleted).
 
 Errors: 409 ``MODE_UNSUPPORTED`` in ETA mode (checked first); 503
 ``EXPORT_UNAVAILABLE`` with ``detail.package = 'openpyxl'`` for an ``.xlsx``
@@ -247,8 +251,13 @@ def post_preview():
     target, table = _read(payload)
     columns = table["columns"]
     suggested = fmea_import.suggest_mapping(columns)
+    # The rows as the import will read them: a blank item under its group's
+    # first row is filled down (for the body's mapping, else the suggested).
+    rows = fmea_import.fill_down(
+        table, _mapping_arg(payload) if "mapping" in payload else suggested)
     unit = (fmea_import.suggest_lambda_unit(
-        suggested["lambda"], fmea_import.column_values(table, suggested["lambda"]))
+        suggested["lambda"], fmea_import.column_values(table, suggested["lambda"]),
+        delimiter=table.get("delimiter"))
         if "lambda" in suggested else "h")
     return ok_response(
         path=str(target),
@@ -256,7 +265,7 @@ def post_preview():
         sheets=table["sheets"],
         sheet=table["sheet"],
         columns=columns,
-        rows=table["rows"][:PREVIEW_ROWS],
+        rows=rows[:PREVIEW_ROWS],
         rowNumbers=table["rowNumbers"][:PREVIEW_ROWS],
         rowCount=len(table["rows"]),
         fields=list(fmea_import.FIELDS),
@@ -325,6 +334,7 @@ def post_import():
                 lambda_unit=lambda_unit,
                 columns=table["columns"],
                 row_numbers=table["rowNumbers"],
+                delimiter=table.get("delimiter"),
             )
         except fmea_import.FmeaImportError as exc:
             raise _import_error(exc)
@@ -341,6 +351,7 @@ def post_import():
             updated=result["updated"],
             unchanged=result["unchanged"],
             skipped=result["skipped"],
+            notInSheet=result["notInSheet"],
             changed=changed,
             source=label,
             **_mutation_payload(state),
