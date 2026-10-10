@@ -492,19 +492,22 @@ export function initDetails(container) {
       if (node) updateExtras(node, true);
     }
   });
-  const quiet = () => {
-    /* reported by send() */
+  // A refused change is reported by send(); the select then goes back to what
+  // is stored instead of showing a value the node does not have.
+  const revertExtras = () => {
+    const node = currentNode();
+    if (node) updateExtras(node, false);
   };
   extras.transferSelect.addEventListener('change', () => {
     const value = extras.transferSelect.value;
-    send({ transferTo: value === '' ? null : value }).catch(quiet);
+    send({ transferTo: value === '' ? null : value }).catch(revertExtras);
   });
   extras.kindSelect.addEventListener('change', () => {
     const value = extras.kindSelect.value;
-    send({ eventKind: value === 'basic' ? null : value }).catch(quiet);
+    send({ eventKind: value === 'basic' ? null : value }).catch(revertExtras);
   });
   extras.houseSelect.addEventListener('change', () => {
-    send({ houseState: extras.houseSelect.value === 'on' }).catch(quiet);
+    send({ houseState: extras.houseSelect.value === 'on' }).catch(revertExtras);
   });
 
   const linksTitle = el('h3', { class: 'fta-details-links-title' });

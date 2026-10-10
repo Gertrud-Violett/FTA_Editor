@@ -301,6 +301,24 @@ def test_export_downloads_carry_the_editor_language():
     assert "headers['Accept-Language'] = language;" in body
 
 
+# ---- details.js: a refused event-kind / house / transfer change is put back -----------
+#
+# With the PATCH failing (server stopped), the Event kind select kept showing
+# "house" while the node stayed basic -- no dirty mark, no field error, and the
+# next unrelated store update silently flipped it back (Chromium, PATCH aborted).
+
+
+def test_details_extra_selects_revert_when_their_change_fails():
+    src = _read(STATIC / "details.js")
+    for select in ("transferSelect", "kindSelect", "houseSelect"):
+        handler = re.search(
+            r"extras\.%s\.addEventListener\('change', \(\) => \{(.*?)\n  \}\);" % select, src, re.S
+        ).group(1)
+        assert ".catch(revertExtras)" in handler, select
+    body = re.search(r"const revertExtras = \(\) => \{(.*?)\n  \};", src, re.S).group(1)
+    assert "updateExtras(node, false);" in body
+
+
 # ---- tree.js: New / Open drop the old document's multi-selection ----------------------
 #
 # Ctrl-click two rows, then the root (lead = root), then open a file: ids such
