@@ -188,3 +188,32 @@ def test_cutsets_new_document_refills_limits_before_running():
     run = _block(src, "async function run()")
     assert run.index("const payload = limitsBody();") < run.index("paintToolbar();"), \
         "run() reads the inputs before it repaints them, so they must be current already"
+
+
+# ---- Cut Sets: a selected row stays on the same cut set after a re-run ---------------
+# "Keep the selection if the same cut set is still there" compared ranks: the
+# user picked {B3} (rank 1), an edit made it rank 2, and the re-run moved the
+# selection and the tree/diagram highlight to {B1, B2}, now rank 1.
+
+@needs_node
+def test_cut_set_key_is_the_event_set():
+    src = _read(TABS / "cutsets.js")
+    rows = [
+        {"rank": 1, "events": [{"id": "b"}, {"id": "a"}]},
+        {"rank": 7, "events": [{"id": "a"}, {"id": "b"}]},
+        {"rank": 2, "events": [{"id": "a"}]},
+        {"rank": 3, "events": []},
+        {"rank": 4, "events": [{"id": "a_b"}]},
+    ]
+    got = _node(_function(src, "cutSetKey") + "\nconsole.log(JSON.stringify(%s.map(cutSetKey)));" % json.dumps(rows))
+    assert got[0] == got[1], "same events in another order and rank"
+    assert len(set(got)) == 4 and got[3] == ""
+
+
+def test_cutsets_reselects_by_cut_set_not_rank():
+    src = _read(TABS / "cutsets.js")
+    run = _block(src, "async function run()")
+    assert "result.cutSets.find((cs) => cutSetKey(cs) === selectedKey)" in run
+    assert "cs.rank === selectedRank" not in run
+    assert "selectedKey = cutSetKey(row);" in _block(src, "function highlightRow(row)")
+    assert "selectedKey = null;" in _block(src, "function unselect()")

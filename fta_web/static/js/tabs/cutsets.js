@@ -32,6 +32,12 @@ export const advanced = true;
 const SOURCE = 'cutsets';
 const STALE_DELAY_MS = 700;
 
+/** A cut set's identity across runs (ranks shift when the tree changes): its event ids. */
+export function cutSetKey(row) {
+  const events = row && Array.isArray(row.events) ? row.events : [];
+  return events.map((e) => String(e.id)).sort().join('\u0001');
+}
+
 export function mount(panel, ctx) {
   ensureStyles();
   const t = translator(ctx);
@@ -40,6 +46,7 @@ export function mount(panel, ctx) {
   let active = false;
   let result = null;
   let selectedRank = null;
+  let selectedKey = null; // cutSetKey of the selected row
   let running = false;
   let seq = 0;
   let hasRun = false;
@@ -135,9 +142,9 @@ export function mount(panel, ctx) {
       result = res;
       hasRun = true;
       stale = false;
-      // Keep the selection if the same cut set is still there.
-      if (selectedRank !== null) {
-        const row = result.cutSets.find((cs) => cs.rank === selectedRank);
+      // Keep the selection if the same cut set is still there (at any rank).
+      if (selectedKey !== null) {
+        const row = result.cutSets.find((cs) => cutSetKey(cs) === selectedKey);
         if (row) highlightRow(row);
         else unselect();
       }
@@ -155,11 +162,13 @@ export function mount(panel, ctx) {
 
   function highlightRow(row) {
     selectedRank = row.rank;
+    selectedKey = cutSetKey(row);
     ctx.highlight(row.events.map((e) => e.id), SOURCE);
   }
 
   function unselect() {
     selectedRank = null;
+    selectedKey = null;
     ctx.clearHighlight(SOURCE);
   }
 
