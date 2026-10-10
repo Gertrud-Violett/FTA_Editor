@@ -27,8 +27,9 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _node(script: str, *args: str):
-    out = subprocess.run(["node", "-e", script, *args], capture_output=True, encoding="utf-8",
+def _node(script: str):
+    """Run `script` under node (CommonJS, read from stdin); its stdout as JSON."""
+    out = subprocess.run(["node", "-"], input=script, capture_output=True, encoding="utf-8",
                          check=True).stdout
     return json.loads(out)
 
@@ -49,7 +50,12 @@ def _braced(src: str, start: int) -> str:
 def test_node_output_is_read_as_utf8():
     """node writes UTF-8; text mode alone decodes with the locale's code page
     (cp1252 on Windows CI), which garbled the Japanese strings these checks
-    compare. Every node call in this file names the encoding."""
+    compare. Every node call in this file names the encoding.
+
+    It also hands node its script on stdin rather than as `-e <script>`: a
+    script carrying main.js's string table runs to ~39,000 characters, past
+    the 32,767 Windows allows for a whole command line, and an argv is encoded
+    with the locale's code page on POSIX."""
     tree = ast.parse(_read(Path(__file__)))
     runs = [
         node for node in ast.walk(tree)
@@ -58,8 +64,13 @@ def test_node_output_is_read_as_utf8():
     ]
     assert runs
     for run in runs:
-        encoding = {kw.arg: kw.value for kw in run.keywords}.get("encoding")
+        keywords = {kw.arg: kw.value for kw in run.keywords}
+        encoding = keywords.get("encoding")
         assert isinstance(encoding, ast.Constant) and encoding.value == "utf-8", "line %d" % run.lineno
+        assert "input" in keywords, "line %d: the script goes on stdin" % run.lineno
+        command = run.args[0]
+        assert isinstance(command, ast.List) and [
+            getattr(item, "value", None) for item in command.elts] == ["node", "-"], "line %d" % run.lineno
 
 
 # ---- diagram.js: the SVG sanitiser holds on its own ----------------------------------
@@ -312,7 +323,7 @@ _API_HARNESS = r"""
       text: async () => '{"ok": true}',
     };
   };
-  const { api } = await import(process.argv[1]);
+  const { api } = await import(API_JS);
   for (const lang of ['ja', 'en', '']) {
     document.documentElement.lang = lang;
     await api.get('/state');
@@ -325,8 +336,8 @@ _API_HARNESS = r"""
 
 @needs_node
 def test_api_requests_carry_the_editor_language():
-    api_js = (STATIC / "api.js").as_uri()
-    assert _node(_API_HARNESS, api_js) == ["ja", "ja", "en", "en", None, None]
+    api_js = "const API_JS = %s;\n" % json.dumps((STATIC / "api.js").as_uri())
+    assert _node(api_js + _API_HARNESS) == ["ja", "ja", "en", "en", None, None]
 
 
 def test_export_downloads_carry_the_editor_language():
@@ -376,7 +387,7 @@ _API_I18N_HARNESS = r"""
     },
   };
   globalThis.document = { documentElement: { lang: 'ja' } };
-  const { api } = await import(process.argv[1]);
+  const { api } = await import(API_JS);
   const grab = async (fn) => { try { await fn(); return null; } catch (err) { return err.message; } };
   const answer = (status, type, body) => async () => ({
     ok: status < 400, status, headers: new Headers({ 'Content-Type': type }), text: async () => body,
@@ -408,9 +419,10 @@ def _shell_strings(language: str) -> dict:
 
 @needs_node
 def test_api_client_errors_are_translated():
-    api_js = (STATIC / "api.js").as_uri()
     ja = _shell_strings("ja")
-    harness = _API_I18N_HARNESS.replace("(async () => {", "const JA = %s;\n(async () => {" % json.dumps(ja), 1)
+    # the table goes in as raw UTF-8, and the messages come back the same way
+    harness = "const API_JS = %s;\nconst JA = %s;\n%s" % (
+        json.dumps((STATIC / "api.js").as_uri()), json.dumps(ja, ensure_ascii=False), _API_I18N_HARNESS)
     expected = {
         "network": ja["api.network"],
         "badResponse": ja["api.badResponse"].replace("{status}", "502"),
@@ -418,7 +430,7 @@ def test_api_client_errors_are_translated():
         "noSession": ja["api.noSession"],
     }
     assert not any(text.isascii() for text in expected.values()), "Japanese text, read back from node"
-    assert _node(harness, api_js) == expected
+    assert _node(harness) == expected
 
 
 def test_client_error_keys_exist_in_both_languages_and_are_used():
