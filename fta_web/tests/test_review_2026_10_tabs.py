@@ -133,3 +133,26 @@ def test_uncertainty_run_overlapping_an_edit_is_stale():
         "the tree must be noted before the request"
     assert "stale = now.tree !== sampled.tree || now.analysis !== sampled.analysis;" in run
     assert "stale = false;" not in run, "an answer must not clear staleness unconditionally"
+
+
+# ---- Uncertainty: a seed the browser cannot hold exactly is refused --------------------
+# 9007199254740993 ran as seed 9007199254740992 (a different, silently changed
+# seed); 1e20 came back as the server's English 400 instead of the field's own
+# invalid marker.
+
+@needs_node
+def test_uncertainty_seed_must_be_a_safe_integer():
+    src = _read(TABS / "uncertainty.js")
+    common = _read(TABS / "analysis_common.js")
+    code = _function(common, "parseNumber") + "\n" + _function(src, "seedIsValid")
+    cases = ["", "0", "42", "9007199254740991", "9007199254740992", "9007199254740993",
+             "99999999999999999999", "-1", "1.5", "abc"]
+    script = code + "\nconsole.log(JSON.stringify(%s.map((c) => seedIsValid(parseNumber(c)))));"
+    got = _node(script % json.dumps(cases))
+    assert dict(zip(cases, got)) == {
+        "": True, "0": True, "42": True, "9007199254740991": True,
+        "9007199254740992": False, "9007199254740993": False, "99999999999999999999": False,
+        "-1": False, "1.5": False, "abc": False,
+    }
+    for name in ("function readInputs()", "async function saveDefaults()"):
+        assert "const badSeed = !seedIsValid(seed);" in _block(src, name), name
