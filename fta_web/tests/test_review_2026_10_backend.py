@@ -247,14 +247,14 @@ class TestDigitLedIds:
 # B-3: a character XML 1.0 forbids blanked a label, or the whole diagram
 # --------------------------------------------------------------------------
 
-_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
 def _ctrl_tree():
     return {"id": "root", "name": "Top\x01event", "type": "Root", "probability": 1.0,
             "logicGate": "OR", "notes": "", "links": [], "children": [
                 _leaf("e1", "nul\x00here"),
-                _leaf("e2", "bell\x07 esc\x1b nonchar￾"),
+                _leaf("e2", "bell\x07 esc\x1b nonchar\ufffe"),
                 _leaf("e3", "lone \ud800 surrogate"),
                 _leaf("t1", "Transfer", gateType="TRANSFER", transferTo="e1"),
             ]}
@@ -275,7 +275,7 @@ class TestXmlInvalidCharacters:
         core = _core(_ctrl_tree(), title="Ti\x00tle\x07")
         dot, _ = build_dot_text2(core, style=style)
         assert not _XML_INVALID.search(dot), repr(_XML_INVALID.search(dot))
-        assert "nul�here" in dot and "Ti�tle�" in dot
+        assert "nul\ufffdhere" in dot and "Ti\ufffdtle\ufffd" in dot
         # the document itself is not rewritten
         assert core.find_node_by_id("e1")["name"] == "nul\x00here"
 

@@ -174,14 +174,14 @@ class RendererUnavailable(RenderError):
 #: DOT text early (nothing rendered at all); and the browser's SVG parser
 #: rejects an SVG that carries one. A lone surrogate also cannot be encoded
 #: as UTF-8, which the native renderer's temp file needs.
-_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
 def xml_safe(text: object) -> str:
     """``text`` as a string with every character XML 1.0 forbids replaced by
     U+FFFD, so it can be drawn. For display only: the document keeps the
     original text."""
-    return _XML_INVALID.sub("�", str(text))
+    return _XML_INVALID.sub("\ufffd", str(text))
 
 
 def _escape_label(text: object) -> str:
