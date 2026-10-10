@@ -115,6 +115,19 @@ function firstString(source, names) {
   return '';
 }
 
+/**
+ * How many changes POST /api/ai/changes/apply applied. `applied` is the list
+ * of applied records -- Number() of a one-record list is NaN, which once made
+ * a batch with rejections read "Applied 3 of 3". A bare count is accepted
+ * too; only a response with neither falls back to the number requested.
+ */
+function appliedCount(result, requested) {
+  const applied = result && typeof result === 'object' ? result.applied : undefined;
+  if (Array.isArray(applied)) return applied.length;
+  if (typeof applied === 'number' && Number.isFinite(applied)) return applied;
+  return requested;
+}
+
 /* ------------------------------------------------------------ the panel ---- */
 
 const ROLE_KEY = {
@@ -530,13 +543,16 @@ export function initChat(host) {
     try {
       const result = await api.post('/ai/changes/apply', { indices: indices });
       if (destroyed) return;
-      const applied = Number.isFinite(Number(result && result.applied))
-        ? Number(result.applied)
-        : indices.length;
+      const applied = appliedCount(result, indices.length);
       await refreshDocument(result);
       retireChanges(handle, t('ai.changes.applied', { n: applied, total: total }));
       if (openChanges === handle) openChanges = null;
       say('system', 'ai.changes.applied', { n: applied, total: total });
+      // A partial success names what was not applied and why, as the
+      // all-rejected 400 does through handleError.
+      if (result && Array.isArray(result.rejected) && result.rejected.length) {
+        showDiagnostics({ rejected: result.rejected });
+      }
     } catch (err) {
       if (destroyed) return;
       handle.status.textContent = '';

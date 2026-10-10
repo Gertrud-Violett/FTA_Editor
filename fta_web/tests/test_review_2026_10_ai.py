@@ -489,3 +489,42 @@ class TestModelOutputIsValidatedLikeUserInput:
         assert response.status_code == 200, body(response)
         vote = get_state().core.find_node_by_id("vote")
         assert vote["calculatedProbability"] == pytest.approx(3 * 0.1 ** 2 * 0.9 + 0.1 ** 3)
+
+
+# --------------------------------------------------------------------------
+# AI-04: "Applied 3 of 3" for a batch where two of three were rejected
+# --------------------------------------------------------------------------
+
+
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+
+
+def _chat_source():
+    return (STATIC / "chat.js").read_text(encoding="utf-8")
+
+
+@needs_node
+def test_the_applied_count_is_what_the_server_applied():
+    """``applied`` is the list of applied records; ``Number([{...}])`` is NaN,
+    so the old code fell back to the number of ticked boxes."""
+    fn = re.search(r"^function appliedCount\(.*?\n\}", _chat_source(), re.S | re.M)
+    assert fn, "chat.js has no top-level appliedCount()"
+    cases = [
+        [{"applied": [{"index": 0}], "rejected": [{"index": 1}, {"index": 2}]}, 3],
+        [{"applied": [{"index": 0}, {"index": 2}], "rejected": [{"index": 1}]}, 3],
+        [{"applied": 2}, 3],
+        [{}, 3],
+        [None, 2],
+    ]
+    script = fn.group(0) + "\nconsole.log(JSON.stringify(%s.map((c) => appliedCount(c[0], c[1]))));" % json.dumps(cases)
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
+    assert json.loads(out) == [1, 2, 2, 3, 2]
+
+
+def test_a_partial_apply_shows_what_was_rejected():
+    body_src = re.search(
+        r"async function applyChanges\(handle, total\) \{(.*?)\n  \}\n", _chat_source(), re.S
+    ).group(1)
+    assert "appliedCount(result, indices.length)" in body_src
+    assert "Number(result.applied)" not in body_src
+    assert "showDiagnostics({ rejected: result.rejected })" in body_src
