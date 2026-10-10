@@ -707,6 +707,113 @@ def test_fmea_preview_shows_the_filled_item(tmp_path):
     assert [row[0] for row in payload["rows"]] == ["Pump", "Pump", None, "Pump", "Valve", "Valve"]
 
 
+FULL_COLUMNS = ["ID", "Item", "Mode", "Cause", "S", "O", "D", "Rate"]
+FULL_MAPPING = {"id": "ID", "item": "Item", "mode": "Mode", "cause": "Cause",
+                "severity": "S", "occurrence": "O", "detection": "D", "lambda": "Rate"}
+
+
+def _reimport(tree, rows, mapping, source, columns=FULL_COLUMNS):
+    from fta_web import fmea_import
+
+    return fmea_import.apply_import(tree, rows, mapping, "root", {}, source, columns=columns)
+
+
+def _imported_tree():
+    tree = {"id": "root", "name": "Top", "type": "Root", "probability": 1.0, "children": []}
+    _reimport(tree, [["F-1", "Pump", "Leak", "Seal wear", 8, 3, 4, 1e-6],
+                     ["F-2", "Valve", "Stuck", "Corrosion", 7, 5, 2, 2e-6],
+                     ["F-3", "Fan", "Noise", "Bearing", 4, 4, 4, 3e-6]], FULL_MAPPING, "v1.csv")
+    return tree
+
+
+def test_fmea_reimport_updates_only_the_mapped_fields():
+    """Refreshing only the failure rates (ID + λ mapped) wiped item, mode,
+    cause, S/O/D and RPN from every fmea block and renamed the nodes to
+    their IDs ('Pump – Leak' -> 'F-1')."""
+    tree = _imported_tree()
+    pump = tree["children"][0]
+    result = _reimport(tree, [["F-1", 5e-6]], {"id": "ID", "lambda": "Rate"}, "rates.csv",
+                       columns=["ID", "Rate"])
+    assert result["updated"] == ["root_0"]
+    assert pump["name"] == "Pump – Leak"
+    assert pump["fmea"] == {"id": "F-1", "item": "Pump", "mode": "Leak", "cause": "Seal wear",
+                            "severity": 8, "occurrence": 3, "detection": 4, "rpn": 96,
+                            "source": "rates.csv"}
+    assert pump["quant"]["lambda"] == 5e-6
+
+
+def test_fmea_reimport_mapped_blank_clears_and_name_follows_mapped_columns():
+    tree = _imported_tree()
+    pump = tree["children"][0]
+    # A mapped column left blank empties that field; the mode is re-derived
+    # into the name with the node's kept item.
+    _reimport(tree, [["F-1", "Leak (rev B)", None]], {"id": "ID", "mode": "Mode", "cause": "Cause"},
+              "v1.csv", columns=["ID", "Mode", "Cause"])
+    assert pump["name"] == "Pump – Leak (rev B)"
+    assert "cause" not in pump["fmea"] and pump["fmea"]["item"] == "Pump"
+    # A new severity alone: RPN follows S x O x D of the node's ranks.
+    _reimport(tree, [["F-1", 9]], {"id": "ID", "severity": "S"}, "v1.csv", columns=["ID", "S"])
+    assert pump["fmea"]["severity"] == 9 and pump["fmea"]["rpn"] == 9 * 3 * 4
+
+
+def test_fmea_reimport_reports_rows_no_longer_in_the_sheet():
+    """Nodes of an earlier import of the sheet whose rows are gone are kept,
+    and listed -- not silently left behind."""
+    from fta_web import fmea_import
+
+    tree = _imported_tree()
+    _reimport(tree, [["X-1", "Pipe", "Burst"]], {"id": "ID", "item": "Item", "mode": "Mode"},
+              "other.csv", columns=["ID", "Item", "Mode"])
+    # v2 of the sheet (renamed file): F-2 removed, F-3 present but invalid, F-4 new.
+    result = _reimport(tree, [["F-1", "Pump", "Leak", "Seal wear", 8, 3, 4, 1e-6],
+                              ["F-3", "Fan", "Noise", "Bearing", 11, 4, 4, 3e-6],
+                              ["F-4", "Hose", "Crack", "Age", 6, 2, 3, 1e-7]],
+                       FULL_MAPPING, "v2.csv")
+    assert [s["reason"] for s in result["skipped"]] == ["invalidRank"]
+    assert result["notInSheet"] == [{"id": "root_1", "name": "Valve – Stuck", "fmeaId": "F-2"}]
+    ids = [n["id"] for n in tree["children"]]
+    assert "root_1" in ids and len(ids) == 5  # nothing deleted; X-1 not reported
+    assert fmea_import.apply_import(  # a first import has nothing to report
+        {"id": "root", "name": "T", "children": []}, [["A", "M"]], {"id": "ID", "mode": "Mode"},
+        "root", {}, "new.csv", columns=["ID", "Mode"])["notInSheet"] == []
+
+
+def test_fmea_import_route_returns_not_in_sheet(tmp_path):
+    import flask
+
+    from fta_web.routes.fmea import fmea_bp
+    from fta_web.routes.tree import tree_bp
+    from fta_web.state import get_state, reset_state
+
+    sheet = tmp_path / "f.csv"
+    sheet.write_text("ID,Mode\nA,Leak\nB,Stuck\n", encoding="utf-8")
+    reset_state()
+    app = flask.Flask(__name__)
+    app.register_blueprint(tree_bp)
+    app.register_blueprint(fmea_bp)
+    get_state().fs_root = tmp_path
+    body = {"path": "f.csv", "mapping": {"id": "ID", "mode": "Mode"}, "parentId": "root"}
+    with app.test_client() as client:
+        assert client.post("/api/fmea/import", json=body).get_json()["notInSheet"] == []
+        sheet.write_text("ID,Mode\nA,Leak\n", encoding="utf-8")
+        payload = client.post("/api/fmea/import", json=body).get_json()
+    assert payload["notInSheet"] == [{"id": "root_1", "name": "Stuck", "fmeaId": "B"}]
+    assert len(payload["tree"]["children"]) == 2
+
+
+def test_fmea_tab_shows_the_rows_no_longer_in_the_sheet():
+    """The FMEA tab says how many nodes of an earlier import are no longer
+    in the sheet (and names them), in English and Japanese."""
+    static = REPO / "fta_web" / "static" / "js"
+    tab = (static / "tabs" / "fmea.js").read_text(encoding="utf-8")
+    assert "res.notInSheet" in tab and "t('fmea.notInSheet'" in tab
+    catalog = (static / "i18n" / "fmea.js").read_text(encoding="utf-8")
+    en, ja = catalog.split("\n  ja:", 1)
+    for part in (en, ja):
+        line = next(ln for ln in part.splitlines() if "'fmea.notInSheet'" in ln)
+        assert "{n}" in line and "{names}" in line
+
+
 def _xlsx_with_dimension(path, ref):
     """A workbook whose sheet XML declares ``<dimension ref=ref/>``, as some
     exporters write it regardless of the data."""

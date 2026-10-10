@@ -23,7 +23,8 @@ bare dict tree and reusable from the CLI:
 update=True, lambda_unit="h", columns=None, row_numbers=None, delimiter=None)``
     Mutates ``tree`` (the root node dict) and returns
     ``{created: [ids], updated: [ids], unchanged: [ids], skipped: [{row,
-    fmeaId, reason, field, value, message}]}``.
+    fmeaId, reason, field, value, message}], notInSheet: [{id, name,
+    fmeaId}]}``.
 
 Import rules
 ------------
@@ -34,10 +35,16 @@ Import rules
   (merged cells read as blank). :func:`fill_down` does the same for the
   preview.
 * **Update in place.** With ``update`` true a row whose key equals the
-  ``fmea.id`` of a node *anywhere* in the tree updates that node (name, the
-  ``fmea`` block, and -- for a leaf -- its quantification). With ``update``
-  false such a row is skipped (``exists``). A key repeated inside the same
-  sheet is imported once; later repeats are skipped (``duplicate``).
+  ``fmea.id`` of a node *anywhere* in the tree updates that node (the
+  ``fmea`` block, the name, and -- for a leaf -- its quantification). Only
+  the fields whose columns are mapped change (a mapped column left blank
+  empties its field); the name is re-derived only when the item or mode
+  column is mapped. With ``update`` false such a row is skipped (``exists``).
+  A key repeated inside the same sheet is imported once; later repeats are
+  skipped (``duplicate``).
+* **Rows gone from the sheet.** Nodes of an earlier import of this sheet
+  (``fmea.source`` is this import's label, or that of a node it matched)
+  whose key no row holds any more are kept, and listed in ``notInSheet``.
 * **New rows** become leaf events under ``parent_id`` with ids from
   ``tree_ops.next_child_id`` (the desktop id format), named ``"item – mode"``
   (or whichever of the two is present, else the key).
@@ -667,8 +674,7 @@ def _occurrence_probability(table: Dict[str, Any], rank: int) -> Optional[float]
     return value
 
 
-def _node_name(values: Dict[str, Any], key: str) -> str:
-    item, mode = values["item"], values["mode"]
+def _node_name(item: Any, mode: Any, key: str) -> str:
     if item and mode:
         name = "%s – %s" % (item, mode)
     else:
@@ -676,27 +682,61 @@ def _node_name(values: Dict[str, Any], key: str) -> str:
     return sanitize_name(name)[: node_schema.MAX_TEXT]
 
 
-def _fmea_block(values: Dict[str, Any], key: str, source: str) -> Dict[str, Any]:
-    block: Dict[str, Any] = {"id": key}
+_RANKS = ("severity", "occurrence", "detection")
+
+
+def _fmea_block(values: Dict[str, Any], key: str, source: str, mapped: Iterable[str],
+                existing: Any = None) -> Dict[str, Any]:
+    """The node's ``fmea`` block after this row.
+
+    Only the fields whose columns are mapped come from the sheet (a mapped
+    column left blank empties its field); the others keep the node's
+    values -- refreshing just the failure rates must not wipe item, mode,
+    cause and ranks. RPN, when not mapped itself, follows S×O×D of the
+    resulting ranks once any rank is mapped and all three are known.
+    """
+    mapped = set(mapped)
+    block = dict(existing) if isinstance(existing, dict) else {}
+    patch: Dict[str, Any] = {"id": key}
     for field in ("item", "mode", "cause"):
-        if values[field]:
-            block[field] = values[field][: node_schema.MAX_TEXT]
-    for field in ("severity", "occurrence", "detection", "rpn"):
-        if values[field] is not None:
-            block[field] = values[field]
+        if field in mapped:
+            if values[field]:
+                patch[field] = values[field][: node_schema.MAX_TEXT]
+            else:
+                block.pop(field, None)
+    for field in _RANKS:
+        if field in mapped:
+            if values[field] is not None:
+                patch[field] = values[field]
+            else:
+                block.pop(field, None)
+    if "rpn" in mapped:
+        if values["rpn"] is not None:  # given, or the row's own S×O×D
+            patch["rpn"] = values["rpn"]
+        else:
+            block.pop("rpn", None)
+    elif mapped & set(_RANKS):
+        ranks = [patch.get(field, block.get(field)) for field in _RANKS]
+        if all(isinstance(r, int) and not isinstance(r, bool) for r in ranks):
+            patch["rpn"] = ranks[0] * ranks[1] * ranks[2]
     if source:
-        block["source"] = source[: node_schema.MAX_TEXT]
-    # Round-trip through the schema validator: what lands on disk is exactly
-    # what a PATCH could have written.
-    return node_schema.validate_fmea(block) or {}
+        patch["source"] = source[: node_schema.MAX_TEXT]
+    # Round-trip through the schema validator: what the sheet writes is
+    # exactly what a PATCH could have written.
+    block.update(node_schema.validate_fmea(patch) or {})
+    return block
 
 
 def _apply_values(node: Dict[str, Any], values: Dict[str, Any], key: str,
-                  table: Dict[str, Any], source: str, created: bool) -> None:
-    node["name"] = _node_name(values, key)
-    # The fmea block is replaced wholesale: the sheet is the source of truth
-    # for it, and a column emptied in the sheet must empty here too.
-    node["fmea"] = _fmea_block(values, key, source)
+                  table: Dict[str, Any], source: str, created: bool,
+                  mapped: Iterable[str] = FIELDS) -> None:
+    mapped = set(mapped)
+    node["fmea"] = _fmea_block(values, key, source, mapped,
+                               None if created else node.get("fmea"))
+    # The name is derived from item and mode: re-derived only when one of
+    # them is mapped (from the node's resulting values), else kept.
+    if created or mapped & {"item", "mode"}:
+        node["name"] = _node_name(node["fmea"].get("item"), node["fmea"].get("mode"), key)
 
     if not _quantifiable(node):
         return
@@ -814,6 +854,12 @@ def apply_import(
         taken.add(new_id)
         return new_id
 
+    # For notInSheet: every key the sheet holds (invalid rows too), and the
+    # sources -- this one, and those of the nodes it matches -- that count
+    # as earlier imports of this sheet (it may have been renamed since).
+    sheet_keys = set()
+    lineage = {source_label} if source_label else set()
+
     fill = _ItemFill(mapping)
     for index, raw in enumerate(rows or []):
         if isinstance(raw, dict):
@@ -826,6 +872,15 @@ def apply_import(
         def get(field, _cells=cells):
             column = mapping.get(field)
             return _cells.get(column) if column else None
+
+        row_key = (_text(get("id")) or " / ".join(
+            v for v in (_text(get("item")), _text(get("mode"))) if v))[: node_schema.MAX_TEXT]
+        if row_key:
+            sheet_keys.add(row_key)
+            matched = by_key.get(row_key)
+            source = (matched.get("fmea") or {}).get("source") if matched is not None else None
+            if isinstance(source, str) and source:
+                lineage.add(source)
 
         try:
             values = _parse_row(get, factor, comma_groups)
@@ -863,7 +918,8 @@ def apply_import(
                 })
                 continue
             before = repr(sorted((k, repr(v)) for k, v in existing.items() if k != "children"))
-            _apply_values(existing, values, key, table, source_label, created=False)
+            _apply_values(existing, values, key, table, source_label, created=False,
+                          mapped=mapping)
             after = repr(sorted((k, repr(v)) for k, v in existing.items() if k != "children"))
             bucket = "updated" if before != after else "unchanged"
             result[bucket].append(str(existing.get("id")))
@@ -881,11 +937,23 @@ def apply_import(
             "links": [],
             "children": [],
         }
-        _apply_values(node, values, key, table, source_label, created=True)
+        _apply_values(node, values, key, table, source_label, created=True, mapped=mapping)
         parent.setdefault("children", []).append(node)
         by_key[key] = node
         result["created"].append(new_id)
 
+    # Nodes of an earlier import of this sheet whose rows are gone: kept (the
+    # analysis may have grown around them), but reported.
+    result["notInSheet"] = []
+    for node in _walk(tree):
+        fmea = node.get("fmea")
+        if not isinstance(fmea, dict) or fmea.get("id") in (None, ""):
+            continue
+        source = fmea.get("source")
+        if str(fmea["id"]) in sheet_keys or not isinstance(source, str) or source not in lineage:
+            continue
+        result["notInSheet"].append({"id": str(node.get("id")), "name": node.get("name", ""),
+                                     "fmeaId": str(fmea["id"])})
     return result
 
 

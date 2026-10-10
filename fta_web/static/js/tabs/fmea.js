@@ -30,6 +30,7 @@ const KEY_FIELDS = Object.freeze(['id', 'item', 'mode']);
 const UNITS = Object.freeze(['h', 'y', 'FIT']);
 const RANKS = Object.freeze(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
 const MAX_SKIPPED_SHOWN = 200;
+const MAX_NOT_IN_SHEET_NAMES = 10;
 
 /** Mirrors engine.AIAG_OCCURRENCE_TABLE; the server's copy wins once previewed. */
 const AIAG_DEFAULT = Object.freeze({
@@ -591,6 +592,18 @@ export function mount(panel, ctx) {
             }),
       }),
     ];
+    // Nodes of an earlier import whose rows are gone from the sheet: kept.
+    const gone = res.notInSheet || [];
+    if (gone.length) {
+      const names = gone.slice(0, MAX_NOT_IN_SHEET_NAMES).map((g) => g.name || g.fmeaId || g.id);
+      if (gone.length > MAX_NOT_IN_SHEET_NAMES) names.push('…');
+      children.push(
+        el('p', {
+          class: 'fmea-msg',
+          text: t('fmea.notInSheet', { n: gone.length, names: names.join(', ') }),
+        })
+      );
+    }
     const ids = [...created, ...updated];
     if (ids.length) {
       children.push(

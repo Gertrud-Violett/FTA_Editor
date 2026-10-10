@@ -26,7 +26,9 @@ is 4xx ``PATH_REJECTED`` with ``detail.reason``.
     that differs from the document's is saved into
     ``analysis.fmeaOccurrenceTable`` in the same undo step. Returns the
     mutation payload plus ``{created: [ids], updated: [ids], unchanged: [ids],
-    skipped: [{row, fmeaId, reason, field?, value?, message}], changed}``.
+    skipped: [{row, fmeaId, reason, field?, value?, message}], notInSheet:
+    [{id, name, fmeaId}], changed}`` -- ``notInSheet`` lists the nodes of an
+    earlier import of the sheet whose rows are gone (kept, not deleted).
 
 Errors: 409 ``MODE_UNSUPPORTED`` in ETA mode (checked first); 503
 ``EXPORT_UNAVAILABLE`` with ``detail.package = 'openpyxl'`` for an ``.xlsx``
@@ -349,6 +351,7 @@ def post_import():
             updated=result["updated"],
             unchanged=result["unchanged"],
             skipped=result["skipped"],
+            notInSheet=result["notInSheet"],
             changed=changed,
             source=label,
             **_mutation_payload(state),
