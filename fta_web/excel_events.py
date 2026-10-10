@@ -344,6 +344,14 @@ def analysis_rows(core) -> List[Tuple[str, Any, str]]:
     return rows
 
 
+def _as_text(cell) -> None:
+    """Keep a text cell text. openpyxl stores any string that starts with
+    '=' as a formula, so a node named '=HYPERLINK(...)' (from a supplier's
+    tree or FMEA sheet) became a live link, and '=1+1' showed as 2."""
+    if cell.data_type == "f":
+        cell.data_type = "s"
+
+
 def _replace_sheet(wb, title: str):
     if title in wb.sheetnames:
         index = wb.sheetnames.index(title)
@@ -377,6 +385,8 @@ def _write_events(wb, tree: Any, sig_figs: int) -> None:
                 ws.cell(row=row_idx, column=col_idx).number_format = fmt
                 widths[col_idx - 1] = max(widths[col_idx - 1], sig_figs + 6)
             else:
+                if kind == "text":
+                    _as_text(ws.cell(row=row_idx, column=col_idx))
                 widths[col_idx - 1] = max(widths[col_idx - 1], len(str(value)))
     for col_idx, width in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max(width + 2, 6), 50)
@@ -396,6 +406,7 @@ def _write_analysis(wb, core, sig_figs: int) -> None:
         if not (value is None or isinstance(value, (int, float))):
             value = xml_text(value)  # title, date, mode: text from the file
         ws.append([setting, value, note])
+        _as_text(ws.cell(row=ws.max_row, column=2))
         # Probabilities get the scientific format; hours and counts stay
         # General (8760 h, not 8.76E+03).
         if isinstance(value, float) and setting in PROBABILITY_SETTINGS:
@@ -422,6 +433,13 @@ def export_xlsx(core, path: str, sig_figs: int = 3) -> Tuple[bool, Optional[str]
 
         sf = clamp_sig_figs(sig_figs)
         wb = load_workbook(path)
+        # The core writes text only; a "formula" in its sheet is a name that
+        # starts with '=' (and, with its '\n(Type: ...)' tail, a broken one
+        # Excel offers to repair).
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows():
+                for cell in row:
+                    _as_text(cell)
         _write_events(wb, core.get_data(), sf)
         _write_analysis(wb, core, sf)
         wb.save(path)
