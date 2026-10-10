@@ -1273,6 +1273,8 @@ Hierarchical column structure:
 - Auto-adjusted widths
 - Wrapped text
 - All node details in each cell
+- Text stays text: in the web app's export a name that starts with `=`
+  is never turned into a formula
 
 From 1.7 the web app's workbook also has a flat **Events** sheet (one row per
 node, numbers as real numbers) and an **Analysis** sheet (settings and

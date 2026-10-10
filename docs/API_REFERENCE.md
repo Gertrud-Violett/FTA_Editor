@@ -151,7 +151,17 @@ app reads `probability`, so it shows the same values. It still computes a
 
 **Mutation payload.** Every endpoint that changes the document returns
 `tree, zeroNodes, dirty, canUndo, canRedo`, and now also `analysis` and
-`sessionWarnings`.
+`sessionWarnings`. An edit that changes nothing (a `PATCH`,
+`POST /api/metadata` or `POST /api/analysis/settings` with the current
+values, a move to the node's current place) returns the same payload
+without an undo step and without marking the document modified.
+
+**Tree depth.** A node may sit at most `MAX_TREE_DEPTH` (200) levels below
+the root. `POST /api/nodes` and `POST /api/nodes/<id>/move` refuse a deeper
+node with `400 INVALID_FIELD` (`detail: {field, limit}`), and
+`POST /api/file/open` and `POST /api/import/json` refuse a deeper file with
+`400 INVALID_JSON` (`detail: {reason: "too_deep", depth, limit}`) before
+it replaces the open document.
 
 ### Nodes: new fields and PATCH semantics
 
@@ -186,6 +196,9 @@ app reads `probability`, so it shows the same values. It still computes a
   to the same AND/OR, so the two never disagree.
 - Validation errors are `400 INVALID_FIELD` with the dotted `detail.field`,
   for example `quant.tau`.
+- A link may appear only once per target and relation: a repeat is
+  `400 INVALID_FIELD` (`detail: {field: "links", index}`). The engine would
+  count it twice.
 
 ```http
 PATCH /api/nodes/root_0_1
@@ -197,6 +210,25 @@ the 1.7 keys. They are restored by node id wherever the new tree lacks them,
 and the response includes `mergedFields`, the number of fields restored.
 `gateType` and `k` are restored only while they still project to the node's
 new `logicGate`.
+
+- The model is asked to keep every existing node, but nothing makes it: its
+  whole tree replaces the current one, in one undo step. `updateSummary`
+  says what that did: `added` and `removed` (`[{id, name}]`) and `changed`
+  (`[{id, name, fields}]`, `fields` among `name`, `probability`, `gate` and
+  `quant`; a probability the engine derives is not counted as changed).
+- `409 AI_DOCUMENT_CHANGED`: the document changed while the model was
+  writing (an edit, an undo, New or Open). Nothing is applied.
+- `400 AI_UPDATE_REJECTED` also covers what the tree API would refuse: a
+  probability that is not a number in [0, 1], non-text notes, an invalid
+  1.7 key, unsavable text, or a tree deeper than `MAX_TREE_DEPTH`.
+
+**AI proposals** (`POST /api/ai/changes/apply`): a proposal made for another
+document (New, Open or Import replaced it since), one carrying what
+`PATCH /api/nodes` would refuse, and an edit of a probability the engine
+derives (a rate, standby or repairable model, a house event, a transfer
+gate) are listed in `rejected` with the reason. The rest of the batch is
+applied; when every one is rejected the request is a 400 and nothing
+changes.
 
 ### Analysis endpoints
 
@@ -535,6 +567,8 @@ an **Events** sheet (one row per node; the columns are
 mode, the headline figures). `sigFigs` sets the scientific number format of
 the probability cells; it is clamped to 1–6, and a missing or unparseable
 value gives 3. The UI sends the top bar's significant-figures setting.
+Text stays text in every sheet: a value that starts with `=` (a node named
+`=HYPERLINK(…)`, say) is never written as a formula.
 
 ### New error codes
 
@@ -544,6 +578,7 @@ value gives 3. The UI sends the top bar's significant-figures setting.
 | `BUSY` | 409 | A Monte Carlo run is already in progress | `{}` |
 | `ANALYSIS_TOO_LARGE` | 422 | A voting gate over 20,000 combinations, or the cut-set time budget ran out | `{reason: "kofn"\|"time", nodeId?, k?, n?, combinations?, limit?}` |
 | `EXPORT_UNAVAILABLE` | 503 | An optional package is missing: `python-docx` for the report, `openpyxl` for xlsx export or FMEA import | `{format, package, install, feature?}` |
+| `AI_DOCUMENT_CHANGED` | 409 | `POST /api/ai/update` finished after the document was edited, undone, replaced by New or opened from another file | none |
 
 Messages for these codes are localised like every other error. The English
 text is the server's own message; `fta_web/i18n.py` supplies the Japanese:
@@ -595,6 +630,10 @@ removes them, and `POST /api/redo` brings them back.
   space (171! does not fit a float), and Monte Carlo samples an extreme error
   factor in log space, clamped below the float ceiling, instead of
   overflowing.
+- **Malformed bodies.** An integer beyond the float range is "not finite"
+  (`400 INVALID_FIELD` with its field), and a body nested too deeply to parse
+  is `400 INVALID_JSON`. `POST /api/new` forces only on a real boolean
+  `force: true`; any other non-null value is `400 INVALID_FIELD`.
 
 ---
 
