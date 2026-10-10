@@ -1047,3 +1047,28 @@ console.log(JSON.stringify(seen));
     assert "syncTreeTitle(state);" in _braced(main, main.index("function renderShell(state)"))
     assert "store.subscribe(renderShell);" in main
     assert "if (store.state) renderShell(store.state);" in _braced(main, main.index("function applyLanguage()"))
+
+
+# ---- main.js: the Graphviz capability row says what native dot is for (DOC-34) ---------
+#
+# Since 1.7.1 the screen is always drawn by the bundled WebAssembly Graphviz;
+# a native `dot` only draws the 300-dpi PNG export of the compact style
+# (diagram.js exportPng). The capability panel still said "Diagrams are drawn
+# by the Graphviz installed on this machine" under "Diagram rendering", and
+# the chip called a missing `dot` "Diagram quality limited".
+
+
+@pytest.mark.parametrize("language", ["en", "ja"])
+def test_graphviz_capability_text_matches_what_native_dot_does(language):
+    strings = _shell_strings(language)
+    catalog = _read(STATIC / "i18n" / "diagram.js")
+    table = catalog.split("\n  ja:", 1)[0 if language == "en" else 1]
+    compact = re.search(r"'diagram17\.styleCompact': '([^']*)'", table).group(1)
+    for key in ("cap.dot.ok", "cap.dot.bad"):
+        text = strings[key]
+        assert "WebAssembly" in text and "PNG" in text and "300 dpi" in text, key
+        assert compact in text, (key, "names the style the native export is for")
+    assert "Diagrams are drawn by" not in strings["cap.dot.ok"]
+    assert "で図を描画します" not in strings["cap.dot.ok"]
+    for key in ("cap.dot.name", "cap.chip.graphviz", "cap.dot.fix"):
+        assert "PNG" in strings[key], key
