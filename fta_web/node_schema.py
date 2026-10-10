@@ -381,11 +381,39 @@ MERGE_BACK_KEYS = (
 )
 
 
+#: The gate types logicGate (AND/OR only) can never hold: one found there is
+#: promoted to gateType by :func:`reconcile_gate_types`.
+_PROMOTABLE = tuple(g for g in GATE_TYPES if g not in ("AND", "OR"))
+
+
+def _promote(node: Dict[str, Any], gate_type: str, cause: str) -> Dict[str, Any]:
+    """Move an advanced gate name out of ``logicGate`` into ``gateType``;
+    the ``gate_type_promoted`` warning that says so."""
+    projected = project_logic_gate(gate_type)
+    node["gateType"] = gate_type
+    node["logicGate"] = projected
+    node_id = str(node.get("id"))
+    where = ("set by the AI assistant" if cause == "ai"
+             else "written by hand or by another program")
+    return {
+        "kind": "gate_type_promoted",
+        "old_id": node_id,
+        "new_id": node_id,
+        "name": node.get("name"),
+        "gateType": gate_type,
+        "logicGate": projected,
+        "cause": cause,
+        "message": "Node %r: logicGate held %s (%s), but it holds only AND or OR; "
+                   "%s is now the gate type and logicGate is %s."
+                   % (node_id, gate_type, where, gate_type, projected),
+    }
+
+
 def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, Any]]:
-    """Drop every ``gateType`` that no longer projects to its node's
-    ``logicGate``. Mutates ``tree``; returns load warnings
-    (``kind: "gate_type_reset"``, ``cause``: ``desktop`` for a loaded file,
-    ``ai`` for an AI edit -- it picks the message).
+    """Make every node's ``gateType`` and ``logicGate`` agree. Mutates
+    ``tree``; returns load warnings (``kind`` ``gate_type_reset`` or
+    ``gate_type_promoted``; ``cause``: ``desktop`` for a loaded file, ``ai``
+    for an AI edit -- it picks the message).
 
     The 1.6 desktop app edits only ``logicGate`` and keeps unknown keys, so a
     file edited there can carry a stale ``gateType`` (a KOFN whose gate the
@@ -397,6 +425,12 @@ def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, An
     desktop edit. Any other ``logicGate`` (a hand-written ``"PAND"`` beside
     gateType PAND) keeps the ``gateType`` and is set to its projection,
     without a warning.
+
+    No 1.6 program writes an advanced gate name into ``logicGate`` either, so
+    one there without a ``gateType`` (a hand edit) means that gate: it is
+    *promoted* to the ``gateType`` and ``logicGate`` becomes its projection
+    (``gate_type_promoted``). Any other value is left alone; the engine reads
+    it as 1.6 does (AND, else OR).
     """
     warnings: List[Dict[str, Any]] = []
     stack = [tree] if isinstance(tree, dict) else []
@@ -408,7 +442,10 @@ def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, An
         seen.add(id(node))
         stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
         gate_type = node.get("gateType")
-        if gate_type in (None, ""):
+        if gate_type is None or (isinstance(gate_type, str) and not gate_type.strip()):
+            raw = str(node.get("logicGate") or "").strip().upper()
+            if raw in _PROMOTABLE:
+                warnings.append(_promote(node, raw, cause))
             continue
         logic = str(node.get("logicGate") or "OR").strip().upper()
         projected = project_logic_gate(gate_type)

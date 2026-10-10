@@ -163,7 +163,7 @@ def test_file_with_a_huge_integer_setting_loads_with_a_repair_notice(tmp_path):
             if w["kind"] == "analysis_invalid"] == [["missionTime"]]
 
 
-# ---- E-1: logicGate is read as 1.6 reads it; a same-named gateType is not stale ------------
+# ---- E-1: an advanced name in logicGate is promoted to gateType; others are OR as in 1.6 ---
 
 
 def _write_document(tmp_path, tree, name="doc.json"):
@@ -179,25 +179,97 @@ def _cut_ids(result):
     return sorted(sorted(e["id"] for e in c["events"]) for c in result["cutSets"])
 
 
-@pytest.mark.parametrize("raw", ["PAND", "INHIBIT", "XOR", "KOFN", "pand", " Xor "])
-def test_legacy_logic_gate_holding_an_advanced_name_computes_as_or(tmp_path, raw):
+def _three_half(raw_logic_gate):
+    """A legacy-format tree: no 1.7 keys, logicGate as written, three 0.5 leaves."""
+    return {"id": "root", "name": "top", "type": "Event", "probability": 1.0,
+            "logicGate": raw_logic_gate,
+            "children": [{"id": c, "name": c, "type": "Event", "probability": 0.5, "children": []}
+                         for c in "ABC"]}
+
+
+@pytest.mark.parametrize("raw, gate_type", [
+    ("PAND", "PAND"), ("INHIBIT", "INHIBIT"), ("XOR", "XOR"), ("KOFN", "KOFN"),
+    ("TRANSFER", "TRANSFER"), ("pand", "PAND"), (" Xor ", "XOR"),
+])
+def test_an_advanced_name_in_logic_gate_is_promoted_on_load_with_a_notice(tmp_path, raw, gate_type):
+    """No 1.6 program writes an advanced gate name into logicGate, so one there
+    (a hand edit) means that gate. It becomes the gateType, logicGate becomes
+    its AND/OR projection, and a LOAD_REPAIR notice says so."""
+    from fta_web import node_schema
+    from fta_web.state import load_warning_issues
+
+    core = WebCore()
+    assert core.load_from_json(_write_document(tmp_path, _three_half(raw))) == (True, None)
+    data = core.get_data()
+    assert data["gateType"] == gate_type
+    assert data["logicGate"] == node_schema.project_logic_gate(gate_type)
+    promoted = [w for w in core.last_load_warnings if w["kind"] == "gate_type_promoted"]
+    assert len(promoted) == 1 and promoted[0]["cause"] == "desktop"
+    assert promoted[0]["gateType"] == gate_type and promoted[0]["new_id"] == "root"
+    assert promoted[0]["logicGate"] == data["logicGate"]
+    issue = load_warning_issues(promoted)[0]
+    assert issue["code"] == "LOAD_REPAIR" and issue["nodeId"] == "root"
+    assert gate_type in issue["message"]
+
+
+def test_a_promoted_pand_is_the_same_gate_everywhere(tmp_path):
+    """Legacy logicGate "PAND": tree walk, cut sets, headline, Validation and the
+    display key (gateType) all say Priority-AND."""
+    from fta_web import cutsets, lint
+    from fta_web.state import load_warning_issues
+
+    core = WebCore()
+    assert core.load_from_json(_write_document(tmp_path, _three_half("PAND")))[0]
+    data, analysis = core.get_data(), core.analysis
+    assert data["gateType"] == "PAND" and data["logicGate"] == "AND"
+    assert data["calculatedProbability"] == pytest.approx(0.125 / 6)
+    result = cutsets.compute(data, analysis)
+    assert _cut_ids(result) == [["A", "B", "C"]]
+    assert [a["code"] for a in result["approximations"]] == ["PAND_APPROX"]
+    summary = engine.summary(data, analysis)
+    assert summary["headlineMethod"] == "treeWalk"
+    assert summary["headline"] == data["calculatedProbability"]
+    issues = lint.run(data, analysis, load_warning_issues(core.last_load_warnings))
+    assert [(i["code"], i["params"].get("kind")) for i in issues] == [
+        ("LOAD_REPAIR", "gate_type_promoted"), ("PAND_APPROX", None)]
+
+
+def test_a_promoted_gate_without_its_parameter_is_reported(tmp_path):
+    """KOFN without k and TRANSFER without transferTo: the existing errors say so."""
+    from fta_web import lint
+
+    for raw, code in (("KOFN", "KOFN_ARITY"), ("TRANSFER", "TRANSFER_MISSING")):
+        core = WebCore()
+        assert core.load_from_json(_write_document(tmp_path, _three_half(raw)))[0]
+        assert code in [i["code"] for i in lint.run(core.get_data(), core.analysis)
+                        if i["severity"] == "error"]
+
+
+def test_the_ai_cause_is_named_in_a_promotion_notice():
+    """reconcile_gate_types also runs on both AI paths (cause "ai")."""
+    from fta_web import node_schema
+
+    tree = _three_half("xor")
+    warnings = node_schema.reconcile_gate_types(tree, cause="ai")
+    assert tree["gateType"] == "XOR" and tree["logicGate"] == "OR"
+    assert [(w["kind"], w["cause"]) for w in warnings] == [("gate_type_promoted", "ai")]
+    assert "AI assistant" in warnings[0]["message"]
+
+
+@pytest.mark.parametrize("raw", ["NAND", "FOO", "NOT", "nor"])
+def test_an_unknown_logic_gate_still_computes_as_or_like_1_6(tmp_path, raw):
     """USER_GUIDE: a file without the 1.7 keys behaves exactly as in 1.6, and
-    1.6 reads every logicGate but AND as OR. The web engine and logic.py
-    read an advanced name there as that gate: OR-of-three-0.5 under a raw
-    "PAND" gave 0.0208 (1.6 core and desktop: 0.875), "INHIBIT" 0.125, and
-    "XOR" a tree walk of 0.5 with an MCUB headline of 0.875 -- while lint
-    read the same node as OR."""
+    1.6 reads every logicGate but AND as OR. The engine and logic.py used to
+    read the raw string, so a name they knew was computed as that gate."""
     from FTA_Editor_core import FTACore
 
     from fta_web import cutsets, lint
 
-    tree = {"id": "root", "name": "top", "type": "Event", "probability": 1.0, "logicGate": raw,
-            "children": [{"id": c, "name": c, "type": "Event", "probability": 0.5, "children": []}
-                         for c in "ABC"]}
-    path = _write_document(tmp_path, tree)
+    path = _write_document(tmp_path, _three_half(raw))
     legacy, web = FTACore(), WebCore()
     assert legacy.load_from_json(path)[0] and web.load_from_json(path)[0]
     data, analysis = web.get_data(), web.analysis
+    assert "gateType" not in data and web.last_load_warnings == []
     assert data["calculatedProbability"] == legacy.get_data()["calculatedProbability"] == 0.875
     assert web.quant_warnings == []
     result = cutsets.compute(data, analysis)
@@ -206,6 +278,32 @@ def test_legacy_logic_gate_holding_an_advanced_name_computes_as_or(tmp_path, raw
     summary = engine.summary(data, analysis)
     assert summary["headlineMethod"] == "treeWalk" and summary["headline"] == 0.875
     assert lint.run(data, analysis) == []
+
+
+def test_the_promotion_notice_is_translated_for_the_validation_tab():
+    """messageFor() tries val.code.LOAD_REPAIR.<kind>.<cause>, then .<kind>;
+    every {param} must be one the warning carries."""
+    import re
+    from pathlib import Path
+
+    from fta_web import node_schema
+
+    warning = node_schema.reconcile_gate_types(_three_half("PAND"))[0]
+    src = (Path(__file__).resolve().parents[1] / "static" / "js" / "i18n" / "val.js"
+           ).read_text(encoding="utf-8")
+    en_block, ja_block = src.split("\n  ja:", 1)
+    for block in (en_block, ja_block):
+        for key in ("val.code.LOAD_REPAIR.gate_type_promoted",
+                    "val.code.LOAD_REPAIR.gate_type_promoted.ai"):
+            text = re.search(r"'%s':\s*'([^']*)'" % re.escape(key), block).group(1)
+            assert set(re.findall(r"\{(\w+)\}", text)) <= set(warning), (key, text)
+
+
+def test_the_engine_itself_never_reads_a_gate_type_out_of_logic_gate():
+    """Promotion is reconcile_gate_types' job (load, AI). A tree that skipped it
+    (set_data) computes a raw "PAND" logicGate as OR, exactly as 1.6 does."""
+    core = calc(_three_half("PAND"))
+    assert core.get_data()["calculatedProbability"] == 0.875 and core.quant_warnings == []
 
 
 @pytest.mark.parametrize("gate_type, extra, probs, expected", [
