@@ -139,6 +139,24 @@ export function formatNumberParam(key, value, fmtProb, sigFigs) {
   return Number.isInteger(value) ? String(value) : fmtProb(value);
 }
 
+/**
+ * lint's CUTSETS_TRUNCATED `reason` -- the limits that cut the list short,
+ * "count, order" -- in words: each through `anl.by.<limit>`, the labels the
+ * Cut Sets tab uses. `translate` returns null for an unknown key; such a
+ * token is kept as it is.
+ */
+export function truncationReasonText(reason, translate) {
+  return String(reason)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((token) => {
+      const text = translate('anl.by.' + token);
+      return text === null || text === undefined ? token : text;
+    })
+    .join(', ');
+}
+
 /** An issue's identity for dismissal. main.js validationSignature() must match. */
 function signature(issue) {
   return [issue.code, issue.nodeId, issue.message].join('\u0001');
@@ -307,6 +325,9 @@ export function mount(panel, ctx) {
     if (out.targetId !== undefined && out.targetName === undefined && ctx && ctx.store) {
       const target = ctx.store.findNode(out.targetId);
       out.targetName = target && target.name ? String(target.name) : out.targetId;
+    }
+    if (issue.code === 'CUTSETS_TRUNCATED' && typeof out.reason === 'string') {
+      out.reason = truncationReasonText(out.reason, lookup);
     }
     return out;
   }

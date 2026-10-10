@@ -237,3 +237,26 @@ def test_cutsets_empty_message():
     assert got == ["cutsets.notRun", "cutsets.none", None, None]
     paint = _block(src, "function paint()")
     assert "const empty = emptyMessageKey(result);" in paint and "message.hidden = !empty;" in paint
+
+
+# ---- Validation: the truncation reason is in words, in the UI language ----------------
+# lint's CUTSETS_TRUNCATED reason is the raw limit list ("count, order"); the
+# Japanese message read "カットセットの一覧が途中で打ち切られました (order)。".
+# The Cut Sets tab already labels the same limits through anl.by.*.
+
+@needs_node
+def test_validation_truncation_reason_is_translated():
+    src = _read(TABS / "validation.js")
+    ja = {"anl.by.order": "最大次数", "anl.by.count": "最大件数", "anl.by.cutoff": "カットオフ"}
+    script = _function(src, "truncationReasonText") + (
+        "\nconst ja = %s; const tr = (k) => (k in ja ? ja[k] : null);"
+        "\nconsole.log(JSON.stringify(['count, order', 'cutoff', 'limits', ''].map((r) => truncationReasonText(r, tr))));"
+    ) % json.dumps(ja, ensure_ascii=False)
+    assert _node(script) == ["最大件数, 最大次数", "カットオフ", "limits", ""]
+    body = _block(src, "function displayParams(issue)")
+    assert "if (issue.code === 'CUTSETS_TRUNCATED' && typeof out.reason === 'string')" in body
+    assert "out.reason = truncationReasonText(out.reason, lookup);" in body
+    # every limit lint can name has a label in both languages
+    cat = _read(STATIC / "i18n" / "cutsets.js")
+    for token in ("order", "count", "cutoff"):
+        assert cat.count("'anl.by.%s'" % token) == 2, token
