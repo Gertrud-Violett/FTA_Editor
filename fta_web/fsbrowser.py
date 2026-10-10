@@ -444,8 +444,11 @@ def list_directory(raw: Any, root: Path,
                             "modified": _isoformat(stat.st_mtime),
                         }
                     )
-                except OSError:
-                    continue  # broken symlink, or it vanished mid-listing
+                except (OSError, RuntimeError):
+                    # A broken symlink, or one that vanished mid-listing; and
+                    # a symlink loop, for which Path.resolve() raises
+                    # RuntimeError up to Python 3.12 (not OSError).
+                    continue
     except PermissionError as exc:
         raise PathRejected(
             "'%s' cannot be listed: permission denied." % target.name,

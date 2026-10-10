@@ -796,3 +796,49 @@ class TestExportIsReadOnly:
         assert json.loads(exported.get_data(as_text=True))["date"] != ""
         assert body(c.get("/api/state"))["metadata"]["date"] == ""
         assert get_state().core.date == ""
+
+
+# --------------------------------------------------------------------------
+# B-14: a symlink loop in a folder made the folder unlistable (Python < 3.13)
+# --------------------------------------------------------------------------
+
+
+def _symlinks_supported():
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as scratch:
+        try:
+            os.symlink("x", os.path.join(scratch, "link"))
+        except (OSError, NotImplementedError):
+            return False
+    return True
+
+
+@pytest.mark.skipif(not _symlinks_supported(), reason="symlinks are not available here")
+class TestSymlinkLoopInAListing:
+    """``list_directory`` resolves every symlink it lists to keep escaping
+    ones out. Up to Python 3.12 ``Path.resolve()`` raises RuntimeError
+    ("Symlink loop") even when not strict -- and only OSError was caught, so
+    a folder holding one looping link answered 500 and could not be browsed
+    at all. (3.13 returns the path instead; the loop is simulated so the test
+    means the same on every version.)"""
+
+    def test_the_loop_is_skipped_and_the_rest_listed(self, files_client, sandbox, monkeypatch):
+        import os
+        import pathlib
+
+        write_doc(sandbox, "ok.json", {"tree": {"id": "root", "name": "R"}})
+        os.symlink("loop", sandbox / "loop")
+        real_resolve = pathlib.Path.resolve
+
+        def resolve(self, strict=False):
+            if self.name == "loop":  # what Python 3.10-3.12 do
+                raise RuntimeError("Symlink loop from %r" % str(self))
+            return real_resolve(self, strict=strict)
+
+        monkeypatch.setattr(pathlib.Path, "resolve", resolve)
+        listed = files_client.get("/api/fs/list")
+        assert listed.status_code == 200, body(listed)
+        assert [f["name"] for f in body(listed)["files"]] == ["ok.json"]
+        assert body(listed)["dirs"] == []
