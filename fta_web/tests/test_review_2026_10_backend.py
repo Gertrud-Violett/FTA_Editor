@@ -295,3 +295,99 @@ class TestXmlInvalidCharacters:
         assert out["status"] == "success" and not out["errors"], out
         assert sorted(out["titles"]) == sorted(id_map)
         assert out["xmlInvalid"] is False
+
+
+# --------------------------------------------------------------------------
+# file fixtures: the file and tree blueprints on a sandbox root
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sandbox(tmp_path):
+    root = tmp_path / "sandbox"
+    root.mkdir()
+    return root
+
+
+@pytest.fixture
+def files_client(sandbox):
+    """files_bp + tree_bp + analysis_bp + validate_bp on a bare app; the
+    state's sandbox root is the test's own directory."""
+    import flask
+
+    from fta_web.routes.analysis import analysis_bp
+    from fta_web.routes.files import files_bp
+    from fta_web.routes.tree import tree_bp
+    from fta_web.routes.validate import validate_bp
+
+    reset_state()
+    app = flask.Flask(__name__)
+    for bp in (files_bp, tree_bp, analysis_bp, validate_bp):
+        app.register_blueprint(bp)
+    app.config.update(TESTING=True)
+    get_state().fs_root = sandbox
+    with app.test_client() as client:
+        yield client
+
+
+def write_doc(directory, name, document):
+    path = Path(directory) / name
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def _calc(tree, node_id):
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        if node.get("id") == node_id:
+            return node.get("calculatedProbability")
+        stack.extend(node.get("children") or [])
+    raise KeyError(node_id)
+
+
+# --------------------------------------------------------------------------
+# B-8: a file's "mode" was used verbatim: "eta" was computed as a fault tree
+# --------------------------------------------------------------------------
+
+_EVENT_TREE = {"id": "root", "name": "Initiator", "probability": 0.1, "children": [
+    {"id": "a", "name": "Branch", "probability": 0.5, "children": [
+        {"id": "a1", "name": "Outcome", "probability": 0.2, "children": []}]}]}
+
+
+class TestModeFromAFile:
+    """The engine computes ETA only for the exact string "ETA" while the
+    analysis endpoints compared case-insensitively: a file saying "eta" was
+    computed bottom-up as a fault tree (the end state read 0.2 instead of
+    0.1 x 0.5 x 0.2 = 0.01), showed as FTA, and Cut Sets refused it as an
+    event tree. ``POST /api/metadata`` only ever accepts FTA/ETA; a loaded
+    mode is normalised the same way."""
+
+    @pytest.mark.parametrize("raw", ["eta", " Eta ", "ETA"])
+    def test_eta_in_any_case_is_an_event_tree(self, files_client, sandbox, raw):
+        write_doc(sandbox, "m.json", {"title": "t", "mode": raw, "tree": _EVENT_TREE})
+        opened = files_client.post("/api/file/open", json={"path": "m.json"})
+        assert opened.status_code == 200, body(opened)
+        doc = body(opened)
+        assert doc["metadata"]["mode"] == "ETA"
+        assert _calc(doc["tree"], "a1") == pytest.approx(0.01)
+        assert files_client.get("/api/analysis/summary").status_code == 409
+        assert body(files_client.get("/api/analysis/validate"))["mode"] == "ETA"
+
+    @pytest.mark.parametrize("raw", ["fta", " FTA", "bogus", None, 5])
+    def test_anything_else_is_a_fault_tree(self, files_client, sandbox, raw):
+        write_doc(sandbox, "m.json", {"title": "t", "mode": raw, "tree": _EVENT_TREE})
+        doc = body(files_client.post("/api/file/open", json={"path": "m.json"}))
+        assert doc["metadata"]["mode"] == "FTA"
+        assert files_client.get("/api/analysis/summary").status_code == 200
+
+    def test_import_normalises_too(self, files_client):
+        import io
+
+        data = json.dumps({"title": "t", "mode": "eta", "tree": _EVENT_TREE}).encode("utf-8")
+        imported = files_client.post("/api/import/json",
+                                     data={"file": (io.BytesIO(data), "m.json")},
+                                     content_type="multipart/form-data")
+        assert imported.status_code == 200, body(imported)
+        assert body(imported)["metadata"]["mode"] == "ETA"
+        assert _calc(body(imported)["tree"], "a1") == pytest.approx(0.01)
