@@ -620,6 +620,13 @@ The gate is stored in `gateType`. The legacy `logicGate` field (AND/OR) is
 always kept as the nearest AND/OR **projection** of it, so older readers still
 get the closest coherent answer.
 
+Without a `gateType`, `logicGate` is read as in 1.6: AND, and anything else
+OR. One exception: a file that holds an advanced gate name in `logicGate`
+(`KOFN`, `XOR`, `INHIBIT`, `PAND` or `TRANSFER`, written by hand or by another
+program) is read as that gate. On load the name moves to `gateType`,
+`logicGate` becomes its projection, and the Validation tab lists a load repair
+(`LOAD_REPAIR`, kind `gate_type_promoted`).
+
 | Gate | Symbol (standards view) | Probability (inputs p₁…pₙ, independent) | `logicGate` projection | Notes |
 |---|---|---|---|---|
 | **AND** | flat-bottomed "D" | Πpᵢ | AND | |
@@ -797,7 +804,10 @@ results:
   walk sample for sample.
 - **cutsets**: the MCUB over the most probable minimal cut sets that cover
   99.99 % of the rare-event sum, at most 2,000 of them. It is used otherwise. A
-  warning says when sets were dropped (`MC_CUTSETS_TRUNCATED`).
+  warning says when sets were dropped (`MC_CUTSETS_TRUNCATED`). The sets are
+  chosen by their point values, so an uncertain event in none of them (one
+  whose point value is 0, say) is not sampled at all; a warning names such
+  events (`MC_EVENT_NOT_SAMPLED`).
 
 The results are the **mean**, **median**, **5th** and **95th** percentiles
 (linear interpolation), the **standard deviation**, the **point estimate**
@@ -849,7 +859,8 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `KOFN_ARITY` | error | A k-out-of-n gate has k missing, k < 1 or k > n. | Set k between 1 and the number of inputs. |
 | `XOR_ARITY` | error | An XOR gate does not have exactly 2 inputs. | Give it exactly two inputs, or use OR. |
 | `QUANT_PARAM_MISSING` | error | A rate, standby or repairable model lacks a parameter; the previous probability is used. | Fill in the missing values, or switch to the fixed model. |
-| `CYCLIC_LINK` | warning | A link closes a loop. The engine uses the target's value from its children only, so the result is approximate. | Remove the link, or link to a node that is not above this one. |
+| `PROBABILITY_OUT_OF_RANGE` | error | FTA and ETA: a probability the engine uses is not a number from 0 to 1 (NaN, negative, above 1, non-numeric text or true/false, as a hand-edited or foreign file can hold). In FTA mode that is a basic leaf's own probability (not a house event's, nor one derived from a rate, standby or repairable model); in ETA mode every node's. Every result that uses it is wrong. | Enter a probability between 0 and 1 (for example 1e-4). |
+| `CYCLIC_LINK` | warning | A link closes a loop (through children, links or a transfer). The engine uses the target's value from its children only, so the result is approximate. | Remove the link, or link to a node that is not above this one. |
 | `TRANSFER_HAS_CHILDREN` | warning | A transfer gate has children, which are ignored. | Move them under the transfer target, or delete them. |
 | `HOUSE_HAS_CHILDREN` | warning | A house event has children, so its on/off state is ignored. | Make it a basic event, or move the children. |
 | `SINGLE_INPUT_GATE` | warning | An AND, OR or PAND gate below the top event has one input and no links, so it does nothing. | Add an input, or remove the level. |
@@ -860,21 +871,22 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `NONCOHERENT_XOR` | warning | The tree has XOR gate(s), so cut-set results are approximate. | Use OR if both events can happen together. |
 | `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so the results may be underestimated. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
 | `ETA_BRANCH_SUM` | warning | ETA only: the children's probabilities do not sum to 1 (±1e-6). | Adjust the branch probabilities. |
-| `LOAD_REPAIR` | warning | The file was repaired on load (duplicate id renamed, top id changed, invalid analysis setting reset, stale gate type dropped), or an AI edit left a stale gate type that was dropped. | Check the node, and save to keep the repair. |
+| `LOAD_REPAIR` | warning | The file was repaired on load: a duplicate id renamed, the top id changed, an invalid analysis setting reset, a stale gate type dropped, a repeated link dropped (it was counted twice), text that cannot be saved (an unpaired surrogate, half of an emoji) replaced with U+FFFD, or an advanced gate name written into the old AND/OR field promoted to that gate. Or an AI edit left a stale gate type that was dropped, or wrote an advanced gate name into the AND/OR field. | Check the node, and save to keep the repair. |
 | `LINKS_REMOVED` | warning | Deleting a node (by hand or by the AI assistant) removed links or transfer targets (`transferTo`) that pointed to it. | Re-add the link or transfer target if the dependency still exists. |
 | `UNDEVELOPED_EVENT` | info | The leaf is marked undeveloped. | Nothing needed, or develop it later. |
 | `PAND_APPROX` | info | A Priority-AND gate is evaluated as AND × 1/n!. | Nothing needed; note the approximation in your report. |
 
 The top event is never `SINGLE_INPUT_GATE`, because a top event that restates
 its one cause is normal practice. An empty document is never
-`DEFAULT_PROBABILITY`. In ETA mode only `ETA_BRANCH_SUM` and the session
-notices are reported.
+`DEFAULT_PROBABILITY`. In ETA mode only `ETA_BRANCH_SUM`,
+`PROBABILITY_OUT_OF_RANGE` and the session notices are reported.
 
 `LOAD_REPAIR` and `LINKS_REMOVED` are *session notices*. They are collected
 while the document is open and are not saved in the file. A load repair is
 not undone. A notice raised by an edit belongs to that edit: `LINKS_REMOVED`
-(from a delete, by hand or by the AI assistant) and a stale gate type dropped
-after an AI edit (the notice says *The AI assistant set this gate to …*).
+(from a delete, by hand or by the AI assistant), and a stale gate type
+dropped or an advanced gate name promoted after an AI edit (the notice
+names the AI assistant).
 Undoing the edit removes its notice, and redo brings it back.
 
 ### Traceability and tree search

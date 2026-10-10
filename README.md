@@ -60,7 +60,7 @@ New in **1.7** (web app), for reliability and safety engineers:
   colour overlay on the diagram.
 - **Monte Carlo uncertainty**: lognormal error factors, a seeded and
   time-capped run, and mean, median and 5th/95th percentiles.
-- **Validation** with 22 rules, a plain-language fix for each, and click to
+- **Validation** with 23 rules, a plain-language fix for each, and click to
   jump to the node.
 - **Traceability fields**: requirement, test reference, owner, status,
   evidence and tags, searchable with `tag:`, `owner:`, `status:`, `req:` and

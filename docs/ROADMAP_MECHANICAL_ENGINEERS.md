@@ -311,9 +311,10 @@ raw floats in the details panel). Tied to review item B-2.
 
 ### 3.5 Validation ("lint") panel  (P1) — ✅ 1.7.0
 
-> **Done:** 22 rules with fixed severities (`lint.py`; 1.7.1 added
-> `RATE_IMPLAUSIBLE`). The Validation tab is visible in basic mode, has
-> click-to-jump, and shows load repairs and removed links as session notices.
+> **Done:** 23 rules with fixed severities (`lint.py`; 1.7.1 added
+> `RATE_IMPLAUSIBLE`, the October 2026 review `PROBABILITY_OUT_OF_RANGE`). The
+> Validation tab is visible in basic mode, has click-to-jump, and shows load
+> repairs and removed links as session notices.
 
 Continuously listed warnings: gate with a single input; basic event still at the
 default 1.0; unquantified/undeveloped events; dangling or cyclic links; duplicate IDs;

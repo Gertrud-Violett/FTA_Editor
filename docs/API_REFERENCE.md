@@ -56,6 +56,9 @@ Units and ranges:
   integer ≥ 0.
 - Strings are at most 4,000 characters. `tags` holds at most 64 entries; each
   is trimmed, cut to 200 characters and de-duplicated.
+- No stored text (a name, type, notes, link target, the title or date, a
+  1.7 string) may hold an unpaired surrogate, which can never be saved:
+  `400 INVALID_FIELD` naming the field.
 - Unknown sub-keys are a 400 whose `detail.fields` lists them.
 
 `logicGate` stays AND/OR, and it is always the projection of `gateType`:
@@ -68,10 +71,32 @@ to its `logicGate` (the 1.6 desktop app edits only `logicGate`), `logicGate`
 wins: `gateType`, `k` and `transferTo` are removed from that node and a
 `LOAD_REPAIR` session warning is recorded with `kind: "gate_type_reset"` and
 `params` `{old_id, new_id, name, gateType, logicGate, dropped, cause, message}`.
+This applies only when `logicGate` is AND or OR, the values the desktop app
+writes; any other `logicGate` beside a `gateType` is set to its projection,
+without a notice.
+
+Without a `gateType`, `logicGate` is read as in 1.6: AND, and anything else
+OR. An advanced gate name there (`KOFN`, `XOR`, `INHIBIT`, `PAND`,
+`TRANSFER`, any case) is *promoted*: `gateType` becomes that gate,
+`logicGate` its projection, and a `LOAD_REPAIR` warning with
+`kind: "gate_type_promoted"` (`params` `{old_id, new_id, name, gateType,
+logicGate, cause, message}`) is recorded.
+
 `cause` is `"desktop"` for a loaded file and `"ai"` for an AI edit
 (`POST /api/ai/update`, `POST /api/ai/changes/apply`), and the message says
 which. A notice with `cause: "ai"` belongs to that edit: undoing the AI update
 removes it and redo brings it back.
+
+Loading a file also repairs, each with a `LOAD_REPAIR` warning:
+
+- a repeated link (same target, same relation), which the engine counted
+  twice: dropped (`kind: "duplicate_link"`, `params` `{targetId, relation}`);
+- text that cannot be saved (an unpaired surrogate) in a node, the title or
+  the date: replaced with U+FFFD (`kind: "invalid_text"`, `params.fields`
+  lists the dotted keys).
+
+A loaded `mode` is stored as `FTA` or `ETA`: `"eta"` in any case or spacing
+is `ETA`, anything else `FTA`.
 
 `probability` is overwritten with the derived value on every recalculation
 for `quant` models other than `fixed`, for house leaves (1.0 when
@@ -117,8 +142,9 @@ app reads `probability`, so it shows the same values. It still computes a
   session, as issue objects `{severity, code, nodeId, message, params}`.
   They are not saved. Load repairs are not undone; the notices an edit raises
   about itself -- `LINKS_REMOVED` from a delete (by hand or by the AI) and the
-  `gate_type_reset` notices of an AI edit (`params.cause: "ai"`) -- are undone
-  and redone with that edit. At most 500 are kept.
+  `gate_type_reset` and `gate_type_promoted` notices of an AI edit
+  (`params.cause: "ai"`) -- are undone and redone with that edit. At most
+  500 are kept.
 - `capabilities.reportExport`: whether `python-docx` is installed.
 - `capabilities.fmeaXlsx`: whether `openpyxl` is installed, which `.xlsx`
   FMEA import needs.
@@ -298,6 +324,9 @@ Body `{n?, seed?, timeLimit?, bins?}`:
 - `warnings` can contain:
   - `MC_NO_UNCERTAINTY`: no event has a usable lognormal;
   - `MC_CUTSETS_TRUNCATED` (`params: {used, total, coverage}`);
+  - `MC_EVENT_NOT_SAMPLED` (`params: {count, eventIds, names}`): method
+    `cutsets` only; uncertain events in none of the sampled cut sets,
+    whose uncertainty is therefore not in the result;
   - `CUTSETS_TRUNCATED`.
 - Only one run at a time: a concurrent request gets `409 BUSY`.
 - `422 ANALYSIS_TOO_LARGE` is returned as for `/cutsets`.
@@ -326,6 +355,11 @@ It works in both modes and does not return `MODE_UNSUPPORTED`.
   repairable model has λ > 1e-2 /h, or whose rate model gives q ≥ 0.999
   (`params: {lambda, unit: "h", q, model}`): usually FIT or per-year values
   entered as per hour.
+- `PROBABILITY_OUT_OF_RANGE` (error, FTA and ETA) flags a probability the
+  engine uses that is not a finite number in [0, 1] (`params: {probability}`,
+  the stored value): an FTA leaf's own value (not a house event's or a
+  rate/standby/repairable model's), every ETA node's. The tree API refuses
+  such a value; a loaded file can still hold one.
 - `message` is English. The UI localises it with `val.code.<CODE>` and
   `params`.
 - The codes and their severities are listed in the
