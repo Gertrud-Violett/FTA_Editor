@@ -334,7 +334,6 @@ python -m pytest desktop/tests/    # the frozen legacy suite
 - [User Guide](docs/USER_GUIDE.md) - Complete manual
 - **AI Provider Setup Guides:**
   - [Microsoft Copilot Setup](docs/MICROSOFT_COPILOT_SETUP.md) - Azure OpenAI configuration
-  - [GitHub Copilot Setup](docs/GITHUB_COPILOT_SETUP.md) - GitHub Models configuration
   - [Multi-Provider Setup](docs/MULTI_PROVIDER_SETUP.md) - OpenAI, Claude, Gemini
 - [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
 - [API Reference](docs/API_REFERENCE.md) - Programming interface
@@ -394,5 +393,5 @@ BSD-2 License - Copyright (c) makkiblog.com
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/Gertrud-Violett/FTA_editor/issues)
+- Issues: [GitHub Issues](https://github.com/Gertrud-Violett/FTA_Editor/issues)
 - Examples: [fta_web/examples/](fta_web/examples/)

@@ -274,7 +274,7 @@ Azure OpenAI pricing is based on token usage:
 - [Azure OpenAI Forum](https://learn.microsoft.com/answers/tags/387/azure-openai)
 
 **FTA Editor Issues**:
-- [GitHub Issues](https://github.com/Gertrud-Violett/FTA_editor/issues)
+- [GitHub Issues](https://github.com/Gertrud-Violett/FTA_Editor/issues)
 - Check README.md troubleshooting section
 
 ---

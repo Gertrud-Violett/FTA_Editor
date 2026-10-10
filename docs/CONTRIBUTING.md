@@ -12,7 +12,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ### Reporting Bugs
 
-1. Check if the bug has already been reported in [Issues](https://github.com/Gertrud-Violett/FTA_editor/issues)
+1. Check if the bug has already been reported in [Issues](https://github.com/Gertrud-Violett/FTA_Editor/issues)
 2. If not, create a new issue with:
    - Clear title and description
    - Steps to reproduce
@@ -22,7 +22,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ### Suggesting Features
 
-1. Check if the feature has been suggested in [Issues](https://github.com/Gertrud-Violett/FTA_editor/issues)
+1. Check if the feature has been suggested in [Issues](https://github.com/Gertrud-Violett/FTA_Editor/issues)
 2. Create a new issue describing:
    - The problem it solves
    - Proposed solution
@@ -44,8 +44,8 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/FTA_editor.git
-cd FTA_editor
+git clone https://github.com/YOUR_USERNAME/FTA_Editor.git
+cd FTA_Editor
 
 # Install dependencies -- with uv (recommended) or plain pip
 uv sync --extra dev

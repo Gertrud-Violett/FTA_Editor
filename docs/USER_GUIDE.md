@@ -1401,5 +1401,4 @@ approximation. A leaf reached around a loop uses its base probability.
 
 For more details, see:
 - [ETA Mode Documentation](ETA_MODE.md)
-- [Probability Validation](PROBABILITY_VALIDATION.md)
 - [API Reference](API_REFERENCE.md)
