@@ -1,6 +1,6 @@
 # API Reference
 
-**Version**: 1.7.1 | **Updated**: September 29, 2026
+**Version**: 1.7.2 | **Updated**: October 10, 2026
 
 Complete API documentation for programmatic use of FTA/ETA Editor.
 

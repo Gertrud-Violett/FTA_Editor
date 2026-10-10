@@ -26,7 +26,16 @@ fixes the GUI and numeric defects that comparison found (`CHANGELOG.md` →
 `[1.7.1]`). No roadmap item changed status: the ✅ / ◐ / ⬜ marks below and the
 open items are the same as for 1.7.0.
 
-**What remains** after 1.7.1 (unchanged since 1.7.0):
+**Status 2026-10-10 — release 1.7.2:** a review release. It carries the
+October 2026 code review (`CODE_REVIEW_2026-10.md`) and two fixes to the AI
+assistant's suggestions found by a release check with a live provider. It also
+ships two worked examples in English and Japanese, a fault tree of the
+Challenger accident and an event tree of Three Mile Island Unit 2
+(`fta_web/examples/`). They are examples with illustrative probabilities and
+cited notes, not the component library of item 2.2, which stays open. No
+roadmap item changed status.
+
+**What remains** after 1.7.2 (unchanged since 1.7.0):
 
 - common-cause failure groups (1.5)
 - sensitivity sliders and scenario compare (1.7)

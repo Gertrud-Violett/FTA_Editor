@@ -4,7 +4,7 @@
 
 This is a **Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor** with dual interfaces (desktop GUI + web app) for reliability engineering and safety analysis. The core calculates failure/accident probabilities using logic gates (AND/OR) and link relationships.
 
-**Version**: 1.7.1 | **License**: BSD-2-Clause | **Python**: 3.10+
+**Version**: 1.7.2 | **License**: BSD-2-Clause | **Python**: 3.10+
 
 ## Architecture
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-10-10
+
+Review release. It carries the October 2026 code review, in three parts: the
+backend, CLI, exports and AI; the browser frontend and the analysis tabs; the
+documentation (`docs/CODE_REVIEW_2026-10.md`). A release check on Windows with
+a live AI provider then found that the assistant's suggestions for leaf events
+were dropped and that a suggested move could never be applied; both are fixed.
+Two worked examples are new, in English and in Japanese.
+
 ### Added
 
 - **Two worked examples ship with the editor**, each in English and in
