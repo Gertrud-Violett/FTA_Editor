@@ -319,3 +319,20 @@ def test_quant_invalid_message_states_the_bounds():
         for part in (en, ja):
             line = re.search(r"'%s': '([^']*)'" % re.escape(key), part).group(1)
             assert all(h in line for h in holders), (key, line)
+
+
+# ---- Validation: the Dismiss tooltip says what Dismiss does ----------------------------
+# It promised the notices would come back "until the tree changes" (ja: 次にツリー
+# が変わるまで); they stay hidden until New / Open -- the dismissal is kept by
+# signature (validation.js and main.js's badge) and cleared only by fta:document.
+
+def test_validation_dismiss_tooltip_matches_the_behaviour():
+    tab = _read(TABS / "validation.js")
+    assert "dismissed.clear();" in _block(tab, "const onDocument = () =>")
+    assert tab.count("dismissed.clear()") == 1, "nothing else brings dismissed notices back"
+    cat = _read(STATIC / "i18n" / "val.js")
+    en, ja = cat.split("\n  ja:", 1)
+    en_text = re.search(r"'val\.dismissTitle': '([^']*)'", en).group(1)
+    ja_text = re.search(r"'val\.dismissTitle': '([^']*)'", ja).group(1)
+    assert "until the tree changes" not in en_text and "another document" in en_text
+    assert "ツリーが変わるまで" not in ja_text and "別の文書を開くまで" in ja_text
