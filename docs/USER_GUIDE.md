@@ -1130,26 +1130,32 @@ Options:
 
 | Option | Commands | Meaning |
 |---|---|---|
-| `--json` / `--csv` | all | Machine-readable output instead of a text table (mutually exclusive). With several files, `--json` gives a list. |
-| `--out PATH` | all | Write to PATH instead of stdout. With several files, give a directory; each file then gets `<stem>.<command>.<ext>`. A path that exists as a directory or ends in `/` or `\` is a directory. `report` defaults to `<stem>_report.docx` beside the input; for `report`, any `--out` that does not end in `.docx` is a directory. |
+| `--json` / `--csv` | all | Machine-readable output instead of a text table (mutually exclusive). With several files, `--json` gives a list. `--json` is strict JSON: a value that is not a finite number (a NaN probability in the file, say) is written as `null`. `--csv` is the raw data for scripts: text is written exactly as it is, not guarded for spreadsheets, so a name such as `=HYPERLINK(…)` stays a formula if you open the file in Excel. |
+| `--out PATH` | all | Write to PATH instead of stdout. With several files, give a directory; each file then gets `<stem>.<command>.<ext>`. A path that exists as a directory or ends in `/` or `\` is a directory. `report` defaults to `<stem>_report.docx` beside the input; for `report`, any `--out` that does not end in `.docx` is a directory. An output that would overwrite an input file, or that two inputs would both write, is a usage error (exit 2), and nothing is written. An output that cannot be written fails that file (exit 1). |
 | `--sig-figs N` | all | Significant figures in text tables, 1–6, default 3. JSON and CSV carry full precision. |
 | `--mission-time H` | all | Override the document's mission time, in hours. |
 | `--max-order N`, `--max-count N`, `--cutoff P` | cutsets, importance, report | Override the cut-set limits. |
-| `--top N` | cutsets, importance | Show only the first N rows (N ≥ 1). |
+| `--top N` | cutsets, importance | Show only the first N rows (N ≥ 1). With `--json` the list is cut to N too; the totals, MCUB and truncation flags still cover every cut set. |
 | `--n N`, `--seed S` | mc, report | Monte Carlo samples and seed. |
 | `--time-limit SEC` | mc, report | Monte Carlo time cap in seconds, > 0, default 30. For `report` it is capped at 60. |
 | `--strict` | validate | Warnings also fail (exit 1). |
-| `--sections LIST`, `--lang en\|ja`, `--uncertainty` | report | Comma-separated sections, the report language, and whether to run Monte Carlo (n ≤ 5,000) and include it. |
+| `--sections LIST`, `--lang en\|ja`, `--uncertainty` | report | Comma-separated sections, the report language, and whether to run Monte Carlo (n ≤ 5,000) and include it (also when `--sections` leaves it out). |
 
 Wildcards are expanded by the tool itself, so `*.json` works in `cmd.exe` too.
+
+Text tables show control characters from the input files (in names, titles
+and messages) as `\xNN`, so a crafted file cannot send escape sequences to
+the terminal; `--json` and `--csv` keep the text exactly. A character the
+console's encoding cannot show is written as a backslash escape instead of
+stopping the run (`--json` then escapes every non-ASCII character).
 
 **Exit codes:**
 
 | Code | Meaning |
 |---|---|
 | 0 | OK |
-| 1 | Validation errors (or warnings with `--strict`), or an analysis failed (for example an ETA file given to `cutsets`, or a voting gate that is too large) |
-| 2 | Usage error (bad option or value) |
+| 1 | Validation errors (or warnings with `--strict`), an analysis failed (for example an ETA file given to `cutsets`, or a voting gate that is too large), or an output file could not be written |
+| 2 | Usage error (bad option or value, or `--out` would overwrite an input file or one output twice) |
 | 3 | An input file could not be read |
 
 With several files, the highest code wins.
