@@ -119,6 +119,65 @@ Every fix has a regression test in `fta_web/tests/test_review_2026_10_*.py`.
     from its own venv.
   - The b2b runner's summary counts MCUB rows under their own tag and
     removes its 15 MB temp folder.
+  - On GitHub Actions, failing tests are named in annotations on the run
+    page (the job log needs a sign-in).
+
+October 2026 review, sprint 2 (browser frontend and analysis tabs).
+
+- **Security.**
+  - The diagram's SVG sanitiser could be bypassed: script could run in the
+    app's origin, a `<base href>` could send API calls (and the session
+    token) to another host, and content could load from off the machine.
+    The escaped DOT the app produces could not trigger this; the sanitiser
+    is defence in depth and now holds on its own.
+  - The tabs' CSV exports (Report → events CSV, Cut Sets and Traceability
+    Copy CSV) prefix text a spreadsheet would run (`=`, `+`, `-`, `@`, tab,
+    carriage return) with an apostrophe. Numbers are never prefixed, and the
+    CLI's `--csv` stays raw.
+- **Lost or wrong work.**
+  - Load skipped the "Discard unsaved changes?" prompt while an edit was
+    still being committed.
+  - Undo/Redo, Ctrl+Shift+Arrow and the title/date sync raced edits in
+    flight. An edit's redo step could be wiped, moves were lost, and a
+    garbled date could be saved.
+  - A slow first file listing re-selected the Save As name while it was
+    being typed, and saved under the wrong name. A listing could also
+    overwrite a path being typed.
+  - Enter/Escape pressed to confirm an IME conversion (Japanese input)
+    submitted, saved, closed or reverted things mid-conversion, in the
+    dialogs, details, tree, file dialog and every analysis tab.
+  - FMEA: after Open, the tab still showed the previous document's
+    occurrence table, and Import saved it into the opened document.
+    "Import under" did not follow the selection that Import used.
+  - A multi-selection survived Open, so Delete offered to remove the new
+    file's nodes.
+  - The Add dialog closed before the node was created, so a refusal lost
+    everything typed.
+- **Stale results.**
+  - A Monte Carlo run, or a Cut Sets / Importance answer, that crossed an
+    edit is now shown as stale.
+  - Old Fussell-Vesely values no longer colour a changed tree.
+  - The first run after New/Open uses the new document's limits.
+  - A selected cut set stays selected after a re-run.
+  - The link picker and the FMEA preview ignore answers that arrive late.
+- **Smaller fixes.**
+  - A refused gate, event-kind, house or transfer change shows the stored
+    value again.
+  - Ctrl+S in a modal no longer opens the browser's "Save page as".
+  - The symbols-style PNG export never falls back to native `dot`, which
+    drew placeholder shapes.
+  - Zoom and pan reset for each document.
+  - Server errors follow the EN/JA switch, not the browser's language, and
+    client-side errors are translated.
+  - `0x1` / `0b1` are no longer read as probabilities.
+  - Ids with a backslash or newline no longer break the tree.
+  - Show 0 no longer says the top event cannot occur.
+  - Truncation limits and missing model parameters are named in words (λ, T,
+    τ, μ).
+  - Seeds the browser cannot hold exactly are refused.
+  - Field bounds are stated correctly.
+  - The tree panel reads "Event Tree" in ETA mode.
+  - The Graphviz capability text says what a native `dot` is used for.
 
 ## [1.7.1] - 2026-09-29
 
