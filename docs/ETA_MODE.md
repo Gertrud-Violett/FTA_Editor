@@ -88,7 +88,7 @@ The application still supports loading old-format JSON files (without metadata):
 
 When loading legacy files:
 - Title defaults to "Untitled Analysis"
-- Date defaults to empty string
+- Date defaults to today's date
 - Mode defaults to "FTA"
 
 ## ETA Calculation Algorithm
@@ -128,7 +128,8 @@ Initiating Event (base: 0.5)
 
 ### Creating an ETA Analysis
 
-1. Open FTA Editor UI: `python FTA_Editor_UI.py`
+1. Start the editor: `python fta_web/run.py` (the legacy desktop app:
+   `python desktop/src/FTA_Editor_UI.py`)
 2. Set Mode to "ETA" in the top bar
 3. Enter Title: "Reactor Scram Analysis"
 4. Enter Date: "2025-10-31"
@@ -147,6 +148,8 @@ Initiating Event (base: 0.5)
 ## Programmatic Usage
 
 ```python
+import sys
+sys.path.insert(0, "fta_web/core")   # run from the repository root
 from FTA_Editor_core import FTACore
 
 # Create ETA analysis
@@ -162,7 +165,7 @@ core.set_data({
     "id": "root",
     "name": "Initiating Event",
     "probability": 0.5,
-    "children": [...]
+    "children": []   # the branch nodes, each with its own "children"
 })
 
 # Calculate probabilities in ETA mode
@@ -188,7 +191,7 @@ core.save_to_json("safety_analysis.json")
 
 Run the ETA test suite:
 ```bash
-python test_eta_mode.py
+python fta_web/tests/core/test_eta_mode.py   # or: python -m pytest fta_web/tests/core/test_eta_mode.py
 ```
 
 Expected output:

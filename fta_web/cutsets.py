@@ -23,7 +23,8 @@ of it; kept sets are indexed by their lowest bit so each check only looks at
 sets that could possibly be subsets.
 
 Probabilities: ``P(C) = Π q``; rare-event value ``ΣP``; min-cut upper bound
-``1 - Π(1 - P)`` (in log space, so 1e-12 values keep their digits).
+``1 - Π(1 - P)``, accumulated as a union ``Q <- Q + P(1 - Q)`` so 1e-12 values
+keep their digits (see :func:`mcub_of`).
 """
 from __future__ import annotations
 

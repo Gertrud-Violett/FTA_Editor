@@ -54,6 +54,11 @@ magnitude are solid.
 
 ## Why this is acceptable
 
+> **1.7.1 update:** the on-screen diagram is now always drawn by the browser (WASM)
+> renderer, also when Graphviz is installed. A native `dot` only produces the
+> compact-style PNG export and the report diagram. The second and third bullets below
+> describe 1.6, when the preview preferred native `dot`.
+
 - The box is drawn by the same renderer that places the text, so in the WASM output the
   text stays within *its own* diagram — the mismatch is only visible when comparing WASM
   against native side by side, which no user does.

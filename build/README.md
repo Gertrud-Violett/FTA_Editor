@@ -15,7 +15,7 @@ On the machine doing the build — and it must be the **same OS and CPU
 architecture as the target**, see [Per-OS notes](#per-os-notes). Dependencies
 are declared once, in the repo-root `pyproject.toml`; the `build` extra adds
 PyInstaller itself, `all` adds every optional feature the two apps have
-(Excel export, all three AI providers, the desktop preview):
+(Excel export, the DOCX report, all three AI SDKs, the desktop preview):
 
 **With [uv](https://docs.astral.sh/uv/) (recommended):**
 
@@ -181,12 +181,13 @@ them from `GET /api/dot` using the vendored WebAssembly Graphviz in
 `static/vendor/viz-js/viz.js`, which is why that file is a hard requirement of
 the bundle and must never be pruned for size.
 
-A native `dot` binary, when present, is used only by `POST /api/render` to
-produce a file to save. When it is absent the app says so rather than
-pretending: `/api/state` reports `capabilities.nativeDot: false`, the UI
-disables native export, and `/api/render` returns `503 RENDERER_UNAVAILABLE`
-with install instructions. Verified on the frozen build on a machine with no
-`dot` on `PATH` — see the verification steps below.
+A native `dot` binary, when present, is used only to produce files:
+`POST /api/render` (the compact-style PNG export, at 300 dpi) and the report
+diagram when no browser image is sent. When it is absent the app says so
+rather than pretending: `/api/state` reports `capabilities.nativeDot: false`,
+the PNG export is rasterised in the browser instead, and `/api/render` returns
+`503 RENDERER_UNAVAILABLE` with install instructions. Verified on the frozen
+build on a machine with no `dot` on `PATH` — see the verification steps below.
 
 ## Per-OS notes
 
@@ -386,7 +387,7 @@ library loaded and made a genuine network call, not an `ImportError` masqueradin
 `capabilities.aiProviders` in `/api/state` also reports all three as `true` in the frozen
 build now, where Gemini previously reported `false`.
 
-**This remains disclosed, not silently trusted.** `AppState._probe_provider_sdks` still
+**This remains disclosed, not silently trusted.** `state._probe_provider_sdks` still
 really imports each SDK rather than calling `find_spec`, on the same reasoning that
 caught the original bug: a probe that can be fooled is worse than no probe. If a future
 SDK swap reintroduces a namespace-package collection gap, the capability indicator will

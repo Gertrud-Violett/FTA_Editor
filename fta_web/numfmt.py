@@ -16,9 +16,13 @@ same in the browser, in a DOCX report and in a CLI table:
   padding in the exponent);
 * ``0`` is ``"0"``; ``None``, NaN and non-numbers are ``"—"``.
 
-The one intended difference from numfmt.js: it picks the plain or exponent
-form from the *unrounded* magnitude (0.00099996 at 3 s.f. reads ``1.00e-3``
-there, ``0.00100`` here). The USER_GUIDE specifies the rounded magnitude.
+Both decide the plain or exponent form from the *rounded* magnitude, as the
+USER_GUIDE specifies (0.00099996 at 3 s.f. is ``0.00100``, 9999.7 is
+``1.00e4``); numfmt.js decided from the unrounded one until 1.7.1.
+``test_numfmt.py`` runs both and requires identical text for finite numbers.
+They differ only on odd inputs: an infinity is ``∞`` here and ``—`` there, a
+boolean is ``—`` here and a number there, and a fractional ``sig_figs`` is
+truncated here and rounded there.
 
 The old fixed six-decimal display turned every realistic component
 probability (1e-7 ...) into ``0``; this is the replacement.
