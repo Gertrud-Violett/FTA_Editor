@@ -715,3 +715,80 @@ def test_symbols_render_without_a_drawing_says_so():
     assert "diagramPanel.hasDiagram()" in branch
     diagram = _read(STATIC / "diagram.js")
     assert "hasDiagram: () => Boolean(exportSvgText)," in diagram
+
+
+# ---- details.js: a success held back for a refused commit still lands (F-30) -----------
+#
+# Name, Tab, Type, Tab: the name PATCH succeeded but, a newer commit being queued
+# behind it, its response was not installed; the type PATCH was then refused
+# (404 routed in Chromium). The server had the new name and was dirty while the
+# store kept the old name: the Name box and the tree reverted to it and the badge
+# said "Saved". The last success held back is now installed when the newest
+# commit fails, and the refused box still keeps its typing.
+
+_SEND_HARNESS = r"""
+const applied = [];
+const store = { applyMutation: (result) => applied.push(result.tag) };
+const api = {
+  patch: (path, body) => new Promise((resolve, reject) => setTimeout(() => {
+    if (body.refuse) reject(Object.assign(new Error('refused'), { code: 'NODE_NOT_FOUND', detail: {} }));
+    else resolve({ tag: body.tag });
+  }, 10)),
+};
+function currentId() { return 'n1'; }
+function setBanner() {}
+function t(key) { return key; }
+function errorMessage(err, fallback) { return (err && err.message) || fallback; }
+function showError() {}
+function errorField() { return null; }
+const fields = {};
+function setFieldError() {}
+"""
+
+
+def _send_source() -> str:
+    src = _read(STATIC / "details.js")
+    decls = re.findall(r"^let (?:pending|sequence|heldBack) = .*;$", src, re.M)
+    return "\n".join(decls) + "\n" + _braced(src, src.index("function send(patch)"))
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "commits, installed",
+    [
+        ([{"tag": "a"}, {"refuse": True}], ["a"]),  # the case above
+        ([{"tag": "a"}, {"tag": "b"}], ["b"]),  # intermediate views still skipped
+        ([{"tag": "a"}, {"refuse": True}, {"tag": "c"}], ["c"]),
+        ([{"tag": "a"}, {"refuse": True}, {"refuse": True}], ["a"]),
+        ([{"refuse": True}], []),
+    ],
+)
+def test_details_installs_the_last_success_when_the_newest_commit_fails(commits, installed):
+    script = _SEND_HARNESS + _send_source() + (
+        "\nfor (const patch of %s) send(patch).catch(() => {});"
+        "\nsetTimeout(() => console.log(JSON.stringify(applied)), 300);" % json.dumps(commits))
+    assert _node(script) == installed
+
+
+@needs_node
+def test_details_refused_text_keeps_its_typing():
+    src = _read(STATIC / "details.js")
+    fn = _braced(src, src.index("function restoreTyping(key, nodeId, typed)"))
+    script = r"""
+const document = { activeElement: null };
+const dirty = [];
+function syncDirty(key) { dirty.push(key); }
+function currentNode() { return { id: 'n1' }; }
+const fields = {
+  type: { spec: { kind: 'text' }, control: { value: 'Event' } },
+  logicGate: { spec: { kind: 'gate' }, control: { value: 'OR' } },
+};
+""" + fn + r"""
+restoreTyping('type', 'n1', 'Changed type');
+restoreTyping('logicGate', 'n1', 'AND');
+console.log(JSON.stringify([fields.type.control.value, fields.logicGate.control.value, dirty]));
+"""
+    assert _node(script) == ["Changed type", "OR", ["type"]]
+    body = _braced(src, src.index("function commitField(key)"))
+    on_failure = body[body.index("send(patch).then("):].split("\n      () => {")[2]
+    assert "restoreTyping(key, nodeId, typed);" in on_failure

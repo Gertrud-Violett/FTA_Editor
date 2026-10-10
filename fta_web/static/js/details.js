@@ -134,10 +134,17 @@ const FIELDS = [
  * Every PATCH from this panel runs through one chain so a blur commit can
  * never overtake an earlier one, and `fta:flush` (Save, exports) can await the
  * tail. `sequence` numbers the requests so only the newest response is
- * applied: the server view is cumulative, so an older one is stale by then.
+ * applied: the server view is cumulative, so an older one is stale by then --
+ * unless the newest is refused, when the last success (`heldBack`) is.
  */
 let pending = Promise.resolve();
 let sequence = 0;
+/**
+ * The newest successful response not installed because a newer commit was
+ * queued behind it. If that newer commit is refused, this is the server's
+ * view after all and goes into the store.
+ */
+let heldBack = null;
 
 /** The stored value of a field, as the form displays it. */
 function displayValue(node, key) {
@@ -610,9 +617,22 @@ export function initDetails(container) {
     const request = pending.then(async () => {
       try {
         const result = await api.patch('/nodes/' + encodeURIComponent(id), patch);
-        if (seq === sequence) store.applyMutation(result);
+        if (seq === sequence) {
+          heldBack = null;
+          store.applyMutation(result);
+        } else {
+          heldBack = result;
+        }
         return result;
       } catch (err) {
+        // Earlier successes were held back for this, the newest commit. It
+        // was refused, so install the last of them: otherwise the store kept
+        // a view the server had replaced (old name shown, badge "Saved").
+        if (seq === sequence && heldBack) {
+          const view = heldBack;
+          heldBack = null;
+          store.applyMutation(view);
+        }
         const fallback = t('details.saveFailed');
         const message = errorMessage(err, fallback);
         setBanner(message);
@@ -705,6 +725,19 @@ export function initDetails(container) {
     return patch;
   }
 
+  /**
+   * After a refused commit, a text box keeps what was typed, also when the
+   * view send() installed for an earlier, held-back success repopulated it.
+   */
+  function restoreTyping(key, nodeId, typed) {
+    const field = fields[key];
+    const now = currentNode();
+    if (field.spec.kind === 'gate' || !now || String(now.id) !== nodeId) return;
+    if (document.activeElement === field.control || field.control.value === typed) return;
+    field.control.value = typed;
+    syncDirty(key);
+  }
+
   function commitField(key) {
     const node = currentNode();
     const field = fields[key];
@@ -725,6 +758,7 @@ export function initDetails(container) {
     }
     const patch = key === 'logicGate' ? gatePatch(node, result.value) : { [key]: result.value };
     const nodeId = String(node.id);
+    const typed = field.control.value;
     send(patch).then(
       () => {
         // The store already holds the response, so the box is clean again
@@ -736,6 +770,7 @@ export function initDetails(container) {
         // Reported by send(). Typed text stays (and stays dirty) so it can be
         // corrected; a refused gate goes back to the stored one, so the select
         // shows what the node has and choosing the gate again retries.
+        restoreTyping(key, nodeId, typed);
         if (field.spec.kind !== 'gate') return;
         const now = currentNode();
         if (!now || String(now.id) !== nodeId) return;
