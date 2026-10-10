@@ -2898,10 +2898,16 @@ function onKeyDown(event) {
   // Boot gate: no shortcut may act before every panel has loaded. Escape
   // (above) stays live so a toast can still be dismissed.
   if (isBooting()) return;
-  if (modalOpen()) return;
 
   const ctrl = event.ctrlKey || event.metaKey;
   const key = (event.key || '').toLowerCase();
+
+  if (modalOpen()) {
+    // A dialog has the keyboard and no shortcut acts behind it -- but Ctrl+S
+    // and Ctrl+Shift+S must not fall through to the browser's "Save page as".
+    if (ctrl && !event.altKey && key === 's') event.preventDefault();
+    return;
+  }
 
   // Ctrl+S is checked before the text-entry guard below: saving has to work
   // with the caret still in the Title box, and actionSave flushes that field

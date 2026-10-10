@@ -679,3 +679,20 @@ def test_add_dialog_stays_open_until_the_node_is_made():
     assert "await fn(parentId, { submit })" in add
     assert add.index("await fn(parentId, { submit })") < add.index("store.applyMutation(result);")
     assert add.count("api.post('/nodes'") == 2, "the hook, and the fallback for a dialog without it"
+
+
+# ---- Ctrl+S inside a modal is not the browser's "Save page as" (F-28) ---------------------
+#
+# With the Add dialog or a confirmation open, onKeyDown returned on modalOpen()
+# before its Ctrl+S branch, so Ctrl+S and Ctrl+Shift+S reached the browser
+# un-prevented (Chromium: defaultPrevented false after every handler).
+
+
+def test_ctrl_s_in_a_modal_is_claimed():
+    src = _read(STATIC / "main.js")
+    body = _braced(src, src.index("function onKeyDown(event)"))
+    branch = re.search(r"if \(modalOpen\(\)\) \{(.*?)\n  \}", body, re.S)
+    assert branch, "the modal branch handles Ctrl+S before returning"
+    assert "if (ctrl && !event.altKey && key === 's') event.preventDefault();" in branch.group(1)
+    assert "return;" in branch.group(1)
+    assert body.index("if (modalOpen()) {") < body.index("actionSave()")
