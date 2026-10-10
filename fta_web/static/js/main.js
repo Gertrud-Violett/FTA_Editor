@@ -3005,10 +3005,12 @@ async function boot() {
   });
   window.addEventListener('beforeunload', (event) => {
     // Typed-but-not-committed text is not in store.state.dirty yet: details.js
-    // marks such a field data-dirty, and an open inline rename is one too.
+    // marks such a field data-dirty, an open inline rename is one too, and so
+    // is a Title or Date box that differs from the stored metadata.
     const unsavedField =
       document.querySelector('#details-root [data-dirty="true"]') ||
-      document.querySelector('#tree-root .fta-tree-rename');
+      document.querySelector('#tree-root .fta-tree-rename') ||
+      (store.state && metadataChanged());
     if ((store.state && store.state.dirty) || unsavedField) {
       event.preventDefault();
       event.returnValue = '';

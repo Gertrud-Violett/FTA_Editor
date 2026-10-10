@@ -250,6 +250,21 @@ def test_metadata_commit_does_not_overwrite_the_focused_field():
     assert "if (!force && el === document.activeElement) continue;" in sync
 
 
+# ---- main.js: closing the tab warns about Title/Date typing too ------------------------
+#
+# F-7 made beforeunload warn about typed-but-uncommitted details fields and an
+# open inline rename, but not the top bar: a new title typed into a saved
+# document, then the tab closed or reloaded, was lost without a warning
+# (Chromium: no beforeunload dialog for Title or Date, one for a details field).
+
+
+def test_beforeunload_counts_uncommitted_title_and_date():
+    src = _read(STATIC / "main.js")
+    handler = _braced(src, src.index("window.addEventListener('beforeunload'"))
+    assert "metadataChanged()" in handler
+    assert "#details-root [data-dirty=\"true\"]" in handler
+
+
 # ---- api.js: the server words its errors in the editor's language ----------------------
 #
 # The server localizes errors by ?lang= or Accept-Language, and the frontend
