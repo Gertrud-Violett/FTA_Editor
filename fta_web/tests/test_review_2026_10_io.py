@@ -493,6 +493,83 @@ def test_fmea_semicolon_csv_that_defeats_the_sniffer(tmp_path, text, rows):
     assert table["rows"] == rows
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("1,200", 1200.0), ("12,345.6", 12345.6), ("-1,200", -1200.0), ("+1,234,567", 1234567.0),
+    (" 1,200 ", 1200.0), ("1,234,567.25", 1234567.25),
+    # not the grouping shape: today's decimal-comma reading
+    ("1,5", 1.5), ("0,001", 0.001), ("0,500", 0.5), ("1,20", 1.2), ("1,2345", 1.2345),
+    ("1,200e-3", 1.2e-3), ("1.200,5", 1200.5),
+])
+def test_fmea_comma_grouping_in_a_comma_delimited_csv(text, expected):
+    from fta_web import fmea_import
+
+    assert fmea_import._number(text, comma_groups=True) == pytest.approx(expected, rel=1e-15)
+
+
+def test_fmea_comma_grouping_only_where_the_comma_cannot_be_decimal():
+    from fta_web import fmea_import
+
+    assert fmea_import._number("1,200") == pytest.approx(1.2)  # ';'/tab CSV, xlsx text
+
+
+def _import_csv(tmp_path, text, mapping, **kw):
+    from fta_web import fmea_import
+
+    path = tmp_path / "in.csv"
+    path.write_bytes(text.encode("utf-8"))
+    table = fmea_import.read_table(path)
+    tree = {"id": "root", "name": "Top", "type": "Root", "probability": 1.0,
+            "logicGate": "OR", "notes": "", "links": [], "children": []}
+    result = fmea_import.apply_import(tree, table["rows"], mapping, "root", {}, "in.csv",
+                                      columns=table["columns"], row_numbers=table["rowNumbers"],
+                                      delimiter=table["delimiter"], **kw)
+    return table, tree, result
+
+
+def test_fmea_quoted_thousands_in_a_comma_csv_are_not_a_decimal_comma(tmp_path):
+    """Excel writes a '#,##0' FIT column to a comma CSV as "1,200": it was
+    read as 1.2 FIT (λ 1000 times too low, silently) and an RPN "1,000"
+    as 1."""
+    table, tree, _ = _import_csv(
+        tmp_path, 'ID,Mode,Lambda (FIT),RPN\nA,Leak,"1,200","1,000"\nB,Stuck,"0,5",10\n',
+        {"id": "ID", "mode": "Mode", "lambda": "Lambda (FIT)", "rpn": "RPN"}, lambda_unit="FIT")
+    assert table["delimiter"] == ","
+    a, b = tree["children"]
+    assert a["quant"]["lambda"] == pytest.approx(1.2e-6, rel=1e-12)
+    assert a["fmea"]["rpn"] == 1000
+    assert b["quant"]["lambda"] == pytest.approx(0.5e-9, rel=1e-12)  # not a group: decimal
+
+
+def test_fmea_semicolon_csv_keeps_the_decimal_comma(tmp_path):
+    table, tree, _ = _import_csv(tmp_path, "ID;Mode;Lambda (FIT)\nA;Leak;1,200\n",
+                                 {"id": "ID", "mode": "Mode", "lambda": "Lambda (FIT)"},
+                                 lambda_unit="FIT")
+    assert table["delimiter"] == ";"
+    assert tree["children"][0]["quant"]["lambda"] == pytest.approx(1.2e-9, rel=1e-12)
+
+
+def test_fmea_import_route_reads_comma_groups_of_a_comma_csv(tmp_path):
+    import flask
+
+    from fta_web.routes.fmea import fmea_bp
+    from fta_web.routes.tree import tree_bp
+    from fta_web.state import get_state, reset_state
+
+    (tmp_path / "f.csv").write_text('ID,Mode,Lambda\nA,Leak,"1,200"\n', encoding="utf-8")
+    reset_state()
+    app = flask.Flask(__name__)
+    app.register_blueprint(tree_bp)
+    app.register_blueprint(fmea_bp)
+    get_state().fs_root = tmp_path
+    with app.test_client() as client:
+        response = client.post("/api/fmea/import", json={
+            "path": "f.csv", "mapping": {"id": "ID", "mode": "Mode", "lambda": "Lambda"},
+            "lambdaUnit": "FIT", "parentId": "root"})
+        assert response.status_code == 200, response.get_data(as_text=True)
+    node = get_state().core.find_node_by_id("root_0")
+    assert node["quant"]["lambda"] == pytest.approx(1.2e-6, rel=1e-12)
+
+
 def _xlsx_with_dimension(path, ref):
     """A workbook whose sheet XML declares ``<dimension ref=ref/>``, as some
     exporters write it regardless of the data."""

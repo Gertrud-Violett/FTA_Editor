@@ -5,21 +5,22 @@ Three plain functions, no Flask and no AppState, so they are testable on a
 bare dict tree and reusable from the CLI:
 
 ``read_table(path, sheet=None)``
-    ``.csv`` or ``.xlsx`` -> ``{sheets, sheet, columns, rows, rowNumbers}``.
-    The first non-empty row is the header; empty rows are skipped;
-    ``rowNumbers[i]`` is the 1-based spreadsheet row ``rows[i]`` came from,
-    so a skipped-row report can point at the line the user sees in Excel.
+    ``.csv`` or ``.xlsx`` -> ``{sheets, sheet, columns, rows, rowNumbers,
+    delimiter}``. The first non-empty row is the header; empty rows are
+    skipped; ``rowNumbers[i]`` is the 1-based spreadsheet row ``rows[i]`` came
+    from, so a skipped-row report can point at the line the user sees in
+    Excel. ``delimiter`` is the CSV's (None for a workbook).
 
 ``suggest_mapping(columns)``
     ``{field: column}`` for the import fields (see :data:`FIELDS`), guessed
     from English and Japanese header keywords. A column is used at most once.
 
-``suggest_lambda_unit(column, values=None)``
+``suggest_lambda_unit(column, values=None, delimiter=None)``
     ``FIT``/``y``/``h`` for the λ column: the unit its header names, else
     guessed from the magnitude of its values (median >= 1: FIT; 1e-3..1: /y).
 
 ``apply_import(tree, rows, mapping, parent_id, occurrence_table, source_label,
-update=True, lambda_unit="h", columns=None, row_numbers=None)``
+update=True, lambda_unit="h", columns=None, row_numbers=None, delimiter=None)``
     Mutates ``tree`` (the root node dict) and returns
     ``{created: [ids], updated: [ids], unchanged: [ids], skipped: [{row,
     fmeaId, reason, field, value, message}]}``.
@@ -49,6 +50,10 @@ Import rules
   non-negative finite number. A failing row is skipped with the reason; the
   rest of the sheet still imports. RPN is computed as S×O×D when it is not
   mapped and all three ranks are present.
+* **Numbers in text cells** accept a decimal comma ('1,5') and European
+  grouping ('1.200,5'). In a comma-delimited CSV, where a comma cannot be the
+  decimal mark of an unquoted number, '1,200' and '12,345.6' are grouped
+  thousands (Excel's export of a '#,##0' column); elsewhere '1,200' is 1.2.
 * **Parent.** Must exist and must not be a TRANSFER gate (``FmeaImportError``
   otherwise). A parent that is currently a leaf becomes an OR gate: its
   ``logicGate`` is set to OR (unless it has a ``gateType``) and its
@@ -227,20 +232,21 @@ def _read_csv(path: Path) -> Dict[str, Any]:
     sample = text[:65536]
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=CSV_DELIMITERS)
+        delimiter = dialect.delimiter
         reader = csv.reader(io.StringIO(text, newline=""), dialect)
     except csv.Error:
         # The sniffer wants the same count on ~90 % of the lines, so a short
         # or ragged file (trailing ';' on the data rows, empty trailing
         # fields left out) defeats it -- and a plain comma fallback read a
         # ';' file as one column. The header line decides instead.
-        reader = csv.reader(io.StringIO(text, newline=""), csv.excel,
-                            delimiter=_header_delimiter(sample))
+        delimiter = _header_delimiter(sample)
+        reader = csv.reader(io.StringIO(text, newline=""), csv.excel, delimiter=delimiter)
     try:
         table = _tabulate((index + 1, row) for index, row in enumerate(reader))
     except csv.Error as exc:
         raise FmeaImportError("'%s' is not a readable CSV file (%s)." % (path.name, exc),
                               "unreadable")
-    table.update(sheets=[], sheet=None)
+    table.update(sheets=[], sheet=None, delimiter=delimiter)
     return table
 
 
@@ -291,7 +297,7 @@ def _read_xlsx(path: Path, sheet: Optional[str]) -> Dict[str, Any]:
         )
     finally:
         book.close()
-    table.update(sheets=names, sheet=chosen)
+    table.update(sheets=names, sheet=chosen, delimiter=None)
     return table
 
 
@@ -416,14 +422,16 @@ def header_lambda_unit(column: Any) -> Optional[str]:
     return None
 
 
-def suggest_lambda_unit(column: Any, values: Optional[Iterable[Any]] = None) -> str:
+def suggest_lambda_unit(column: Any, values: Optional[Iterable[Any]] = None,
+                        delimiter: Optional[str] = None) -> str:
     """``FIT``/``y``/``h`` for a λ column.
 
     A unit named in the header wins. Otherwise the magnitude of the column's
     values decides: a median of 1 or more is FIT, 1e-3 up to 1 is per year,
     anything smaller per hour. Importing FIT values as per-hour rates makes
     every such event certain (q = 1), so guessing from the numbers is much
-    safer than always defaulting to ``/h``.
+    safer than always defaulting to ``/h``. ``delimiter`` is the table's
+    (``read_table``): values are read as :func:`apply_import` reads them.
     """
     unit = header_lambda_unit(column)
     if unit is not None:
@@ -431,7 +439,7 @@ def suggest_lambda_unit(column: Any, values: Optional[Iterable[Any]] = None) -> 
     numbers = []
     for value in values or ():
         try:
-            number = _number(value)
+            number = _number(value, delimiter == ",")
         except (TypeError, ValueError):
             continue
         if number is not None and number >= 0:
@@ -479,9 +487,17 @@ def _text(value: Any) -> str:
 #: simply dropped -- a FIT value 1000 times too small.
 _EU_GROUPED = re.compile(r"[+-]?\d{1,3}(?:\.\d{3})+,\d+(?:[eE][+-]?\d+)?$")
 
+#: '1,200', '12,345.6': commas grouping thousands -- what Excel writes to a
+#: comma-delimited CSV for a '#,##0' column (quoted). Only read so in such a
+#: file (``comma_groups``): in a ';' or tab CSV, or a workbook's text cell,
+#: '1,200' keeps its decimal-comma reading (1.2). A leading 0 group
+#: ('0,001') is never thousands formatting.
+_COMMA_GROUPED = re.compile(r"[+-]?[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$")
 
-def _number(value: Any) -> Optional[float]:
-    """A float from a cell, tolerating '1,5', '1.200,5' and '1.2E-06'. None when blank."""
+
+def _number(value: Any, comma_groups: bool = False) -> Optional[float]:
+    """A float from a cell, tolerating '1,5', '1.200,5' and '1.2E-06' (and
+    '1,200' as 1200 with ``comma_groups``). None when blank."""
     if value is None or value == "":
         return None
     if isinstance(value, bool):
@@ -492,7 +508,9 @@ def _number(value: Any) -> Optional[float]:
         text = unicodedata.normalize("NFKC", str(value)).strip().replace(" ", "")
         if not text:
             return None
-        if "," in text and "." not in text:
+        if comma_groups and _COMMA_GROUPED.match(text):
+            text = text.replace(",", "")
+        elif "," in text and "." not in text:
             text = text.replace(",", ".")
         elif _EU_GROUPED.match(text):
             text = text.replace(".", "").replace(",", ".")
@@ -504,9 +522,9 @@ def _number(value: Any) -> Optional[float]:
     return number
 
 
-def _rank(value: Any, field: str) -> Optional[int]:
+def _rank(value: Any, field: str, comma_groups: bool = False) -> Optional[int]:
     try:
-        number = _number(value)
+        number = _number(value, comma_groups)
     except (TypeError, ValueError):
         number = float("nan")
     if number is None:
@@ -517,7 +535,7 @@ def _rank(value: Any, field: str) -> Optional[int]:
     return int(number)
 
 
-def _parse_row(get, lambda_divisor: float) -> Dict[str, Any]:
+def _parse_row(get, lambda_divisor: float, comma_groups: bool = False) -> Dict[str, Any]:
     """The validated values of one row (``get(field)`` reads a mapped cell)."""
     out: Dict[str, Any] = {
         "id": _text(get("id")),
@@ -526,11 +544,11 @@ def _parse_row(get, lambda_divisor: float) -> Dict[str, Any]:
         "cause": _text(get("cause")),
     }
     for field in ("severity", "occurrence", "detection"):
-        out[field] = _rank(get(field), field)
+        out[field] = _rank(get(field), field, comma_groups)
 
     raw_rpn = get("rpn")
     try:
-        rpn = _number(raw_rpn)
+        rpn = _number(raw_rpn, comma_groups)
     except (TypeError, ValueError):
         rpn = -1.0
     if rpn is not None and not (rpn >= 0 and float(rpn).is_integer()):
@@ -541,7 +559,7 @@ def _parse_row(get, lambda_divisor: float) -> Dict[str, Any]:
 
     raw_lambda = get("lambda")
     try:
-        lam = _number(raw_lambda)
+        lam = _number(raw_lambda, comma_groups)
     except (TypeError, ValueError):
         lam = -1.0
     if lam is not None and lam < 0:
@@ -678,12 +696,15 @@ def apply_import(
     lambda_unit: str = "h",
     columns: Optional[Sequence[str]] = None,
     row_numbers: Optional[Sequence[int]] = None,
+    delimiter: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Import ``rows`` into ``tree`` (mutated). See the module docstring.
 
     ``rows`` are ``{column: value}`` dicts, or lists aligned with ``columns``.
     ``mapping`` is ``{field: column}``; unknown fields and blank columns are
-    ignored, a column that is not in the sheet is an error.
+    ignored, a column that is not in the sheet is an error. ``delimiter`` is
+    the CSV delimiter the rows were read with (``read_table``'s; None for a
+    workbook): in a comma-delimited file '1,200' is 1200, not 1.2.
     """
     if not isinstance(tree, dict):
         raise FmeaImportError("There is no tree to import into.", "no_tree")
@@ -720,6 +741,7 @@ def apply_import(
             by_key.setdefault(str(fmea["id"]), node)
 
     factor = LAMBDA_UNITS[lambda_unit]
+    comma_groups = delimiter == ","
     table = occurrence_table or {}
     result: Dict[str, Any] = {"created": [], "updated": [], "unchanged": [], "skipped": []}
     seen = set()
@@ -756,7 +778,7 @@ def apply_import(
             return _cells.get(column) if column else None
 
         try:
-            values = _parse_row(get, factor)
+            values = _parse_row(get, factor, comma_groups)
         except _RowError as exc:
             key_guess = _text(get("id")) or None
             result["skipped"].append({

@@ -248,7 +248,8 @@ def post_preview():
     columns = table["columns"]
     suggested = fmea_import.suggest_mapping(columns)
     unit = (fmea_import.suggest_lambda_unit(
-        suggested["lambda"], fmea_import.column_values(table, suggested["lambda"]))
+        suggested["lambda"], fmea_import.column_values(table, suggested["lambda"]),
+        delimiter=table.get("delimiter"))
         if "lambda" in suggested else "h")
     return ok_response(
         path=str(target),
@@ -325,6 +326,7 @@ def post_import():
                 lambda_unit=lambda_unit,
                 columns=table["columns"],
                 row_numbers=table["rowNumbers"],
+                delimiter=table.get("delimiter"),
             )
         except fmea_import.FmeaImportError as exc:
             raise _import_error(exc)
