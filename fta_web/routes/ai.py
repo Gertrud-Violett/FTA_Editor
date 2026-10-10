@@ -438,7 +438,7 @@ def post_chat():
     message = _required_text(payload, "message")
 
     handler = ai_bridge.get_handler()
-    tree, mode, title, _document = _document_snapshot()
+    tree, mode, title, document = _document_snapshot()
 
     with _ai_failures():
         # set_fta_context is pure formatting, but it writes to the handler, so
@@ -448,7 +448,9 @@ def post_chat():
             handler.set_fta_context(tree, mode, title)
             return handler.send_message(message, include_fta_context=True)
 
-        reply, changes = ai_bridge.run_ai_call("chat", _send)
+        reply, changes = ai_bridge.run_ai_call(
+            "chat", ai_bridge.proposing(handler, document, _send)
+        )
 
     return ok_response(
         reply=ai_bridge.scrub(reply),
@@ -470,11 +472,15 @@ def post_analyze():
     _require_configured()
 
     handler = ai_bridge.get_handler()
-    tree, mode, title, _document = _document_snapshot()
+    tree, mode, title, document = _document_snapshot()
 
     with _ai_failures():
         reply, changes = ai_bridge.run_ai_call(
-            "analyze", handler.get_quick_analysis, tree, mode, title
+            "analyze",
+            ai_bridge.proposing(handler, document, handler.get_quick_analysis),
+            tree,
+            mode,
+            title,
         )
 
     return ok_response(
@@ -517,6 +523,10 @@ def post_apply_changes():
     Partial success is reported, not hidden: each index lands in ``applied`` or
     in ``rejected`` with the handler's own message. If every one is rejected
     the tree is untouched and the whole request is a 400.
+
+    A proposal made for another document -- one that New, Open or Import has
+    replaced since (``ai_bridge.made_for``) -- is always rejected: its node
+    ids may name unrelated nodes in the document open now.
     """
     _require_configured()
     payload = _body()
@@ -571,7 +581,10 @@ def post_apply_changes():
 
         for index in indices:
             change = pending[index]
-            ok, message = handler.apply_change_to_fta(state.core, change)
+            if ai_bridge.made_for(change, state.core):
+                ok, message = handler.apply_change_to_fta(state.core, change)
+            else:
+                ok, message = False, ai_bridge.OTHER_DOCUMENT_MESSAGE
             record = ai_bridge.change_view(change, index)
             record["message"] = ai_bridge.scrub(message)
             (applied if ok else rejected).append(record)
@@ -650,8 +663,14 @@ def post_update():
     tree, mode, title, document = _document_snapshot()
 
     with _ai_failures():
+        # The handler parses proposals out of this reply too; they are pending
+        # like any others, so they are recorded against this document as well.
         assistant_text, updated = ai_bridge.run_ai_call(
-            "update", handler.generate_full_fta_update, tree, mode, title
+            "update",
+            ai_bridge.proposing(handler, document, handler.generate_full_fta_update),
+            tree,
+            mode,
+            title,
         )
 
     reply = ai_bridge.scrub(assistant_text)

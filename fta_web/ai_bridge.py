@@ -65,6 +65,7 @@ import json
 import logging
 import re
 import threading
+import weakref
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.ai_bridge``
@@ -598,6 +599,53 @@ def pending_changes_view(handler: AIAgentHandler) -> List[Dict[str, Any]]:
         change_view(change, index)
         for index, change in enumerate(handler.pending_changes)
     ]
+
+
+# ---- which document a proposal was made for -----------------------------
+#
+# A proposal names node ids of the tree the model was shown. New, Open and
+# Import replace ``state.core`` with a fresh object, and in the new document
+# the same ids can name unrelated nodes ("root_0" is the first child of every
+# tree), so a proposal is only ever applied to the document it was made for.
+# Held weakly on both sides: a pending list that outlives its document must
+# not keep the old tree in memory.
+
+_proposal_documents: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+#: The ``rejected`` message for a proposal whose document is gone.
+OTHER_DOCUMENT_MESSAGE = (
+    "Not applied: this suggestion was made for a different analysis, which "
+    "New or Open has replaced since, and its node ids may name unrelated "
+    "nodes here."
+)
+
+
+def proposing(handler: AIAgentHandler, document: Any, func: Callable[..., Any]) -> Callable[..., Any]:
+    """``func`` (a handler call that may propose changes) for
+    :func:`run_ai_call`, recording what it proposes as made for ``document``.
+
+    The recording runs on the worker, inside the call slot, as soon as the
+    handler returns: calls are serialised, so the not-yet-recorded pending
+    changes are exactly this call's -- also for a call that timed out and
+    finishes after its request has gone.
+    """
+
+    def call(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return func(*args, **kwargs)
+        finally:
+            ref = weakref.ref(document)
+            for change in handler.pending_changes:
+                if change not in _proposal_documents:
+                    _proposal_documents[change] = ref
+
+    return call
+
+
+def made_for(change: AIProposedChange, document: Any) -> bool:
+    """False when ``change`` was proposed for a document other than ``document``."""
+    ref = _proposal_documents.get(change)
+    return ref is None or ref() is document
 
 
 # ---- full-JSON update diagnostics ---------------------------------------

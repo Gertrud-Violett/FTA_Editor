@@ -288,3 +288,87 @@ class TestUpdateIsNotInstalledOverAChangedDocument:
 
         assert outcome["response"].status_code == 200, body(outcome["response"])
         assert [c[0] for c in children(client)] == [pump, "ai_new"]
+
+
+# --------------------------------------------------------------------------
+# AI-02: proposals made for one document were applied to the next one
+# --------------------------------------------------------------------------
+
+
+class TestProposalsBelongToTheirDocument:
+    """``root_0`` is the first child of every tree: after New or Open a
+    pending proposal's ids name unrelated nodes. Applying an 'edit' made for
+    "Pump fails" renamed document B's "Valve stuck", multiplied its
+    probability by 20 000 and wiped its notes."""
+
+    @pytest.fixture
+    def proposed(self, client, provider, monkeypatch):
+        pump = add(client, name="Pump fails", probability=0.01)
+        monkeypatch.setattr(provider, "send_message", replies(edit_reply(pump, "Pump fails")))
+        changes = body(client.post("/api/ai/chat", json={"message": "review"}))["changes"]
+        assert [c["targetId"] for c in changes] == [pump]
+        return changes[0]["index"]
+
+    def test_after_open_the_proposal_is_refused(self, client, proposed, tmp_path):
+        path = write_document(tmp_path / "plant_b.json")
+        assert client.post("/api/file/open", json={"path": str(path)}).status_code == 200
+        before = children(client)
+
+        response = client.post("/api/ai/changes/apply", json={"indices": [proposed]})
+
+        assert response.status_code == 400
+        assert error_code(response) == "AI_CHANGE_REJECTED"
+        message = body(response)["error"]["detail"]["rejected"][0]["message"]
+        assert "different analysis" in message
+        assert children(client) == before == [("root_0", "Valve stuck", 1e-5, "reviewed value")]
+        assert body(client.get("/api/state"))["dirty"] is False
+
+    def test_after_new_the_proposal_is_refused(self, client, proposed):
+        assert client.post("/api/new", json={"force": True}).status_code == 200
+        add(client, name="Unrelated", probability=0.5)  # gets root_0 again
+
+        response = client.post("/api/ai/changes/apply", json={"indices": [proposed]})
+
+        assert response.status_code == 400
+        assert children(client) == [("root_0", "Unrelated", 0.5, "")]
+
+    def test_undo_and_redo_keep_the_document_and_its_proposals(self, client, proposed):
+        add(client, name="Scratch")
+        client.post("/api/undo")
+        client.post("/api/redo")
+
+        response = client.post("/api/ai/changes/apply", json={"indices": [proposed]})
+
+        assert response.status_code == 200, body(response)
+        assert children(client)[0][1:3] == ("Pump fails", 0.2)
+
+    def test_analyze_proposals_are_tagged_too(self, client, provider, monkeypatch, tmp_path):
+        pump = add(client, name="Pump fails", probability=0.01)
+        monkeypatch.setattr(provider, "send_message", replies(edit_reply(pump, "Pump fails")))
+        index = body(client.post("/api/ai/analyze", json={}))["changes"][0]["index"]
+        path = write_document(tmp_path / "plant_b.json")
+        client.post("/api/file/open", json={"path": str(path)})
+
+        assert client.post("/api/ai/changes/apply", json={"indices": [index]}).status_code == 400
+
+    def test_a_reply_that_arrives_after_open_belongs_to_the_old_document(
+        self, app, client, provider, monkeypatch, tmp_path
+    ):
+        """The proposal is for the tree the model was shown, not for the one
+        that happens to be open when its answer arrives."""
+        pump = add(client, name="Pump fails", probability=0.01)
+        blocked = Blocked(edit_reply(pump, "Pump fails"))
+        monkeypatch.setattr(provider, "send_message", blocked)
+
+        thread, outcome = in_background(app, "post", "/api/ai/chat", {"message": "review"})
+        try:
+            assert blocked.inside.wait(5)
+            path = write_document(tmp_path / "plant_b.json")
+            client.post("/api/file/open", json={"path": str(path)})
+        finally:
+            blocked.release.set()
+            thread.join(10)
+        index = body(outcome["response"])["changes"][0]["index"]
+
+        assert client.post("/api/ai/changes/apply", json={"indices": [index]}).status_code == 400
+        assert children(client) == [("root_0", "Valve stuck", 1e-5, "reviewed value")]
