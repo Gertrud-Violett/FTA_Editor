@@ -1340,3 +1340,74 @@ def test_the_azure_endpoint_is_shown_outside_advanced():
     en, ja = test_catalog_parity._catalogs()
     assert "ai.endpoint.azureHint" in en and "ai.endpoint.azureHint" in ja
     assert "openai.azure.com" in en["ai.endpoint.azureHint"]
+
+
+# --------------------------------------------------------------------------
+# Integration of the review branches: the AI paths install trees and nodes
+# without PATCH /api/nodes or the file loader, so they must refuse what those
+# refuse -- an unpaired surrogate (B-16: Save then fails for good), a repeated
+# link (B-18: counted twice) and a tree deeper than MAX_TREE_DEPTH (B-9: every
+# request 500s until New).
+# --------------------------------------------------------------------------
+
+
+class TestAIPathsRefuseWhatTheEditorRefuses:
+    def _update_with(self, client, provider, monkeypatch, tree):
+        monkeypatch.setattr(provider, "send_message", replies(json.dumps(tree)))
+        before = body(client.get("/api/state"))
+        response = client.post("/api/ai/update", json={})
+        after = body(client.get("/api/state"))
+        assert after["tree"] == before["tree"], "the refused tree was installed"
+        return response
+
+    @pytest.mark.parametrize("field", ["name", "notes"])
+    def test_an_update_with_an_unpaired_surrogate_is_rejected(
+        self, client, provider, monkeypatch, field
+    ):
+        node = {"id": "pump", "name": "Pump fails", "notes": ""}
+        node[field] = "Pump \ud83d"
+        response = self._update_with(client, provider, monkeypatch, tree_with(node))
+        assert response.status_code == 400
+        assert error_code(response) == "AI_UPDATE_REJECTED"
+        assert body(response)["error"]["detail"]["nodeId"] == "pump"
+
+    def test_an_update_with_a_repeated_link_is_rejected(self, client, provider, monkeypatch):
+        link = {"target_id": "valve", "relation": "AND"}
+        tree = tree_with({"id": "pump", "name": "Pump fails", "links": [link, dict(link)]},
+                         {"id": "valve", "name": "Valve stuck"})
+        response = self._update_with(client, provider, monkeypatch, tree)
+        assert response.status_code == 400
+        assert error_code(response) == "AI_UPDATE_REJECTED"
+        assert body(response)["error"]["detail"]["nodeId"] == "pump"
+
+    def test_an_update_deeper_than_the_editor_serves_is_rejected(
+        self, client, provider, monkeypatch
+    ):
+        from fta_web.config import MAX_TREE_DEPTH
+
+        leaf = {"id": "n0", "name": "n0", "type": "Event", "probability": 0.1,
+                "logicGate": "OR", "notes": "", "links": [], "children": []}
+        for level in range(1, MAX_TREE_DEPTH + 2):
+            leaf = {"id": "n%d" % level, "name": "n%d" % level, "type": "Event",
+                    "probability": 0.1, "logicGate": "OR", "notes": "", "links": [],
+                    "children": [leaf]}
+        response = self._update_with(client, provider, monkeypatch, tree_with(leaf))
+        assert response.status_code == 400
+        assert error_code(response) == "AI_UPDATE_REJECTED"
+
+    @pytest.mark.parametrize("make_reply", [
+        lambda pump: edit_reply(pump, "Pump \\ud83d"),
+        lambda pump: add_reply(notes_literal='"wet \\ud83d"'),
+    ])
+    def test_a_proposal_with_an_unpaired_surrogate_is_not_applied(
+        self, client, provider, monkeypatch, make_reply
+    ):
+        pump = add(client, name="Pump fails", probability=0.01)
+        monkeypatch.setattr(provider, "send_message", replies(make_reply(pump)))
+        changes = body(client.post("/api/ai/chat", json={"message": "review"}))["changes"]
+        assert len(changes) == 1
+        response = client.post("/api/ai/changes/apply",
+                               json={"indices": [changes[0]["index"]]})
+        assert response.status_code == 400, body(response)
+        saved = client.post("/api/file/save-as", json={"path": "after.json"})
+        assert saved.status_code == 200, body(saved)

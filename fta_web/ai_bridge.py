@@ -72,12 +72,17 @@ try:  # normal package import: ``import fta_web.ai_bridge``
     from . import config
     from .engine import derive_quant
     from .errors import ApiError
-    from .node_schema import NODE_KEYS, VALIDATORS
+    from .node_schema import NODE_KEYS, VALIDATORS, drop_duplicate_links, refuse_unsavable_text
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
     from engine import derive_quant  # type: ignore[no-redef]
     from errors import ApiError  # type: ignore[no-redef]
-    from node_schema import NODE_KEYS, VALIDATORS  # type: ignore[no-redef]
+    from node_schema import (  # type: ignore[no-redef]
+        NODE_KEYS,
+        VALIDATORS,
+        drop_duplicate_links,
+        refuse_unsavable_text,
+    )
 
 # Importing config placed fta_web/core on sys.path, so the vendored modules
 # import under their bare names. See config.py for why that is mandatory.
@@ -728,6 +733,9 @@ def change_problem(change: AIProposedChange, document: Any = None) -> Optional[s
     notes = data.get("notes")
     if notes is not None and not isinstance(notes, str):
         return "Not applied: the suggested notes are not text."
+    unsavable = _unsavable_text(data, _PLAIN_TEXT_KEYS)
+    if unsavable:
+        return "Not applied: the suggested %s contains text that cannot be saved." % unsavable[0]
     if change.change_type == "edit" and "probability" in data and document is not None:
         return derived_probability_reason(document.find_node_by_id(change.target_id), document)
     return None
@@ -778,15 +786,30 @@ def update_problem(tree: Any) -> Optional[str]:
     ``PATCH /api/nodes`` uses: the model is never shown them, so any it writes
     are invented, and ``houseState: "yes"`` would silently count as false.
     """
-    stack = [tree] if isinstance(tree, dict) else []
+    stack = [(tree, 0)] if isinstance(tree, dict) else []
     while stack:
-        node = stack.pop()
+        node, depth = stack.pop()
         node_id = node.get("id")
+        if depth > config.MAX_TREE_DEPTH:
+            return ("Tree too deep at node %s: it is more than %d levels below the top "
+                    "event, the most the editor supports" % (node_id, config.MAX_TREE_DEPTH))
         if not _is_probability(node.get("probability")):
             return "Invalid probability for node %s: %r" % (node_id, node.get("probability"))
         notes = node.get("notes")
         if notes is not None and not isinstance(notes, str):
             return "Invalid notes for node %s: notes must be text" % node_id
+        unsavable = _unsavable_text(node, _PLAIN_TEXT_KEYS)
+        if unsavable:
+            return "Invalid %s for node %s: %s" % (unsavable[0], node_id, unsavable[1])
+        links = node.get("links")
+        if isinstance(links, list):
+            for link in links:
+                unsavable = _unsavable_text(link, _LINK_TEXT_KEYS) if isinstance(link, dict) else None
+                if unsavable:
+                    return "Invalid link for node %s: %s" % (node_id, unsavable[1])
+            if drop_duplicate_links({"links": copy.deepcopy(links)}):
+                return ("Invalid links for node %s: the same link appears more than once, "
+                        "so it would be counted twice" % node_id)
         for key in NODE_KEYS:
             if node.get(key) is None:
                 continue
@@ -794,7 +817,29 @@ def update_problem(tree: Any) -> Optional[str]:
                 VALIDATORS[key](node[key])
             except ApiError as exc:
                 return "Invalid %s for node %s: %s" % (key, node_id, exc.message)
-        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+        stack.extend(reversed([(c, depth + 1) for c in node.get("children") or []
+                               if isinstance(c, dict)]))
+    return None
+
+
+#: The text a node carries outside the 1.7 keys (``VALIDATORS`` check those),
+#: and a link's.
+_PLAIN_TEXT_KEYS = ("id", "name", "type", "notes", "logicGate")
+_LINK_TEXT_KEYS = ("target_id", "relation")
+
+
+def _unsavable_text(values: Dict[str, Any], keys: Tuple[str, ...]) -> Optional[Tuple[str, str]]:
+    """``(key, message)`` for the first text in ``values`` that could never be
+    saved (an unpaired surrogate: ``node_schema.refuse_unsavable_text``), or
+    None. The model writes these straight into the tree, past the validators
+    ``PATCH /api/nodes`` and the loader apply."""
+    for key in keys:
+        value = values.get(key)
+        if isinstance(value, str):
+            try:
+                refuse_unsavable_text(value, key)
+            except ApiError as exc:
+                return key, exc.message
     return None
 
 
