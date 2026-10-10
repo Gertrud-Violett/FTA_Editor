@@ -323,3 +323,54 @@ def test_mc_event_not_sampled_is_translated_for_the_uncertainty_tab():
     for block in (en_block, ja_block):
         text = re.search(r"'anl\.warn\.MC_EVENT_NOT_SAMPLED':\s*'([^']*)'", block).group(1)
         assert set(re.findall(r"\{(\w+)\}", text)) == {"count", "names"}
+
+
+# ---- E-6: a probability the engine uses must be a number in [0, 1] ------------------------
+
+
+def _issues(tree, mode="FTA"):
+    from fta_web import lint
+
+    return lint.run(tree, None, mode=mode)
+
+
+def _out_of_range(issues):
+    return [(i["nodeId"], i["severity"]) for i in issues if i["code"] == "PROBABILITY_OUT_OF_RANGE"]
+
+
+@pytest.mark.parametrize("bad", [1.5, -0.2, float("nan"), float("inf"), float("-inf"),
+                                 "junk", True, None])
+def test_probability_out_of_range_is_an_error_where_the_engine_uses_it(bad):
+    """A file edited by hand loads leaf probabilities unchecked: 1.5 made a
+    headline of 1.25 and -0.2 one of 0.4, and the Validation tab said
+    nothing; NaN was reported as "Probability is 1.0 (the default)"."""
+    tree = gate("root", "OR", [leaf("A", bad), leaf("B", 0.5)])
+    issues = _issues(tree)
+    assert _out_of_range(issues) == [("A", "error")]
+    assert "DEFAULT_PROBABILITY" not in [i["code"] for i in issues]
+    issue = [i for i in issues if i["code"] == "PROBABILITY_OUT_OF_RANGE"][0]
+    assert issue["params"] == {"probability": bad} or bad != bad  # NaN != NaN
+    assert "{" not in issue["message"]
+    # An event tree uses every node's own probability.
+    assert _out_of_range(_issues(tree, mode="ETA")) == [("A", "error")]
+
+
+def test_probability_out_of_range_only_where_the_engine_uses_the_value():
+    tree = gate("root", "OR", [
+        gate("g", "AND", [leaf("A", 0.0), leaf("B", 1.0)], probability=7.0),  # gates ignore it
+        leaf("H", 5.0, eventKind="house", houseState=True),                    # houseState is used
+        leaf("R", -3.0, quant={"model": "rate", "lambda": 1e-4, "T": 100.0}),  # the model is used
+        gate("T", "TRANSFER", [], transferTo="A", probability=9.0),             # the target is used
+        leaf("S", "0.25"),                                                      # a number all the same
+        leaf("F", 2.0, quant={"model": "fixed"}),                               # fixed: q as entered
+    ])
+    assert _out_of_range(_issues(tree)) == [("F", "error")]
+    # ETA reads each node's own probability, whatever its gate, kind or model.
+    assert sorted(_out_of_range(_issues(tree, mode="ETA"))) == [
+        ("F", "error"), ("H", "error"), ("R", "error"), ("T", "error"), ("g", "error")]
+
+
+def test_a_valid_default_probability_is_still_reported_as_default():
+    tree = gate("root", "OR", [leaf("A", 1.0), leaf("B", 0.5)])
+    codes = [i["code"] for i in _issues(tree)]
+    assert "DEFAULT_PROBABILITY" in codes and "PROBABILITY_OUT_OF_RANGE" not in codes
