@@ -1960,6 +1960,21 @@ export function initTree(container) {
     }
   });
 
+  /**
+   * New / Open replaced the document (main.js `fta:document`). A wider
+   * selection made in the old one names nothing chosen in this one -- ids such
+   * as root_0, root_1 recur from file to file, so it survived whenever its
+   * lead was the root, and Delete then offered to remove those nodes of the
+   * newly opened tree. Collapse it to the store's lead.
+   */
+  function onDocument() {
+    const lead =
+      store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
+    selection = new Set(lead ? [lead] : []);
+    anchorId = lead;
+    render();
+  }
+
   /** Hand the shell whatever rename/move is still on the wire (see `pending`). */
   function onFlush(event) {
     const detail = event && event.detail;
@@ -2056,6 +2071,7 @@ export function initTree(container) {
   window.addEventListener('fta:language', onLanguage);
   window.addEventListener('fta:flush', onFlush);
   window.addEventListener('fta:jump', onJump);
+  window.addEventListener('fta:document', onDocument);
 
   render();
 
@@ -2069,6 +2085,7 @@ export function initTree(container) {
       window.removeEventListener('fta:language', onLanguage);
       window.removeEventListener('fta:flush', onFlush);
       window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:document', onDocument);
       if (typeof unHighlight === 'function') unHighlight();
       if (typeof unOverlay === 'function') unOverlay();
       if (searchTimer) window.clearTimeout(searchTimer);

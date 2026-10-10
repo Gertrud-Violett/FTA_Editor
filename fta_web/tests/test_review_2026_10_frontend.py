@@ -230,3 +230,24 @@ def test_undo_redo_wait_for_pending_commits():
     flush = body.index("await flushPendingEdits();")
     assert flush < body.index("store.state[able] === false"), "canUndo must include the commit"
     assert flush < body.index("api.post('/' + kind")
+
+
+# ---- tree.js: New / Open drop the old document's multi-selection ----------------------
+#
+# Ctrl-click two rows, then the root (lead = root), then open a file: ids such
+# as root_0/root_1 recur from file to file, so both rows stayed selected in the
+# newly opened tree and Delete asked "Delete these 2 nodes...?" about nodes the
+# user never chose there (reproduced in Chromium).
+
+
+def test_tree_drops_its_multi_selection_on_a_new_document():
+    src = _read(STATIC / "tree.js")
+    assert "window.addEventListener('fta:document', onDocument);" in src
+    assert "window.removeEventListener('fta:document', onDocument);" in src
+    body = _braced(src, src.index("function onDocument()"))
+    assert "selection = new Set(lead ? [lead] : []);" in body
+    assert "anchorId = lead;" in body
+    assert "render();" in body
+    main = _read(STATIC / "main.js")
+    for fn in ("async function adoptDocument(payload)", "async function actionNew()"):
+        assert "announceDocument();" in _braced(main, main.index(fn)), fn
