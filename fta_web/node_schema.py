@@ -392,6 +392,11 @@ def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, An
     user switched to AND). The web engine follows ``gateType``, which would
     silently discard the desktop edit -- so ``logicGate`` is trusted, and the
     ``gateType`` goes together with the ``k``/``transferTo`` that only it used.
+
+    The desktop app only ever writes AND or OR, so only those values can be a
+    desktop edit. Any other ``logicGate`` (a hand-written ``"PAND"`` beside
+    gateType PAND) keeps the ``gateType`` and is set to its projection,
+    without a warning.
     """
     warnings: List[Dict[str, Any]] = []
     stack = [tree] if isinstance(tree, dict) else []
@@ -406,7 +411,11 @@ def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, An
         if gate_type in (None, ""):
             continue
         logic = str(node.get("logicGate") or "OR").strip().upper()
-        if project_logic_gate(gate_type) == logic:
+        projected = project_logic_gate(gate_type)
+        if logic not in ("AND", "OR"):
+            node["logicGate"] = projected
+            continue
+        if projected == logic:
             continue
         node.pop("gateType", None)
         dropped = ["gateType"]

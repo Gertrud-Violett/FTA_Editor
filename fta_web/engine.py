@@ -40,7 +40,9 @@ app, which only reads ``probability``, still sees a meaningful number):
 A model whose parameters are missing or invalid keeps the previous
 ``probability`` and records ``QUANT_PARAM_MISSING``.
 
-Gate types (``gateType`` wins over ``logicGate`` when both are present):
+Gate types (``gateType`` wins over ``logicGate`` when both are present;
+without a valid ``gateType``, ``logicGate`` is read as AND or else OR, exactly
+as the core reads it, so an advanced name stored there is not a gate type):
 KOFN -- P(at least k of n) by Poisson-binomial DP; XOR -- a+b-2ab (parity for
 n != 2, flagged); INHIBIT -- AND over the input and its conditioning child;
 PAND -- Πp/n!, always flagged as an approximation; TRANSFER -- the value of
@@ -590,8 +592,12 @@ class WebCore(FTACore):
                 if gate_type is None or gate_type not in (
                     "AND", "OR", "KOFN", "XOR", "INHIBIT", "PAND"
                 ):
+                    # logicGate is read exactly as the 1.6 core reads it: AND,
+                    # else OR. An advanced name there (a hand-written "PAND")
+                    # is not a gate type, so such a file computes as in 1.6.
                     gate_value = node.get("logicGate", "OR")
                     gate = str(gate_value).strip().upper() if gate_value else "OR"
+                    gate = "AND" if gate == "AND" else "OR"
                 else:
                     gate = gate_type
 

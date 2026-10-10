@@ -161,3 +161,108 @@ def test_file_with_a_huge_integer_setting_loads_with_a_repair_notice(tmp_path):
     assert core.analysis["missionTime"] == 8760.0
     assert [w["fields"] for w in core.last_load_warnings
             if w["kind"] == "analysis_invalid"] == [["missionTime"]]
+
+
+# ---- E-1: logicGate is read as 1.6 reads it; a same-named gateType is not stale ------------
+
+
+def _write_document(tmp_path, tree, name="doc.json"):
+    import json
+
+    path = tmp_path / name
+    path.write_text(json.dumps({"title": "t", "date": "2026-10-10", "mode": "FTA", "tree": tree}),
+                    encoding="utf-8")
+    return str(path)
+
+
+def _cut_ids(result):
+    return sorted(sorted(e["id"] for e in c["events"]) for c in result["cutSets"])
+
+
+@pytest.mark.parametrize("raw", ["PAND", "INHIBIT", "XOR", "KOFN", "pand", " Xor "])
+def test_legacy_logic_gate_holding_an_advanced_name_computes_as_or(tmp_path, raw):
+    """USER_GUIDE: a file without the 1.7 keys behaves exactly as in 1.6, and
+    1.6 reads every logicGate but AND as OR. The web engine and logic.py
+    read an advanced name there as that gate: OR-of-three-0.5 under a raw
+    "PAND" gave 0.0208 (1.6 core and desktop: 0.875), "INHIBIT" 0.125, and
+    "XOR" a tree walk of 0.5 with an MCUB headline of 0.875 -- while lint
+    read the same node as OR."""
+    from FTA_Editor_core import FTACore
+
+    from fta_web import cutsets, lint
+
+    tree = {"id": "root", "name": "top", "type": "Event", "probability": 1.0, "logicGate": raw,
+            "children": [{"id": c, "name": c, "type": "Event", "probability": 0.5, "children": []}
+                         for c in "ABC"]}
+    path = _write_document(tmp_path, tree)
+    legacy, web = FTACore(), WebCore()
+    assert legacy.load_from_json(path)[0] and web.load_from_json(path)[0]
+    data, analysis = web.get_data(), web.analysis
+    assert data["calculatedProbability"] == legacy.get_data()["calculatedProbability"] == 0.875
+    assert web.quant_warnings == []
+    result = cutsets.compute(data, analysis)
+    assert _cut_ids(result) == [["A"], ["B"], ["C"]]
+    assert result["nonCoherent"] is False and result["approximations"] == []
+    summary = engine.summary(data, analysis)
+    assert summary["headlineMethod"] == "treeWalk" and summary["headline"] == 0.875
+    assert lint.run(data, analysis) == []
+
+
+@pytest.mark.parametrize("gate_type, extra, probs, expected", [
+    ("XOR", {}, [0.1, 0.2], 0.1 + 0.2 - 2 * 0.1 * 0.2),
+    ("PAND", {}, [0.1, 0.2], 0.1 * 0.2 / 2),
+    ("KOFN", {"k": 2}, [0.1, 0.2, 0.3], engine.kofn_probability([0.1, 0.2, 0.3], 2)),
+    ("TRANSFER", {"transferTo": "B"}, [0.1, 0.2], 0.2),
+])
+def test_gate_type_beside_a_same_named_logic_gate_survives_load_and_ai_reconcile(
+        tmp_path, gate_type, extra, probs, expected):
+    """The desktop app only ever writes AND or OR into logicGate, so a
+    gateType beside a logicGate that names the same gate (a hand-written
+    file) is not a desktop edit: it was dropped as "stale" together with its
+    k, and the node computed something else. It is kept now, and logicGate
+    becomes its AND/OR projection, without a repair notice."""
+    from fta_web import node_schema
+
+    children = [{"id": "AB"[i] if i < 2 else "C", "name": "x", "type": "Event",
+                 "probability": p, "children": []} for i, p in enumerate(probs)]
+    if gate_type == "TRANSFER":
+        tree = {"id": "root", "name": "top", "type": "Event", "probability": 1.0,
+                "logicGate": "OR", "children": [
+                    {"id": "t", "name": "t", "type": "Event", "probability": 1.0,
+                     "logicGate": gate_type, "gateType": gate_type, "children": [], **extra},
+                    children[1]]}
+        node_of = lambda root: root["children"][0]  # noqa: E731
+    else:
+        tree = {"id": "root", "name": "top", "type": "Event", "probability": 1.0,
+                "logicGate": gate_type, "gateType": gate_type, "children": children, **extra}
+        node_of = lambda root: root  # noqa: E731
+    projected = node_schema.project_logic_gate(gate_type)
+
+    core = WebCore()
+    assert core.load_from_json(_write_document(tmp_path, tree)) == (True, None)
+    node = node_of(core.get_data())
+    assert node["gateType"] == gate_type and node["logicGate"] == projected
+    for key, value in extra.items():
+        assert node[key] == value
+    assert not [w for w in core.last_load_warnings if w["kind"] == "gate_type_reset"]
+    assert node["calculatedProbability"] == pytest.approx(expected)
+
+    ai_tree = copy.deepcopy(tree)
+    assert node_schema.reconcile_gate_types(ai_tree, cause="ai") == []
+    node = node_of(ai_tree)
+    assert node["gateType"] == gate_type and node["logicGate"] == projected
+    for key, value in extra.items():
+        assert node[key] == value
+
+
+def test_a_desktop_gate_edit_still_resets_the_stale_gate_type(tmp_path):
+    """Unchanged: gateType KOFN beside the desktop app's logicGate AND is stale."""
+    tree = {"id": "root", "name": "top", "type": "Event", "probability": 1.0,
+            "logicGate": "AND", "gateType": "KOFN", "k": 1, "children": [
+                {"id": "A", "name": "A", "type": "Event", "probability": 0.5, "children": []},
+                {"id": "B", "name": "B", "type": "Event", "probability": 0.5, "children": []}]}
+    core = WebCore()
+    assert core.load_from_json(_write_document(tmp_path, tree))[0]
+    assert "gateType" not in core.get_data() and "k" not in core.get_data()
+    assert core.get_data()["calculatedProbability"] == 0.25
+    assert [w["kind"] for w in core.last_load_warnings] == ["gate_type_reset"]
