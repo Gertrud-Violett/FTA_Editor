@@ -353,6 +353,7 @@ export function mount(panel, ctx) {
       before = { value: input.value, edited: edited.has(input) };
     });
     input.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key === 'Enter') {
         event.preventDefault();
         run();

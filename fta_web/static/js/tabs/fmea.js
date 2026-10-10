@@ -349,6 +349,7 @@ export function mount(panel, ctx) {
     });
     pathInput.value = state.path;
     pathInput.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key === 'Enter') {
         event.preventDefault();
         loadPreview(pathInput.value, null, true);

@@ -253,6 +253,7 @@ export function mount(panel, ctx) {
     if (!onHeader(event)) onRow(event);
   });
   tableWrap.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     if (!onHeader(event)) onRow(event);

@@ -445,3 +445,42 @@ def test_validation_quant_param_missing_in_words():
     body = _block(src, "function displayParams(issue)")
     assert "if (issue.code === 'QUANT_PARAM_MISSING' && typeof params.model === 'string')" in body
     assert "Object.assign(out, quantMissingText(params.model, params.missing, lookup));" in body
+
+
+# ---- Tabs: Enter / Escape leave an IME composition alone -------------------------------
+# Enter that confirms a Japanese IME conversion (keydown with isComposing, or
+# keyCode 229) committed a Traceability cell, loaded an FMEA path, ran Cut Sets /
+# Monte Carlo or committed a Quantification field mid-composition, and Escape
+# that cancels a conversion reverted the field. Same guard as chat.js and the
+# shell (F-24): `if (event.isComposing || event.keyCode === 229) return;`.
+
+IME_GUARD = "if (event.isComposing || event.keyCode === 229) return;"
+
+
+def _keydown_handlers(src: str):
+    """[(name, body)] of every keydown listener: inline arrows and named functions."""
+    out = []
+    for match in re.finditer(r"addEventListener\('keydown', ", src):
+        named = re.match(r"([A-Za-z_]\w*)\)", src[match.end():])
+        if named:
+            out.append((named.group(1), _block(src, "function %s(event) {" % named.group(1))))
+        else:
+            line = src.count("\n", 0, match.start()) + 1
+            out.append(("line %d" % line, _block(src[match.start():], "(event) => {")))
+    return out
+
+
+def test_tab_enter_escape_handlers_ignore_ime_composition():
+    guarded = []
+    for path in sorted(TABS.glob("*.js")):
+        for name, body in _keydown_handlers(_read(path)):
+            keys = [i for i in (body.find("'Enter'"), body.find("'Escape'")) if i != -1]
+            if not keys:
+                continue  # e.g. host.js: arrows, Home and End only
+            assert IME_GUARD in body, "%s %s: no IME composition guard" % (path.name, name)
+            assert body.index(IME_GUARD) < min(keys), "%s %s: Enter/Escape checked before the guard" % (path.name, name)
+            guarded.append((path.name, name))
+    # cutsets x2, fmea, importance, quant x2, trace x2, uncertainty: none may slip past the scan
+    assert len(guarded) == 9, guarded
+    assert {name for name, _ in guarded} == {"cutsets.js", "fmea.js", "importance.js", "quant.js",
+                                             "trace.js", "uncertainty.js"}

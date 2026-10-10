@@ -357,6 +357,7 @@ export function mount(panel, ctx) {
   }
 
   function onEditorKey(event) {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
     if (event.key === 'Enter') {
       event.preventDefault();
       finishEdit(true, true);
@@ -440,6 +441,7 @@ export function mount(panel, ctx) {
   }
 
   function onTableKey(event) {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
     const td = event.target instanceof Element ? event.target.closest('td.trace-edit') : null;
     if (!td || td.classList.contains('is-editing')) return;
     if (event.key === 'Enter' || event.key === 'F2') {

@@ -177,6 +177,7 @@ export function mount(panel, ctx) {
     input.addEventListener('blur', () => commitField(field));
     input.addEventListener('input', () => setInvalid(field, ''));
     input.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key === 'Enter') {
         event.preventDefault();
         input.blur();
@@ -550,6 +551,7 @@ export function mount(panel, ctx) {
     const tr = event.target instanceof Element ? event.target.closest('tr[data-id]') : null;
     if (!tr) return;
     if (event.type === 'keydown') {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
     }
