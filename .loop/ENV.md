@@ -46,7 +46,7 @@ Names only, never values. Values go in
 - [ ] `gh auth login` on the host so the loop can open draft PRs.
 
 ## Off-limits for the loop
-- `desktop/**` (frozen legacy app, source, tests and data are SHA-256 pinned in `fta_web/core/BASELINE.json`).
+- `desktop/**` (frozen legacy app; its source and sample data are SHA-256 pinned in `fta_web/core/BASELINE.json`, its tests are frozen by policy).
 - `fta_web/core/BASELINE.json` pins and `fta_web/core/DIVERGENCE.md` entries: only change together with a deliberate, documented divergence; never to make a test pass.
 - `fta_web/static/vendor/**` (vendored viz.js with a pinned sha256 in PROVENANCE.json).
 - `uv.lock`: only regenerate with `uv lock` when a task explicitly changes dependencies.

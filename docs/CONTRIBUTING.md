@@ -66,8 +66,8 @@ hash-pinned by `fta_web/tests/test_vendor_integrity.py` and must not be edited
 
 `uv sync --extra dev` installs everything: both apps' optional features, plus
 `pytest` and `pyinstaller`. See `pyproject.toml` for the full extras list
-(`web`, `desktop`, `excel`, `ai`, `test`, `build`, `all`, `dev`) if you only
-need a subset.
+(`web`, `desktop`, `excel`, `report`, `ai`, `test`, `build`, `all`, `dev`) if
+you only need a subset.
 
 Every pull request runs the full suite on Linux (Python 3.10 and 3.13) and on
 Windows — see [`.github/workflows/tests.yml`](../.github/workflows/tests.yml).
@@ -85,21 +85,21 @@ Windows — see [`.github/workflows/tests.yml`](../.github/workflows/tests.yml).
 
 ## Frozen code and the vendored fork
 
-**Read this before editing anything under `src/`, `tests/`, `data/` or
-`fta_web/core/`.** These are not ordinary source directories, and the rules are
-enforced by tests rather than by review.
+**Read this before editing anything under `desktop/` or `fta_web/core/`.**
+These are not ordinary source directories, and the rules are enforced by tests
+rather than by review.
 
 | Directory | Status | May you edit it? |
 |---|---|---|
-| `src/`, `tests/`, `data/` | **Frozen** for the 1.6 line, pinned by SHA-256 | **No.** Any change fails `test_upstream_is_frozen` |
-| `fta_web/core/` | **Vendored fork** of four `src/` modules, pinned by SHA-256 | Yes — but every edit must be recorded (below) |
+| `desktop/src/`, `desktop/tests/`, `desktop/data/` | **Frozen** for the 1.6 line; `desktop/src/*.py` and `desktop/data/examples/sampleFTA.json` are pinned by SHA-256 | **No.** A change to a pinned file fails `test_upstream_is_frozen` |
+| `fta_web/core/` | **Vendored fork** of four `desktop/src/` modules, pinned by SHA-256 | Yes — but every edit must be recorded (below) |
 | everything else in `fta_web/` | Ordinary source | Yes, normally |
 
-The desktop app (`src/`) and the web app (`fta_web/`) are deliberately two
-separate tools that are allowed to disagree. `fta_web/core/` is the copy v1.6
-owns and may patch; `src/` is the copy that must not move, so that the
-difference between them stays a short, readable list instead of accumulating
-silently.
+The desktop app (`desktop/src/`) and the web app (`fta_web/`) are deliberately
+two separate tools that are allowed to disagree. `fta_web/core/` is the copy
+v1.6 owns and may patch; `desktop/src/` is the copy that must not move, so that
+the difference between them stays a short, readable list instead of
+accumulating silently.
 
 ### If you change a file in `fta_web/core/`
 
@@ -119,8 +119,8 @@ All three steps, in the same pull request:
    ```
 
 Then run `uv run pytest fta_web/tests/test_vendor_integrity.py` — it checks all
-three, plus that `src/` is untouched and that every declared ID has a written-up
-heading.
+three, plus that `desktop/src/` is untouched and that every declared ID has a
+written-up heading.
 
 Skipping this does not produce a quiet inconsistency; it produces a **red test
 suite on `main`**, which is exactly what happened once already (see divergence
@@ -193,7 +193,7 @@ python -m pytest fta_web/tests/
 python -m pytest desktop/tests/
 python desktop/tests/test_core_module.py      # a single file, the old way
 
-# With coverage
+# With coverage (needs pytest-cov, which no extra installs)
 python -m pytest fta_web/tests/ --cov=fta_web --cov-report=html
 ```
 
