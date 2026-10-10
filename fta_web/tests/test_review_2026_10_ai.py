@@ -1125,3 +1125,78 @@ class TestDerivedProbabilitiesAreNotEditedByTheAI:
 
         assert response.status_code == 200, body(response)
         assert get_state().core.find_node_by_id(node_id)["name"] == "Pump seal leak"
+
+
+# --------------------------------------------------------------------------
+# AI-14: a new provider never receives the old conversation
+# --------------------------------------------------------------------------
+
+
+class TestANewProviderNeverReceivesTheOldConversation:
+    """Clear in AI settings kept the server-side history, Clear Chat cannot
+    run without credentials (400 AI_NOT_CONFIGURED, by design), and the next
+    provider configured was sent the whole earlier conversation."""
+
+    SECRET = "CONFIDENTIAL: pump P-101 seal defect"
+
+    def _chat(self, client, provider, monkeypatch, reply="Noted."):
+        monkeypatch.setattr(provider, "send_message", replies(reply))
+        return body(client.post("/api/ai/chat", json={"message": self.SECRET}))
+
+    def _history_sent_next(self, client, provider, monkeypatch):
+        seen = {}
+
+        def capture(api_key, endpoint, model, messages, max_tokens=2000):
+            seen["messages"] = messages
+            return "hello", None
+
+        monkeypatch.setattr(provider, "send_message", capture)
+        client.post("/api/ai/chat", json={"message": "next"})
+        return [m["content"] for m in seen["messages"][1:-1]]  # between system and the new message
+
+    def _configure(self, client, name, monkeypatch, **extra):
+        other = AIProviderFactory.get_provider(name)
+        monkeypatch.setattr(other, "test_connection", lambda *a, **k: (True, "ok"))
+        response = client.post("/api/ai/credentials", json=dict({"provider": name, "apiKey": API_KEY}, **extra))
+        assert response.status_code == 200, body(response)
+        return other
+
+    def test_clearing_the_credentials_forgets_it(self, client, provider, monkeypatch):
+        self._chat(client, provider, monkeypatch)
+
+        assert client.delete("/api/ai/credentials").status_code == 200
+
+        assert ai_bridge.get_handler().conversation_history == []
+        assert client.delete("/api/ai/conversation").status_code == 400  # unchanged
+        gemini = self._configure(client, "Google Gemini", monkeypatch)
+        assert self._history_sent_next(client, gemini, monkeypatch) == []
+
+    def test_configuring_another_provider_forgets_it(self, client, provider, monkeypatch):
+        self._chat(client, provider, monkeypatch)
+
+        claude = self._configure(client, "Anthropic Claude", monkeypatch)
+
+        assert self._history_sent_next(client, claude, monkeypatch) == []
+
+    def test_another_endpoint_is_another_recipient(self, client, provider, monkeypatch):
+        self._chat(client, provider, monkeypatch)
+
+        self._configure(client, "OpenAI", monkeypatch, endpoint="https://models.github.ai/inference")
+
+        assert self._history_sent_next(client, provider, monkeypatch) == []
+
+    def test_a_new_key_for_the_same_provider_keeps_it(self, client, provider, monkeypatch):
+        self._chat(client, provider, monkeypatch)
+
+        self._configure(client, "OpenAI", monkeypatch)
+
+        assert self._history_sent_next(client, provider, monkeypatch) == [self.SECRET, "Noted."]
+
+    def test_pending_suggestions_survive_it(self, client, provider, monkeypatch):
+        """They belong to the document, not to the provider."""
+        index = self._chat(client, provider, monkeypatch, reply=add_reply())["changes"][0]["index"]
+
+        self._configure(client, "Anthropic Claude", monkeypatch)
+
+        assert client.post("/api/ai/changes/apply", json={"indices": [index]}).status_code == 200
+        assert get_state().core.find_node_by_id("corrosion") is not None

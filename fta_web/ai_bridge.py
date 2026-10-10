@@ -517,11 +517,21 @@ def test_and_save_credentials(
 
     Nothing is written on failure. A bad key that overwrote a working one
     would break the editor's AI for a typo.
+
+    Saving a different recipient -- another provider, or another endpoint,
+    which for an OpenAI-compatible gateway is another service -- forgets the
+    conversation history, so the new one is never sent the old conversation.
+    Nothing saved counts as different: that also covers a call that was still
+    out when the credentials were cleared and appended its exchange later
+    (this save needs the call slot, so that call has finished by now). A new
+    key for the same recipient keeps it. Pending proposals belong to the
+    document and are kept.
     """
     canonical, provider = resolve_provider(provider_name)
     resolved_endpoint = (
         endpoint.strip() if isinstance(endpoint, str) and endpoint.strip() else None
     ) or provider.get_default_endpoint()
+    previous = _recipient(load_stored_credentials() or {})
     resolved_model = (
         model.strip() if isinstance(model, str) and model.strip() else None
     ) or default_model_for(provider)
@@ -545,27 +555,48 @@ def test_and_save_credentials(
     if not ok:
         return False, message, resolved
 
-    saved, error = get_handler().configure(
+    handler = get_handler()
+    saved, error = handler.configure(
         api_key, resolved_endpoint, resolved_model, canonical
     )
     if not saved:
         return False, scrub(str(error or "Could not save credentials."), api_key), resolved
+    if previous != (canonical, resolved_endpoint):
+        handler.conversation_history = []
 
     return True, message, resolved
 
 
+def _recipient(credentials: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """``(canonical provider, endpoint)`` a saved conversation is sent to."""
+    name = credentials.get("provider")
+    try:
+        canonical = resolve_provider(name)[0] if name else None
+    except UnknownProvider:
+        canonical = None
+    endpoint = credentials.get("api_endpoint")
+    return canonical, endpoint.strip() if isinstance(endpoint, str) else None
+
+
 def delete_credentials() -> Tuple[bool, Optional[str]]:
-    """Forget the saved key.
+    """Forget the saved key -- and the conversation that went with it.
 
     The handler caches its provider instance after the first call
     (``AI_agent_handler.py:351``) and ``AICredentialManager.delete_credentials``
     knows nothing about that cache, so it is cleared here. Without this the
     next request would still find a live provider object and try to use the
     key that was just deleted.
+
+    The conversation history goes too: Clear Chat cannot run without
+    credentials, so after Clear here it would otherwise be kept and sent to
+    whichever provider is configured next. Pending proposals stay; they belong
+    to the document, not to the provider.
     """
     handler = get_handler()
     ok, error = handler.credential_manager.delete_credentials()
     handler.provider = None
+    if ok:
+        handler.conversation_history = []
     return ok, error
 
 
