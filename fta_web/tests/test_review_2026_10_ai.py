@@ -1311,3 +1311,31 @@ def test_the_update_summary_is_shown_and_translated():
                 "ai.update.summaryBoth"):
         assert key in en and key in ja, key
         assert "Ctrl+Z" in en[key] and "Ctrl+Z" in ja[key]
+
+
+# --------------------------------------------------------------------------
+# AI-17: Microsoft Copilot's endpoint is not hidden under "Advanced"
+# --------------------------------------------------------------------------
+
+
+def test_the_azure_endpoint_is_shown_outside_advanced():
+    """Microsoft Copilot has no usable default endpoint -- it is the user's own
+    Azure resource -- but the field sat in the collapsed Advanced section with
+    "Change it only for a proxy", pre-filled with YOUR-RESOURCE/YOUR-DEPLOYMENT."""
+    src = (STATIC / "aisettings.js").read_text(encoding="utf-8")
+    place = re.search(r"  function placeEndpoint\(entry\) \{(.*?)\n  \}\n", src, re.S)
+    assert place, "aisettings.js has no placeEndpoint(entry)"
+    body_src = place.group(1)
+    assert "form.insertBefore(endpointBlock, advanced)" in body_src
+    assert "advanced.appendChild(endpointBlock)" in body_src
+    assert "'ai.endpoint.azureHint'" in body_src and "'ai.endpoint.hint'" in body_src
+    select = re.search(r"  function selectProvider\(entry, options\) \{(.*?)\n  \}\n", src, re.S).group(1)
+    assert "placeEndpoint(entry);" in select
+    assert re.search(r"function isAzure\(name\) \{\s*return /microsoft\|azure/i\.test", src)
+
+    sys.path.insert(0, str(REPO_ROOT / "fta_web" / "tests"))
+    import test_catalog_parity
+
+    en, ja = test_catalog_parity._catalogs()
+    assert "ai.endpoint.azureHint" in en and "ai.endpoint.azureHint" in ja
+    assert "openai.azure.com" in en["ai.endpoint.azureHint"]

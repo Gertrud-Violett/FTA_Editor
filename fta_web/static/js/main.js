@@ -428,6 +428,8 @@ const STRINGS = {
     'ai.err.noSettings': 'The AI settings dialog could not be loaded, so setup cannot run.',
     'ai.endpoint.hint':
       'Filled in from the provider. Change it only for a proxy or a compatible gateway.',
+    'ai.endpoint.azureHint':
+      'Required: your Azure OpenAI resource URL, such as https://my-resource.openai.azure.com, or its full …/openai/deployments/<deployment> address. Replace YOUR-RESOURCE and YOUR-DEPLOYMENT with your own names.',
 
     'ai.invite.title': 'Set up the AI assistant',
     'ai.invite.body':
@@ -845,6 +847,8 @@ const STRINGS = {
     'ai.err.noSettings': 'AI設定ダイアログを読み込めなかったため、設定を実行できません。',
     'ai.endpoint.hint':
       'プロバイダーの既定値を入力しています。プロキシや互換ゲートウェイを使う場合のみ変更してください。',
+    'ai.endpoint.azureHint':
+      '必須: Azure OpenAI リソースの URL（例: https://my-resource.openai.azure.com）、または …/openai/deployments/<デプロイ名> の完全なアドレスを入力してください。YOUR-RESOURCE と YOUR-DEPLOYMENT は実際の名前に置き換えてください。',
 
     'ai.invite.title': 'AIアシスタントの設定',
     'ai.invite.body':
