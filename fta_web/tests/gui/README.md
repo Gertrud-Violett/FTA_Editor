@@ -3,7 +3,7 @@
 A back-to-back check of the web GUI. Playwright drives a real browser with
 real mouse and keyboard input, reads what the GUI shows (headline, Node
 Details, every diagram label, every analysis tab, the downloaded reports) and
-compares it with what the API computes for the same document. It has 828
+compares it with what the API computes for the same document. It has 830
 checks in 14 sections and takes about 5 minutes.
 
 It complements the numeric back-to-back suite in [`../b2b/`](../b2b/README.md),
@@ -18,7 +18,7 @@ which compares the engine, API, CLI and exe paths without a browser.
 | `treeclick` | 33 | The first real click on the bottom tree rows selects them, at three window sizes; the keyboard hint shows only for keyboard focus and never shifts rows. |
 | `fixes` | 22 | The 1.7.1 frontend fixes: Alt+N and consequence-named confirmations, numeric fields that select on click, Escape in the Aa popover, formatted Validation messages, the FMEA λ unit warning, the live language switch of the AI panel and action bar. |
 | `tabs` | 84 | Quantification (rate model through the form, derived q and formula), Cut Sets (rows, summary, highlight, sig figs), Importance (every measure, sort, FV overlay), Uncertainty (fixed seed against an API run with the same seed), Validation (list, chips, badge, after undo), tabs refreshed after an edit made while hidden, Traceability cell edits, ETA mode. |
-| `files` | 19 | FMEA CSV import through the file dialog; the DOCX report, Excel and CSV exports, parsed back with `parse_exports.py` and compared with the API; the "Save … again" link. |
+| `files` | 21 | FMEA CSV import through the file dialog; the DOCX report, Excel and CSV exports, parsed back with `parse_exports.py` and compared with the API; the "Save … again" link; a path entered in the file dialog while its first listing is held back. |
 | `diagram` | 80 | compact / symbols × LR / TB show the API's numbers and each other's; with the root selected, its box, Node Details and the caption give the MCUB headline and the root's tree-walk value; a real-mouse click on every shape selects its node; zoom, Ctrl+wheel, pan, fit; dark theme. |
 | `more` | 69 | Escape in the title, Hide Zero, λ units, the standby model, document defaults for cut sets and Monte Carlo, the truncation marker on the headline, RRW ∞, New with the FV overlay on. |
 | `stale` | 59 | No stale values after undo / redo / delete: the Quantification form, Details, the title, the Validation list and badge. |

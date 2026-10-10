@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Three fixes around trees with repeated events and the AI assistant. Each was
 confirmed in 1.7.2 first and has tests in
-`fta_web/tests/test_release_1_7_3.py`.
+`fta_web/tests/test_release_1_7_3_*.py`. It also carries the file-dialog fix
+made after 1.7.2.
 
 ### Fixed
 
@@ -53,6 +54,20 @@ confirmed in 1.7.2 first and has tests in
   and the Excel export notes it on the root's cell. Every other node keeps
   its tree-walk value, and a tree without repeated events is drawn exactly
   as before (User Guide, "The top box").
+- **File dialog: a path entered while a folder is still being read is not
+  lost.** Enter (or Go) on a path typed into the path box was ignored while
+  the dialog's first listing was on its way: the path stayed in the box and
+  the list showed the start folder. Entered even earlier, before the dialog
+  knew its start folder, the path was listed and then replaced by the start
+  folder. Both only showed when the start folder was slow to read; a script
+  that opened Load and entered a path at once hit them. The path is now kept
+  and acted on as soon as the list is idle; the last one entered wins. Found
+  while checking the packaged 1.7.2. The GUI suite checks it.
+- **Tests: three temp-folder checks no longer fail when two test runs
+  overlap** (tests only). `test_export_leaves_no_temp_files_behind` and two
+  more compared the machine's shared temp folder before and after a request,
+  so a second run on the same machine made them fail. Each now has a temp
+  folder of its own.
 
 ### Changed
 
@@ -60,7 +75,8 @@ confirmed in 1.7.2 first and has tests in
   `ignored` to each applied change; `POST /api/ai/chat` and `/analyze` add
   `linkChanges` to a suggestion that sets links (`docs/API_REFERENCE.md`).
 - The back-to-back suite and the GUI suite compare the root's label with the
-  headline and every other node with its calculated probability.
+  headline and every other node with its calculated probability (GUI suite:
+  830 checks).
 
 ## [1.7.2] - 2026-10-10
 

@@ -327,7 +327,8 @@ output and exit codes reach the shell:
 ./build/dist/fta_editor/fta_editor validate build/dist/fta_editor/_internal/examples/challenger_fta_*.json \
     build/dist/fta_editor/_internal/examples/tmi2_eta_*.json                  # exit 0; "errors 0, warnings 0, info 0" x4
 ./build/dist/fta_editor/fta_editor quantify build/dist/fta_editor/_internal/examples/challenger_fta_en.json
-#   Top event: 0.0684  (mcub)      treeWalk 0.0349
+#   Top event: 0.0684  (mcub)
+#     treeWalk   0.0349
 ```
 
 On Windows these are `fta_editor.exe validate x.json` and so on. `cmd.exe`
