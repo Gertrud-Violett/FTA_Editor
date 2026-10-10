@@ -196,6 +196,10 @@ Release check on Windows with a live AI provider (10 October 2026).
     event became 1. The prompt now says how to write a move, and
     `new_parent_id`, which is what the model guessed, is read as well. With
     both fixes the same replies apply in full (12 of 12 and 8 of 8).
+- **Back-to-back suite on Windows** (test harness only). A request of a
+  server path that got no local TCP port (WinError 10048, on a machine that
+  was short of ports) ended the full run with a traceback. The runner now
+  waits for a port and goes on, and says where to look if none comes.
 
 ## [1.7.1] - 2026-09-29
 

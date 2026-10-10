@@ -31,6 +31,7 @@ desktop_compat  1.7-saved files read by the desktop core
 from __future__ import annotations
 
 import copy
+import errno
 import importlib.util
 import io
 import json
@@ -744,8 +745,22 @@ class ClientTransport(Transport):
         return r.status_code, r.get_data()
 
 
+#: errno of a connect() the OS could not give a local port (Windows: 10048,
+#: 10049, 10055). Flask's server speaks HTTP/1.0, so every request below is
+#: its own connection, and Windows keeps a closed connection's port for two
+#: minutes (TIME_WAIT) out of a dynamic range of 16384. A full run asks about
+#: 2,500 times per server path; on a machine already short of ports (Tcpip
+#: events 4227/4231 in the System log) connect() then fails.
+NO_LOCAL_PORT = frozenset({errno.EADDRINUSE, errno.EADDRNOTAVAIL, errno.ENOBUFS})
+
+
 class ServerTransport(Transport):
     """A real server process (``run.py`` or the exe) over loopback HTTP."""
+
+    #: How long one request waits for a local port (longer than TIME_WAIT),
+    #: and the pause between attempts.
+    PORT_WAIT_SECONDS = 150.0
+    PORT_WAIT_STEP = 1.0
 
     def __init__(self, command: Sequence[str], fs_root: Path, timeout: float = 60.0):
         port = _free_port()
@@ -797,11 +812,30 @@ class ServerTransport(Transport):
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(self.base + url, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                return resp.status, resp.read()
-        except urllib.error.HTTPError as exc:
-            return exc.code, exc.read()
+        deadline = None
+        while True:
+            try:
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    return resp.status, resp.read()
+            except urllib.error.HTTPError as exc:
+                return exc.code, exc.read()
+            except urllib.error.URLError as exc:
+                # A connect() without a local port sent nothing, so the same
+                # request can go again once a port has been released.
+                if getattr(exc.reason, "errno", None) not in NO_LOCAL_PORT:
+                    raise
+                if deadline is None:
+                    deadline = time.monotonic() + self.PORT_WAIT_SECONDS
+                    print("b2b: no local TCP port for %s %s (%s); waiting up to %.0f s for one"
+                          % (method, url, exc.reason, self.PORT_WAIT_SECONDS),
+                          file=sys.stderr, flush=True)
+                elif time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        "no local TCP port for %.0f s (%s). Another program is using up the "
+                        "dynamic port range: see `netsh int ipv4 show dynamicport tcp`, "
+                        "`netstat -ano` and the Tcpip events 4227/4231 in the System log."
+                        % (self.PORT_WAIT_SECONDS, exc.reason)) from exc
+                time.sleep(self.PORT_WAIT_STEP)
 
     def get(self, url):
         return self._request("GET", url)

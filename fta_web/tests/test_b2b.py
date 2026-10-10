@@ -13,9 +13,12 @@ What each path is compared on, and every intended divergence, is listed in
 ``fta_web/tests/b2b/README.md``.
 """
 import copy
+import errno
 import json
 import os
 import sys
+import time
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -295,6 +298,91 @@ def test_python_and_browser_formatters_agree_on_every_corpus_number(refs):
         pytest.skip("node is not installed")
     rows = B.numfmt_rows(list(refs.values()))
     assert_rows(rows)
+
+
+# ---- the harness: a request the OS could not give a local port ------------------------------------
+#
+# Flask's server speaks HTTP/1.0, so every request of a server path is its own
+# connection, and a closed connection keeps its local port for two minutes on
+# Windows (TIME_WAIT). A full run asks about 2,500 times per server path; on a
+# machine already short of ports connect() then fails with WinError 10048
+# (Tcpip event 4227 in the System log) and the run died with a traceback.
+
+
+class _Reply:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return b"{}"
+
+
+def _transport(monkeypatch, wait=0.5, step=0.001):
+    """A ServerTransport without a server: only ``_request`` is under test."""
+    transport = B.ServerTransport.__new__(B.ServerTransport)
+    transport.base, transport.token = "http://127.0.0.1:9", "token"
+    monkeypatch.setattr(B.ServerTransport, "PORT_WAIT_SECONDS", wait, raising=False)
+    monkeypatch.setattr(B.ServerTransport, "PORT_WAIT_STEP", step, raising=False)
+    return transport
+
+
+def _no_local_port(code=errno.EADDRINUSE):
+    """What urlopen raises when connect() gets no local port (10048 on Windows)."""
+    return urllib.error.URLError(OSError(code, "Only one usage of each socket address"))
+
+
+@pytest.mark.parametrize("code", [errno.EADDRINUSE, errno.EADDRNOTAVAIL, errno.ENOBUFS])
+def test_server_transport_waits_out_a_shortage_of_local_ports(monkeypatch, capsys, code):
+    calls = []
+
+    def urlopen(req, timeout=None):
+        calls.append((req.get_method(), req.full_url, req.data))
+        if len(calls) <= 3:
+            raise _no_local_port(code)
+        return _Reply()
+
+    monkeypatch.setattr(B.urllib.request, "urlopen", urlopen)
+
+    assert _transport(monkeypatch).post("/api/file/open", {"path": "x"}) == (200, b"{}")
+    # Nothing reached the server on a failed connect, so the same request is sent again.
+    assert len(calls) == 4 and len(set(calls)) == 1
+    assert calls[0][:2] == ("POST", "http://127.0.0.1:9/api/file/open")
+    notice = capsys.readouterr().err
+    assert notice.count("local TCP port") == 1, "one notice per wait, not one per attempt"
+
+
+def test_server_transport_gives_up_on_a_lasting_shortage_and_says_why(monkeypatch):
+    def urlopen(req, timeout=None):
+        raise _no_local_port()
+
+    monkeypatch.setattr(B.urllib.request, "urlopen", urlopen)
+    started = time.monotonic()
+
+    with pytest.raises(RuntimeError, match="no local TCP port") as caught:
+        _transport(monkeypatch, wait=0.05).get("/api/state")
+
+    assert time.monotonic() - started >= 0.05
+    assert "dynamicport" in str(caught.value), "the message says where to look"
+    assert isinstance(caught.value.__cause__, urllib.error.URLError)
+
+
+def test_server_transport_does_not_retry_any_other_failure(monkeypatch):
+    calls = []
+
+    def urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        raise urllib.error.URLError(ConnectionRefusedError(errno.ECONNREFUSED, "refused"))
+
+    monkeypatch.setattr(B.urllib.request, "urlopen", urlopen)
+
+    with pytest.raises(urllib.error.URLError):
+        _transport(monkeypatch).get("/api/state")
+    assert len(calls) == 1
 
 
 # ---- the full run: real servers, the packaged exe, a second Python build ----------------------------
