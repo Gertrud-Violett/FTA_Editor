@@ -701,6 +701,26 @@ def apply_import(
     result: Dict[str, Any] = {"created": [], "updated": [], "unchanged": [], "skipped": []}
     seen = set()
 
+    # New ids: next_child_id for the first (the desktop rule), then the same
+    # rule incrementally -- each call walks the whole tree twice, so calling
+    # it per row made a 20,000-row import take 81 s inside the state lock.
+    parent_key = str(parent.get("id"))
+    taken = {str(node.get("id")) for node in _walk(tree)}
+    next_index: Optional[int] = None
+
+    def mint_id() -> str:
+        nonlocal next_index
+        if next_index is None:
+            new_id = next_child_id(view, parent_key)
+            next_index = int(new_id.rsplit("_", 1)[1])
+        else:
+            while "%s_%d" % (parent_key, next_index) in taken:
+                next_index += 1
+            new_id = "%s_%d" % (parent_key, next_index)
+        next_index += 1
+        taken.add(new_id)
+        return new_id
+
     for index, raw in enumerate(rows or []):
         if isinstance(raw, dict):
             cells = raw
@@ -755,7 +775,7 @@ def apply_import(
             continue
 
         _prepare_parent(parent)
-        new_id = next_child_id(view, str(parent.get("id")))
+        new_id = mint_id()
         node: Dict[str, Any] = {
             "id": new_id,
             "name": "",

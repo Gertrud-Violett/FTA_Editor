@@ -486,6 +486,40 @@ def test_fmea_xlsx_whose_first_sheet_is_a_chart(tmp_path):
     assert info.value.reason == "unknown_sheet"
 
 
+def test_fmea_import_ids_are_the_desktop_ids():
+    """Same ids as tree_ops.next_child_id gives one by one: past the highest
+    sibling index, stepping over an id taken elsewhere in the tree."""
+    from fta_web import fmea_import
+
+    tree = {"id": "root", "name": "Top", "type": "Root", "probability": 1.0, "children": [
+        {"id": "root_0", "name": "a", "probability": 0.1, "children": [
+            {"id": "root_7", "name": "moved here", "probability": 0.1, "children": []}]},
+        {"id": "root_5", "name": "b", "probability": 0.1, "children": []}]}
+    rows = [["N%d" % i, "Mode%d" % i] for i in range(3)]
+    result = fmea_import.apply_import(tree, rows, {"id": "ID", "mode": "Mode"}, "root", {}, "x",
+                                      columns=["ID", "Mode"])
+    assert result["created"] == ["root_6", "root_8", "root_9"]
+
+
+def test_fmea_import_of_the_maximum_sheet_is_not_quadratic():
+    """Each new row walked the whole tree twice (find the parent, collect
+    every id): 20,000 rows -- the documented maximum -- took 81 s inside
+    the state lock, freezing the whole app."""
+    import time
+
+    from fta_web import fmea_import
+
+    tree = {"id": "root", "name": "Top", "type": "Root", "probability": 1.0, "children": []}
+    rows = [["F-%d" % i, "Mode%d" % i, 1e-6] for i in range(fmea_import.MAX_ROWS)]
+    started = time.perf_counter()
+    result = fmea_import.apply_import(tree, rows, {"id": "ID", "mode": "Mode", "lambda": "Rate"},
+                                      "root", {}, "x", columns=["ID", "Mode", "Rate"])
+    elapsed = time.perf_counter() - started
+    assert len(result["created"]) == fmea_import.MAX_ROWS
+    assert result["created"][-1] == "root_%d" % (fmea_import.MAX_ROWS - 1)
+    assert elapsed < 20.0, elapsed
+
+
 def test_docx_route_with_control_characters(files_client, tmp_path):
     pytest.importorskip("docx")
     open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))
