@@ -232,6 +232,24 @@ def test_undo_redo_wait_for_pending_commits():
     assert flush < body.index("api.post('/' + kind")
 
 
+# ---- main.js: a metadata commit leaves a field typed in since alone --------------------
+#
+# Title, Tab, Date: the title's commit answered while the date was being typed,
+# and its forced sync wrote the stored date back into the focused box, so the
+# keystrokes after it produced "2026-01-016-12-24" -- committed as the
+# document's date on the next blur (Chromium, title response delayed 150 ms).
+
+
+def test_metadata_commit_does_not_overwrite_the_focused_field():
+    src = _read(STATIC / "main.js")
+    body = _braced(src, src.index("async function commitMetadata()"))
+    ok_path = body[body.index("api.post('/metadata'") : body.index("} catch (err) {")]
+    assert "syncMetadataInputs(true)" not in ok_path
+    assert "syncMetadataInputs();" in ok_path
+    sync = _braced(src, src.index("function syncMetadataInputs(force = false)"))
+    assert "if (!force && el === document.activeElement) continue;" in sync
+
+
 # ---- tree.js: New / Open drop the old document's multi-selection ----------------------
 #
 # Ctrl-click two rows, then the root (lead = root), then open a file: ids such

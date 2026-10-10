@@ -1902,7 +1902,10 @@ async function commitMetadata() {
   try {
     const result = await api.post('/metadata', metadataFromInputs());
     store.applyMutation(result);
-    syncMetadataInputs(true); // the server sanitizes the title; show the truth
+    // The server sanitizes the title; show the truth -- but not in a field
+    // typed in since: after Title, Tab, Date the answer can arrive mid-typing,
+    // and forcing it spliced the old date into the new one, which was saved.
+    syncMetadataInputs();
     toast(t('msg.metadataSaved'), 'ok');
   } catch (err) {
     showError(err);
