@@ -355,16 +355,16 @@ PR #8, worth watching for.
 
 | # | Items | Status | Where |
 |---|---|---|---|
-| 1 | **B-1/F-2/F-3** escape node names, sanitise imported SVG | ✅ done | D14 (`html.escape` in `node_label`), `diagram.js` `sanitizeSvg`, tests in `test_core_fixes.py` |
-| 2 | **B-2** remove engine rounding | ✅ done | D15 `_tidy` (12 significant figures, display rounds), `test_core_fixes.py` |
+| 1 | **B-1/F-2/F-3** escape node names, sanitise imported SVG | ✅ done | D13 (`html.escape` in `node_label`), `diagram.js` `sanitizeSvg`, tests in `test_core_fixes.py` |
+| 2 | **B-2** remove engine rounding | ✅ done | D14 `_tidy` (12 significant figures, display rounds), `test_core_fixes.py` |
 | 3 | **F-1** use `change.index` | ✅ done | `chat.js`; pending list re-rendered after Analyze |
-| 4 | **B-3, B-4, B-8** id hygiene | ✅ done | D16 `_dedupe_node_ids` + `last_load_warnings`, D17 `_canonicalize_root_id`/`ROOT_ID`, whole-tree `next_child_id`, `strip_links_to` → `removedLinks`; `warnings` returned by open |
-| 5 | **B-6** normalise AI updates; **B-5** link cycles | ✅ done | `routes/ai.py` `_normalize_node` before `set_data`; D18 cycle fallback returns last computed / children-only value |
+| 4 | **B-3, B-4, B-8** id hygiene | ✅ done | D15 `_dedupe_node_ids` + `last_load_warnings`, D16 `_canonicalize_root_id`/`ROOT_ID`, whole-tree `next_child_id`, `strip_links_to` → `removedLinks`; `warnings` returned by open |
+| 5 | **B-6** normalise AI updates; **B-5** link cycles | ✅ done | `routes/ai.py` `_normalize_node` before `set_data`; D17 cycle fallback returns last computed / children-only value |
 | 6 | **F-4/F-9** await details commits before save/export | ✅ done | `fta:flush` event collects promises; `flushPendingEdits` awaits them |
 | 7 | **F-5…F-8, F-10** frontend; **B-7** i18n of errors | ✅ done | `is-zero` on `<li>`, hidden rows excluded from navigation; `t()` in `details.js`/`dialogs.js`; `confirmLabel||okLabel`; single toast host; `restoreFocus`; `api_error_response` localised |
 | 8 | **R-3** skip POSIX-only tests on Windows | ✅ done | `requires_symlinks`, `posix_permissions` markers |
 | — | **B-9, B-10, B-11, R-1, R-2, R-4, F-11** | ✅ done | undo pushed after apply; credentials 0o700/0o600 (D20); SDK probe outside lock; D12 + LF-normalised hashing; `PYTHONUTF8=1` documented; tree hint moved below rows |
-| 9 | **D-C1…D-M7** desktop fallback | ⏸ deferred by policy | `desktop/src/` frozen; listed in `desktop/README.md` for fallback users |
+| 9 | **D-C1…D-M7** desktop fallback | ⏸ deferred by policy | `desktop/src/` frozen; listed in `desktop/README.md` for fallback users. The web copy fixes D-H1 and D-H3 as D18 and D19 |
 
 ---
 
@@ -397,6 +397,9 @@ PR #8, worth watching for.
 > - 2.2 component library
 > - 2.4 revisions and diff
 > - 3.6 editing ergonomics
+> - 3.7 in-app help on the gate and link semantics (partly done: the
+>   Quantification tab shows each model's formula, and every validation
+>   issue carries a fix)
 > - the AI items (grounded proposals, narratives from the numbers, the
 >   audit action)
 >
@@ -435,7 +438,7 @@ prints a probability (needed number formatting decoupled from the engine, done).
 - **2.5 Report export** — PDF/DOCX with diagram, assumptions, event table, cut sets, importance; flat "event table" sheet in Excel. (M)
 - **3.2 Large-tree navigation** — collapse in the diagram, focus mode, minimap, search highlight. (M)
 - **3.3 Grid view** of basic events with paste-from-Excel. (M)
-- **3.5 Lint panel** — single-input gates, events left at 1.0, undeveloped, dangling/cyclic links, duplicate ids (the load warnings from D16 are the first source), ETA branches not summing to 1, parent probability ignored. (S–M)
+- **3.5 Lint panel** — single-input gates, events left at 1.0, undeveloped, dangling/cyclic links, duplicate ids (the load warnings from D15 are the first source), ETA branches not summing to 1, parent probability ignored. (S–M)
 
 ### P2 — when demanded
 

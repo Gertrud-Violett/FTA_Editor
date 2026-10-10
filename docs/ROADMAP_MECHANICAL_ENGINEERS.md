@@ -237,9 +237,9 @@ what changed between issue A and issue B of a safety case.
 
 > **Done:** a DOCX report (metadata, headline, assumptions, diagram, event
 > table, cut sets, importance, uncertainty, validation, traceability), and
-> flat Events and Analysis sheets in the Excel export. **Not done:** PDF,
-> diagram paging for large trees, revision history (needs 2.4), and the
-> data source column in the report's event table (it is in the Excel sheet).
+> flat Events and Analysis sheets in the Excel export. The report's event
+> table has the data source column. **Not done:** PDF, diagram paging for
+> large trees, and revision history (needs 2.4).
 
 One-click PDF/DOCX containing: diagram (paged for large trees), assumptions and
 mission time, basic-event table with rates and sources, top-event result, cut sets
@@ -311,9 +311,10 @@ raw floats in the details panel). Tied to review item B-2.
 
 ### 3.5 Validation ("lint") panel  (P1) — ✅ 1.7.0
 
-> **Done:** 21 rules with fixed severities (`lint.py`). The Validation tab is
-> visible in basic mode, has click-to-jump, and shows load repairs and
-> removed links as session notices.
+> **Done:** 23 rules with fixed severities (`lint.py`; 1.7.1 added
+> `RATE_IMPLAUSIBLE`, the October 2026 review `PROBABILITY_OUT_OF_RANGE`). The
+> Validation tab is visible in basic mode, has click-to-jump, and shows load
+> repairs and removed links as session notices.
 
 Continuously listed warnings: gate with a single input; basic event still at the
 default 1.0; unquantified/undeveloped events; dangling or cyclic links; duplicate IDs;
@@ -325,8 +326,9 @@ warning to jump to the node.
 
 Tab / Shift-Tab to add a sibling / child (as in mind-map tools), Enter to rename,
 duplicate-subtree, copy/paste between files, and inline editing of probability
-directly in the diagram. Finish the Japanese localisation of the details panel and
-dialogs (review item F-6) so the whole editing surface switches language together.
+directly in the diagram. (The Japanese localisation of the details panel and dialogs,
+review item F-6, was finished in 1.6.3: the whole editing surface switches language
+together.)
 
 ### 3.7 Help where the semantics are non-obvious  (P2) — ◐ 1.7.0
 
@@ -359,8 +361,8 @@ children, and how ETA propagates. Today this is documented only in code comments
   (3.5) and asks the assistant only about the items the rules cannot decide (missing
   failure modes, implausible rates).
 
-Fix review item F-1 (the Apply-selected index mismatch) before extending this area;
-it can currently apply a proposal the user never saw.
+Review item F-1 (the Apply-selected index mismatch, which could apply a proposal the
+user never saw) was fixed in 1.6.3, so this area can be extended safely.
 
 ---
 

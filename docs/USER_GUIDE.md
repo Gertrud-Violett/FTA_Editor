@@ -1,6 +1,6 @@
 # FTA/ETA Editor - User Guide
 
-**Version**: 1.7.0 | **Updated**: September 28, 2026
+**Version**: 1.7.1 | **Updated**: September 29, 2026
 
 Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor with AI Assistant.
 
@@ -155,7 +155,7 @@ Initiating Event (0.001)
 - Color-coded by depth level
 - Click to select nodes
 - Shows node names
-- Red asterisk (*) marks zero-probability nodes
+- A ✖ marker flags zero-probability nodes
 
 ### Diagram Preview
 
@@ -254,16 +254,17 @@ model in the **Quantification** tab.
 
 ## AI Assistant
 
-The AI Assistant provides intelligent analysis and suggestions for your fault trees using OpenAI-compatible APIs.
+The AI Assistant provides intelligent analysis and suggestions for your fault trees. It works with OpenAI, Microsoft Copilot (Azure OpenAI), Anthropic Claude and Google Gemini.
 
 ### Setup
 
 1. Click the **⚙ (Settings)** button in the AI Assistant panel
-2. Enter your API credentials:
-   - **API Key**: Your OpenAI or compatible API key
-   - **API Endpoint**: `https://api.openai.com/v1` (default) or your custom endpoint
-   - **Model**: Select gpt-4o, gpt-4o-mini, or other models
-3. Click **Test & Save** to verify and store credentials
+2. Choose a provider and enter your API credentials:
+   - **Provider**: OpenAI, Microsoft Copilot, Anthropic Claude or Google Gemini
+   - **API Key**: The provider's API key
+   - **Model**: Pick one of the suggestions (for example gpt-4o) or type any model name. Once a key is saved, **Reload** asks the provider which models it can use (OpenAI, Anthropic and Gemini; Microsoft Copilot always shows the built-in list). OpenAI's reasoning models (o-series, GPT-5) work too.
+   - **API Endpoint**: filled in from the provider, `https://api.openai.com/v1` for OpenAI. In the web app it sits under *Advanced*; change it only for a proxy or an OpenAI-compatible gateway such as [GitHub Models](MULTI_PROVIDER_SETUP.md#4-github-models-through-the-openai-provider). Microsoft Copilot is the exception: its endpoint is your own Azure resource, so the field is shown in the main form (see [Microsoft Copilot setup](MICROSOFT_COPILOT_SETUP.md)).
+3. Click **Test & Save** to verify and store credentials. Saving a different provider or endpoint starts a new conversation, so the new one is never sent the old conversation; a new key for the same provider and endpoint keeps it.
 
 > **Security**: Credentials are stored locally at `~/.fta_editor/ai_credentials.json`, never in the repository.
 
@@ -280,11 +281,12 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
   and disk permissions to keep it private.
 - **Scope**: local to this machine only. The key never leaves your computer
   except in the direct request the AI Assistant makes to the provider you
-  configured (OpenAI, Anthropic or Google); it is never sent anywhere else,
+  configured (OpenAI, Microsoft Azure, Anthropic or Google); it is never sent anywhere else,
   written into a saved `.json` analysis file, or committed to the
   repository.
 - **Removing it**: click the **⚙ (Settings)** button in the AI Assistant
-  panel and use **Clear** to delete the stored key (this removes the file).
+  panel and use **Clear** to delete the stored key (this removes the file and
+  forgets the conversation).
   You can also delete `ai_credentials.json` by hand while the editor is
   closed.
 
@@ -292,7 +294,7 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 
 **Quick Actions**:
 - **Analyze FTA**: Posts analysis and suggestions to chat only (no changes applied).
-- **Update FTA**: AI generates a complete updated JSON, validates it, and replaces the current tree. Existing nodes are preserved; only additions are applied. Detailed error logs are shown if the AI output is invalid.
+- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed (the first five of each). One Ctrl+Z undoes the whole update, so review the tree before saving. Detailed error logs are shown if the AI output is invalid.
 - **Clear Chat**: Reset conversation history
 
 **Free Chat**:
@@ -304,7 +306,9 @@ Type any question in the input box and press Enter. Examples:
 ### Applying Changes
 
 - Use **Analyze FTA** for a safe review-only mode.
-- Use **Update FTA** to apply all additions at once: the AI returns a full JSON which is verified before replacing your current tree. If the JSON is invalid, the update is rejected and the problematic section is shown in the chat and console.
+- Use **Update FTA** to have the AI rewrite the tree in one step: the AI returns a full JSON which is verified before it replaces your current tree. If the JSON is invalid, the update is rejected and the problematic section is shown in the chat and console. If you edit, undo or open another file while the AI is writing, the update is not applied (nothing is changed); run it again. The 1.7 fields the AI is not shown (gate types, house events, quantification, traceability, FMEA links) are restored by node id.
+- Changes the AI suggests in the chat are listed as **Suggested changes**, all ticked; untick what you do not want and click **Apply selected**. One Ctrl+Z undoes the whole batch. A suggestion that cannot be applied is listed with the reason, and the rest are applied. Among the reasons: a probability the editor computes cannot be set directly (a transfer gate takes its target's value, a house event is 1 or 0 from its state, and an event with a rate, standby or repairable model is computed from its parameters), and a suggestion made before New, Open or Import replaced the document is not applied to the new one.
+- Answers can take a while. The editor waits up to 120 seconds for the provider; after that the request fails with a timeout and nothing is changed. The assistant handles one request at a time, so a provider that has stopped answering keeps it busy until its call gives up: at most about four minutes (two for Google Gemini).
 
 ### Status Indicator
 
@@ -410,7 +414,8 @@ Flows top-down from root to leaves.
 
 ### Zero Probability Nodes
 
-Nodes with zero probability are marked with red asterisk (*) in tree view.
+Nodes with zero probability are marked with a ✖ in the tree view. In the
+diagram, a calculated probability of exactly 0 is shaded light blue.
 
 **Common Causes**:
 - Base probability set to 0.0
@@ -424,9 +429,9 @@ is frozen and has none of it; see
 [Desktop app compatibility](#desktop-app-compatibility) for what happens when
 it opens a 1.7 file.
 
-Most of the analysis features (all but validation) work on **fault trees**
-(FTA mode). In ETA mode the analysis tabs show a notice, and the API returns
-`409 MODE_UNSUPPORTED`.
+Most of the analysis features (all but validation and the DOCX report) work
+on **fault trees** (FTA mode). In ETA mode the analysis tabs show a notice,
+and the API returns `409 MODE_UNSUPPORTED`.
 
 ### Basic and Advanced mode
 
@@ -591,7 +596,9 @@ Notes for reliability engineers:
 
 - **Mission time.** A rate event with no own T uses the document's mission
   time (default 8760 h, i.e. one year). Changing the mission time requantifies
-  every such event and is one undo step.
+  every such event and is one undo step. An own T that is not a valid number
+  (text, negative or NaN, in a file edited by hand) does not fall back to the
+  mission time: it counts as a missing parameter (see below).
 - **Standby λτ/2** is the first-order approximation of the average
   unavailability of a periodically tested component. It assumes λτ ≪ 1. When
   **λτ > 0.2** the approximation is poor (the exact average is
@@ -617,6 +624,13 @@ Notes for reliability engineers:
 The gate is stored in `gateType`. The legacy `logicGate` field (AND/OR) is
 always kept as the nearest AND/OR **projection** of it, so older readers still
 get the closest coherent answer.
+
+Without a `gateType`, `logicGate` is read as in 1.6: AND, and anything else
+OR. One exception: a file that holds an advanced gate name in `logicGate`
+(`KOFN`, `XOR`, `INHIBIT`, `PAND` or `TRANSFER`, written by hand or by another
+program) is read as that gate. On load the name moves to `gateType`,
+`logicGate` becomes its projection, and the Validation tab lists a load repair
+(`LOAD_REPAIR`, kind `gate_type_promoted`).
 
 | Gate | Symbol (standards view) | Probability (inputs p₁…pₙ, independent) | `logicGate` projection | Notes |
 |---|---|---|---|---|
@@ -795,7 +809,10 @@ results:
   walk sample for sample.
 - **cutsets**: the MCUB over the most probable minimal cut sets that cover
   99.99 % of the rare-event sum, at most 2,000 of them. It is used otherwise. A
-  warning says when sets were dropped (`MC_CUTSETS_TRUNCATED`).
+  warning says when sets were dropped (`MC_CUTSETS_TRUNCATED`). The sets are
+  chosen by their point values, so an uncertain event in none of them (one
+  whose point value is 0, say) is not sampled at all; a warning names such
+  events (`MC_EVENT_NOT_SAMPLED`).
 
 The results are the **mean**, **median**, **5th** and **95th** percentiles
 (linear interpolation), the **standard deviation**, the **point estimate**
@@ -847,7 +864,8 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `KOFN_ARITY` | error | A k-out-of-n gate has k missing, k < 1 or k > n. | Set k between 1 and the number of inputs. |
 | `XOR_ARITY` | error | An XOR gate does not have exactly 2 inputs. | Give it exactly two inputs, or use OR. |
 | `QUANT_PARAM_MISSING` | error | A rate, standby or repairable model lacks a parameter; the previous probability is used. | Fill in the missing values, or switch to the fixed model. |
-| `CYCLIC_LINK` | warning | A link closes a loop. The engine uses the target's value from its children only, so the result is approximate. | Remove the link, or link to a node that is not above this one. |
+| `PROBABILITY_OUT_OF_RANGE` | error | FTA and ETA: a probability the engine uses is not a number from 0 to 1 (NaN, negative, above 1, non-numeric text or true/false, as a hand-edited or foreign file can hold). In FTA mode that is a basic leaf's own probability (not a house event's, nor one derived from a rate, standby or repairable model); in ETA mode every node's. Every result that uses it is wrong. | Enter a probability between 0 and 1 (for example 1e-4). |
+| `CYCLIC_LINK` | warning | A link closes a loop (through children, links or a transfer). The engine uses the target's value from its children only, so the result is approximate. | Remove the link, or link to a node that is not above this one. |
 | `TRANSFER_HAS_CHILDREN` | warning | A transfer gate has children, which are ignored. | Move them under the transfer target, or delete them. |
 | `HOUSE_HAS_CHILDREN` | warning | A house event has children, so its on/off state is ignored. | Make it a basic event, or move the children. |
 | `SINGLE_INPUT_GATE` | warning | An AND, OR or PAND gate below the top event has one input and no links, so it does nothing. | Add an input, or remove the level. |
@@ -858,21 +876,22 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `NONCOHERENT_XOR` | warning | The tree has XOR gate(s), so cut-set results are approximate. | Use OR if both events can happen together. |
 | `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so the results may be underestimated. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
 | `ETA_BRANCH_SUM` | warning | ETA only: the children's probabilities do not sum to 1 (±1e-6). | Adjust the branch probabilities. |
-| `LOAD_REPAIR` | warning | The file was repaired on load (duplicate id renamed, top id changed, invalid analysis setting reset, stale gate type dropped), or an AI edit left a stale gate type that was dropped. | Check the node, and save to keep the repair. |
+| `LOAD_REPAIR` | warning | The file was repaired on load: a duplicate id renamed, the top id changed, an invalid analysis setting reset, a stale gate type dropped, a repeated link dropped (it was counted twice), text that cannot be saved (an unpaired surrogate, half of an emoji) replaced with U+FFFD, or an advanced gate name written into the old AND/OR field promoted to that gate. Or an AI edit left a stale gate type that was dropped, or wrote an advanced gate name into the AND/OR field. | Check the node, and save to keep the repair. |
 | `LINKS_REMOVED` | warning | Deleting a node (by hand or by the AI assistant) removed links or transfer targets (`transferTo`) that pointed to it. | Re-add the link or transfer target if the dependency still exists. |
 | `UNDEVELOPED_EVENT` | info | The leaf is marked undeveloped. | Nothing needed, or develop it later. |
 | `PAND_APPROX` | info | A Priority-AND gate is evaluated as AND × 1/n!. | Nothing needed; note the approximation in your report. |
 
 The top event is never `SINGLE_INPUT_GATE`, because a top event that restates
 its one cause is normal practice. An empty document is never
-`DEFAULT_PROBABILITY`. In ETA mode only `ETA_BRANCH_SUM` and the session
-notices are reported.
+`DEFAULT_PROBABILITY`. In ETA mode only `ETA_BRANCH_SUM`,
+`PROBABILITY_OUT_OF_RANGE` and the session notices are reported.
 
 `LOAD_REPAIR` and `LINKS_REMOVED` are *session notices*. They are collected
 while the document is open and are not saved in the file. A load repair is
 not undone. A notice raised by an edit belongs to that edit: `LINKS_REMOVED`
-(from a delete, by hand or by the AI assistant) and a stale gate type dropped
-after an AI edit (the notice says *The AI assistant set this gate to …*).
+(from a delete, by hand or by the AI assistant), and a stale gate type
+dropped or an advanced gate name promoted after an AI edit (the notice
+names the AI assistant).
 Undoing the edit removes its notice, and redo brings it back.
 
 ### Traceability and tree search
@@ -919,11 +938,16 @@ FMEA row id on each node so the two analyses stay linked.
    `.csv` and `.xlsx` files instead of `.json`. The file must be within the
    browser's root and at most 10 MB, and the tool reads at most 20,000 rows
    and 200 columns. `.xlsx` needs `openpyxl`; otherwise save the sheet as CSV.
-   The first non-empty row is the header. A preview shows the first 50 rows.
-   For a workbook, pick the sheet.
+   The first non-empty row is the header. A preview shows the first 50 rows,
+   as they will be imported. For a workbook, pick the sheet. A CSV is read as
+   UTF-16 or UTF-32 when it starts with a byte-order mark, else as UTF-8 (with
+   or without a BOM), else as Shift_JIS (cp932) when the text has kana, else as
+   Windows-1252, else as cp932 (kanji-only text), and as Latin-1 as a last
+   resort.
 2. **Columns.** Map each import field to a column: *id, item, mode, cause,
    severity, occurrence, detection, rpn, λ*. A mapping is suggested from
-   English and Japanese header words.
+   English and Japanese header words. An AIAG-VDA *AP* (action priority,
+   H/M/L) column is not suggested for RPN.
 3. **Target and values.**
    - *Parent*: the node the new events go under. It defaults to the selected
      node. If the parent is a leaf, it becomes an OR gate. It cannot be a
@@ -942,11 +966,19 @@ Import rules:
 
 - **Key.** Each row's key is the mapped id column. If no id column is mapped,
   the key is "item / mode". A row with neither is skipped.
+- **Blank items.** A row that has a failure mode but a blank item takes the
+  item of the row above. The usual layout writes an item once over its failure
+  modes, and merged cells read as blank below the first.
 - **Re-import updates in place.** With *update* on (the default), a row whose
   key equals an existing node's `fmea.id` anywhere in the tree updates that
-  node: its name, its `fmea` block and, for a leaf, its numbers. With update
-  off, such a row is skipped. A key repeated within the sheet is imported
-  once.
+  node: its `fmea` block, its name and, for a leaf, its numbers. Only the
+  fields whose columns are mapped change (a mapped column left blank empties
+  its field), and the name is re-derived only when the item or mode column is
+  mapped. With update off, such a row is skipped. A key repeated within the
+  sheet is imported once.
+- **Rows gone from the sheet.** Nodes from an earlier import of the same
+  sheet whose key no row holds any more are kept, not deleted, and listed
+  after the import.
 - **New rows** become leaf events under the parent, named "item – mode".
 - **Numbers.** The first rule that applies is used:
   1. A λ value gives the **rate** model with that λ.
@@ -957,6 +989,11 @@ Import rules:
 
   Re-importing merges into an existing `quant`, so your T and uncertainty
   survive.
+- **Number formats.** A decimal comma (`1,5`) and European grouping
+  (`1.200,5` is 1200.5) are read. In a comma-delimited CSV, where a comma
+  cannot be the decimal mark of an unquoted number, `1,200` and `12,345.6` are
+  thousands groupings (1200 and 12345.6), as Excel writes a `#,##0` column;
+  elsewhere `1,200` is 1.2.
 - **Validation.** Ranks must be integers 1–10, RPN a non-negative integer, and
   λ a non-negative number. A bad row is skipped with its reason and sheet row
   number, and the rest is still imported. RPN is computed as S×O×D when it is
@@ -980,8 +1017,9 @@ Occurrence ranks are ordinal judgements, not measured probabilities. Prefer a
 λ from field or handbook data where you have one.
 
 After an import, the tab lists how many rows were created, updated, unchanged
-and skipped (with reasons). It also highlights the imported nodes in the tree
-and the diagram.
+and skipped (with reasons), and the nodes of an earlier import whose rows are
+no longer in the sheet. It also highlights the imported nodes in the tree and
+the diagram.
 
 ### Report (DOCX) and Excel sheets
 
@@ -1015,8 +1053,8 @@ in the compact style. When neither is available, the report says the diagram
 is not available. ETA documents are accepted; the fault-tree-only sections
 say they do not apply.
 
-**Excel export** (`Export Excel` here, or the usual export menu) writes three
-sheets:
+**Excel export** (**Export Excel** here, or **Excel** in the action bar) writes
+three sheets:
 
 - **FTA**: the 1.6 hierarchical sheet, unchanged.
 - **Events**: one row per node in tree order. The columns are Id, Name, Parent
@@ -1097,26 +1135,32 @@ Options:
 
 | Option | Commands | Meaning |
 |---|---|---|
-| `--json` / `--csv` | all | Machine-readable output instead of a text table (mutually exclusive). With several files, `--json` gives a list. |
-| `--out PATH` | all | Write to PATH instead of stdout. With several files, give a directory; each file then gets `<stem>.<command>.<ext>`. A path that exists as a directory or ends in `/` or `\` is a directory. `report` defaults to `<stem>_report.docx` beside the input; for `report`, any `--out` that does not end in `.docx` is a directory. |
+| `--json` / `--csv` | all | Machine-readable output instead of a text table (mutually exclusive). With several files, `--json` gives a list. `--json` is strict JSON: a value that is not a finite number (a NaN probability in the file, say) is written as `null`. `--csv` is the raw data for scripts: text is written exactly as it is, not guarded for spreadsheets, so a name such as `=HYPERLINK(…)` stays a formula if you open the file in Excel. |
+| `--out PATH` | all | Write to PATH instead of stdout. With several files, give a directory; each file then gets `<stem>.<command>.<ext>`. A path that exists as a directory or ends in `/` or `\` is a directory. `report` defaults to `<stem>_report.docx` beside the input; for `report`, any `--out` that does not end in `.docx` is a directory. An output that would overwrite an input file, or that two inputs would both write, is a usage error (exit 2), and nothing is written. An output that cannot be written fails that file (exit 1). |
 | `--sig-figs N` | all | Significant figures in text tables, 1–6, default 3. JSON and CSV carry full precision. |
 | `--mission-time H` | all | Override the document's mission time, in hours. |
 | `--max-order N`, `--max-count N`, `--cutoff P` | cutsets, importance, report | Override the cut-set limits. |
-| `--top N` | cutsets, importance | Show only the first N rows (N ≥ 1). |
+| `--top N` | cutsets, importance | Show only the first N rows (N ≥ 1). With `--json` the list is cut to N too; the totals, MCUB and truncation flags still cover every cut set. |
 | `--n N`, `--seed S` | mc, report | Monte Carlo samples and seed. |
 | `--time-limit SEC` | mc, report | Monte Carlo time cap in seconds, > 0, default 30. For `report` it is capped at 60. |
 | `--strict` | validate | Warnings also fail (exit 1). |
-| `--sections LIST`, `--lang en\|ja`, `--uncertainty` | report | Comma-separated sections, the report language, and whether to run Monte Carlo (n ≤ 5,000) and include it. |
+| `--sections LIST`, `--lang en\|ja`, `--uncertainty` | report | Comma-separated sections, the report language, and whether to run Monte Carlo (n ≤ 5,000) and include it (also when `--sections` leaves it out). |
 
 Wildcards are expanded by the tool itself, so `*.json` works in `cmd.exe` too.
+
+Text tables show control characters from the input files (in names, titles
+and messages) as `\xNN`, so a crafted file cannot send escape sequences to
+the terminal; `--json` and `--csv` keep the text exactly. A character the
+console's encoding cannot show is written as a backslash escape instead of
+stopping the run (`--json` then escapes every non-ASCII character).
 
 **Exit codes:**
 
 | Code | Meaning |
 |---|---|
 | 0 | OK |
-| 1 | Validation errors (or warnings with `--strict`), or an analysis failed (for example an ETA file given to `cutsets`, or a voting gate that is too large) |
-| 2 | Usage error (bad option or value) |
+| 1 | Validation errors (or warnings with `--strict`), an analysis failed (for example an ETA file given to `cutsets`, or a voting gate that is too large), or an output file could not be written |
+| 2 | Usage error (bad option or value, or `--out` would overwrite an input file or one output twice) |
 | 3 | An input file could not be read |
 
 With several files, the highest code wins.
@@ -1200,7 +1244,8 @@ AND/OR and fixed probabilities only.
 
 ### JSON Export
 
-**File → Save JSON**
+**Save** / **Save As** in the action bar (**JSON** downloads a copy; desktop
+app: **(S)ave JSON As**)
 
 Saves complete analysis including:
 - Metadata (title, date, mode)
@@ -1220,7 +1265,7 @@ Saves complete analysis including:
 
 ### Excel Export
 
-**File → Export Excel**
+**Excel** in the action bar (desktop app: **Export Excel**)
 
 Hierarchical column structure:
 - Column A: Root events
@@ -1233,6 +1278,8 @@ Hierarchical column structure:
 - Auto-adjusted widths
 - Wrapped text
 - All node details in each cell
+- Text stays text: in the web app's export a name that starts with `=`
+  is never turned into a formula
 
 From 1.7 the web app's workbook also has a flat **Events** sheet (one row per
 node, numbers as real numbers) and an **Analysis** sheet (settings and
@@ -1245,9 +1292,16 @@ headline figures). See [Report (DOCX) and Excel sheets](#report-docx-and-excel-s
 
 ### XML Export
 
-**File → Export XML**
+**XML** in the action bar (desktop app: **Export XML**)
 
-Standard fault tree XML format, compatible with other FTA tools.
+A `<FaultTree>` of nested `<Node>` elements carrying the name, type, base and
+calculated probability, logic gate, notes and links. It is the editor's own
+layout, not a standard exchange format, and it does not carry the 1.7 keys.
+
+In the web app, the Excel, XML and DOCX exports leave out the characters XML
+cannot hold, such as control characters pasted from PowerPoint or Word; the
+whitespace-like ones (PowerPoint's soft line break) become a space. The
+analysis itself is not changed.
 
 ## Keyboard Shortcuts
 
@@ -1316,7 +1370,9 @@ renames, `Ctrl+Shift+arrows` move the focused node. In the bottom tab strip:
 A: Different modes calculate differently - this is expected. FTA is bottom-up, ETA is top-down.
 
 **Q: Can't see diagram preview**
-A: Ensure Graphviz is installed and in your PATH.
+A: The web app needs no Graphviz: the diagram is drawn in the browser, so check
+the browser console (`/static/vendor/viz-js/viz.js` must load). The desktop app
+needs Graphviz installed and in your PATH.
 
 **Q: Zero probability nodes everywhere**
 A: Check that probabilities are set > 0. In FTA mode, check logic gates.
@@ -1360,7 +1416,8 @@ A: Verify your API key is valid and has available credits. Check internet connec
 A: Consider using a faster model like `gpt-4o-mini`. Check your API rate limits.
 
 **Q: AI suggestions don't apply correctly**
-A: Ensure you've reviewed and selected the changes in the confirmation dialog.
+A: Ensure you've reviewed and ticked the changes in the *Suggested changes*
+list before **Apply selected** (the desktop app: the confirmation dialog).
 
 ## Best Practices
 
@@ -1401,5 +1458,4 @@ approximation. A leaf reached around a loop uses its base probability.
 
 For more details, see:
 - [ETA Mode Documentation](ETA_MODE.md)
-- [Probability Validation](PROBABILITY_VALIDATION.md)
 - [API Reference](API_REFERENCE.md)
