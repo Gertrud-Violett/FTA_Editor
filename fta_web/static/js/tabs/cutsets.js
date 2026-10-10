@@ -409,8 +409,10 @@ export function mount(panel, ctx) {
     stale = false;
     edited.clear();
     unselect();
+    // Refill the limit inputs from the new document first: run() reads them,
+    // and the typed values belonged to the old one.
+    paint();
     if (active) run();
-    else paint();
   };
   window.addEventListener('fta:document', onDocument);
   const unSig = ctx.onSigFigs(repaint);

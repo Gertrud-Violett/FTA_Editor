@@ -171,3 +171,20 @@ def test_importance_overlay_is_cleared_while_stale():
     body = _block(src, "    onStale()")
     assert body.index("stale = true;") < body.index("applyOverlay();") < body.index("if (active && justActivated)"), \
         "cleared on every stale signal, not only right after activation"
+
+
+# ---- Cut Sets: the first run after New / Open uses the new document's limits ----------
+# onDocument cleared `edited` and called run(), which read the limit inputs
+# before anything refilled them: a max order typed (not saved) for the old
+# document ran on the new one -- 1 of 2 cut sets and "Truncated by max order"
+# under an input that by then showed the document's 6.
+
+def test_cutsets_new_document_refills_limits_before_running():
+    src = _read(TABS / "cutsets.js")
+    body = _block(src, "const onDocument = () =>")
+    assert body.index("edited.clear();") < body.index("paint();") < body.index("if (active) run();")
+    toolbar = _block(src, "function paintToolbar()")
+    assert "if (!edited.has(input) && document.activeElement !== input) {" in toolbar
+    run = _block(src, "async function run()")
+    assert run.index("const payload = limitsBody();") < run.index("paintToolbar();"), \
+        "run() reads the inputs before it repaints them, so they must be current already"
