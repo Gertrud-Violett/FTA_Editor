@@ -104,6 +104,16 @@ class FiniteJSONProvider(DefaultJSONProvider):
                 raise
             return super().dumps(_finite(obj), **kwargs)
 
+    def loads(self, s: Any, **kwargs: Any) -> Any:
+        """Parse a request body. Nesting too deep for the parser (about
+        10,000 brackets) raises RecursionError, which is not the ValueError
+        ``request.get_json(silent=True)`` swallows: every JSON endpoint
+        answered 500 instead of the 400 a malformed body gets."""
+        try:
+            return super().loads(s, **kwargs)
+        except RecursionError as exc:
+            raise ValueError("JSON is nested too deeply") from exc
+
 # ---------------------------------------------------------------------------
 # HTTP-level error codes.
 #

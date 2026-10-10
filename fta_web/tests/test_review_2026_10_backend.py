@@ -459,3 +459,116 @@ class TestWriteRefusedByTheOs:
         assert target.read_bytes() == before  # the old file is intact
         assert sorted(p.name for p in sandbox.iterdir()) == ["a.json"]  # no temp left
         assert get_state().dirty is True
+
+
+# --------------------------------------------------------------------------
+# B-5: an integer too large for a float was a 500 (OverflowError)
+# --------------------------------------------------------------------------
+
+HUGE = 10 ** 400  # a valid JSON number; float(HUGE) raises OverflowError
+
+
+def _invalid_field(response, field):
+    payload = body(response)
+    assert response.status_code == 400, payload
+    assert payload["error"]["code"] == "INVALID_FIELD", payload
+    assert payload["error"]["detail"]["field"] == field, payload
+    return payload
+
+
+class TestHugeIntegers:
+    """Python's json reads a 400-digit integer exactly, and ``float()`` of it
+    raises OverflowError, which no validator caught: probability, quant
+    numbers, the analysis settings and the cut-set limits answered 500, and a
+    file whose ``analysis`` block held one could not be opened at all."""
+
+    def test_probability(self, tree_client):
+        _invalid_field(tree_client.post("/api/nodes", json={
+            "parentId": "root", "name": "x", "probability": HUGE}), "probability")
+        assert tree_client.post("/api/nodes", json={"parentId": "root", "name": "x"}).status_code == 200
+        _invalid_field(tree_client.patch("/api/nodes/root_0", json={"probability": -HUGE}),
+                       "probability")
+
+    def test_quant_numbers(self, tree_client):
+        assert tree_client.post("/api/nodes", json={"parentId": "root", "name": "x"}).status_code == 200
+        _invalid_field(tree_client.patch("/api/nodes/root_0", json={
+            "quant": {"model": "rate", "lambda": HUGE}}), "quant.lambda")
+        _invalid_field(tree_client.patch("/api/nodes/root_0", json={
+            "quant": {"unc": {"ef": HUGE}}}), "quant.unc.ef")
+
+    def test_render_scale_is_clamped_like_any_other_number(self):
+        from fta_web.rendering import DEFAULT_SCALE, clamp_scale
+
+        assert clamp_scale(HUGE) == DEFAULT_SCALE
+        assert clamp_scale(-HUGE) == DEFAULT_SCALE
+
+    def test_analysis_settings_and_cutset_limits(self, files_client):
+        _invalid_field(files_client.post("/api/analysis/settings", json={"missionTime": HUGE}),
+                       "analysis.missionTime")
+        _invalid_field(files_client.post("/api/analysis/cutsets", json={"cutoff": HUGE}), "cutoff")
+        assert get_state().can_undo is False
+
+    def test_a_file_with_one_in_its_analysis_block_opens_with_the_default(self, files_client, sandbox):
+        (sandbox / "a.json").write_text(
+            '{"tree": {"id": "root", "name": "R"}, "analysis": {"missionTime": %d}}' % HUGE,
+            encoding="utf-8")
+        opened = files_client.post("/api/file/open", json={"path": "a.json"})
+        assert opened.status_code == 200, body(opened)
+        doc = body(opened)
+        assert doc["analysis"]["missionTime"] == 8760.0
+        assert [w["kind"] for w in doc["warnings"]] == ["analysis_invalid"]
+
+
+# --------------------------------------------------------------------------
+# the full application (create_app): its blueprints use the bare ``state``
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def app_state():
+    """The ``state`` module ``create_app``'s blueprints import (bare name,
+    as under run.py), reset."""
+    import fta_web.app  # noqa: F401  (puts fta_web/ on sys.path)
+    import state as bare_state
+
+    bare_state.reset_state()
+    return bare_state
+
+
+@pytest.fixture
+def full_client(app_state, tmp_path):
+    from fta_web.app import create_app
+
+    app = create_app(fs_root=tmp_path)
+    with app.test_client() as client:
+        yield client
+
+
+# --------------------------------------------------------------------------
+# B-4: a deeply nested request body was a 500 (RecursionError)
+# --------------------------------------------------------------------------
+
+
+class TestDeeplyNestedBody:
+    """``json.loads`` raises RecursionError, not ValueError, on ~10,000
+    nested brackets, so ``request.get_json(silent=True)`` did not swallow it
+    and every JSON endpoint answered 500 instead of the 400 a malformed body
+    gets."""
+
+    @pytest.mark.parametrize("method, url", [
+        ("POST", "/api/nodes"), ("PATCH", "/api/nodes/root"), ("POST", "/api/metadata"),
+        ("POST", "/api/new"), ("POST", "/api/render"), ("POST", "/api/file/open"),
+        ("POST", "/api/analysis/settings"), ("POST", "/api/analysis/cutsets"),
+    ])
+    @pytest.mark.parametrize("deep", ["[" * 100000 + "]" * 100000,
+                                      '{"a":' * 50000 + "1" + "}" * 50000],
+                             ids=["array", "object"])
+    def test_it_is_a_400(self, full_client, method, url, deep):
+        response = full_client.open(url, method=method, data=deep, content_type="application/json")
+        assert response.status_code == 400, body(response)
+        assert body(response)["error"]["code"] == "INVALID_JSON"
+
+    def test_ordinary_nesting_still_parses(self, full_client):
+        response = full_client.post("/api/nodes", json={
+            "parentId": "root", "name": "x", "trace": {"tags": ["a", "b"]}})
+        assert response.status_code == 200, body(response)

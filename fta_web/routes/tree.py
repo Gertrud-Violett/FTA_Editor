@@ -168,7 +168,7 @@ def _validate_probability(value: Any) -> float:
         )
     try:
         prob = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError: a huge int
         raise ApiError(
             INVALID_FIELD,
             "'probability' must be a number between 0.0 and 1.0.",

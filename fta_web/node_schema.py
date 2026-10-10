@@ -112,7 +112,10 @@ def _number(value: Any, field: str, *, minimum: float = 0.0,
     """A finite real number >= ``minimum`` (or > when ``exclusive_min``)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise _invalid(field, "'%s' must be a number." % field, value)
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range: not finite either
+        number = math.inf
     if math.isnan(number) or math.isinf(number):
         raise _invalid(field, "'%s' must be a finite number." % field, value)
     if number < minimum or (exclusive_min and number == minimum):

@@ -124,7 +124,10 @@ class AnalysisError(ValueError):
 def _finite(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise AnalysisError(field, "'%s' must be a number." % field, value)
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range: not finite either
+        number = math.inf
     if math.isnan(number) or math.isinf(number):
         raise AnalysisError(field, "'%s' must be a finite number." % field, value)
     return number

@@ -131,7 +131,7 @@ def clamp_scale(value: object) -> int:
     """A whole number of padding spaces within [MIN_SCALE, MAX_SCALE]."""
     try:
         number = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError: a huge int
         return DEFAULT_SCALE
     if number != number or number in (float("inf"), float("-inf")):  # NaN/inf
         return DEFAULT_SCALE
