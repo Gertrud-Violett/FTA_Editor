@@ -153,6 +153,26 @@ def test_out_never_overwrites_an_input_file(tmp_path, capsys):
     assert doc.read_bytes() == before
 
 
+def test_report_uncertainty_flag_adds_the_section_to_explicit_sections(tmp_path, monkeypatch):
+    """``--uncertainty`` is documented as 'run Monte Carlo and include it',
+    but with ``--sections`` given it was silently dropped."""
+    pytest.importorskip("docx")
+    from fta_web import report_docx
+
+    seen = {}
+    real = report_docx.collect_report_data
+
+    def spy(core, warnings=None, options=None):
+        seen.update(sections=list(options["sections"]), run=options["runUncertainty"])
+        return real(core, warnings, options)
+
+    monkeypatch.setattr(report_docx, "collect_report_data", spy)
+    doc = write_doc(tmp_path / "t.json")
+    assert cli.main(["report", str(doc), "--sections", "metadata,headline", "--uncertainty",
+                     "--n", "200", "--out", str(tmp_path / "r.docx")]) == 0
+    assert seen == {"sections": ["metadata", "headline", "uncertainty"], "run": True}
+
+
 # ---- IO-19: terminal control sequences from a file -------------------------------------
 
 

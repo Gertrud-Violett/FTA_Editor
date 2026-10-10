@@ -321,6 +321,8 @@ def cmd_report(core, args, out_path: Path):
         unknown = [s for s in sections if s not in report_docx.SECTIONS]
         if unknown:
             raise UsageError("unknown section(s): %s" % ", ".join(unknown))
+        if args.uncertainty and "uncertainty" not in sections:
+            sections.append("uncertainty")  # "run Monte Carlo and include it"
     elif args.uncertainty:
         sections = list(report_docx.DEFAULT_SECTIONS) + ["uncertainty"]
     options = report_docx.normalize_options({
