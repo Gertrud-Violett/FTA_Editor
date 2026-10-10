@@ -450,11 +450,11 @@ def _json_default(value: Any):
     return str(value)
 
 
-def render_output(fmt: str, command: str, entries, sf: int) -> str:
+def render_output(fmt: str, command: str, entries, sf: int, ascii_only: bool = False) -> str:
     if fmt == "json":
         payload = [e for e, _rows in entries]
         body = payload[0] if len(payload) == 1 else payload
-        return json.dumps(body, ensure_ascii=False, indent=2, default=_json_default) + "\n"
+        return json.dumps(body, ensure_ascii=ascii_only, indent=2, default=_json_default) + "\n"
     if fmt == "csv":
         return csv_text(entries)
     return "\n\n".join(human_block(e, command, rows, sf) for e, rows in entries) + "\n"
@@ -464,14 +464,30 @@ def render_output(fmt: str, command: str, entries, sf: int) -> str:
 
 
 def _force_utf8() -> None:
-    """cp932 / cp1252 consoles must not crash on λ, τ or Japanese names."""
-    if sys.platform != "win32":
-        return
+    """cp932 / cp1252 consoles must not crash on λ, τ or Japanese names.
+
+    Windows consoles are switched to UTF-8. Elsewhere the encoding is kept
+    (a non-UTF-8 locale, ``PYTHONIOENCODING=ascii``) and what it cannot hold
+    -- a name's 'ü' in cp932, the '—' of an empty cell in ASCII -- is written
+    as a backslash escape, as Python already does on stderr, instead of
+    aborting the run with a traceback and the wrong exit code. ``--json``
+    escapes non-ASCII itself there (:func:`_stdout_unicode`), so it stays
+    valid JSON.
+    """
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            if sys.platform == "win32":
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            else:
+                stream.reconfigure(errors="backslashreplace")
         except Exception:
             pass
+
+
+def _stdout_unicode() -> bool:
+    """Whether stdout takes every character (a UTF encoding)."""
+    encoding = str(getattr(sys.stdout, "encoding", None) or "").lower()
+    return encoding.replace("-", "").replace("_", "").startswith("utf")
 
 
 def _write(path: Path, text: str) -> None:
@@ -565,7 +581,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             target = out / ("%s.%s%s" % (Path(files[0]).stem, command, ext)) if out_is_dir else out
             _write(target, render_output(fmt, command, entries, sf))
     else:
-        sys.stdout.write(render_output(fmt, command, entries, sf))
+        sys.stdout.write(render_output(fmt, command, entries, sf,
+                                       ascii_only=not _stdout_unicode()))
     sys.stdout.flush()
     return worst
 
