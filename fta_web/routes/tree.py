@@ -58,6 +58,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         ok_response,
     )
     from .. import node_schema
+    from ..config import MAX_TREE_DEPTH
     from ..engine import derive_quant
     from ..state import get_state, removed_link_issues
     from ..tree_ops import (
@@ -70,6 +71,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         strip_references_to,
         subtree_ids,
         top_level_id,
+        tree_height,
         would_create_cycle,
     )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
@@ -88,6 +90,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ok_response,
     )
     import node_schema  # type: ignore[no-redef]
+    from config import MAX_TREE_DEPTH  # type: ignore[no-redef]
     from engine import derive_quant  # type: ignore[no-redef]
     from state import get_state, removed_link_issues  # type: ignore[no-redef]
     from tree_ops import (  # type: ignore[no-redef]
@@ -100,6 +103,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         strip_references_to,
         subtree_ids,
         top_level_id,
+        tree_height,
         would_create_cycle,
     )
 
@@ -565,6 +569,7 @@ def create_node():
     with state.lock:
         core = state.core
         _require_node(core, parent_id, PARENT_NOT_FOUND, "Parent node")
+        _refuse_too_deep(depth_of(core, parent_id) + 1, "parentId")
 
         # next_child_id scans the whole tree, so the id is free by construction.
         new_id = next_child_id(core, parent_id)
@@ -591,6 +596,20 @@ def create_node():
             nodeId=new_id,
             node=_node_view(core, created),
             **_mutation_payload(state),
+        )
+
+
+def _refuse_too_deep(deepest: int, field: str) -> None:
+    """400 when an edit would put a node ``deepest`` levels below the root,
+    past ``config.MAX_TREE_DEPTH`` (every payload deep-copies the tree and
+    fails with RecursionError a little beyond it -- after the edit applied)."""
+    if deepest > MAX_TREE_DEPTH:
+        raise ApiError(
+            INVALID_FIELD,
+            "A node can be at most %d levels below the root; this would put one "
+            "%d levels down." % (MAX_TREE_DEPTH, deepest),
+            400,
+            {"field": field, "limit": MAX_TREE_DEPTH},
         )
 
 
@@ -741,6 +760,10 @@ def move_node_endpoint(node_id: str):
                 400,
                 {"nodeId": str(node_id), "newParentId": new_parent_id},
             )
+        _refuse_too_deep(
+            depth_of(core, new_parent_id) + 1 + tree_height(core.find_node_by_id(node_id)),
+            "newParentId",
+        )
 
         state.push_undo()
         moved, reason = move_node(core, node_id, new_parent_id, index)

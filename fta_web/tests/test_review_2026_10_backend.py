@@ -686,3 +686,92 @@ class TestJapaneseErrors:
             generic = body(client.post("/api/render?lang=ja", json={"format": "png"}))["error"]
         assert generic["detail"]["reason"] == reason
         assert _japanese(generic["message"]) and "インストール" not in generic["message"]
+
+
+# --------------------------------------------------------------------------
+# B-6: a very deep tree was installed, then every request was a 500
+# --------------------------------------------------------------------------
+
+
+def _chain(levels):
+    """A tree whose deepest node is ``levels`` below the root (ids n1..nN)."""
+    node = {"id": "n%d" % levels, "name": "leaf", "probability": 0.5, "children": []}
+    for level in range(levels - 1, 0, -1):
+        node = {"id": "n%d" % level, "name": "g%d" % level, "logicGate": "OR", "children": [node]}
+    return {"id": "root", "name": "Top", "logicGate": "OR", "children": [node]}
+
+
+class TestTreeDepthLimit:
+    """Every payload deep-copies the tree, four Python frames per level, so
+    past ~245 levels a request died with RecursionError. Opening such a file
+    answered 500 *after* it had replaced the document (unsaved work gone,
+    history cleared), and from then on state, every edit, undo and Save As
+    were 500s until New. Adding a level by hand did the same, the add itself
+    applied. The tree is now limited to config.MAX_TREE_DEPTH levels: a
+    deeper file is refused before anything changes, an add or a move that
+    would exceed it is a 400."""
+
+    def test_the_limit_leaves_room_below_the_recursion_failure(self):
+        from fta_web import config
+
+        assert 50 <= config.MAX_TREE_DEPTH <= 200
+
+    def test_a_tree_at_the_limit_is_fully_usable(self, files_client, sandbox):
+        from fta_web.config import MAX_TREE_DEPTH
+
+        write_doc(sandbox, "deep.json", {"title": "d", "tree": _chain(MAX_TREE_DEPTH)})
+        c = files_client
+        assert c.post("/api/file/open", json={"path": "deep.json"}).status_code == 200
+        assert c.patch("/api/nodes/n1", json={"name": "renamed"}).status_code == 200
+        assert c.post("/api/undo").status_code == 200
+        assert c.post("/api/file/save-as", json={"path": "out.json"}).status_code == 200
+        assert c.get("/api/analysis/summary").status_code == 200
+
+    def test_a_deeper_file_is_refused_before_anything_changes(self, files_client, sandbox):
+        from fta_web.config import MAX_TREE_DEPTH
+
+        c = files_client
+        assert c.post("/api/nodes", json={"parentId": "root", "name": "unsaved"}).status_code == 200
+        write_doc(sandbox, "deep.json", {"title": "d", "tree": _chain(MAX_TREE_DEPTH + 60)})
+        refused = c.post("/api/file/open", json={"path": "deep.json"})
+        assert refused.status_code == 400, body(refused)
+        error = body(refused)["error"]
+        assert error["code"] == "INVALID_JSON" and error["detail"]["reason"] == "too_deep"
+        assert "%d" % MAX_TREE_DEPTH in error["message"]
+        state = get_state()
+        assert state.dirty is True and state.current_path is None and state.can_undo
+        assert state.core.find_node_by_id("root_0")["name"] == "unsaved"
+        assert c.get("/api/state").status_code == 200
+
+    def test_a_deeper_import_is_refused_too(self, files_client):
+        import io
+
+        from fta_web.config import MAX_TREE_DEPTH
+
+        data = json.dumps({"title": "d", "tree": _chain(MAX_TREE_DEPTH + 1)}).encode("utf-8")
+        refused = files_client.post("/api/import/json", data={"file": (io.BytesIO(data), "d.json")},
+                                    content_type="multipart/form-data")
+        assert refused.status_code == 400, body(refused)
+        assert body(refused)["error"]["detail"]["reason"] == "too_deep"
+
+    def test_an_add_or_move_past_the_limit_is_refused(self, files_client, sandbox):
+        from fta_web.config import MAX_TREE_DEPTH
+
+        c = files_client
+        tree = _chain(MAX_TREE_DEPTH)
+        tree["children"].append({"id": "x", "name": "X", "children": [
+            {"id": "x1", "name": "X1", "probability": 0.1, "children": []}]})
+        write_doc(sandbox, "deep.json", {"title": "d", "tree": tree})
+        assert c.post("/api/file/open", json={"path": "deep.json"}).status_code == 200
+
+        added = c.post("/api/nodes", json={"parentId": "n%d" % MAX_TREE_DEPTH, "name": "too deep"})
+        assert added.status_code == 400, body(added)
+        assert body(added)["error"]["code"] == "INVALID_FIELD"
+        # x (height 1) under n(MAX-1) would put x1 at MAX + 1
+        moved = c.post("/api/nodes/x/move", json={"newParentId": "n%d" % (MAX_TREE_DEPTH - 1)})
+        assert moved.status_code == 400, body(moved)
+        assert body(moved)["error"]["code"] == "INVALID_FIELD"
+        assert get_state().can_undo is False  # neither left an undo step
+        # one level shallower is fine
+        ok = c.post("/api/nodes/x/move", json={"newParentId": "n%d" % (MAX_TREE_DEPTH - 2)})
+        assert ok.status_code == 200, body(ok)

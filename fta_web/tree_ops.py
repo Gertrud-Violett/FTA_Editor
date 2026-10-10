@@ -208,6 +208,19 @@ def all_ids(core) -> set:
     return ids
 
 
+def tree_height(node: Any) -> int:
+    """Levels below ``node``: 0 for a leaf (or a non-node). Iterative, so it
+    can measure a tree too deep for the recursive helpers."""
+    height = 0
+    stack = [(node, 0)] if isinstance(node, dict) else []
+    while stack:
+        current, level = stack.pop()
+        height = max(height, level)
+        stack.extend((child, level + 1) for child in _children(current)
+                     if isinstance(child, dict))
+    return height
+
+
 def depth_of(core, node_id: str) -> int:
     """Depth of a node below the root. Root is 0; -1 if the node is not found.
 

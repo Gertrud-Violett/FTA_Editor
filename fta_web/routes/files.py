@@ -81,7 +81,7 @@ from flask import Blueprint, request, send_file
 
 try:  # normal package import: ``import fta_web.routes.files``
     from .. import fsbrowser
-    from ..config import ALLOWED_OPEN_EXTENSIONS, MAX_UPLOAD_BYTES
+    from ..config import ALLOWED_OPEN_EXTENSIONS, MAX_TREE_DEPTH, MAX_UPLOAD_BYTES
     from ..errors import (
         INVALID_FIELD,
         INVALID_JSON,
@@ -95,10 +95,12 @@ try:  # normal package import: ``import fta_web.routes.files``
     from ..excel_events import export_xlsx
     from ..numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs
     from ..state import get_state, load_warning_issues
+    from ..tree_ops import tree_height
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import fsbrowser  # type: ignore[no-redef]
     from config import (  # type: ignore[no-redef]
         ALLOWED_OPEN_EXTENSIONS,
+        MAX_TREE_DEPTH,
         MAX_UPLOAD_BYTES,
     )
     from errors import (  # type: ignore[no-redef]
@@ -114,6 +116,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from excel_events import export_xlsx  # type: ignore[no-redef]
     from numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs  # type: ignore[no-redef]
     from state import get_state, load_warning_issues  # type: ignore[no-redef]
+    from tree_ops import tree_height  # type: ignore[no-redef]
 
 # Both import paths above have already put fta_web/core on sys.path.
 from FTA_Editor_core import FTACore  # noqa: E402
@@ -357,10 +360,29 @@ def file_open():
             400,
             {"reason": "load_failed"},
         )
+    _refuse_too_deep(loaded, target.name)
 
     with state.lock:
         _install_document(state, loaded, target, dirty=False)
         return ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
+
+
+def _refuse_too_deep(core: FTACore, label: str) -> None:
+    """400 for a tree deeper than ``MAX_TREE_DEPTH``, before it is installed.
+
+    Such a tree loads, but every payload deep-copies it and fails with
+    RecursionError (~245 levels): installing it replaced the user's document
+    and then answered 500 to the open and to nearly every request after it.
+    """
+    depth = tree_height(core.get_data())
+    if depth > MAX_TREE_DEPTH:
+        raise ApiError(
+            INVALID_JSON,
+            "'%s' could not be read as an FTA analysis: the tree is %d levels "
+            "deep, and the editor supports at most %d." % (label, depth, MAX_TREE_DEPTH),
+            400,
+            {"reason": "too_deep", "depth": depth, "limit": MAX_TREE_DEPTH},
+        )
 
 
 def _load_warnings(core: FTACore) -> list:
@@ -725,6 +747,7 @@ def import_json():
     # temp file deleted a line ago. Cleared so that nothing can later write
     # the user's analysis into /tmp.
     loaded.last_saved_file = None
+    _refuse_too_deep(loaded, filename or "the uploaded file")
 
     with state.lock:
         # No current path (the bytes came from the browser, not from a file
