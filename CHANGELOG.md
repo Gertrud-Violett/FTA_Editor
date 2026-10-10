@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Two worked examples ship with the editor**, each in English and in
+  Japanese, as a starting point for a user's own analysis
+  (`fta_web/examples/`; `fta_editor\_internal\examples\` in the standalone
+  build):
+  - `challenger_fta_en.json`, `challenger_fta_ja.json`: a fault tree of the
+    loss of the Space Shuttle Challenger (STS 51-L, 1986). The cold and the
+    tight squeeze act on both O-rings of the joint, so the tree shows what a
+    common cause does: the top event is 0.0684 by the minimal cut sets and
+    0.0349 by the plain tree walk.
+  - `tmi2_eta_en.json`, `tmi2_eta_ja.json`: an event tree of the accident at
+    Three Mile Island Unit 2 (1979), from the stuck-open relief valve to the
+    containment.
+
+  Each node's notes cite the Rogers Commission or the Kemeny Commission
+  report, with the finding or page; quotations were checked against scans of
+  the printed reports. The probabilities are illustrative and say so in the
+  title. `fta_web/tests/test_examples.py` checks that each file opens and
+  validates clean, that saving it changes nothing, that the two languages are
+  one analysis, and the numbers against values worked out by hand. No change
+  to the interface: the files are opened with Load (README, "Example
+  analyses").
 - **The real-browser GUI suite is part of the repository**
   (`fta_web/tests/gui/`). The 716 checks the 1.7.1 release was tested with:
   Playwright drives Chromium, or an installed Google Chrome, with real mouse

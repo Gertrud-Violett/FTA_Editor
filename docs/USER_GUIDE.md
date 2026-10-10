@@ -1348,6 +1348,71 @@ renames, `Ctrl+Shift+arrows` move the focused node. In the bottom tab strip:
 
 ## Examples
 
+### Example files
+
+The editor ships with worked examples of two well-documented accidents, each
+in English (`_en`) and in Japanese (`_ja`). The two languages are one
+analysis: only the names, the notes and the title differ.
+
+| File | Mode | Subject |
+|---|---|---|
+| `challenger_fta_en.json`, `challenger_fta_ja.json` | FTA | Loss of the Space Shuttle Challenger, STS 51-L, 28 January 1986 |
+| `tmi2_eta_en.json`, `tmi2_eta_ja.json` | ETA | Accident at Three Mile Island Unit 2, 28 March 1979 |
+| `sampleFTA.json` | FTA | The small AND/OR tree of the 1.x releases |
+
+They are in `fta_web/examples/` in a source checkout and in
+`fta_editor\_internal\examples\` in the standalone build. To open one, click
+**Load**, go to that folder (or type its path into the dialog) and pick the
+file. The dialog only reaches inside the editor's root folder, which is your
+home folder unless you started the editor with `--root`. If the editor is
+installed somewhere else, copy the `examples` folder into your home folder, or
+start the editor with `--root <that folder>`. **Save** writes back to the file
+you opened; use **Save As** to keep the example as it was.
+
+Each node's notes (the **Details** tab) say what happened and cite the
+accident report with the finding or page: the *Report of the Presidential
+Commission on the Space Shuttle Challenger Accident* (the Rogers Commission,
+1986) and the *Report of the President's Commission on the Accident at Three
+Mile Island* (the Kemeny Commission, 1979). Quotations are word for word in
+the English files; the Japanese files paraphrase them. **The probabilities are
+illustrative values for learning the tool.** They are not from the reports,
+and the files are not risk estimates.
+
+**Challenger (fault tree).** The top gate is an AND of the two causes the
+Commission reports: the joint that did not seal, and the launch that was not
+stopped. The joint has two O-rings, a primary and a secondary, so "does not
+seal" is an AND as well. Two events, the cold and the tight squeeze of the
+O-rings, act on both rings: the secondary O-ring has a link to the node that
+combines them. Things to look at, with **Advanced** on:
+
+- The headline reads **0.0684** with the **MCUB** badge, and the root node's
+  calculated probability is **0.0349**. The second number is the plain tree
+  walk, which counts the cold and the squeeze once for each O-ring, as if each
+  ring had its own. The first comes from the minimal cut sets and counts them
+  once; it is an upper bound, and the exact value for these numbers is 0.0670.
+  See [Top-event value](#top-event-value-tree-walk-mcub-and-rare-event).
+- **Cut Sets** lists three sets. The first, the cold and the squeeze with the
+  two decision events, is 0.0625, about 91 % of the total: two O-rings are no
+  protection against a cause they share.
+- **Importance**: the two decision events have a Fussell-Vesely of 1.00. They
+  are in every cut set, because the top gate is an AND.
+- Try it: set the probability of "Cold O-rings slow to recover" to 0.05, a
+  warm day. The top event falls to about a fifth.
+
+**Three Mile Island Unit 2 (event tree).** The root is the initiating event,
+the loss of feedwater, with probability 1. Each level asks one question: does
+the relief valve close again, do the operators close the block valve, is high
+pressure injection left running, does the containment hold. The two answers
+are branches whose probabilities add up to 1. Things to look at:
+
+- A node's calculated probability is the product of the probabilities on the
+  way down to it, so the five end states add up to 1: 0.98, 0.01, 0.005,
+  0.00495 and 0.00005.
+- The branches marked "(actual)" are the path the accident took.
+- Try it: change one branch and not its sibling. The **Validation** tab then
+  says that the branch probabilities under their parent no longer add up
+  to 1.
+
 ### Example 1: Server Reliability (FTA)
 
 **Scenario**: Analyze server downtime causes

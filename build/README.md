@@ -121,7 +121,7 @@ Unpacked as data, under the root the app knows as
 | `templates/` | `fta_web/templates/` | `index.html`, rendered by Flask |
 | `static/` | `fta_web/static/` | the whole frontend: JS, CSS, and `vendor/viz-js/viz.js` (~1.1 MB) |
 | `core/` | `fta_web/core/` | the vendored core **as source**, so it can be hashed against `core/BASELINE.json` |
-| `examples/` | `fta_web/examples/` | `sampleFTA.json` |
+| `examples/` | `fta_web/examples/` | the worked examples (`challenger_fta_en.json`, `challenger_fta_ja.json`, `tmi2_eta_en.json`, `tmi2_eta_ja.json`) and `sampleFTA.json`; users open them from `fta_editor\_internal\examples\` |
 
 `core/` is shipped twice on purpose: the compiled copy in the archive is what
 actually imports, the source copy is the audit trail. `__pycache__` and `.pyc`
@@ -322,6 +322,12 @@ output and exit codes reach the shell:
 ./build/dist/fta_editor/fta_editor validate fta_web/examples/sampleFTA.json   # exit 0 (warnings only)
 ./build/dist/fta_editor/fta_editor quantify fta_web/examples/sampleFTA.json --json | head -c 200
 ./build/dist/fta_editor/fta_editor report fta_web/examples/sampleFTA.json --out /tmp/r.docx   # needs python-docx
+
+# the worked examples, as the bundle ships them
+./build/dist/fta_editor/fta_editor validate build/dist/fta_editor/_internal/examples/challenger_fta_*.json \
+    build/dist/fta_editor/_internal/examples/tmi2_eta_*.json                  # exit 0; "errors 0, warnings 0, info 0" x4
+./build/dist/fta_editor/fta_editor quantify build/dist/fta_editor/_internal/examples/challenger_fta_en.json
+#   Top event: 0.0684  (mcub)      treeWalk 0.0349
 ```
 
 On Windows these are `fta_editor.exe validate x.json` and so on. `cmd.exe`

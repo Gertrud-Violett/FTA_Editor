@@ -232,6 +232,33 @@ the right the AI assistant; the node details are the **Details** tab of the
 bottom panel. Everything is in one page — there is nothing to install in the
 browser.
 
+### Example analyses
+
+Two worked examples ship with the editor, each in English and in Japanese.
+Open one, read the notes on each node, change a number and watch the result
+move; then use it as the starting point for your own analysis.
+
+| File | What it is | What to look at |
+|---|---|---|
+| `challenger_fta_en.json`, `challenger_fta_ja.json` | A fault tree of the loss of the Space Shuttle Challenger (STS 51-L, 1986): the joint that did not seal, and the launch that was not stopped | A common cause. The cold and the tight squeeze act on both O-rings, so the top event (0.0684, with the **MCUB** badge) is higher than the root node's own tree-walk value (0.0349). **Cut Sets** and **Importance** show why |
+| `tmi2_eta_en.json`, `tmi2_eta_ja.json` | An event tree of the accident at Three Mile Island Unit 2 (1979): relief valve, block valve, high pressure injection, containment | ETA mode. Each end state is the product of the branch probabilities on the way to it; the branches marked "(actual)" are the path the accident took |
+| `sampleFTA.json` | The small AND/OR tree of the 1.x releases | |
+
+Each node's notes say what happened and cite the accident report it comes
+from, with the finding or page: the Rogers Commission report for Challenger,
+the Kemeny Commission report for Three Mile Island. **The probabilities are
+illustrative.** They show how the tool computes; they are not from the
+reports, and neither file is a risk estimate.
+
+The files are in `fta_web/examples/` in a source checkout and in
+`fta_editor\_internal\examples\` in the standalone build. Click **Load**, go
+to that folder (or type its path into the dialog) and pick a file. The dialog
+only reaches inside the editor's root folder, which is your home folder unless
+you start the editor with `--root`: if the editor is installed somewhere else,
+copy the `examples` folder into your home folder first, or start with
+`--root <that folder>`. **Save** writes back to the file you opened, so use
+**Save As** to keep the example as it was.
+
 ### Legacy desktop application (fallback)
 
 ```bash
@@ -282,7 +309,7 @@ FTA_Editor/
 │   ├── importance.py, uncertainty.py, lint.py   # FV/RAW/RRW, Monte Carlo, validation rules
 │   ├── report_docx.py, excel_events.py, fmea_import.py, cli.py
 │   ├── core/                    # Vendored fork of desktop/src/ -- see DIVERGENCE.md
-│   ├── examples/                # Sample data (sampleFTA.json)
+│   ├── examples/                # Worked examples (Challenger FTA, TMI-2 ETA; EN and JA) and sampleFTA.json
 │   ├── static/, templates/      # Frontend, incl. WebAssembly Graphviz
 │   └── tests/                   # Web app test suite + vendor freeze guard
 ├── desktop/                      # Legacy Tkinter app -- BACKUP / FALLBACK, frozen
@@ -400,4 +427,5 @@ BSD-2 License - Copyright (c) makkiblog.com
 ## Support
 
 - Issues: [GitHub Issues](https://github.com/Gertrud-Violett/FTA_Editor/issues)
-- Examples: [fta_web/examples/](fta_web/examples/)
+- Examples: [fta_web/examples/](fta_web/examples/), described under
+  [Example analyses](#example-analyses)

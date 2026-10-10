@@ -178,8 +178,16 @@ Desktop app:
 
 ## Need Help?
 
-- Load example: `fta_web/examples/sampleFTA.json` (the legacy desktop app
-  has the same tree at `desktop/data/examples/sampleFTA.json`)
+- Load a worked example from `fta_web/examples/` (in the standalone build:
+  `fta_editor\_internal\examples\`), in English or Japanese:
+  `challenger_fta_en.json` / `challenger_fta_ja.json`, a fault tree of the
+  Challenger accident with a common cause, and `tmi2_eta_en.json` /
+  `tmi2_eta_ja.json`, an event tree of Three Mile Island Unit 2. Their
+  probabilities are illustrative. See
+  [Example analyses](README.md#example-analyses) for what to look at and how
+  to open them.
+- The small `fta_web/examples/sampleFTA.json` is the 1.x sample (the legacy
+  desktop app has the same tree at `desktop/data/examples/sampleFTA.json`)
 - Documentation: `docs/USER_GUIDE.md`
 - AI Setup: See [README.md](README.md#ai-assistant-setup)
 - Building a standalone executable: [build/README.md](build/README.md)

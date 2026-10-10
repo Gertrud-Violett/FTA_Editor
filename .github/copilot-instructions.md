@@ -190,6 +190,7 @@ python desktop/tests/test_probability_calculation.py  # Just probability
 - `fta_web/engine.py`: `WebCore`, the 1.7 gates, rate models and `analysis` block
 - `desktop/tests/test_probability_calculation.py`: 690 lines, covers all gate logic
 - `fta_web/examples/sampleFTA.json` (and `desktop/data/examples/sampleFTA.json`): Example tree structure
+- `fta_web/examples/challenger_fta_{en,ja}.json`, `tmi2_eta_{en,ja}.json`: worked examples shipped with the build (illustrative probabilities; every quotation is from the accident report the notes cite). `fta_web/tests/test_examples.py` pins their numbers and keeps the two languages one analysis
 - `CHANGELOG.md`: Version history
 - `fta_web/core/DIVERGENCE.md`: Every patch of the vendored core
 
