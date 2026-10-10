@@ -1,10 +1,12 @@
 """Frontend regressions from the 2026-10 review of the frontend core.
 
-Covers the editor shell, tree, details panel, dialogs, diagram and API client
-(static/js/main.js, tree.js, details.js, dialogs.js, diagram.js). Each check
-pins one verified bug, following test_frontend_b2b.py / test_frontend_dbg2.py:
-pure JS is extracted from the module source and executed under Node when it is
-on PATH; DOM wiring is pinned at source level.
+Covers the editor shell, tree, details panel, dialogs, file dialog, diagram,
+store and API client (static/js/main.js, tree.js, details.js, dialogs.js,
+filedialog.js, diagram.js, store.js, api.js). Each check pins one bug verified
+in Chromium against the running app, following test_frontend_b2b.py /
+test_frontend_dbg2.py: pure JS is extracted from the module source (or the
+module imported) and executed under Node when it is on PATH; DOM wiring is
+pinned at source level.
 """
 import json
 import re
