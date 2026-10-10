@@ -792,3 +792,48 @@ console.log(JSON.stringify([fields.type.control.value, fields.logicGate.control.
     body = _braced(src, src.index("function commitField(key)"))
     on_failure = body[body.index("send(patch).then("):].split("\n      () => {")[2]
     assert "restoreTyping(key, nodeId, typed);" in on_failure
+
+
+# ---- dialogs.js: the link picker installs only its newest node list (F-31) -------------
+#
+# Select a node (GET /nodes for the old document, answering late) and press
+# Alt+N: the list fetched for the new document arrived first and the late one
+# then replaced it, so the picker offered Alpha, Beta, Gamma -- nodes of the
+# previous document -- as link targets (Chromium, first response held 1.5 s).
+
+_RELOAD_HARNESS = r"""
+let choices = [];
+const nameById = new Map();
+function renderMatches() {}
+function renderLists() {}
+const statuses = [];
+function setStatus(message, isError) { if (message) statuses.push(message); }
+function errorMessage(err, fallback) { return (err && err.message) || fallback; }
+function showError() {}
+function t(key) { return key; }
+const answers = [
+  // the old document's list, late; then the new document's, at once
+  () => new Promise((resolve) => setTimeout(() => resolve([{ id: 'root' }, { id: 'old_a' }]), 60)),
+  () => Promise.resolve([{ id: 'root' }]),
+  () => new Promise((_, reject) => setTimeout(() => reject(new Error('stale failure')), 60)),
+  () => Promise.resolve([{ id: 'root' }, { id: 'new_b' }]),
+];
+let call = 0;
+function fetchNodeList() { return answers[call++](); }
+"""
+
+
+@needs_node
+def test_link_picker_keeps_only_the_newest_node_list():
+    src = _read(STATIC / "dialogs.js")
+    decl = re.search(r"^\s*let reloadSeq = 0;$", src, re.M)
+    fn = _braced(src, src.index("async function reload()"))
+    script = _RELOAD_HARNESS + (decl.group(0) if decl else "") + "\n" + fn + r"""
+reload(); reload();
+setTimeout(() => {
+  const first = choices.map((c) => c.id);
+  reload(); reload();
+  setTimeout(() => console.log(JSON.stringify([first, choices.map((c) => c.id), statuses])), 150);
+}, 150);
+"""
+    assert _node(script) == [["root"], ["root", "new_b"], []]

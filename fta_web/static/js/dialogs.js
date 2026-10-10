@@ -913,16 +913,25 @@ export function createLinksEditor(options) {
     commit(previous, t('links.removed', { n: targets.length, relation: relation }));
   }
 
+  /** Bumped by every reload(), so only the newest request's answer counts. */
+  let reloadSeq = 0;
+
   /** (Re)load the node list from the API. Failures are reported inline. */
   async function reload() {
+    // An older list answering last (New/Open while it was on the wire)
+    // offered the previous document's nodes as link targets.
+    const mine = ++reloadSeq;
     try {
-      choices = await fetchNodeList();
+      const list = await fetchNodeList();
+      if (mine !== reloadSeq) return;
+      choices = list;
       nameById.clear();
       for (const choice of choices) nameById.set(String(choice.id), choice.name);
       renderMatches();
       renderLists();
       setStatus('', false);
     } catch (err) {
+      if (mine !== reloadSeq) return;
       setStatus(errorMessage(err, t('links.loadFailed')), true);
       showError(err, t('links.loadFailed'));
     }
