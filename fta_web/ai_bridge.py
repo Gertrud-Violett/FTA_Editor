@@ -798,6 +798,65 @@ def update_problem(tree: Any) -> Optional[str]:
     return None
 
 
+# ---- what a full-JSON update did ----------------------------------------
+
+
+def _nodes_by_id(tree: Any) -> Dict[str, Dict[str, Any]]:
+    """id -> node in pre-order (the first node of a repeated id)."""
+    nodes: Dict[str, Dict[str, Any]] = {}
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        nodes.setdefault(str(node.get("id")), node)
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+    return nodes
+
+
+def _as_float(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def update_summary(before: Any, after: Any) -> Dict[str, List[Dict[str, Any]]]:
+    """What a full-tree AI update did to the document, by node id.
+
+    ``added`` and ``removed`` are ``{id, name}``; ``changed`` lists the nodes
+    present in both whose ``name``, ``probability`` (of a leaf -- a gate's own
+    value is ignored by the engine), ``gate`` (``gateType`` or ``logicGate`` of a
+    node with children) or ``quant`` differ, with those ``fields``. Compare
+    recalculated trees: a probability the engine derives (a rate model the
+    update kept) is then not reported as changed, because it is not.
+    """
+    old, new = _nodes_by_id(before), _nodes_by_id(after)
+
+    def gate(node: Dict[str, Any]) -> str:
+        return str(node.get("gateType") or node.get("logicGate") or "OR").strip().upper()
+
+    changed: List[Dict[str, Any]] = []
+    for node_id, node in new.items():
+        was = old.get(node_id)
+        if was is None:
+            continue
+        fields = []
+        if was.get("name") != node.get("name"):
+            fields.append("name")
+        if not (node.get("children") or []) and _as_float(was.get("probability")) != _as_float(node.get("probability")):
+            fields.append("probability")
+        if (node.get("children") or was.get("children")) and gate(was) != gate(node):
+            fields.append("gate")
+        if was.get("quant") != node.get("quant"):
+            fields.append("quant")
+        if fields:
+            changed.append({"id": node_id, "name": node.get("name"), "fields": fields})
+    return {
+        "added": [{"id": i, "name": n.get("name")} for i, n in new.items() if i not in old],
+        "removed": [{"id": i, "name": n.get("name")} for i, n in old.items() if i not in new],
+        "changed": changed,
+    }
+
+
 # ---- full-JSON update diagnostics ---------------------------------------
 #
 # The desktop editor's Update FTA flow (desktop/src/FTA_Editor_UI.py:855-895) does not

@@ -666,7 +666,10 @@ def post_update():
 
     On success the tree is replaced wholesale under the lock, with an undo
     entry pushed first -- so a rewrite that turns out to be wrong is one
-    Ctrl-Z away, which is what makes it reasonable to try at all.
+    Ctrl-Z away, which is what makes it reasonable to try at all. The model is
+    asked to keep every existing node, but nothing makes it, so the response's
+    ``updateSummary`` says what the rewrite did to them: ``added``, ``removed``
+    and ``changed`` nodes by id and name (see ``ai_bridge.update_summary``).
     """
     _require_configured()
 
@@ -749,5 +752,12 @@ def post_update():
         _strip_references_to_removed(state, old_tree)
         state.core.recalculate_probabilities()
         state.mark_dirty()
+        # Both trees recalculated: a value the engine derives is not a change.
+        summary = ai_bridge.update_summary(old_tree, state.core.get_data())
 
-        return ok_response(reply=reply, mergedFields=merged, **_mutation_payload(state))
+        return ok_response(
+            reply=reply,
+            mergedFields=merged,
+            updateSummary=ai_bridge.scrub_deep(summary, secret),
+            **_mutation_payload(state),
+        )

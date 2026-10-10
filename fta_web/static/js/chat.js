@@ -128,6 +128,43 @@ function appliedCount(result, requested) {
   return requested;
 }
 
+/** An update summary names at most this many nodes, each at most this long. */
+const SUMMARY_NAMES = 5;
+const SUMMARY_NAME_CHARS = 40;
+
+/** "A, B, C, D, E, …" from a list of {id, name}. Names are data, not UI text. */
+function summaryNames(list) {
+  const names = (Array.isArray(list) ? list : [])
+    .map((entry) => String((entry && (entry.name || entry.id)) || '').trim())
+    .filter(Boolean)
+    .map((name) => (name.length > SUMMARY_NAME_CHARS ? name.slice(0, SUMMARY_NAME_CHARS - 1) + '…' : name));
+  if (names.length > SUMMARY_NAMES) return names.slice(0, SUMMARY_NAMES).join(', ') + ', …';
+  return names.join(', ');
+}
+
+/**
+ * POST /api/ai/update's `updateSummary` as one chat line: a catalog key and
+ * its vars, so a language switch re-translates it. Counts what the rewrite
+ * added, changed and removed, and names the changed and removed nodes -- the
+ * model is asked to keep every existing node, but nothing makes it.
+ */
+function updateSummaryMessage(summary) {
+  if (!summary || typeof summary !== 'object') return null;
+  const count = (list) => (Array.isArray(list) ? list.length : 0);
+  const vars = {
+    added: count(summary.added),
+    changed: count(summary.changed),
+    removed: count(summary.removed),
+    removedNames: summaryNames(summary.removed),
+    changedNames: summaryNames(summary.changed),
+  };
+  let key = 'ai.update.summary';
+  if (vars.removedNames && vars.changedNames) key = 'ai.update.summaryBoth';
+  else if (vars.removedNames) key = 'ai.update.summaryRemoved';
+  else if (vars.changedNames) key = 'ai.update.summaryChanged';
+  return { key, vars };
+}
+
 /* ------------------------------------------------------------ the panel ---- */
 
 const ROLE_KEY = {
@@ -637,7 +674,9 @@ export function initChat(host) {
       const reply = replyFrom(result);
       if (reply) addMessage('assistant', reply);
       await refreshDocument(result);
-      say('system', 'ai.msg.updated');
+      const summary = updateSummaryMessage(result && result.updateSummary);
+      if (summary) say('system', summary.key, summary.vars);
+      else say('system', 'ai.msg.updated');
     });
   }
 

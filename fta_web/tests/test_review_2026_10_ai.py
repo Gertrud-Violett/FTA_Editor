@@ -1200,3 +1200,114 @@ class TestANewProviderNeverReceivesTheOldConversation:
 
         assert client.post("/api/ai/changes/apply", json={"indices": [index]}).status_code == 200
         assert get_state().core.find_node_by_id("corrosion") is not None
+
+
+# --------------------------------------------------------------------------
+# AI-12: an update says what it did to the existing nodes
+# --------------------------------------------------------------------------
+
+
+class TestAnUpdateSaysWhatItDidToExistingNodes:
+    """Update FTA replaces the tree (the tests above pin that); the docs said
+    "Existing nodes are preserved; only additions are applied". A rewrite that
+    dropped "Valve stuck" and raised a probability 5000x came back as a plain
+    200 -- the user had to diff the tree by eye to see it."""
+
+    def _document(self, client):
+        ids = {
+            "pump": add(client, name="Pump fails", probability=1e-5, notes="vendor data"),
+            "valve": add(client, name="Valve stuck", probability=2e-4),
+            "gate": add(client, name="Loss of flow", logicGate="AND", probability=1.0),
+            "rate": add(client, name="Seal wear", probability=0.5,
+                        quant={"model": "rate", "lambda": 1e-6, "T": 1000}),
+        }
+        for name, p in (("Filter clogged", 0.1), ("Line frozen", 0.2)):
+            created = body(client.post("/api/nodes", json={"parentId": ids["gate"], "name": name, "probability": p}))
+            ids[name] = created["nodeId"]
+        return ids
+
+    def _rewrite(self, ids):
+        def leaf(node_id, name, p):
+            return {"id": node_id, "name": name, "probability": p}
+
+        gate = leaf(ids["gate"], "Loss of flow", 1.0)
+        gate.update(logicGate="OR", children=[
+            dict(leaf(ids["Filter clogged"], "Filter blocked", 0.1), type="Event", logicGate="OR",
+                 notes="", links=[], children=[]),
+            dict(leaf(ids["Line frozen"], "Line frozen", 0.2), type="Event", logicGate="OR",
+                 notes="", links=[], children=[]),
+        ])
+        return tree_with(
+            leaf(ids["pump"], "Pump fails", 0.05),        # probability raised
+            gate,                                          # AND -> OR, a child renamed
+            leaf(ids["rate"], "Seal wear", 0.9),          # its rate model wins again
+            leaf("new_1", "Power loss", 1e-3),            # added; "Valve stuck" dropped
+        )
+
+    def test_removed_changed_and_added_nodes_are_reported(self, client, provider, monkeypatch):
+        ids = self._document(client)
+        monkeypatch.setattr(provider, "send_message", replies(json.dumps(self._rewrite(ids))))
+
+        response = client.post("/api/ai/update", json={})
+
+        assert response.status_code == 200, body(response)
+        summary = body(response)["updateSummary"]
+        assert summary["added"] == [{"id": "new_1", "name": "Power loss"}]
+        assert summary["removed"] == [{"id": ids["valve"], "name": "Valve stuck"}]
+        assert summary["changed"] == [
+            {"id": ids["pump"], "name": "Pump fails", "fields": ["probability"]},
+            {"id": ids["gate"], "name": "Loss of flow", "fields": ["gate"]},
+            {"id": ids["Filter clogged"], "name": "Filter blocked", "fields": ["name"]},
+        ]
+
+    def test_a_changed_model_is_reported(self, client, provider, monkeypatch):
+        rate = add(client, name="Seal wear", probability=0.5, quant={"model": "rate", "lambda": 1e-6, "T": 1000})
+        node = {"id": rate, "name": "Seal wear", "probability": 0.5,
+                "quant": {"model": "rate", "lambda": 1e-4, "T": 1000}}
+        monkeypatch.setattr(provider, "send_message", replies(json.dumps(tree_with(node))))
+
+        summary = body(client.post("/api/ai/update", json={}))["updateSummary"]
+
+        assert summary["changed"] == [{"id": rate, "name": "Seal wear", "fields": ["probability", "quant"]}]
+
+
+@needs_node
+def test_the_chat_summarises_an_update_in_one_line():
+    fn = re.search(r"^function summaryNames\(.*?\n\}\n.*?^function updateSummaryMessage\(.*?\n\}",
+                   _chat_source(), re.S | re.M)
+    assert fn, "chat.js has no top-level summaryNames()/updateSummaryMessage()"
+    long_name = "x" * 60
+    cases = [
+        None,
+        {"added": [{"id": "a"}], "changed": [], "removed": []},
+        {"added": [], "changed": [], "removed": [{"id": "v", "name": "Valve stuck"}]},
+        {"added": [], "changed": [{"id": "p", "name": "Pump fails"}], "removed": []},
+        {"added": [], "changed": [{"id": "p", "name": long_name}],
+         "removed": [{"id": str(i), "name": "n%d" % i} for i in range(7)]},
+    ]
+    consts = "\n".join(re.findall(r"^const SUMMARY_[A-Z_]+ = \d+;", _chat_source(), re.M))
+    script = consts + "\n" + fn.group(0) + "\nconsole.log(JSON.stringify(%s.map(updateSummaryMessage)));" % json.dumps(cases)
+    out = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+
+    assert out[0] is None
+    assert out[1] == {"key": "ai.update.summary", "vars": {
+        "added": 1, "changed": 0, "removed": 0, "removedNames": "", "changedNames": ""}}
+    assert out[2]["key"] == "ai.update.summaryRemoved" and out[2]["vars"]["removedNames"] == "Valve stuck"
+    assert out[3]["key"] == "ai.update.summaryChanged" and out[3]["vars"]["changedNames"] == "Pump fails"
+    assert out[4]["key"] == "ai.update.summaryBoth"
+    assert out[4]["vars"]["removedNames"] == "n0, n1, n2, n3, n4, …"
+    assert out[4]["vars"]["changedNames"] == "x" * 39 + "…"
+
+
+def test_the_update_summary_is_shown_and_translated():
+    action = re.search(r"  function actionUpdate\(\) \{(.*?)\n  \}\n", _chat_source(), re.S).group(1)
+    assert "updateSummaryMessage(result && result.updateSummary)" in action
+    assert "say('system', summary.key, summary.vars)" in action
+    sys.path.insert(0, str(REPO_ROOT / "fta_web" / "tests"))
+    import test_catalog_parity
+
+    en, ja = test_catalog_parity._catalogs()
+    for key in ("ai.update.summary", "ai.update.summaryRemoved", "ai.update.summaryChanged",
+                "ai.update.summaryBoth"):
+        assert key in en and key in ja, key
+        assert "Ctrl+Z" in en[key] and "Ctrl+Z" in ja[key]
