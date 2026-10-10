@@ -1031,3 +1031,26 @@ class TestOpenAIReasoningModels:
         _test_body, chat_body = self._bodies(loopback, "gpt-5", "Microsoft Copilot", suffix="")
 
         assert chat_body["max_tokens"] == 2000 and chat_body["temperature"] == 0.7
+
+
+# --------------------------------------------------------------------------
+# AI_DOCUMENT_CHANGED is read by the user: it has a Japanese message
+# --------------------------------------------------------------------------
+
+
+def test_the_document_changed_refusal_is_localised(app, client, provider, monkeypatch):
+    pump = add(client, name="Pump fails", probability=0.1)
+    blocked = Blocked(json.dumps(tree_with({"id": pump, "name": "Pump fails", "probability": 0.1})))
+    monkeypatch.setattr(provider, "send_message", blocked)
+
+    thread, outcome = in_background(app, "post", "/api/ai/update?lang=ja", {})
+    try:
+        assert blocked.inside.wait(5)
+        client.patch("/api/nodes/%s" % pump, json={"probability": 0.9})
+    finally:
+        blocked.release.set()
+        thread.join(10)
+
+    error = body(outcome["response"])["error"]
+    assert error["code"] == "AI_DOCUMENT_CHANGED"
+    assert any(ord(c) > 0x3000 for c in error["message"]), error["message"]

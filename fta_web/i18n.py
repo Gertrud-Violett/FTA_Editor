@@ -42,6 +42,12 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
     "AI_NOT_CONFIGURED": {
         "ja": "AIアシスタントが設定されていません。AI設定でプロバイダーとAPIキーを追加してください。",
     },
+    "AI_DOCUMENT_CHANGED": {
+        "ja": (
+            "AIが更新版を作成している間に解析が変更された（編集・元に戻す・別のファイルを開く など）ため、"
+            "更新は適用されず、何も変更されていません。もう一度「FTA更新」を実行してください。"
+        ),
+    },
     "RENDERER_UNAVAILABLE": {
         "ja": (
             "この操作にはシステムにインストールされたGraphvizが必要です。"
