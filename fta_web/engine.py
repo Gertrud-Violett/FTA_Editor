@@ -309,7 +309,10 @@ def derive_quant(node: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None
         params = {"q": q}
     elif model == "rate":
         t = _param(quant, "T")
-        from_mission = t is None
+        # Only an absent T defaults to the mission time. An own T that is
+        # invalid (a string, negative, NaN, inf) is a missing parameter: taking
+        # the mission time instead would quietly compute another event.
+        from_mission = quant.get("T") is None
         if from_mission:
             t = _param(analysis, "missionTime")
         params = {"lambda": lam, "T": t, "TFromMission": from_mission}
