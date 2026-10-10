@@ -12,7 +12,7 @@
   "vendored": {
     "fta_web/core/AI_agent_handler.py": "fe035b8aefab92712b1984b1909378d723dafd505eb4e1ca143b20c6b5b69c72",
     "fta_web/core/FTA_Editor_core.py": "aeb9bcafbff0eb105899435e9915c6ff86e17c9251d43ddda7b2cb6485b7e870",
-    "fta_web/core/ai_providers.py": "796202c43364a00774da240364d1016278b0a3d8733bc411f17e88f7d8657dd4",
+    "fta_web/core/ai_providers.py": "0959de2ceedf150b271143c9fec32efd9200f28ac9b9d9f55eadc345c4238291",
     "fta_web/core/json_viewer.py": "528f9aca1278c6cb9d3d77e5cd223c70590bcc8e899be0f3c4171a71ffb6ef74",
     "fta_web/examples/sampleFTA.json": "c2a99673302a30f79156604ce0d81178f28c6ab68b2e45d4a5143d9c03ea3aa3"
   },
@@ -31,6 +31,7 @@
     "D17",
     "D18",
     "D19",
-    "D20"
+    "D20",
+    "D21"
   ]
 }

@@ -34,7 +34,7 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
-**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**.
+**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -565,6 +565,47 @@ directory's ACL is the protection — nothing changes and nothing fails.
 **Behavior change:** None functional; the file's content and location are unchanged.
 
 **Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D21 — Anthropic replies from thinking models: read every text block, leave room to think
+
+**Defect (review AI-07, AI-11):** `AnthropicProvider.send_message` returned
+`response.content[0].text`. The current Claude models think by default --
+`claude-opus-5`, which the settings dialog pre-selects, runs adaptive thinking
+unless told otherwise, `claude-opus-5-5` always thinks, and the 5.5 Sonnet and
+Haiku think by default -- and with the default `display: "omitted"` the reply's
+content starts with a `thinking` block (empty text) before the `text` block. A
+`ThinkingBlock` has no `.text`, so every chat, Analyze and Update answered
+`AI Error: Anthropic error: 'ThinkingBlock' object has no attribute 'text'`,
+while Test & Save (which never reads the content) reported success. The request
+also went out with the handler's `max_tokens=2000`, and thinking tokens count
+against `max_tokens`, so a long think could leave no room for the answer at all.
+
+Repro (installed `anthropic` 1.5.0, its real `Message` model): content
+`[{"type": "thinking", ...}, {"type": "text", "text": "..."}]` -> the error above.
+
+**Fix:** The reply is the concatenation of every `type == "text"` block. A reply
+with no text block is an error that names the `stop_reason` (`max_tokens`,
+`refusal`, ...) instead of an `AttributeError`. Requests are sent with
+`max_tokens = max(requested, 16000)` (`AnthropicProvider.MIN_MAX_TOKENS`):
+16000 is the documented non-streaming default and every current Claude model
+accepts at least 64K output tokens. No sampling parameter is added -- they are
+rejected by Opus 5.5/5/4.8/4.7 and Sonnet 5. `test_connection` is unchanged: with
+`max_tokens=10` a thinking model can legitimately answer with no text block,
+so requiring one there would refuse working keys.
+
+**Why it is safe:** For a model that does not think, the content is a single
+text block and the joined text is exactly what `content[0].text` returned.
+`max_tokens` is a ceiling, not a target, so a larger value changes neither the
+answer nor its cost unless the model needs the room.
+
+**Behavior change:** Chat, Analyze and Update work with thinking models; an
+empty answer says why. OpenAI, Gemini and Azure keep `max_tokens=2000`.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
 
 ---
 

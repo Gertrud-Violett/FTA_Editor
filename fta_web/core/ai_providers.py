@@ -113,7 +113,14 @@ class OpenAIProvider(AIProvider):
 
 class AnthropicProvider(AIProvider):
     """Anthropic Claude API provider"""
-    
+
+    #: Divergence D21: the least max_tokens a chat request is sent with. The
+    #: current Claude models think by default and thinking tokens count against
+    #: max_tokens, so the 2000 the handler asks for could be spent on thinking
+    #: alone. 16000 is the documented non-streaming default (it stays under the
+    #: SDK's HTTP timeouts), and every current model allows at least 64K.
+    MIN_MAX_TOKENS = 16000
+
     @staticmethod
     def get_provider_name() -> str:
         return "Anthropic Claude"
@@ -192,11 +199,22 @@ class AnthropicProvider(AIProvider):
             
             response = client.messages.create(
                 model=model,
-                max_tokens=max_tokens,
+                max_tokens=max(max_tokens, self.MIN_MAX_TOKENS),
                 system=system_message if system_message else None,
                 messages=user_messages
             )
-            return response.content[0].text, None
+            # Divergence D21: a thinking model's reply starts with a "thinking"
+            # block, which has no .text; the answer is every "text" block.
+            text = "".join(
+                block.text for block in response.content
+                if getattr(block, "type", None) == "text"
+            )
+            if not text:
+                return None, (
+                    "Anthropic error: the reply contained no text (stop_reason: %s)."
+                    % getattr(response, "stop_reason", None)
+                )
+            return text, None
         except ImportError:
             return None, "Anthropic package not installed. Run: pip install anthropic"
         except Exception as e:

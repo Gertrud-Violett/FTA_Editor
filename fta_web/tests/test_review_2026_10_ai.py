@@ -593,3 +593,115 @@ def test_closing_the_dialog_mid_request_still_refreshes_the_shell(function, requ
     assert after.index(closed_branch.group(0)) < after.index("setBusy(false)")
     assert "await refreshShell();" in closed_branch.group(1)
     assert "return;" in closed_branch.group(1)
+
+
+# --------------------------------------------------------------------------
+# AI-07 / AI-11, divergence D21: Anthropic replies from thinking models
+# --------------------------------------------------------------------------
+
+
+def _claude_message(*blocks, stop_reason="end_turn"):
+    """A real anthropic.types.Message, so a ThinkingBlock really has no .text."""
+    from anthropic.types import Message
+
+    return Message.model_validate({
+        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
+        "content": list(blocks), "stop_reason": stop_reason, "stop_sequence": None,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    })
+
+
+THINKING = {"type": "thinking", "thinking": "", "signature": "EqQBCkYIARgC"}
+
+
+@pytest.fixture
+def fake_anthropic(monkeypatch):
+    """anthropic.Anthropic replaced by a recorder: no socket is ever opened."""
+    anthropic = pytest.importorskip("anthropic")
+    seen = {"clients": [], "creates": []}
+    answer = {"message": _claude_message({"type": "text", "text": "ok"}), "models": []}
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs):
+            seen["clients"].append(kwargs)
+            self.messages = type("Messages", (), {"create": staticmethod(self._create)})()
+            self.models = type("Models", (), {"list": staticmethod(self._list)})()
+
+        @staticmethod
+        def _create(**kwargs):
+            seen["creates"].append(kwargs)
+            return answer["message"]
+
+        @staticmethod
+        def _list(**kwargs):
+            if isinstance(answer["models"], Exception):
+                raise answer["models"]
+            return answer["models"]
+
+    monkeypatch.setattr(anthropic, "Anthropic", FakeAnthropic)
+    return seen, answer
+
+
+class TestAnthropicRepliesFromThinkingModels:
+    """claude-opus-5 (the pre-selected default) and the 5.x models think by
+    default; the reply's content then starts with a `thinking` block, and
+    response.content[0].text raised AttributeError -- every chat failed with
+    "'ThinkingBlock' object has no attribute 'text'"."""
+
+    MESSAGES = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "Analyze"}]
+
+    def test_the_text_blocks_are_the_reply(self, fake_anthropic):
+        seen, answer = fake_anthropic
+        answer["message"] = _claude_message(
+            THINKING, {"type": "text", "text": "SUGGESTION: "}, {"type": "text", "text": "add corrosion"}
+        )
+        claude = AIProviderFactory.get_provider("Anthropic Claude")
+
+        assert claude.send_message("k", "x", "claude-opus-5", self.MESSAGES) == (
+            "SUGGESTION: add corrosion", None
+        )
+
+    def test_no_text_is_an_error_that_names_the_stop_reason(self, fake_anthropic):
+        seen, answer = fake_anthropic
+        answer["message"] = _claude_message(THINKING, stop_reason="max_tokens")
+        claude = AIProviderFactory.get_provider("Anthropic Claude")
+
+        text, error = claude.send_message("k", "x", "claude-opus-5", self.MESSAGES)
+
+        assert text is None
+        assert "no text" in error and "stop_reason: max_tokens" in error
+
+    @pytest.mark.parametrize("requested,sent", [(2000, 16000), (10, 16000), (32000, 32000)])
+    def test_thinking_gets_output_headroom(self, fake_anthropic, requested, sent):
+        """Thinking tokens count against max_tokens: the handler's 2000 could
+        all go to thinking. 16000 is the documented non-streaming default."""
+        seen, _answer = fake_anthropic
+        claude = AIProviderFactory.get_provider("Anthropic Claude")
+
+        claude.send_message("k", "x", "claude-opus-5", self.MESSAGES, max_tokens=requested)
+
+        assert seen["creates"][-1]["max_tokens"] == sent
+
+    def test_no_sampling_parameter_is_sent(self, fake_anthropic):
+        """temperature/top_p/top_k are a 400 on Opus 5.5/5/4.8/4.7 and Sonnet 5."""
+        seen, _answer = fake_anthropic
+        claude = AIProviderFactory.get_provider("Anthropic Claude")
+
+        claude.send_message("k", "x", "claude-opus-5-5", self.MESSAGES)
+        claude.test_connection("k", "x", "claude-opus-5-5")
+
+        for call in seen["creates"]:
+            assert not {"temperature", "top_p", "top_k"} & set(call)
+
+    def test_a_chat_through_the_api_shows_the_text(self, app, credentials_home, fake_anthropic, monkeypatch):
+        seen, answer = fake_anthropic
+        answer["message"] = _claude_message(THINKING, {"type": "text", "text": "Looks complete."})
+        claude = AIProviderFactory.get_provider("Anthropic Claude")
+        monkeypatch.setattr(claude, "test_connection", lambda *a, **k: (True, "ok"))
+        with app.test_client() as test_client:
+            assert test_client.post("/api/ai/credentials", json={
+                "provider": "Anthropic Claude", "apiKey": API_KEY, "model": "claude-opus-5"}).status_code == 200
+
+            reply = body(test_client.post("/api/ai/chat", json={"message": "review"}))["reply"]
+
+        assert reply == "Looks complete."
