@@ -186,7 +186,7 @@ export function mount(panel, ctx) {
         dataset: { id: row.id },
         class: row.id === selected ? 'is-selected' : null,
       }, [
-        el('td', { text: row.name || row.id, title: row.id }),
+        el('td', { class: 'anl-name', text: row.name || row.id, title: row.id }),
         el('td', { class: 'num', text: fmt(row.q) }),
         el('td', { class: 'num anl-bar' }, [
           el('span', { class: 'anl-bar__fill', style: 'width:' + fvPct + '%' }),

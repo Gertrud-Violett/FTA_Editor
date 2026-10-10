@@ -196,6 +196,12 @@ Release check on Windows with a live AI provider (10 October 2026).
     event became 1. The prompt now says how to write a move, and
     `new_parent_id`, which is what the model guessed, is read as well. With
     both fixes the same replies apply in full (12 of 12 and 8 of 8).
+- **Japanese event names in a narrow window.** Below about 560 px the
+  Importance table showed an event name two characters a line, and the
+  Quantification table four: Japanese text may break after any character,
+  so the number columns, which never wrap, took the room. The name column
+  now keeps six characters a line and the table scrolls sideways instead.
+  Wider windows are unchanged. The GUI suite checks it (719 checks).
 - **Back-to-back suite on Windows** (test harness only). A request of a
   server path that got no local TCP port (WinError 10048, on a machine that
   was short of ports) ended the full run with a traceback. The runner now

@@ -534,7 +534,7 @@ export function mount(panel, ctx) {
         dataset: { id: String(node.id) },
         class: String(node.id) === String(selected) ? 'is-selected' : null,
       }, [
-        el('td', { text: node.name || node.id, title: String(node.id) }),
+        el('td', { class: 'anl-name', text: node.name || node.id, title: String(node.id) }),
         el('td', { text: t('quant.model.' + model).split(':')[0] }),
         el('td', { class: 'num', text: model === 'fixed' ? '' : lambdaShown(quant.lambda) }),
         el('td', { class: 'num', text: time }),

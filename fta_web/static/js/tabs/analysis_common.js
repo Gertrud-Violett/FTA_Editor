@@ -46,6 +46,12 @@ const CSS = `
 .anl-table th.is-sortable { cursor: pointer; user-select: none; }
 .anl-table th.is-sorted { color: var(--text); }
 .anl-table .num { text-align: right; white-space: nowrap; }
+/* An event name. Japanese text may break after any character, so without a
+   floor the number columns, which never wrap, squeeze it to two characters a
+   line in a narrow window; with one the table scrolls sideways instead.
+   Six characters, plus the cell's own padding (box-sizing is border-box):
+   no wider than the column already is in a window of 560 px or more. */
+.anl-table .anl-name { min-width: calc(6em + 16px); }
 .anl-table tbody tr { cursor: pointer; }
 .anl-table tbody tr:hover { background: var(--surface-hover); }
 .anl-table tbody tr.is-selected { background: var(--accent-soft); }
