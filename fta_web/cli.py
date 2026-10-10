@@ -33,6 +33,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -360,6 +361,19 @@ _PROB_KEYS = {"q", "calculated", "probability", "share", "fv", "birnbaum", "raw"
               "mcub", "rareEvent"}
 
 
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
+
+
+def _printable(value: Any) -> str:
+    """``str(value)`` for the terminal: control characters as ``\\xNN``.
+
+    Names and titles come from the input files; raw, an ESC sequence in a
+    crafted file is run by the terminal (set the title, clear the screen,
+    fake the output). --json and --csv keep the data exactly.
+    """
+    return _CONTROL.sub(lambda m: "\\x%02x" % ord(m.group()), str(value))
+
+
 def _cell(key: str, value: Any, sf: int) -> str:
     if value is None:
         return "—"
@@ -367,7 +381,7 @@ def _cell(key: str, value: Any, sf: int) -> str:
         return format_prob(value, sf)
     if isinstance(value, bool):
         return "yes" if value else "no"
-    return str(value)
+    return _printable(value)
 
 
 def human_table(rows: List[Dict[str, Any]], sf: int) -> str:
@@ -400,9 +414,10 @@ def _looks_numeric(text: str) -> bool:
 
 
 def human_block(entry: Dict[str, Any], command: str, rows: List[Dict[str, Any]], sf: int) -> str:
-    lines = ["== %s  [%s] %s" % (entry["file"], entry.get("mode") or "", entry.get("title") or "")]
+    lines = ["== %s  [%s] %s" % (_printable(entry["file"]), _printable(entry.get("mode") or ""),
+                                 _printable(entry.get("title") or ""))]
     if "error" in entry:
-        lines.append("error: %s" % entry["error"])
+        lines.append("error: %s" % _printable(entry["error"]))
         return "\n".join(lines)
     res = entry.get("results") or {}
     if command == "quantify":

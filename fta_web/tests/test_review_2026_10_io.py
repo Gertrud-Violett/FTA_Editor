@@ -139,6 +139,25 @@ def test_report_that_cannot_be_written_fails_that_file_only(tmp_path, capsys):
     assert "cannot write" in json.loads(captured.out)["error"]
 
 
+# ---- IO-19: terminal control sequences from a file -------------------------------------
+
+
+def test_text_output_does_not_pass_escape_sequences_to_the_terminal(tmp_path, capsys):
+    """A name from a crafted file reached the terminal raw: ESC]0;…BEL sets
+    the window title, ESC[2J clears the screen (and can fake output)."""
+    tree = {"id": "root", "name": "Top", "type": "Root", "logicGate": "OR", "children": [
+        {"id": "a", "name": "A\x1b]0;pwned\x07\x1b[2J", "probability": 0.1, "children": []}]}
+    doc = write_doc(tmp_path / "esc.json", tree, title="T\x1b[31m")
+    assert cli.main(["quantify", str(doc)]) == 0
+    out = capsys.readouterr().out
+    assert "\x1b" not in out and "\x07" not in out
+    assert "A\\x1b]0;pwned\\x07\\x1b[2J" in out and "T\\x1b[31m" in out
+    # Machine-readable output keeps the data exactly.
+    assert cli.main(["quantify", str(doc), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["results"]["events"][0]["name"] == tree[
+        "children"][0]["name"]
+
+
 # ---- IO-8: characters XML cannot hold (xlsx, xml, docx) ---------------------------------
 
 
