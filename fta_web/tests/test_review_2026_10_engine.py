@@ -511,3 +511,43 @@ def test_node_view_has_no_fta_gate_warnings_in_eta_mode(tree_client):
     assert warning_codes() == []
     assert client.post("/api/metadata", json={"mode": "FTA"}).status_code == 200
     assert warning_codes() == ["KOFN_ARITY"]
+
+
+# ---- b2b: MC_EVENT_NOT_SAMPLED is a documented difference from the 1.7.0 release ------------
+
+
+def _mc_row(branch_warnings, release_warnings, extra_diffs=()):
+    """A release->branch "mc" row as cli_rows() builds it: diffs are
+    (key, this branch's value, the release's value)."""
+    from fta_web.tests.b2b import b2b_lib as B
+
+    row = B.Row("F14_mixed_plant.json", "release->branch", "mc", "mismatch", n=20)
+    row.diffs = [("warnings", tuple(branch_warnings), tuple(release_warnings))] + list(extra_diffs)
+    return row
+
+
+def test_b2b_classifies_the_new_mc_warning_as_a_documented_fix():
+    """A FULL run compares this branch with the 1.7.0 release (CLI and exe);
+    F14 and O04 now also carry MC_EVENT_NOT_SAMPLED, so their mc rows must
+    be a documented divergence, not a mismatch."""
+    from fta_web.tests.b2b import b2b_lib as B
+
+    row = _mc_row(("MC_CUTSETS_TRUNCATED", "MC_EVENT_NOT_SAMPLED"), ("MC_CUTSETS_TRUNCATED",))
+    [out] = B.classify_release([row], set())
+    assert out.status == "divergence" and B.FIX_MC_EVENT in out.note
+    # Together with the 1.7.1 Monte Carlo last-digit differences on one row.
+    row = _mc_row(("MC_EVENT_NOT_SAMPLED",), (), [("mean", 0.1, 0.1 + 1e-17)])
+    [out] = B.classify_release([row], set())
+    assert out.status == "divergence" and B.FIX_MC_EVENT in out.note
+
+
+def test_b2b_keeps_any_other_mc_warning_difference_a_mismatch():
+    from fta_web.tests.b2b import b2b_lib as B
+
+    for branch, release in ((("MC_NO_UNCERTAINTY",), ()),              # another code
+                            ((), ("MC_EVENT_NOT_SAMPLED",)),           # the other way round
+                            (("MC_EVENT_NOT_SAMPLED", "X"), ("X", "Y"))):  # and one lost
+        [out] = B.classify_release([_mc_row(branch, release)], set())
+        assert out.status == "mismatch", (branch, release)
+    row = _mc_row(("MC_EVENT_NOT_SAMPLED",), (), [("p95", 0.1, 0.2)])  # not FIX_MC's kind
+    assert B.classify_release([row], set())[0].status == "mismatch"
