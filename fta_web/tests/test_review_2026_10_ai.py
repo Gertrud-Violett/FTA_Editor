@@ -705,3 +705,59 @@ class TestAnthropicRepliesFromThinkingModels:
             reply = body(test_client.post("/api/ai/chat", json={"message": "review"}))["reply"]
 
         assert reply == "Looks complete."
+
+
+# --------------------------------------------------------------------------
+# AI-16, divergence D22: Anthropic's model list comes from the Models API
+# --------------------------------------------------------------------------
+
+
+def _model_info(model_id):
+    from anthropic.types import ModelInfo
+
+    return ModelInfo.model_validate({
+        "id": model_id, "created_at": "2026-08-01T00:00:00Z",
+        "display_name": model_id, "type": "model",
+    })
+
+
+class TestAnthropicModelList:
+    """get_available_models returned the built-in list without a request
+    ("Anthropic doesn't provide a list_models endpoint"), and the dialog
+    labelled it "Loaded from the provider."."""
+
+    def test_the_live_list_is_asked_for(self, fake_anthropic):
+        _seen, answer = fake_anthropic
+        answer["models"] = [_model_info("claude-opus-5-5"), _model_info("claude-haiku-5-5")]
+
+        models, warning = AIProviderFactory.get_provider("Anthropic Claude").get_available_models("k", "x")
+
+        assert (models, warning) == (["claude-opus-5-5", "claude-haiku-5-5"], None)
+
+    def test_any_failure_falls_back_to_the_built_in_list_and_says_so(self, fake_anthropic):
+        _seen, answer = fake_anthropic
+        answer["models"] = RuntimeError("401 invalid x-api-key")
+        claude = AIProviderFactory.get_provider("Anthropic Claude")
+
+        models, warning = claude.get_available_models("k", "x")
+
+        assert models == claude.get_default_models()
+        assert "401 invalid x-api-key" in warning
+
+    def test_the_built_in_list_leads_with_the_current_models(self):
+        assert AIProviderFactory.get_provider("Anthropic Claude").get_default_models() == [
+            "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5", "claude-sonnet-5",
+        ]
+
+    def test_the_settings_dialog_gets_the_live_list(self, app, fake_anthropic, monkeypatch):
+        _seen, answer = fake_anthropic
+        answer["models"] = [_model_info("claude-opus-5-5"), _model_info("claude-sonnet-5-5")]
+        claude = AIProviderFactory.get_provider("Anthropic Claude")
+        monkeypatch.setattr(claude, "test_connection", lambda *a, **k: (True, "ok"))
+        with app.test_client() as test_client:
+            test_client.post("/api/ai/credentials", json={"provider": "Anthropic Claude", "apiKey": API_KEY})
+
+            payload = body(test_client.get("/api/ai/models?provider=Anthropic%20Claude"))
+
+        assert payload["source"] == "live"
+        assert payload["models"] == ["claude-opus-5-5", "claude-sonnet-5-5"]

@@ -441,10 +441,9 @@ def list_models(provider_name: Any, endpoint: Any = None) -> Dict[str, Any]:
     ``warning`` that says why. It never fails: a settings dialog with no model
     list is a dialog the user cannot complete.
 
-    ``source: "live"`` means the provider reported no error. Anthropic has no
-    list-models endpoint and answers with its built-in list and no error
-    (``ai_providers.py:144``), so "live" is the provider's claim, not proof of
-    a round trip.
+    ``source: "live"`` means the provider reported no error. OpenAI,
+    Anthropic (divergence D22) and Gemini really ask; Azure answers with its
+    built-in list and a warning, so it is always "fallback".
     """
     canonical, provider = resolve_provider(provider_name)
     resolved_endpoint = (

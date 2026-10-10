@@ -34,7 +34,7 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
-**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**.
+**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -602,6 +602,38 @@ answer nor its cost unless the model needs the room.
 
 **Behavior change:** Chat, Analyze and Update work with thinking models; an
 empty answer says why. OpenAI, Gemini and Azure keep `max_tokens=2000`.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D22 — Anthropic model list: ask the Models API; refresh the fallback list
+
+**Defect (review AI-16):** `AnthropicProvider.get_available_models` never made a
+request ("Anthropic doesn't provide a list_models endpoint") and returned the
+built-in list with no warning, so `GET /api/ai/models` reported it as
+`source: "live"` and the settings dialog said "Loaded from the provider." for
+a list that was compiled into the app. The Models API exists
+(`client.models.list()` in the installed `anthropic` 1.5.0, auto-paginating,
+each entry with an `id`). The built-in list -- the one the dialog pre-selects
+from, and the only one available without a saved key -- led with
+`claude-opus-5`, no longer the current model.
+
+**Fix:** `get_available_models` asks `client.models.list()` and returns the
+ids in the API's order (newest first). Any failure, an empty answer included,
+returns the built-in list plus a warning, so the dialog says "Built-in
+defaults" instead of "Loaded from the provider.". The built-in list is now
+`claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5, claude-opus-5,
+claude-sonnet-5` (exact ids, no date suffixes).
+
+**Why it is safe:** The live list is only fetched with a saved Anthropic key
+(the bridge never sends another provider's key), and every failure degrades to
+the previous behaviour. The model field stays editable.
+
+**Behavior change:** The Anthropic model list is the account's real one; the
+pre-selected default for a new Anthropic setup is `claude-opus-5-5`.
 
 **Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
 

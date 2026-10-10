@@ -140,26 +140,36 @@ class AnthropicProvider(AIProvider):
         #
         # The model field is editable, so a name released after this list was
         # written can always be typed in. Prefer the live fetch over this.
+        #
+        # Divergence D22: refreshed again, current family first.
         return [
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-haiku-5-5",
             "claude-opus-5",
             "claude-sonnet-5",
-            "claude-haiku-4-5",
-            "claude-opus-4-8",
-            "claude-sonnet-4-6",
         ]
-    
+
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
-        """Fetch available models from Anthropic API"""
+        """Fetch available models from Anthropic API.
+
+        Divergence D22: the baseline returned the built-in list without asking
+        ("Anthropic doesn't provide a list_models endpoint"). The Models API
+        exists; ``models.list()`` auto-paginates, newest first. Any failure
+        falls back to the built-in list with a warning saying why.
+        """
         try:
             from anthropic import Anthropic
-            
-            # Anthropic doesn't provide a list_models endpoint
-            # Return the most up-to-date known models
-            return self.get_default_models(), None
+
+            client = Anthropic(api_key=api_key)
+            models = [model.id for model in client.models.list()]
+            if not models:
+                return self.get_default_models(), "Anthropic returned an empty model list"
+            return models, None
         except ImportError:
             return self.get_default_models(), "Anthropic package not installed"
         except Exception as e:
-            return self.get_default_models(), f"Error: {str(e)}"
+            return self.get_default_models(), f"Could not fetch models: {str(e)}"
     
     def test_connection(self, api_key: str, endpoint: str, model: str) -> Tuple[bool, str]:
         """Test Anthropic connection"""
