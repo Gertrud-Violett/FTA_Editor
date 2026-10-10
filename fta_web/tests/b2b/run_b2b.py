@@ -96,8 +96,8 @@ def cross(name, ref, got, maker):
 
 def divergence_tags(row) -> list:
     """The DOCUMENTED DIVERGENCES keys a divergence row is counted under."""
-    # FIX_MCUB before FIX_MC: "FIXED:MC" is a substring of "FIXED:MCUB".
-    fixed_tags = (B.FIX_MCUB, B.FIX_MC, B.FIX_OR, B.FIX_FMT, B.FIX_IMP)
+    # FIX_MC_EVENT and FIX_MCUB before FIX_MC: "FIXED:MC" is a substring of both.
+    fixed_tags = (B.FIX_MC_EVENT, B.FIX_MCUB, B.FIX_MC, B.FIX_OR, B.FIX_FMT, B.FIX_IMP)
     plain_tags = ("LIBM", "TIME", "FRONTEND BUG", B.OR_LOG, "D8", "D14", "D15", "D16", "D17")
     tags = [t for t in fixed_tags if t in row.note][:1]
     if not tags:  # a row can carry several (desktop: D14 and OR-UNION)

@@ -26,6 +26,7 @@ export default {
     'anl.warn.INHIBIT_ARITY': 'Inhibit gate {node} should have exactly two inputs: one conditioning event and one other input.',
     'anl.warn.MC_NO_UNCERTAINTY': 'No event has an uncertainty distribution, so every sample is the same.',
     'anl.warn.MC_CUTSETS_TRUNCATED': 'Sampling uses the {used} most probable of {total} cut sets.',
+    'anl.warn.MC_EVENT_NOT_SAMPLED': '{count} uncertain event(s) are in none of the cut sets used for sampling, so their uncertainty is not in the result: {names}.',
 
     'cutsets.maxOrder': 'Max order',
     'cutsets.maxCount': 'Max count',
@@ -85,6 +86,7 @@ export default {
     'anl.warn.INHIBIT_ARITY': '禁止ゲート {node} の入力はちょうど 2 つ(条件事象 1 つと、その他の入力 1 つ)にしてください。',
     'anl.warn.MC_NO_UNCERTAINTY': '不確かさ分布を持つ事象がないため、すべてのサンプルが同じ値になります。',
     'anl.warn.MC_CUTSETS_TRUNCATED': '{total} 件のカットセットのうち、確率の高い {used} 件でサンプリングしています。',
+    'anl.warn.MC_EVENT_NOT_SAMPLED': '不確かさを持つ {count} 件の事象はサンプリングに使うどのカットセットにも含まれないため、その不確かさは結果に反映されていません: {names}。',
 
     'cutsets.maxOrder': '最大次数',
     'cutsets.maxCount': '最大件数',

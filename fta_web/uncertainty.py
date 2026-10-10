@@ -27,6 +27,9 @@ Two evaluation methods, chosen automatically:
               of the rare-event sum (at most 2000), each compiled to a
               constant factor (events without uncertainty) and a tuple of
               sampled events, combined per sample by the min-cut upper bound.
+              The sets are chosen by their point probability, so an uncertain
+              event in none of them (a point value of 0, say) is not sampled:
+              warning ``MC_EVENT_NOT_SAMPLED`` ``{count, eventIds, names}``.
 
 Pure Python. Samples are processed column-wise in fixed chunks (a list
 comprehension per operator per chunk), which is several times faster than a
@@ -313,6 +316,17 @@ def run(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
                                         "coverage": (running / rare) if rare > 0 else 1.0}})
         if result["truncated"]:
             warnings.extend(w for w in result["warnings"] if w["code"] == "CUTSETS_TRUNCATED")
+        # The sets are chosen by their point probability, and a set whose
+        # point value is 0 is not even kept by the expansion: an uncertain
+        # event in none of the chosen sets is never sampled at all.
+        in_chosen = {s.event_index[ev["id"]] for row in chosen for ev in row["events"]}
+        unsampled = [i for i in reachable if i in samplers and i not in in_chosen]
+        if unsampled:
+            warnings.append({"code": "MC_EVENT_NOT_SAMPLED", "nodeId": None,
+                             "params": {"count": len(unsampled),
+                                        "eventIds": [s.events[i]["id"] for i in unsampled],
+                                        "names": ", ".join(s.events[i]["name"] or s.events[i]["id"]
+                                                           for i in unsampled)}})
 
     deadline = started + max(0.0, float(time_limit))
     samples: List[float] = []

@@ -100,6 +100,10 @@ def test_b2b_summary_counts_mcub_rows_under_their_own_tag():
                                         note=B.FIX_MCUB)) == [B.FIX_MCUB]
     assert runner.divergence_tags(B.Row("t", "release->branch", "mc", "divergence", 1,
                                         note=B.FIX_MC)) == [B.FIX_MC]
+    # "FIXED:MC" is a substring of "FIXED:MC-EVENT-NOT-SAMPLED" too.
+    assert runner.divergence_tags(B.Row("t", "release->branch", "mc", "divergence", 1,
+                                        note="%s %s" % (B.FIX_MC_EVENT, B.FIX_MC))) == [
+        B.FIX_MC_EVENT]
 
 
 def test_b2b_summary_keeps_every_plain_tag_of_a_desktop_row():

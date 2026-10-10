@@ -40,7 +40,9 @@ app, which only reads ``probability``, still sees a meaningful number):
 A model whose parameters are missing or invalid keeps the previous
 ``probability`` and records ``QUANT_PARAM_MISSING``.
 
-Gate types (``gateType`` wins over ``logicGate`` when both are present):
+Gate types (``gateType`` wins over ``logicGate`` when both are present;
+without a valid ``gateType``, ``logicGate`` is read as AND or else OR, exactly
+as the core reads it, so an advanced name stored there is not a gate type):
 KOFN -- P(at least k of n) by Poisson-binomial DP; XOR -- a+b-2ab (parity for
 n != 2, flagged); INHIBIT -- AND over the input and its conditioning child;
 PAND -- Πp/n!, always flagged as an approximation; TRANSFER -- the value of
@@ -124,7 +126,10 @@ class AnalysisError(ValueError):
 def _finite(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise AnalysisError(field, "'%s' must be a number." % field, value)
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range (a 400-digit literal)
+        number = math.inf
     if math.isnan(number) or math.isinf(number):
         raise AnalysisError(field, "'%s' must be a finite number." % field, value)
     return number
@@ -266,7 +271,10 @@ def _param(quant: Dict[str, Any], key: str) -> Optional[float]:
     value = quant.get(key)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    value = float(value)
+    try:
+        value = float(value)
+    except OverflowError:  # an int beyond the float range
+        return None
     if math.isnan(value) or math.isinf(value) or value < 0:
         return None
     return value
@@ -309,7 +317,10 @@ def derive_quant(node: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None
         params = {"q": q}
     elif model == "rate":
         t = _param(quant, "T")
-        from_mission = t is None
+        # Only an absent T defaults to the mission time. An own T that is
+        # invalid (a string, negative, NaN, inf) is a missing parameter: taking
+        # the mission time instead would quietly compute another event.
+        from_mission = quant.get("T") is None
         if from_mission:
             t = _param(analysis, "missionTime")
         params = {"lambda": lam, "T": t, "TFromMission": from_mission}
@@ -581,8 +592,12 @@ class WebCore(FTACore):
                 if gate_type is None or gate_type not in (
                     "AND", "OR", "KOFN", "XOR", "INHIBIT", "PAND"
                 ):
+                    # logicGate is read exactly as the 1.6 core reads it: AND,
+                    # else OR. An advanced name there (a hand-written "PAND")
+                    # is not a gate type, so such a file computes as in 1.6.
                     gate_value = node.get("logicGate", "OR")
                     gate = str(gate_value).strip().upper() if gate_value else "OR"
+                    gate = "AND" if gate == "AND" else "OR"
                 else:
                     gate = gate_type
 
