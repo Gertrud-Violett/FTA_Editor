@@ -98,6 +98,7 @@ import {
   el,
   ensureBaseStyles,
   injectStyles,
+  isImeKey,
   sanitizeName,
   showError as dialogShowError,
   uid,
@@ -1244,7 +1245,14 @@ export function initTree(container) {
   }
 
   function itemById(id) {
-    return host.querySelector('.fta-tree-item[data-id="' + String(id).replace(/"/g, '\\"') + '"]');
+    // Compared, not spliced into a selector: ids come from the file, and a
+    // backslash in one made the selector miss the row (focus fell to <body>
+    // after a rename) while a newline made querySelector throw on every render.
+    const wanted = String(id);
+    for (const item of host.querySelectorAll('.fta-tree-item')) {
+      if (item.dataset.id === wanted) return item;
+    }
+    return null;
   }
 
   function rowOf(item) {
@@ -1419,8 +1427,7 @@ export function initTree(container) {
       // Post-detach indices: moving up inserts before the previous sibling
       // (at - 1); moving down inserts after the next one, which has shifted
       // into this node's old slot, so it is at + 1 either way.
-      requestMove(nodeId, parent, to, true);
-      return;
+      return requestMove(nodeId, parent, to, true);
     }
 
     if (direction === 'in') {
@@ -1433,8 +1440,7 @@ export function initTree(container) {
         say(t('tree.moveInvalid'), 'warn');
         return;
       }
-      requestMove(nodeId, newParent, null, false);
-      return;
+      return requestMove(nodeId, newParent, null, false);
     }
 
     // 'out': become the parent's next sibling.
@@ -1444,7 +1450,23 @@ export function initTree(container) {
       return;
     }
     const parentAt = childIdsOf(grandparent).indexOf(parent);
-    requestMove(nodeId, grandparent, parentAt < 0 ? null : parentAt + 1, false);
+    return requestMove(nodeId, grandparent, parentAt < 0 ? null : parentAt + 1, false);
+  }
+
+  /**
+   * Keyboard moves run one after another, each worked out from the tree the
+   * previous one left. Computed on the spot, quick presses (or a held key)
+   * all started from the same not-yet-updated tree: three Ctrl+Shift+Down
+   * moved the node two places, and the lost press still cost an undo step.
+   * Save and export wait for the whole queue through fta:flush.
+   */
+  let keyboardMoves = Promise.resolve();
+
+  function queueKeyboardMove(id, direction) {
+    keyboardMoves = keyboardMoves
+      .then(() => (destroyed ? undefined : moveByKeyboard(id, direction)))
+      .catch((err) => fail(err));
+    return keyboardMoves;
   }
 
   /* ---- drag and drop ------------------------------------------------------ */
@@ -1752,6 +1774,7 @@ export function initTree(container) {
     if (!(target instanceof Element)) return;
 
     if (target.closest('.fta-tree-rename')) {
+      if (isImeKey(event)) return; // confirming/cancelling a conversion
       if (event.key === 'Enter') {
         event.preventDefault();
         event.stopPropagation();
@@ -1786,7 +1809,7 @@ export function initTree(container) {
       const direction = moves[event.key];
       if (direction) {
         event.preventDefault();
-        moveByKeyboard(id, direction);
+        queueKeyboardMove(id, direction);
         return;
       }
     }
@@ -1878,6 +1901,7 @@ export function initTree(container) {
   search.addEventListener('search', () => setQuery(search.value));
 
   search.addEventListener('keydown', (event) => {
+    if (isImeKey(event)) return; // confirming/cancelling a conversion
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -1960,11 +1984,27 @@ export function initTree(container) {
     }
   });
 
+  /**
+   * New / Open replaced the document (main.js `fta:document`). A wider
+   * selection made in the old one names nothing chosen in this one -- ids such
+   * as root_0, root_1 recur from file to file, so it survived whenever its
+   * lead was the root, and Delete then offered to remove those nodes of the
+   * newly opened tree. Collapse it to the store's lead.
+   */
+  function onDocument() {
+    const lead =
+      store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
+    selection = new Set(lead ? [lead] : []);
+    anchorId = lead;
+    render();
+  }
+
   /** Hand the shell whatever rename/move is still on the wire (see `pending`). */
   function onFlush(event) {
     const detail = event && event.detail;
     if (!detail || !Array.isArray(detail.promises)) return;
     if (pending) detail.promises.push(pending);
+    detail.promises.push(keyboardMoves);
   }
 
   /** Open every ancestor of `ids`. @returns {boolean} whether anything opened. */
@@ -2056,6 +2096,7 @@ export function initTree(container) {
   window.addEventListener('fta:language', onLanguage);
   window.addEventListener('fta:flush', onFlush);
   window.addEventListener('fta:jump', onJump);
+  window.addEventListener('fta:document', onDocument);
 
   render();
 
@@ -2069,6 +2110,7 @@ export function initTree(container) {
       window.removeEventListener('fta:language', onLanguage);
       window.removeEventListener('fta:flush', onFlush);
       window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:document', onDocument);
       if (typeof unHighlight === 'function') unHighlight();
       if (typeof unOverlay === 'function') unOverlay();
       if (searchTimer) window.clearTimeout(searchTimer);

@@ -300,13 +300,6 @@ function sanitizeId(value) {
   return clean + '_' + sha1Hex(raw).slice(0, 8);
 }
 
-const SAFE_HREF = /^(#|https?:\/\/)/i;
-
-/**
- * Defence in depth on the Graphviz output: node names are escaped on the
- * server, but the SVG is still imported into the live document, so anything
- * that could run script is stripped here regardless.
- */
 /**
  * Centre every node label in its box and keep it inside.
  *
@@ -363,18 +356,71 @@ function fitLabels(svg) {
   }
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * SVG elements dropped with everything inside them. The vendored Graphviz
+ * writes none of these for this app's DOT (svg, g, title, polygon, ellipse,
+ * path and text are all it emits). Each can run script, navigate, restyle the
+ * whole page or load from off the box: `set`/`animate*` by rewriting an href
+ * after it was vetted, `style` for the entire document, and a lower-case
+ * `foreignobject` because the HTML inside it stays live.
+ */
+const UNSAFE_SVG_ELEMENTS = new Set([
+  'script', 'foreignobject', 'style', 'set', 'animate', 'animatemotion',
+  'animatetransform', 'discard', 'handler', 'listener',
+]);
+
+/** Same-document references only: the diagram never links to or loads anything. */
+const SAFE_HREF = /^#/;
+
+/** CSS escapes decoded (`u\72 l(` is `url(`), so a reference cannot hide behind them. */
+function cssUnescape(text) {
+  return String(text).replace(/\\([0-9a-fA-F]{1,6})\s?|\\([\s\S])/g, (_m, hex, ch) => {
+    if (hex === undefined) return ch;
+    const code = parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '\ufffd';
+  });
+}
+
+/** True when an attribute value points outside this document through url(...). */
+function hasForeignUrl(value) {
+  const pattern = /url\s*\(\s*['"]?\s*([^'")\s]*)/gi;
+  const text = cssUnescape(value);
+  let match;
+  while ((match = pattern.exec(text))) {
+    if (match[1].charAt(0) !== '#') return true;
+  }
+  return false;
+}
+
+/**
+ * Defence in depth on the Graphviz output: node names are escaped on the
+ * server, but the SVG is still imported into the live document, so anything
+ * that could run script, navigate, hijack the page or reach off the box is
+ * stripped here regardless. Every element outside the SVG namespace goes --
+ * an XHTML <iframe srcdoc>, <base href> or <link> placed in the SVG is live
+ * HTML once imported -- as do the elements above, event-handler and style
+ * attributes, hrefs that are not same-document fragments, and url()
+ * references to anything but a fragment.
+ */
 function sanitizeSvg(root) {
-  root.querySelectorAll('script, foreignObject').forEach((node) => node.remove());
-  const doc = root.ownerDocument;
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  const nodes = [root];
-  while (walker.nextNode()) nodes.push(walker.currentNode);
-  for (const node of nodes) {
+  if (!root || root.namespaceURI !== SVG_NS) throw new Error('Graphviz returned invalid SVG.');
+  const pending = [root];
+  while (pending.length) {
+    const node = pending.pop();
     for (const attr of Array.from(node.attributes)) {
-      const name = attr.name.toLowerCase();
-      const local = (attr.localName || name).toLowerCase();
-      if (name.startsWith('on')) node.removeAttributeNode(attr);
-      else if (local === 'href' && !SAFE_HREF.test(attr.value.trim())) node.removeAttributeNode(attr);
+      const local = String(attr.localName || attr.name).toLowerCase();
+      if (local.startsWith('on') || local === 'style') node.removeAttributeNode(attr);
+      else if (local === 'href') {
+        if (!SAFE_HREF.test(attr.value.trim())) node.removeAttributeNode(attr);
+      } else if (hasForeignUrl(attr.value)) node.removeAttributeNode(attr);
+    }
+    for (const child of Array.from(node.children)) {
+      const unsafe =
+        child.namespaceURI !== SVG_NS || UNSAFE_SVG_ELEMENTS.has(String(child.localName).toLowerCase());
+      if (unsafe) child.remove();
+      else pending.push(child);
     }
   }
 }
@@ -1183,6 +1229,15 @@ export function initDiagram(container) {
     if (id !== undefined && id !== null && id !== '') jumpTo(id);
   };
   window.addEventListener('fta:jump', onJump);
+  // A different document (New, Open): the zoom and pan of the old one mean
+  // nothing for it. Kept, a view panned off one tree left the next one
+  // entirely off the stage, which then looked empty.
+  const onDocument = () => {
+    autoFit = true;
+    resetView = true;
+    schedule();
+  };
+  window.addEventListener('fta:document', onDocument);
   const onSigFigs = () => schedule();
   window.addEventListener('fta:sigfigs', onSigFigs);
   const onHideZero = () => schedule();
@@ -1230,6 +1285,8 @@ export function initDiagram(container) {
     exportSvg,
     exportPng,
     toPngBlob,
+    /** True once a diagram has been drawn (there is something to export). */
+    hasDiagram: () => Boolean(exportSvgText),
     getBoxSettings: effectiveBoxSettings,
     jumpTo,
     destroy() {
@@ -1239,6 +1296,7 @@ export function initDiagram(container) {
       if (resizeFrame) cancelAnimationFrame(resizeFrame);
       window.removeEventListener('fta:hide-zero', onHideZero);
       window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:document', onDocument);
       window.removeEventListener('fta:sigfigs', onSigFigs);
       if (typeof unsubscribeHighlight === 'function') unsubscribeHighlight();
       if (typeof unsubscribeOverlay === 'function') unsubscribeOverlay();

@@ -121,6 +121,19 @@ function walkFind(node, wanted) {
   return null;
 }
 
+/** "A panel failed to update: ..." in the editor's language (main.js catalog). */
+function panelFailedMessage(err) {
+  const error = String(err && err.message ? err.message : err);
+  try {
+    const shell = window.ftaShell;
+    const text = shell && typeof shell.t === 'function' ? shell.t('store.panelFailed', { error }) : null;
+    if (typeof text === 'string' && text && text !== 'store.panelFailed') return text;
+  } catch (_err) {
+    /* the English text below */
+  }
+  return 'A panel failed to update: ' + error;
+}
+
 /**
  * Report a listener that threw without letting it take the app down. A render
  * bug in one panel must not stop the others from updating; it is surfaced as a
@@ -133,7 +146,7 @@ function reportListenerError(err) {
     window.dispatchEvent(
       new CustomEvent('fta:error', {
         detail: {
-          message: 'A panel failed to update: ' + (err && err.message ? err.message : err),
+          message: panelFailedMessage(err),
           code: 'RENDER_FAILED',
         },
       })
