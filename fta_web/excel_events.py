@@ -443,6 +443,10 @@ def export_xlsx(core, path: str, sig_figs: int = 3) -> Tuple[bool, Optional[str]
         _write_events(wb, core.get_data(), sf)
         _write_analysis(wb, core, sf)
         wb.save(path)
-    except Exception as exc:  # pragma: no cover - openpyxl failure paths
-        return False, "Failed to add the Events sheet (openpyxl): %s" % exc
+    except ImportError as exc:  # pragma: no cover - openpyxl broke after the core's write
+        return False, "Failed to add the Events sheet: openpyxl could not be imported (%s)" % exc
+    except Exception as exc:
+        # No "openpyxl" in this message: routes/files.py answers an error that
+        # names it with "openpyxl is not installed", which a full disk is not.
+        return False, "Failed to add the Events and Analysis sheets: %s" % exc
     return True, None

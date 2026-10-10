@@ -343,6 +343,27 @@ def test_xlsx_export_writes_text_never_formulas(tmp_path):
     assert analysis["Title"] == "=SUM(1,2)"
 
 
+def test_xlsx_sheet_failure_is_not_reported_as_missing_openpyxl(files_client, tmp_path,
+                                                                 monkeypatch):
+    """Every failure while adding the Events/Analysis sheets carried
+    '(openpyxl)' in its message, which the route reads as 'openpyxl broke
+    on use': a full disk was answered 503 'Excel export needs the openpyxl
+    package, which is not installed'."""
+    pytest.importorskip("openpyxl")
+    from fta_web import excel_events
+
+    def disk_full(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
+
+    open_doc(files_client, write_doc(tmp_path / "d.json"))
+    monkeypatch.setattr(excel_events, "_write_events", disk_full)
+    response = files_client.get("/api/export/xlsx")
+    error = response.get_json()["error"]
+    assert response.status_code == 500, error
+    assert "No space left on device" in error["message"]
+    assert "not installed" not in error["message"]
+
+
 def test_docx_route_with_control_characters(files_client, tmp_path):
     pytest.importorskip("docx")
     open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))
