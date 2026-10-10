@@ -2122,6 +2122,11 @@ async function actionDelete() {
 }
 
 async function actionHistory(kind) {
+  // A click on Undo/Redo blurs the field being typed in, which starts its
+  // commit. Wait for it, so the step lands first and Undo reverts it, instead
+  // of racing it on the server: when /undo won, the typing was applied on top
+  // and wiped the redo step of the edit Undo had just reverted.
+  await flushPendingEdits();
   // The store knows whether there is anything to undo/redo (the toolbar
   // buttons are disabled on it). Asking the server anyway got a refused 400,
   // which Chrome logs as a console error, for every Ctrl+Z on a fresh document.

@@ -222,3 +222,11 @@ def test_load_waits_for_pending_commits_before_checking_dirty():
     assert body.index("await flushPendingEdits();") < body.index("store.state.dirty")
     assert body.index("await flushPendingEdits();") < body.index("pickPath('open')")
 
+
+def test_undo_redo_wait_for_pending_commits():
+    src = _read(STATIC / "main.js")
+    body = _braced(src, src.index("async function actionHistory(kind)"))
+    assert "await flushPendingEdits();" in body
+    flush = body.index("await flushPendingEdits();")
+    assert flush < body.index("store.state[able] === false"), "canUndo must include the commit"
+    assert flush < body.index("api.post('/' + kind")
