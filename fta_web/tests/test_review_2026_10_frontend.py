@@ -870,6 +870,63 @@ def test_file_dialog_first_listing_does_not_interrupt_typing(scenario, expected)
     assert _node(script) == expected
 
 
+# ---- filedialog.js: a listing does not overwrite a path being typed (F-33) -------------
+#
+# Every successful listing wrote its folder into the path box. A path typed
+# there while the first listing was on its way (held 400 ms in Chromium) was
+# replaced mid-word and the rest of the typing appended to the folder:
+# "/some/typed/folder" came out as "<sandbox>/rooted/folder". A path the user
+# asked for (typed, then Enter or Go) is still shown as the folder it resolved to.
+
+_NAVIGATE_HARNESS = r"""
+let generation = 0;
+let closed = false;
+let cwd = '';
+let parent = null;
+let dirs = [];
+let files = [];
+let lastNavigateError = null;
+const extensions = ['.json'];
+const pathInput = { value: '' };
+function setBusy() {}
+function setMessage() {}
+function t(key) { return key; }
+function listQuery() { return ''; }
+function matchesExtension() { return true; }
+function renderList() {}
+function isSessionError() { return false; }
+function close() { closed = true; }
+function errorText() { return 'failed'; }
+const api = {
+  get: () => new Promise((resolve) => setTimeout(
+    () => resolve({ path: '/home/work', parent: '/home', dirs: [], files: [] }), 30)),
+};
+const [before, during] = SCENARIO;
+pathInput.value = before;
+"""
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "scenario, shown",
+    [
+        (["", None], "/home/work"),  # a listing nobody typed over
+        (["", "/some/typ"], "/some/typ"),  # typing while the first listing loads
+        (["work", None], "/home/work"),  # typed, then Enter: the resolved folder
+        (["work", "work/sub"], "work/sub"),  # typed on after Enter
+    ],
+)
+def test_file_dialog_listing_keeps_a_path_being_typed(scenario, shown):
+    src = _read(STATIC / "filedialog.js")
+    fn = _braced(src, src.index("async function navigate(target, quiet)"))
+    script = _NAVIGATE_HARNESS.replace("SCENARIO", json.dumps(scenario)) + fn + r"""
+const listed = navigate('work');
+if (during !== null) setTimeout(() => { pathInput.value = during; }, 10);
+listed.then((ok) => console.log(JSON.stringify([ok, cwd, pathInput.value])));
+"""
+    assert _node(script) == [True, "/home/work", shown]
+
+
 # ---- dialogs.js: the link picker installs only its newest node list (F-31) -------------
 #
 # Select a node (GET /nodes for the old document, answering late) and press

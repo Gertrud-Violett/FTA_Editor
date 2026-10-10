@@ -527,6 +527,9 @@ export function openFileDialog(options) {
   async function navigate(target, quiet) {
     if (!target) return false;
     const mine = ++generation;
+    // A path typed into the path box while this listing is on its way (the
+    // first one can be slow) stays; only an untouched box shows the folder.
+    const pathBefore = pathInput.value;
     setBusy(true);
     if (!quiet) setMessage(t('file.loading'), 'busy');
     try {
@@ -544,7 +547,7 @@ export function openFileDialog(options) {
         .filter((entry) => matchesExtension(entry.name, extensions))
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       renderList();
-      pathInput.value = cwd;
+      if (pathInput.value === pathBefore) pathInput.value = cwd;
       // fsbrowser caps a listing at MAX_LIST_ENTRIES and says so. A silently
       // half-listed folder is exactly how a user concludes their file is gone.
       setMessage(res.truncated ? t('file.truncated') : '', res.truncated ? 'warn' : null);
