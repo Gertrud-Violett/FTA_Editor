@@ -13,6 +13,8 @@ Contract every mutating endpoint honours:
 
 ``POST /api/new`` is the documented exception: it resets the document, so it
 clears the history instead of pushing to it and lands on ``dirty: false``.
+An edit that would change nothing (the values already there, a move to where
+the node is) skips 2-5: no undo step, the redo history kept, not dirtied.
 
 Validation rules that are not obvious:
 
@@ -58,6 +60,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         ok_response,
     )
     from .. import node_schema
+    from ..config import MAX_TREE_DEPTH
     from ..engine import derive_quant
     from ..state import get_state, removed_link_issues
     from ..tree_ops import (
@@ -70,6 +73,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         strip_references_to,
         subtree_ids,
         top_level_id,
+        tree_height,
         would_create_cycle,
     )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
@@ -88,6 +92,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ok_response,
     )
     import node_schema  # type: ignore[no-redef]
+    from config import MAX_TREE_DEPTH  # type: ignore[no-redef]
     from engine import derive_quant  # type: ignore[no-redef]
     from state import get_state, removed_link_issues  # type: ignore[no-redef]
     from tree_ops import (  # type: ignore[no-redef]
@@ -100,6 +105,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         strip_references_to,
         subtree_ids,
         top_level_id,
+        tree_height,
         would_create_cycle,
     )
 
@@ -154,7 +160,16 @@ def _validate_name(value: Any, field: str = "name") -> str:
             400,
             {"field": field},
         )
-    return sanitize_name(value)
+    return node_schema.refuse_unsavable_text(sanitize_name(value), field)
+
+
+def _validate_type(value: Any) -> str:
+    """A node's ``type``: a non-empty string, stored stripped."""
+    if not isinstance(value, str) or not value.strip():
+        raise ApiError(
+            INVALID_FIELD, "'type' must be a non-empty string.", 400, {"field": "type"}
+        )
+    return node_schema.refuse_unsavable_text(value.strip(), "type")
 
 
 def _validate_probability(value: Any) -> float:
@@ -168,7 +183,7 @@ def _validate_probability(value: Any) -> float:
         )
     try:
         prob = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError: a huge int
         raise ApiError(
             INVALID_FIELD,
             "'probability' must be a number between 0.0 and 1.0.",
@@ -224,7 +239,7 @@ def _validate_notes(value: Any) -> str:
         raise ApiError(
             INVALID_FIELD, "'notes' must be a string.", 400, {"field": "notes"}
         )
-    return value
+    return node_schema.refuse_unsavable_text(value, "notes")
 
 
 def _validate_links(value: Any) -> List[Dict[str, Any]]:
@@ -242,6 +257,7 @@ def _validate_links(value: Any) -> List[Dict[str, Any]]:
         )
 
     links: List[Dict[str, Any]] = []
+    seen = set()
     for position, raw in enumerate(value):
         if not isinstance(raw, dict):
             raise ApiError(
@@ -258,6 +274,7 @@ def _validate_links(value: Any) -> List[Dict[str, Any]]:
                 400,
                 {"field": "links", "index": position},
             )
+        node_schema.refuse_unsavable_text(str(target_id), "links")
         relation = raw.get("relation") or "OR"
         if not isinstance(relation, str):
             relation = str(relation)
@@ -269,6 +286,18 @@ def _validate_links(value: Any) -> List[Dict[str, Any]]:
                 400,
                 {"field": "links", "index": position, "value": raw.get("relation")},
             )
+        # The engine applies every link, so a repeated one would be counted
+        # twice (an AND-link twice multiplies by q twice). Refused, as the
+        # UI's links editor refuses it.
+        if (str(target_id), relation) in seen:
+            raise ApiError(
+                INVALID_FIELD,
+                "'%s' is already linked with relation %s; a link may appear only once."
+                % (target_id, relation),
+                400,
+                {"field": "links", "index": position},
+            )
+        seen.add((str(target_id), relation))
         links.append({"target_id": str(target_id), "relation": relation})
     return links
 
@@ -442,7 +471,7 @@ def update_metadata():
             raise ApiError(
                 INVALID_FIELD, "'date' must be a string.", 400, {"field": "date"}
             )
-        date = payload["date"].strip()
+        date = node_schema.refuse_unsavable_text(payload["date"].strip(), "date")
 
     mode = None
     if "mode" in payload:
@@ -464,6 +493,11 @@ def update_metadata():
         )
 
     with state.lock:
+        core = state.core
+        if all(new is None or new == old for new, old in
+               ((title, core.title), (date, core.date), (mode, core.mode))):
+            # Nothing changes: no undo step, redo kept, not marked modified.
+            return ok_response(metadata=core.get_metadata(), **_mutation_payload(state))
         state.push_undo()
         # Fields passed as None are left untouched, including `date` (D18).
         state.core.set_metadata(title=title, date=date, mode=mode)
@@ -476,7 +510,15 @@ def update_metadata():
 def new_document():
     """Start an empty document. Refuses to discard unsaved work unless forced."""
     payload = _body()
-    force = bool(payload.get("force", False))
+    force = payload.get("force")
+    # A real boolean only: bool("false") is True, and this flag is the one
+    # thing between the user's unsaved work and the bin.
+    if force is not None and not isinstance(force, bool):
+        raise ApiError(
+            INVALID_FIELD, "'force' must be true or false.", 400,
+            {"field": "force", "value": force},
+        )
+    force = bool(force)
     state = get_state()
 
     with state.lock:
@@ -509,7 +551,13 @@ def list_nodes():
         return ok_response(nodes=collect_flat(state.core))
 
 
-@tree_bp.get("/nodes/<node_id>")
+# ``path:`` on every ``/nodes/<id>`` route: an id from a file may contain
+# '/', which the client percent-encodes and the server decodes before
+# routing, so the default converter (which stops at '/') answered 404 for
+# such a node on every call. ``/nodes/<id>/move`` still matches first for a
+# POST that ends in ``/move``; an id that itself ends in ``/move`` arrives as
+# ``.../x%2Fmove/move`` and resolves to ``x/move``.
+@tree_bp.get("/nodes/<path:node_id>")
 def get_node(node_id: str):
     """One node in detail, with its computed probability and link target names."""
     state = get_state()
@@ -538,11 +586,7 @@ def create_node():
         raise ApiError(INVALID_FIELD, "'name' is required.", 400, {"field": "name"})
 
     name = _validate_name(payload["name"])
-    node_type = payload.get("type", "Event")
-    if not isinstance(node_type, str) or not node_type.strip():
-        raise ApiError(
-            INVALID_FIELD, "'type' must be a non-empty string.", 400, {"field": "type"}
-        )
+    node_type = _validate_type(payload.get("type", "Event"))
     # Desktop default for a new node is 1.0 (desktop/src/FTA_Editor_UI.py:1431).
     probability = _validate_probability(payload.get("probability", 1.0))
     gate = _validate_gate(payload.get("logicGate", "OR"))
@@ -554,6 +598,7 @@ def create_node():
     with state.lock:
         core = state.core
         _require_node(core, parent_id, PARENT_NOT_FOUND, "Parent node")
+        _refuse_too_deep(depth_of(core, parent_id) + 1, "parentId")
 
         # next_child_id scans the whole tree, so the id is free by construction.
         new_id = next_child_id(core, parent_id)
@@ -561,7 +606,7 @@ def create_node():
         new_node = {
             "id": new_id,
             "name": name,
-            "type": node_type.strip(),
+            "type": node_type,
             "probability": probability,
             "logicGate": gate,
             "notes": notes,
@@ -583,6 +628,37 @@ def create_node():
         )
 
 
+#: "This key is not on the node" -- distinct from a stored None.
+_ABSENT = object()
+
+
+def _move_is_a_no_op(core, node_id: str, new_parent_id: str, index: Optional[int]) -> bool:
+    """Whether moving ``node_id`` to ``new_parent_id`` at ``index`` would
+    leave it where it is. ``index`` counts after the node is detached and is
+    clamped, None appends -- exactly as ``tree_ops.move_node`` places it."""
+    if find_parent_id(core, node_id) != new_parent_id:
+        return False
+    siblings = [str(child.get("id")) for child in
+                core.find_node_by_id(new_parent_id).get("children") or []]
+    last = len(siblings) - 1  # the highest position once the node is detached
+    target = last if index is None else max(0, min(index, last))
+    return siblings.index(str(node_id)) == target
+
+
+def _refuse_too_deep(deepest: int, field: str) -> None:
+    """400 when an edit would put a node ``deepest`` levels below the root,
+    past ``config.MAX_TREE_DEPTH`` (every payload deep-copies the tree and
+    fails with RecursionError a little beyond it -- after the edit applied)."""
+    if deepest > MAX_TREE_DEPTH:
+        raise ApiError(
+            INVALID_FIELD,
+            "A node can be at most %d levels below the root; this would put one "
+            "%d levels down." % (MAX_TREE_DEPTH, deepest),
+            400,
+            {"field": field, "limit": MAX_TREE_DEPTH},
+        )
+
+
 def _refuse_root(core, node_id: str, verb: str) -> None:
     """``ROOT_PROTECTED`` if ``node_id`` is the top-level node.
 
@@ -600,7 +676,7 @@ def _refuse_root(core, node_id: str, verb: str) -> None:
         )
 
 
-@tree_bp.patch("/nodes/<node_id>")
+@tree_bp.patch("/nodes/<path:node_id>")
 def update_node(node_id: str):
     """Partial update of the editable node fields (``NODE_FIELDS``).
 
@@ -628,15 +704,7 @@ def update_node(node_id: str):
     if "name" in payload:
         updates["name"] = _validate_name(payload["name"])
     if "type" in payload:
-        node_type = payload["type"]
-        if not isinstance(node_type, str) or not node_type.strip():
-            raise ApiError(
-                INVALID_FIELD,
-                "'type' must be a non-empty string.",
-                400,
-                {"field": "type"},
-            )
-        updates["type"] = node_type.strip()
+        updates["type"] = _validate_type(payload["type"])
     if "probability" in payload:
         updates["probability"] = _validate_probability(payload["probability"])
     if "logicGate" in payload:
@@ -652,6 +720,11 @@ def update_node(node_id: str):
         extra, removals = _schema_changes(payload, existing)
         updates.update(extra)
 
+        if (all(existing.get(key, _ABSENT) == value for key, value in updates.items())
+                and not any(key in existing for key in removals)):
+            # Every value is already there: no undo step, redo kept, not
+            # marked modified.
+            return ok_response(node=_node_view(core, existing), **_mutation_payload(state))
         state.push_undo()
         core.update_node(node_id, updates)
         node = core.find_node_by_id(node_id)
@@ -666,7 +739,7 @@ def update_node(node_id: str):
         )
 
 
-@tree_bp.delete("/nodes/<node_id>")
+@tree_bp.delete("/nodes/<path:node_id>")
 def delete_node(node_id: str):
     """Delete a node and its subtree. The root is not deletable.
 
@@ -702,7 +775,7 @@ def delete_node(node_id: str):
         )
 
 
-@tree_bp.post("/nodes/<node_id>/move")
+@tree_bp.post("/nodes/<path:node_id>/move")
 def move_node_endpoint(node_id: str):
     """Re-parent a node, optionally at a specific position among its new siblings."""
     payload = _body()
@@ -730,6 +803,15 @@ def move_node_endpoint(node_id: str):
                 400,
                 {"nodeId": str(node_id), "newParentId": new_parent_id},
             )
+        _refuse_too_deep(
+            depth_of(core, new_parent_id) + 1 + tree_height(core.find_node_by_id(node_id)),
+            "newParentId",
+        )
+        if _move_is_a_no_op(core, node_id, new_parent_id, index):
+            # Dropped where it already is: no undo step, redo kept, not
+            # marked modified.
+            return ok_response(nodeId=str(node_id), parentId=new_parent_id,
+                               **_mutation_payload(state))
 
         state.push_undo()
         moved, reason = move_node(core, node_id, new_parent_id, index)
