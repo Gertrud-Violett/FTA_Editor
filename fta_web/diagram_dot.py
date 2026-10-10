@@ -56,6 +56,25 @@ Layout
 ``rankdir`` ``LR`` (1.6 default) or ``TB``. Tree edges use compass ports that
 follow it: ``:e -> :w`` for LR (as 1.6), ``:s -> :n`` for TB.
 
+The top event's box
+-------------------
+Every box shows its node's ``calculatedProbability``, the tree walk's value.
+For a tree with repeated events or an XOR gate the headline is the min-cut
+upper bound instead, and the top box used to disagree with the top bar. When
+``build_dot_text2`` is given such a headline (``root_headline``, from
+``engine.root_headline``), the **root's** label shows it, marked, with the
+tree-walk value beside it::
+
+    compact   P:1 | P_calc:0.0684 (MCUB) | tree walk 0.0349
+    symbols   Q=0.0684 (MCUB)
+              tree walk 0.0349
+
+Every other node keeps its tree-walk value: a cut-set value per gate would
+cost one expansion per gate, and it is a different quantity -- the tree-walk
+numbers are the ones that combine along the edges drawn. Without a headline
+(``None``: no repeated events, ETA mode, cut sets capped or failed) the
+output is what it always was, byte for byte.
+
 ``id_map``
 ----------
 DOT node name -> tree node id for **every** node emitted, plain and
@@ -67,6 +86,7 @@ real node id.
 """
 from __future__ import annotations
 
+import copy
 import html
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -137,6 +157,12 @@ DARK_LINK_COLOR = "#6cb6ff"
 LIGHT_MUTED = "#8c959f"
 DARK_MUTED = "#8b949e"
 
+#: How the root's label marks the MCUB headline and the tree-walk value it
+#: shows beside it. Plain ASCII in both languages, like ``P_calc`` and
+#: ``Gate:``; the diagram panel's caption explains them (en/ja).
+MCUB_MARK = "MCUB"
+TREE_WALK_MARK = "tree walk"
+
 #: Weight of the box -> gate/event-symbol edge in the symbols style (tree
 #: edges keep Graphviz' default 1): the symbol hangs straight off its box.
 SYMBOL_EDGE_WEIGHT = 100
@@ -183,8 +209,12 @@ def _bgcolor(cp: Any) -> str:
 class _Ctx:
     """What every label/shape helper needs, computed once per call."""
 
-    def __init__(self, data, sig_figs, pad, dark, rankdir, font_name):
+    def __init__(self, data, sig_figs, pad, dark, rankdir, font_name, root_headline=None):
         self.sig_figs = sig_figs
+        # The root node object and the MCUB headline its label shows instead
+        # of its tree-walk value (None: every label is the tree walk's).
+        self.root = data if isinstance(data, dict) and data else None
+        self.root_headline = root_headline if self.root is not None else None
         self.pad = pad
         self.dark = dark
         self.rankdir = rankdir
@@ -221,6 +251,15 @@ class _Ctx:
         if value is None:
             return "N/A"
         return format_prob(value, self.sig_figs)
+
+    def headline_for(self, node: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+        """``("<headline> (MCUB)", "tree walk <Q>")`` for the root when the
+        headline is the MCUB, else None. By identity: a second node carrying
+        the root's id (a hand-edited file) is not the top event."""
+        if self.root_headline is None or node is not self.root:
+            return None
+        return ("%s (%s)" % (self.prob(self.root_headline.get("value")), MCUB_MARK),
+                "%s %s" % (TREE_WALK_MARK, self.prob(node.get("calculatedProbability"))))
 
     def gate_text(self, node: Dict[str, Any]) -> str:
         """``Gate: ...`` value for the compact meta row (unescaped)."""
@@ -272,6 +311,9 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     # xml_safe: a character XML forbids would make the label unparseable.
     name_plain = xml_safe(name)
     head = xml_safe(head)
+    marked = ctx.headline_for(node)
+    if marked is not None:
+        cp_str = "%s | %s" % marked
     meta_plain = f"{head}P:{p_str} | P_calc:{cp_str}"
     name = html.escape(name_plain, quote=False)
     head = html.escape(head, quote=False)
@@ -298,15 +340,18 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     kind = ctx.kind_text(node)
     if kind and _gate_type(node) != "TRANSFER":
         extra.append(html.escape(kind, quote=False))
-    probs = "q=%s | Q=%s" % (ctx.prob(node.get("probability")),
-                             ctx.prob(node.get("calculatedProbability")))
+    marked = ctx.headline_for(node)
+    calc = marked[0] if marked is not None else ctx.prob(node.get("calculatedProbability"))
+    probs = "q=%s | Q=%s" % (ctx.prob(node.get("probability")), calc)
     if node.get("children") and _gate_type(node) != "TRANSFER":
-        probs = "Q=%s" % ctx.prob(node.get("calculatedProbability"))
+        probs = "Q=%s" % calc
     lines = [f'<FONT POINT-SIZE="12">{_padded(name_plain, name, ctx.pad)}</FONT>']
     for text in extra:
         lines.append(f'<FONT POINT-SIZE="9">{_padded(html.unescape(text), text, ctx.pad)}</FONT>')
     lines.append(f'<FONT POINT-SIZE="9">'
                  f'{_padded(probs, html.escape(probs, quote=False), ctx.pad)}</FONT>')
+    if marked is not None:
+        lines.append(f'<FONT POINT-SIZE="8">{_padded(marked[1], marked[1], ctx.pad)}</FONT>')
     return "<" + "<BR/>".join(lines) + ">"
 
 
@@ -594,8 +639,16 @@ def build_dot_text2(
     style: str = DEFAULT_STYLE,
     rankdir: str = DEFAULT_RANKDIR,
     sig_figs: int = 3,
+    root_headline: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, Dict[str, str]]:
-    """``(dot_text, id_map)`` for the tree held by ``core``. Caller holds the lock."""
+    """``(dot_text, id_map)`` for the tree held by ``core``. Caller holds the
+    lock, or passes a detached copy (:class:`DocView`).
+
+    ``root_headline`` is ``engine.root_headline``'s answer for this same
+    tree, computed by the caller (:func:`document_dot` does both from one
+    snapshot): the root's label then shows the MCUB headline and its
+    tree-walk value. None leaves every label as the tree walk's.
+    """
     style = style if style in STYLES else DEFAULT_STYLE
     rankdir = rankdir if rankdir in RANKDIRS else DEFAULT_RANKDIR
     sig_figs = clamp_sig_figs(sig_figs)
@@ -612,7 +665,7 @@ def build_dot_text2(
     else:
         nodes, edges = {}, []
 
-    ctx = _Ctx(data, sig_figs, pad, dark, rankdir, font_name)
+    ctx = _Ctx(data, sig_figs, pad, dark, rankdir, font_name, root_headline)
     names = _Names(nodes.keys())
     if style == "symbols":
         lines = _symbols(nodes, edges, ctx, names)
@@ -622,3 +675,64 @@ def build_dot_text2(
     for nid in nodes:  # every emitted node, even one only reached by a link
         names.plain(nid)
     return "\n".join(lines), dict(names.id_map)
+
+
+# ---- the document's diagram, with the top event's headline ---------------------
+
+
+class DocView:
+    """A detached copy of what :func:`build_dot_text2` reads of a core."""
+
+    def __init__(self, tree: Any, metadata: Dict[str, Any]):
+        self._tree = tree
+        self._metadata = metadata
+
+    def get_data(self):
+        return self._tree
+
+    def get_metadata(self):
+        return self._metadata
+
+
+def document_dot(core, lock=None, **options
+                 ) -> Tuple[str, Dict[str, str], Optional[Dict[str, Any]]]:
+    """``(dot_text, id_map, root_headline)`` for ``core``'s document, the
+    root labelled with the MCUB headline when that is the headline.
+
+    The document is read once. A tree whose headline can only be the tree
+    walk (no link, transfer or XOR: ``engine.may_need_cut_sets``) is drawn
+    straight from ``core`` under ``lock``, as before 1.7.3. Any other is
+    deep-copied under ``lock`` and the lock released; the headline
+    (``engine.diagram_headline``: at most the summary's 2 s, remembered per
+    document) and the DOT are then both computed from that one copy, so the
+    label and the tree it sits on are the same document, and a slow cut-set
+    expansion never holds the editor's lock.
+
+    ``lock`` is ``state.lock``; None when the caller owns ``core`` (the CLI)
+    or passes a detached copy.
+    """
+    try:
+        from . import engine
+    except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+        import engine  # type: ignore[no-redef]
+
+    def read():
+        metadata = dict(core.get_metadata() or {})
+        tree = core.get_data() or {}
+        if (engine.canonical_mode(metadata.get("mode")) == "ETA"
+                or not engine.may_need_cut_sets(tree)):
+            return build_dot_text2(core, **options), None
+        return None, (copy.deepcopy(tree), metadata,
+                      copy.deepcopy(getattr(core, "analysis", None)))
+
+    if lock is not None:
+        with lock:
+            drawn, snapshot = read()
+    else:
+        drawn, snapshot = read()
+    if drawn is not None:
+        return drawn[0], drawn[1], None
+    tree, metadata, analysis = snapshot
+    headline = engine.diagram_headline(tree, analysis, metadata.get("mode"))
+    dot, id_map = build_dot_text2(DocView(tree, metadata), root_headline=headline, **options)
+    return dot, id_map, headline

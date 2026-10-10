@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const L = require('./lib');
-const { compareCore, dotIdMap, flatten, labelNumbers } = require('./b2b');
+const { compareCore, dotIdMap, flatten, labelNumbers, rootShowsHeadline } = require('./b2b');
 
 async function setStyle(page, style, rankdir) {
   await page.locator('#diagram-root .diagram__btn', { hasText: 'Aa' }).click();
@@ -109,6 +109,21 @@ async function main(url, label, root) {
   await compareCore(app, 'dark theme');
   await app.shot('diagram_dark_' + label, { locator: '#diagram-root' });
   await app.setTheme('light');
+
+  // 1.7.3: the top event shows the headline. The core file links two
+  // branches, so its headline is the MCUB: with the root selected, its box,
+  // Node Details and the caption all give the MCUB and the root's tree walk.
+  await page.evaluate(async (id) => { const { store } = await import('/static/js/store.js'); store.select(id); }, String(st.tree.id));
+  const top = await compareCore(app, 'root selected');
+  L.check('the core file has an MCUB headline, so the root checks are the MCUB ones',
+    rootShowsHeadline(top.summary, top.st.metadata && top.st.metadata.mode), { method: top.summary.headlineMethod, capped: top.summary.capped });
+  // and the endpoint the panel draws from says so itself
+  const dotSays = await page.evaluate(async () => {
+    const { api } = await import('/static/js/api.js');
+    const res = await api.get('/dot?sigFigs=3');
+    return { rootHeadline: res.rootHeadline, marked: /MCUB|tree walk/.test(res.dot) };
+  });
+  L.check('GET /api/dot says the root shows the MCUB headline', !!dotSays.rootHeadline && dotSays.rootHeadline.method === 'mcub' && dotSays.marked, dotSays);
 
   // hide zero: zero nodes vanish from the diagram and the tree
   const errs = app.errorsSince(0);

@@ -70,6 +70,7 @@ const DETAILS_CSS = `
   color: var(--fta-muted-fg);
 }
 .fta-details-meta b { font-weight: 600; color: var(--fta-fg); }
+.fta-details-calc-note { font-size: inherit; cursor: help; }
 .fta-details-meta code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: var(--fta-fg);
@@ -265,12 +266,15 @@ export function initDetails(container) {
 
   const idOut = el('code', { text: '—' });
   const calcOut = el('b', { text: '—' });
+  // The root of a tree whose headline is the MCUB: the headline goes in
+  // calcOut and this says so, with the node's own tree-walk value.
+  const calcNote = el('small', { class: 'fta-details-calc-note', hidden: true });
   const idLabel = document.createTextNode('');
   const calcLabel = document.createTextNode('');
   const zeroFlag = el('span', { class: 'fta-details-flag', hidden: true });
   const meta = el('div', { class: 'fta-details-meta' }, [
     el('span', {}, [idLabel, idOut]),
-    el('span', {}, [calcLabel, calcOut]),
+    el('span', {}, [calcLabel, calcOut, calcNote]),
     zeroFlag,
   ]);
 
@@ -827,6 +831,7 @@ export function initDetails(container) {
       linksSection.hidden = true;
       idOut.textContent = '—';
       calcOut.textContent = '—';
+      calcNote.hidden = true;
       zeroFlag.hidden = true;
       if (switched) clearErrors();
       return;
@@ -842,7 +847,19 @@ export function initDetails(container) {
       node.calculatedProbability === undefined || node.calculatedProbability === null
         ? node.probability
         : node.calculatedProbability;
-    calcOut.textContent = formatProbability(calculated);
+    // The top event: when the headline is the MCUB (repeated events, XOR),
+    // the root shows it, as the top bar and the diagram's top box do, with
+    // its own tree-walk value beside it. Every other node is a tree-walk
+    // value: a cut-set value per gate would be one expansion per gate.
+    const tree = store.state && store.state.tree;
+    const isRoot = Boolean(tree) && String(tree.id) === String(node.id);
+    const shell = window.ftaShell;
+    const head = isRoot && shell && typeof shell.rootHeadline === 'function' ? shell.rootHeadline() : null;
+    calcOut.textContent = formatProbability(head ? head.value : calculated);
+    calcNote.hidden = !head;
+    calcNote.textContent = head ? ' ' + t('details.calcMcub', { walk: formatProbability(calculated) }) : '';
+    if (head) calcNote.title = t('details.calcMcubTitle');
+    else calcNote.removeAttribute('title');
 
     const zeroNodes = (store.state && store.state.zeroNodes) || [];
     zeroFlag.hidden = !(Array.isArray(zeroNodes) && zeroNodes.map(String).indexOf(String(node.id)) !== -1);
@@ -881,6 +898,13 @@ export function initDetails(container) {
     updateExtras(node, false);
   };
   window.addEventListener('fta:advanced', onAdvanced);
+  // The headline arrives ~0.4 s after the tree: the root's value follows it.
+  const onHeadline = () => {
+    const node = currentNode();
+    const tree = store.state && store.state.tree;
+    if (node && tree && String(tree.id) === String(node.id)) update();
+  };
+  window.addEventListener('fta:headline', onHeadline);
 
   return {
     refresh: update,
@@ -889,6 +913,7 @@ export function initDetails(container) {
       window.removeEventListener('fta:language', relabel);
       window.removeEventListener('fta:flush', onFlush);
       window.removeEventListener('fta:advanced', onAdvanced);
+      window.removeEventListener('fta:headline', onHeadline);
       clear(panel);
       if (panel.parentNode === container) container.removeChild(panel);
     },

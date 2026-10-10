@@ -14,6 +14,13 @@ re-opens that workbook with openpyxl and appends:
   limits, Monte Carlo defaults) and, in FTA mode, the headline figures from
   ``engine.summary``.
 
+The Events sheet's "Calculated probability" is every node's tree-walk value,
+the root's included: a column is one quantity. When the headline is the MCUB
+instead (repeated events, XOR: ``engine.root_headline``), the root's cell
+carries a comment giving the headline and pointing at the Analysis sheet,
+whose "Tree walk" row says in turn that it is the value the Events sheet
+shows for the top event.
+
 A pre-existing sheet of either name is replaced. No images, so no PIL.
 
 Text is passed through :func:`xml_text` on the way into any sheet: a
@@ -302,14 +309,42 @@ def _summary(tree: Any, analysis: Any) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _root_headline(summ: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """``engine.root_headline``: the MCUB headline the root shows, or None."""
+    try:
+        try:
+            from .engine import root_headline
+        except ImportError:
+            from engine import root_headline  # type: ignore[no-redef]
+        return root_headline(summ)
+    except Exception:
+        return None
+
+
+#: Not yet computed (None is a real answer: ETA mode, or the summary failed).
+_UNSET = object()
+
+#: Note on the Analysis sheet's "Tree walk" row when the headline is the MCUB.
+TREE_WALK_NOTE = "the Events sheet shows this value for the top event"
+
+
+def document_summary(core) -> Optional[Dict[str, Any]]:
+    """``engine.summary`` for ``core``'s document; None in ETA mode or when
+    it fails. Computed once per export and shared by both sheets."""
+    if (getattr(core, "mode", "FTA") or "FTA") == "ETA":
+        return None
+    return _summary(copy.deepcopy(core.get_data()), copy.deepcopy(getattr(core, "analysis", None) or {}))
+
+
 #: Analysis-sheet rows whose value is a probability.
 PROBABILITY_SETTINGS = frozenset((
     "Cut sets: cutoff", "Top event (headline)", "Tree walk", "MCUB", "Rare-event approximation",
 ))
 
 
-def analysis_rows(core) -> List[Tuple[str, Any, str]]:
-    """``(setting, value, note)`` rows for the Analysis sheet."""
+def analysis_rows(core, summ: Any = _UNSET) -> List[Tuple[str, Any, str]]:
+    """``(setting, value, note)`` rows for the Analysis sheet. ``summ`` is
+    :func:`document_summary`'s answer when the caller already has it."""
     analysis = copy.deepcopy(getattr(core, "analysis", None) or {})
     cut = analysis.get("cutsets") or {}
     mc = analysis.get("mc") or {}
@@ -326,12 +361,14 @@ def analysis_rows(core) -> List[Tuple[str, Any, str]]:
         ("Monte Carlo: seed", mc.get("seed") if mc.get("seed") is not None else "", ""),
     ]
     if (getattr(core, "mode", "FTA") or "FTA") != "ETA":
-        summ = _summary(copy.deepcopy(core.get_data()), analysis)
+        if summ is _UNSET:
+            summ = _summary(copy.deepcopy(core.get_data()), analysis)
         if summ:
             rows.extend([
                 ("Top event (headline)", _number(summ.get("headline")),
                  "method: %s" % (summ.get("headlineMethod") or "treeWalk")),
-                ("Tree walk", _number(summ.get("treeWalk")), ""),
+                ("Tree walk", _number(summ.get("treeWalk")),
+                 TREE_WALK_NOTE if _root_headline(summ) else ""),
                 ("MCUB", _number(summ.get("mcub")), "min-cut upper bound"),
                 ("Rare-event approximation", _number(summ.get("rareEvent")), ""),
                 ("Repeated events", len(summ.get("repeatedEvents") or []), ""),
@@ -360,7 +397,14 @@ def _replace_sheet(wb, title: str):
     return wb.create_sheet(title)
 
 
-def _write_events(wb, tree: Any, sig_figs: int) -> None:
+def root_comment(head: Dict[str, Any]) -> str:
+    """The comment on the root's "Calculated probability" cell."""
+    return ("Tree-walk value. The top-event probability (headline) is %r by MCUB, "
+            "which counts each repeated event once: see the %s sheet."
+            % (head.get("value"), ANALYSIS_SHEET))
+
+
+def _write_events(wb, tree: Any, sig_figs: int, head: Optional[Dict[str, Any]] = None) -> None:
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
 
@@ -390,11 +434,17 @@ def _write_events(wb, tree: Any, sig_figs: int) -> None:
                 widths[col_idx - 1] = max(widths[col_idx - 1], len(str(value)))
     for col_idx, width in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max(width + 2, 6), 50)
+    if head and ws.max_row >= 2:
+        # Row 2 is the root (pre-order). Its number stays the tree walk's.
+        from openpyxl.comments import Comment
+
+        cell = ws.cell(row=2, column=EVENT_HEADERS.index("Calculated probability") + 1)
+        cell.comment = Comment(root_comment(head), "FTA Editor")
     ws.freeze_panes = "C2"
     ws.auto_filter.ref = "A1:%s%d" % (get_column_letter(len(EVENT_HEADERS)), max(ws.max_row, 1))
 
 
-def _write_analysis(wb, core, sig_figs: int) -> None:
+def _write_analysis(wb, core, sig_figs: int, summ: Any = _UNSET) -> None:
     from openpyxl.styles import Font
 
     ws = _replace_sheet(wb, ANALYSIS_SHEET)
@@ -402,7 +452,7 @@ def _write_analysis(wb, core, sig_figs: int) -> None:
     for cell in ws[1]:
         cell.font = Font(bold=True)
     fmt = sci_format(sig_figs)
-    for setting, value, note in analysis_rows(core):
+    for setting, value, note in analysis_rows(core, summ):
         if not (value is None or isinstance(value, (int, float))):
             value = xml_text(value)  # title, date, mode: text from the file
         ws.append([setting, value, note])
@@ -413,7 +463,7 @@ def _write_analysis(wb, core, sig_figs: int) -> None:
             ws.cell(row=ws.max_row, column=2).number_format = fmt
     ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 18
-    ws.column_dimensions["C"].width = 30
+    ws.column_dimensions["C"].width = 48
     ws.freeze_panes = "A2"
 
 
@@ -440,8 +490,9 @@ def export_xlsx(core, path: str, sig_figs: int = 3) -> Tuple[bool, Optional[str]
             for row in sheet.iter_rows():
                 for cell in row:
                     _as_text(cell)
-        _write_events(wb, core.get_data(), sf)
-        _write_analysis(wb, core, sf)
+        summ = document_summary(core)
+        _write_events(wb, core.get_data(), sf, _root_headline(summ))
+        _write_analysis(wb, core, sf, summ)
         wb.save(path)
     except ImportError as exc:  # pragma: no cover - openpyxl broke after the core's write
         return False, "Failed to add the Events sheet: openpyxl could not be imported (%s)" % exc

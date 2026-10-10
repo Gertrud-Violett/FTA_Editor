@@ -58,6 +58,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.engine``
@@ -828,6 +829,100 @@ def summary_with_cut_sets(tree: Dict[str, Any], analysis: Optional[Dict[str, Any
         }
     out["elapsedMs"] = round((_time.perf_counter() - started) * 1000.0, 1)
     return out, result
+
+
+# ---- the top event's value, wherever the root node is shown --------------------------
+#
+# Every node carries ``calculatedProbability``, the tree walk's value. For a
+# tree with repeated events (links, transfers) or an XOR gate the headline is
+# the min-cut upper bound instead, so the root's own number disagreed with the
+# top bar (Challenger example: 0.0349 in the top box, 0.0684 in the top bar).
+# Wherever the root is shown next to the headline -- the diagram's top box,
+# Node Details, the report's diagram, the Excel sheets -- the root therefore
+# shows the headline, marked MCUB, with the tree-walk value beside it.
+#
+# Only the root. A cut-set value for every gate would mean one expansion per
+# gate (the root's alone may take the whole 2 s budget), and it would be a
+# different quantity from the one the engine propagates: a parent's tree-walk
+# value is computed from its children's tree-walk values, so the numbers on
+# the other boxes still add up along the edges that are drawn.
+
+
+def root_headline(summary_: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """``{"method": "mcub", "value", "treeWalk"}`` when the root must show
+    the MCUB headline of ``summary_`` (a :func:`summary` result), else None.
+
+    None -- the root keeps its tree-walk label -- when the headline is the
+    tree walk (which includes cut sets that failed or timed out), when only
+    the summary's own caps cut the cut sets short (``capped``: the number is
+    then a bound from the first 2000 sets, not the document's result), or
+    when the value is not a finite number.
+    """
+    if not isinstance(summary_, dict) or summary_.get("headlineMethod") != "mcub":
+        return None
+    if summary_.get("capped"):
+        return None
+    value = summary_.get("headline")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return {"method": "mcub", "value": float(value), "treeWalk": summary_.get("treeWalk")}
+
+
+def may_need_cut_sets(tree: Any) -> bool:
+    """False when ``tree`` certainly has no repeated event and no XOR gate,
+    so its headline is the tree walk and no cut sets need expanding to know
+    it. Conservative: an id used twice, a link, a transfer or an XOR (in
+    either gate field) answers True. One pass, no recursion."""
+    seen = set()
+    stack = [tree] if isinstance(tree, dict) and tree else []
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        node_id = str(node.get("id"))
+        if node_id in seen or node.get("links"):
+            return True
+        seen.add(node_id)
+        for key in ("gateType", "logicGate"):
+            if str(node.get(key) or "").strip().upper() in ("XOR", "TRANSFER"):
+                return True
+        if node.get("transferTo") not in (None, ""):
+            return True
+        stack.extend(node.get("children") or [])
+    return False
+
+
+_headline_lock = threading.Lock()
+#: The last ``(tree, analysis, summary)`` :func:`diagram_headline` computed.
+#: One entry: the diagram is re-requested for the same document on every
+#: theme, style, layout and font change, and by the report after the panel.
+_headline_cache: List[Any] = []
+
+
+def diagram_headline(tree: Any, analysis: Optional[Dict[str, Any]] = None,
+                     mode: Any = "FTA") -> Optional[Dict[str, Any]]:
+    """:func:`root_headline` for a document, or None (ETA mode, a tree whose
+    headline is the tree walk, cut sets that failed).
+
+    ``tree`` is only read. Costs nothing for a tree without links, transfers
+    or XOR gates (:func:`may_need_cut_sets`); otherwise one :func:`summary`,
+    at most its 2 s budget, remembered for the next call with the same
+    document. A summary that ran out of time is not remembered.
+    """
+    if canonical_mode(mode) == "ETA" or not may_need_cut_sets(tree):
+        return None
+    with _headline_lock:
+        if _headline_cache and _headline_cache[0] == tree and _headline_cache[1] == analysis:
+            return root_headline(_headline_cache[2])
+    try:
+        result = summary_with_cut_sets(tree, analysis)[0]
+    except Exception:  # noqa: BLE001 -- a label must never fail the diagram
+        return None
+    if "time" not in (result.get("truncatedBy") or []):
+        entry = [copy.deepcopy(tree), copy.deepcopy(analysis), result]
+        with _headline_lock:
+            _headline_cache[:] = entry
+    return root_headline(result)
 
 
 def _summary_doc_max_count(analysis: Optional[Dict[str, Any]]) -> int:

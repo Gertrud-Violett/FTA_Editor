@@ -547,6 +547,8 @@ const STRINGS = {
     'ai.changes.linkProblem': 'This suggestion will be rejected. {reason}',
     'ai.changes.rejectedOne': 'Suggestion rejected — {title}. {reason}',
     'ai.changes.ignoredOne': 'Applied — {title}. Not changed by a suggestion: {fields}',
+    'details.calcMcub': '(MCUB) · tree walk {walk}',
+    'details.calcMcubTitle': 'The top event shows the headline: the min-cut upper bound (MCUB), which counts each repeated event once. The tree walk takes every branch as independent.',
 
     'dialog.title': 'Dialog',
     'dialog.confirmTitle': 'Confirm',
@@ -974,6 +976,8 @@ const STRINGS = {
     'ai.changes.linkProblem': 'この提案は適用されません。{reason}',
     'ai.changes.rejectedOne': '提案は却下されました — {title}。{reason}',
     'ai.changes.ignoredOne': '適用しました — {title}。提案では変更されない項目: {fields}',
+    'details.calcMcub': '（MCUB）・ツリー計算値 {walk}',
+    'details.calcMcubTitle': '頂上事象には、重複事象を1回だけ数える最小カット上限（MCUB）を表示しています。ツリー計算はすべての枝を独立として扱います。',
 
     'dialog.title': 'ダイアログ',
     'dialog.confirmTitle': '確認',
@@ -1168,6 +1172,23 @@ let headline = null;
 function setHeadline(next) {
   headline = next && typeof next === 'object' ? { ...next } : null;
   renderHeadline();
+  // Node Details shows the headline on the root (see rootHeadline()).
+  window.dispatchEvent(new CustomEvent('fta:headline'));
+}
+
+/**
+ * The MCUB headline the root node shows instead of its own tree-walk value,
+ * as `{value}`, or null: the same rule as the server's `engine.root_headline`
+ * (the diagram's top box) -- the headline is the MCUB and the summary's own
+ * caps did not cut it short. Null also while the headline on screen was
+ * computed for an earlier tree (it is refreshed ~0.4 s after an edit): the
+ * root then shows its tree-walk value, never an MCUB of another document.
+ */
+function rootHeadline() {
+  if (!headline || headline.method !== 'mcub' || headline.capped) return null;
+  if (typeof headline.value !== 'number' || !Number.isFinite(headline.value)) return null;
+  if (!store.state || headline.tree !== store.state.tree) return null;
+  return { value: headline.value };
 }
 
 function renderHeadline() {
@@ -1305,6 +1326,10 @@ async function refreshHeadline() {
     return;
   }
   try {
+    // The tree this summary is for: the answer describes the document as it
+    // was when the request left (no edit can land in between without making
+    // this request stale).
+    const forTree = store.state.tree;
     const res = await api.get('/analysis/summary');
     if (seq !== headlineSeq) return; // a newer request superseded this one
     const value = typeof res.headline === 'number' ? res.headline : rootCalculated();
@@ -1328,6 +1353,7 @@ async function refreshHeadline() {
       pand: (res.approximations || []).some((a) => a && a.code === 'PAND_APPROX'),
       capped: fromCutSets && Boolean(res.capped),
       truncated: fromCutSets && docTruncated,
+      tree: forTree,
     });
   } catch (_err) {
     if (seq !== headlineSeq) return;
@@ -3184,6 +3210,8 @@ window.ftaShell = {
   diagramPng,
   /** Top-bar headline: setHeadline({value, method: 'mcub'|'treeWalk', alt, reason, pand}) or null. */
   setHeadline,
+  /** @returns {{value: number}|null} the MCUB headline the root node shows (see rootHeadline). */
+  rootHeadline,
   /** Show a bottom-panel tab by id. @returns {boolean} false if hidden/unknown. */
   openTab,
 };

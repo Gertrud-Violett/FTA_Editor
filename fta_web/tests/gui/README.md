@@ -3,7 +3,7 @@
 A back-to-back check of the web GUI. Playwright drives a real browser with
 real mouse and keyboard input, reads what the GUI shows (headline, Node
 Details, every diagram label, every analysis tab, the downloaded reports) and
-compares it with what the API computes for the same document. It has 719
+compares it with what the API computes for the same document. It has 828
 checks in 14 sections and takes about 5 minutes.
 
 It complements the numeric back-to-back suite in [`../b2b/`](../b2b/README.md),
@@ -13,20 +13,20 @@ which compares the engine, API, CLI and exe paths without a browser.
 
 | Section | Checks | What |
 |---|---:|---|
-| `core` | 214 | Builds a tree entirely through the GUI: New, title and date, the Add dialog (button and Ctrl+A), Details edits committed with Enter / Tab / blur and reverted with Escape, gate select, undo / redo by keys and buttons, sig figs 1 to 6, switching to Advanced mid-edit, k-of-n, a link through the links editor, Save As / Ctrl+S / New / Open through the file dialog. After every step the headline, Details and every diagram label are compared with the API. It saves `b2b_core_<label>.json`, which most later sections open. |
+| `core` | 256 | Builds a tree entirely through the GUI: New, title and date, the Add dialog (button and Ctrl+A), Details edits committed with Enter / Tab / blur and reverted with Escape, gate select, undo / redo by keys and buttons, sig figs 1 to 6, switching to Advanced mid-edit, k-of-n, a link through the links editor, Save As / Ctrl+S / New / Open through the file dialog. After every step the headline, Details and every diagram label are compared with the API. It saves `b2b_core_<label>.json`, which most later sections open. |
 | `fit` | 7 | Diagram auto-fit never enlarges past 100 %; zoom buttons, Ctrl+0, a 26-node tree still shrinks. |
 | `treeclick` | 33 | The first real click on the bottom tree rows selects them, at three window sizes; the keyboard hint shows only for keyboard focus and never shifts rows. |
 | `fixes` | 22 | The 1.7.1 frontend fixes: Alt+N and consequence-named confirmations, numeric fields that select on click, Escape in the Aa popover, formatted Validation messages, the FMEA λ unit warning, the live language switch of the AI panel and action bar. |
-| `tabs` | 76 | Quantification (rate model through the form, derived q and formula), Cut Sets (rows, summary, highlight, sig figs), Importance (every measure, sort, FV overlay), Uncertainty (fixed seed against an API run with the same seed), Validation (list, chips, badge, after undo), tabs refreshed after an edit made while hidden, Traceability cell edits, ETA mode. |
+| `tabs` | 84 | Quantification (rate model through the form, derived q and formula), Cut Sets (rows, summary, highlight, sig figs), Importance (every measure, sort, FV overlay), Uncertainty (fixed seed against an API run with the same seed), Validation (list, chips, badge, after undo), tabs refreshed after an edit made while hidden, Traceability cell edits, ETA mode. |
 | `files` | 19 | FMEA CSV import through the file dialog; the DOCX report, Excel and CSV exports, parsed back with `parse_exports.py` and compared with the API; the "Save … again" link. |
-| `diagram` | 57 | compact / symbols × LR / TB show the API's numbers and each other's; a real-mouse click on every shape selects its node; zoom, Ctrl+wheel, pan, fit; dark theme. |
-| `more` | 61 | Escape in the title, Hide Zero, λ units, the standby model, document defaults for cut sets and Monte Carlo, the truncation marker on the headline, RRW ∞, New with the FV overlay on. |
-| `stale` | 51 | No stale values after undo / redo / delete: the Quantification form, Details, the title, the Validation list and badge. |
+| `diagram` | 80 | compact / symbols × LR / TB show the API's numbers and each other's; with the root selected, its box, Node Details and the caption give the MCUB headline and the root's tree-walk value; a real-mouse click on every shape selects its node; zoom, Ctrl+wheel, pan, fit; dark theme. |
+| `more` | 69 | Escape in the title, Hide Zero, λ units, the standby model, document defaults for cut sets and Monte Carlo, the truncation marker on the headline, RRW ∞, New with the FV overlay on. |
+| `stale` | 59 | No stale values after undo / redo / delete: the Quantification form, Details, the title, the Validation list and badge. |
 | `race` | 4 | An edit made while the first Cut Sets / Importance run is still in flight (responses delayed with `page.route`). |
-| `view` | 134 | Every tab in en/light and ja/dark (screenshots), no raw i18n keys, tab-strip and tree keyboard navigation, F2 rename, drag and drop, the AI panel without credentials, four window sizes down to 420 px, and Japanese event names in a 420 px window (the Importance and Quantification tables keep six characters a line). |
-| `big` | 14 | A 300-node tree: click to Details under 500 ms, no diagram re-layout on selection, the Add dialog under 3 s, five analysis tabs, the tree search. |
+| `view` | 150 | Every tab in en/light and ja/dark (screenshots), no raw i18n keys, tab-strip and tree keyboard navigation, F2 rename, drag and drop, the AI panel without credentials, four window sizes down to 420 px, and Japanese event names in a 420 px window (the Importance and Quantification tables keep six characters a line). |
+| `big` | 16 | A 300-node tree: click to Details under 500 ms, no diagram re-layout on selection, the Add dialog under 3 s, five analysis tabs, the tree search. |
 | `i18n` | 3 | After a live switch to Japanese no English UI text is left in any tab, and no Japanese after switching back. |
-| `misc` | 24 | Save As without an extension, the splitter by keyboard, the sig-fig select by keyboard, basic mode showing an advanced gate read-only, the OS dark theme, a tab opened without a session token. |
+| `misc` | 26 | Save As without an extension, the splitter by keyboard, the sig-fig select by keyboard, basic mode showing an advanced gate read-only, the OS dark theme, a tab opened without a session token. |
 
 Every section also fails on any console error or warning, page error, or
 unexpected HTTP 4xx/5xx from `/api` in the page. The harness's own API calls
@@ -143,7 +143,10 @@ node compare_snaps.js out/dev/core_dev.json out/exe/core_exe.json
   input helpers), `check()` / `runSection()`, and `fmt()`, a mirror of
   `static/js/numfmt.js` that must change when it does.
 - `b2b.js` – `compareCore()`: headline, Details and every diagram label
-  against the API, used after each step.
+  against the API, used after each step. Every node's label is compared
+  with its `calculatedProbability`; the root's is compared with the
+  headline, and its tree-walk value, when the headline is the MCUB
+  (`rootShowsHeadline()`).
 - `s_<section>.js` – one script per section, each runnable on its own.
 - `parse_exports.py` – dumps the DOCX / XLSX numbers as JSON for `files`.
 - `compare_snaps.js` – compares the `core` snapshots of two runs.

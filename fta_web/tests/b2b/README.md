@@ -72,6 +72,14 @@ CSV, XML carry `repr`); formatted outputs (DOT, DOCX) are compared as the
 exact strings of the reference formatted with `numfmt.format_prob` at 6 s.f.;
 XLSX at 16 significant digits (openpyxl writes `%.16g`).
 
+DOT labels: every node's label is compared with its own
+`calculatedProbability` (the tree walk). The root is the exception since
+1.7.3: when the reference summary's headline is the MCUB and the summary's
+own caps did not cut it short, its label must read
+`P_calc:<headline> (MCUB) | tree walk <calculatedProbability>`
+(`b2b_lib.ref_dot`). A 1.7.2 or older exe draws the tree-walk value there,
+so its `exe:server` DOT rows differ on trees with repeated events or XOR.
+
 ## Corpus
 
 | File | Covers |

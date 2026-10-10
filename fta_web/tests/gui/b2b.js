@@ -22,10 +22,27 @@ function flatten(tree) {
   return out;
 }
 
-/** Parse the numbers a diagram label shows. compact: P / P_calc; symbols: q / Q. */
+/**
+ * Whether the root shows the headline instead of its own tree-walk value
+ * (1.7.3): the headline is the MCUB and the summary's own caps did not cut it
+ * short. The same rule as engine.root_headline and main.js rootHeadline().
+ */
+function rootShowsHeadline(summary, mode) {
+  return mode !== 'ETA' && !!summary && summary.headlineMethod === 'mcub' && !summary.capped &&
+    typeof summary.headline === 'number' && Number.isFinite(summary.headline);
+}
+
+/**
+ * Parse the numbers a diagram label shows. compact: P / P_calc; symbols: q / Q.
+ * On a root that shows the headline, `calc` is the headline, `mcub` is true
+ * and `walk` is the tree-walk value printed beside it.
+ */
 function labelNumbers(texts) {
   const joined = texts.join(' | ');
   const out = {};
+  out.mcub = /\(MCUB\)/.test(joined);
+  const w = /tree walk\s+([^\s|]+)/.exec(joined);
+  if (w) out.walk = w[1];
   let m = /P_calc:\s*([^\s|]+)/.exec(joined);
   if (m) out.calc = m[1];
   m = /(?:^|[\s|])P:\s*([^\s|]+)/.exec(joined);
@@ -52,6 +69,8 @@ async function compareCore(app, label, opts = {}) {
   const nodes = flatten(st.tree);
   const byId = new Map(nodes.map((n) => [String(n.id), n]));
   const snap = { label, sf, headline: null, details: null, diagram: {} };
+  const rootId = st.tree ? String(st.tree.id) : null;
+  const rootMcub = rootShowsHeadline(summary, mode);
 
   // headline
   const head = await app.headline();
@@ -75,7 +94,15 @@ async function compareCore(app, label, opts = {}) {
     const calc = n.calculatedProbability === undefined || n.calculatedProbability === null ? n.probability : n.calculatedProbability;
     snap.details = { id: det.id, calc: det.calc };
     L.check(`${label}: Details id ${det.id} == selection ${sel}`, det.id === String(sel), det);
-    L.check(`${label}: Details calculated ${det.calc} == API ${L.fmt(calc, sf)} (${sel})`, L.sameAtSf(det.calc, calc, sf), { det: det.calc, api: calc });
+    if (rootMcub && String(sel) === rootId) {
+      // The root shows the headline, labelled, with its tree-walk value.
+      snap.details.note = det.calcNote;
+      L.check(`${label}: Details (root) ${det.calc} == API summary.headline ${L.fmt(summary.headline, sf)}`, L.sameAtSf(det.calc, summary.headline, sf), { det: det.calc, api: summary.headline });
+      L.check(`${label}: Details (root) says MCUB and tree walk ${L.fmt(calc, sf)}`, /MCUB/.test(det.calcNote) && det.calcNote.includes(L.fmt(calc, sf)), det.calcNote);
+    } else {
+      L.check(`${label}: Details calculated ${det.calc} == API ${L.fmt(calc, sf)} (${sel})`, L.sameAtSf(det.calc, calc, sf), { det: det.calc, api: calc });
+      L.check(`${label}: Details has no MCUB note off the top event (${sel})`, det.calcNote === '', det.calcNote);
+    }
     const zero = (st.zeroNodes || []).map(String).includes(String(sel));
     L.check(`${label}: Details zero flag == zeroNodes (${zero})`, det.zero === zero, { det: det.zero, zero });
   }
@@ -97,7 +124,16 @@ async function compareCore(app, label, opts = {}) {
       seen.add(String(id));
       const nums = labelNumbers(g.texts);
       if (nums.calc === undefined) { bad.push({ id, why: 'no calc number', texts: g.texts }); continue; }
-      if (nums.calc !== L.fmt(n.calculatedProbability, sf)) bad.push({ id, calc: nums.calc, api: L.fmt(n.calculatedProbability, sf) });
+      if (rootMcub && String(id) === rootId) {
+        // The top box: the headline, marked MCUB, and the root's tree walk.
+        if (!nums.mcub) bad.push({ id, why: 'root not marked MCUB', texts: g.texts });
+        if (nums.calc !== L.fmt(summary.headline, sf)) bad.push({ id, calc: nums.calc, headline: L.fmt(summary.headline, sf) });
+        if (nums.walk !== L.fmt(n.calculatedProbability, sf)) bad.push({ id, walk: nums.walk, api: L.fmt(n.calculatedProbability, sf) });
+      } else {
+        // Every other node (and the root of a tree-walk headline): its own value.
+        if (nums.mcub || nums.walk !== undefined) bad.push({ id, why: 'MCUB mark off the top event', texts: g.texts });
+        if (nums.calc !== L.fmt(n.calculatedProbability, sf)) bad.push({ id, calc: nums.calc, api: L.fmt(n.calculatedProbability, sf) });
+      }
       if (nums.base !== undefined && nums.base !== L.fmt(n.probability, sf)) bad.push({ id, base: nums.base, api: L.fmt(n.probability, sf) });
       snap.diagram[id] = nums;
     }
@@ -108,7 +144,14 @@ async function compareCore(app, label, opts = {}) {
       for (const n of nodes) if ((st.zeroNodes || []).map(String).includes(String(n.id))) addSub(n);
     }
     const missing = nodes.map((n) => String(n.id)).filter((id) => !seen.has(id) && !(hideZero && zeros.has(id)));
-    L.check(`${label}: diagram numbers == API for ${seen.size} nodes @${sf}sf`, bad.length === 0, bad.slice(0, 6));
+    L.check(`${label}: diagram numbers == API for ${seen.size} nodes @${sf}sf (root: ${rootMcub ? 'headline, MCUB' : 'tree walk'})`, bad.length === 0, bad.slice(0, 6));
+    const caption = await app.page.evaluate(() => {
+      const c = document.querySelector('#diagram-root .diagram__caption');
+      return c ? { shown: !c.hidden && c.offsetParent !== null, text: c.textContent } : null;
+    });
+    const rootDrawn = rootId !== null && seen.has(rootId);
+    L.check(`${label}: diagram caption ${rootMcub && rootDrawn ? 'explains the MCUB top box' : 'hidden'}`,
+      !!caption && caption.shown === (rootMcub && rootDrawn) && (!caption.shown || /MCUB/.test(caption.text)), caption);
     L.check(`${label}: every node drawn in the diagram`, missing.length === 0, missing);
     const selG = (dn || []).filter((g) => g.selected).map((g) => idMap[g.title]);
     if (sel) L.check(`${label}: diagram selection == store selection`, selG.includes(String(sel)) && new Set(selG).size === 1, { selG, sel });
@@ -116,4 +159,4 @@ async function compareCore(app, label, opts = {}) {
   return { snap, st, summary };
 }
 
-module.exports = { compareCore, dotIdMap, flatten, labelNumbers };
+module.exports = { compareCore, dotIdMap, flatten, labelNumbers, rootShowsHeadline };
