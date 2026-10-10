@@ -19,11 +19,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 
-# Maps to pyproject.toml's [project.optional-dependencies] table.
+# Maps to pyproject.toml's [project.optional-dependencies] table. `report`
+# (python-docx) is web-only; the pip fallback gets it from
+# fta_web/requirements.txt.
 EXTRAS_FOR = {
-    "web": ["web", "excel", "ai"],
+    "web": ["web", "excel", "ai", "report"],
     "desktop": ["desktop", "excel", "ai"],
-    "both": ["web", "desktop", "excel", "ai"],
+    "both": ["web", "desktop", "excel", "ai", "report"],
 }
 
 
@@ -130,7 +132,10 @@ def main() -> None:
     if have_uv:
         print("\nuv found -- using it (faster, and pins exact versions via uv.lock).")
         ok = install_with_uv(target)
-        runner_prefix = ["uv", "run"]
+        # `uv sync` above is exact and the extras carry no pytest, so ask uv
+        # for the `test` extra here; a bare `uv run pytest` would run whatever
+        # pytest is on PATH, outside this venv.
+        runner_prefix = ["uv", "run", "--extra", "test"]
     else:
         print(
             "\nuv not found -- falling back to pip. "
