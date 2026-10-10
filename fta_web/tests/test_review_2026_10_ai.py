@@ -566,3 +566,30 @@ class TestTheKeyIsScrubbedEvenIfClearedMidCall:
         text = outcome["response"].get_data(as_text=True)
         assert API_KEY not in text
         assert ai_bridge.REDACTED in text
+
+
+# --------------------------------------------------------------------------
+# AI-06: Cancel/Escape during Test & Save left the chat refusing a saved key
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("function,request_call", [
+    ("testAndSave", "await api.post('/ai/credentials'"),
+    ("clearCredentials", "await api.del('/ai/credentials');"),
+])
+def test_closing_the_dialog_mid_request_still_refreshes_the_shell(function, request_call):
+    """The dialog stays closable while the key is being tested (seconds); the
+    save still lands on the server. The `if (closed) return;` that followed
+    skipped refreshShell(), so aiConfigured stayed false in the store and the
+    chat answered every message with "No provider is set up yet" (seen in
+    Chromium with a mocked provider) until the page was reloaded."""
+    src = (STATIC / "aisettings.js").read_text(encoding="utf-8")
+    body_src = re.search(
+        r"  async function %s\(\) \{(.*?)\n  \}\n" % function, src, re.S
+    ).group(1)
+    after = body_src[body_src.index(request_call):]
+    closed_branch = re.search(r"if \(closed\) \{(.*?)\n      \}", after, re.S)
+    assert closed_branch, "the closed-dialog branch after the request is gone"
+    assert after.index(closed_branch.group(0)) < after.index("setBusy(false)")
+    assert "await refreshShell();" in closed_branch.group(1)
+    assert "return;" in closed_branch.group(1)

@@ -566,7 +566,12 @@ export function openAiSettings() {
         endpoint: endpoint,
         model: model,
       });
-      if (closed) return;
+      if (closed) {
+        // Cancel/Escape during the test does not undo the save: the panel
+        // and the chip must still learn it, or the chat refuses to send.
+        await refreshShell();
+        return;
+      }
       setBusy(false);
       setStatus(t('ai.status.saved'), 'ok');
       keyInput.value = '';
@@ -595,7 +600,10 @@ export function openAiSettings() {
     setBusy(true, t('ai.status.clearing'));
     try {
       await api.del('/ai/credentials');
-      if (closed) return;
+      if (closed) {
+        await refreshShell();
+        return;
+      }
       setBusy(false);
       await refreshShell();
       toast(t('ai.status.cleared'), 'info');
