@@ -82,7 +82,9 @@ export function mount(panel, ctx) {
   panel.appendChild(root);
 
   function applyOverlay() {
-    if (!active || !overlayOn || !result || isEta(ctx)) {
+    // Stale values (an edit since the run, or a re-run that failed) describe
+    // an older tree: they must not colour the changed one.
+    if (!active || !overlayOn || !result || stale || isEta(ctx)) {
       ctx.setOverlay(null);
       return;
     }
@@ -306,9 +308,9 @@ export function mount(panel, ctx) {
       if (!hasRun && !running) return;
       stale = true;
       paint();
+      applyOverlay(); // clears it: old values must not colour the changed tree
       if (active && justActivated) {
         runSoon.cancel();
-        ctx.setOverlay(null); // old values must not colour the changed tree
         run();
       } else if (active) runSoon();
     },

@@ -156,3 +156,18 @@ def test_uncertainty_seed_must_be_a_safe_integer():
     }
     for name in ("function readInputs()", "async function saveDefaults()"):
         assert "const badSeed = !seedIsValid(seed);" in _block(src, name), name
+
+
+# ---- Importance: stale FV values never colour the changed tree -------------------------
+# With the tab visible, an edit left the diagram and the tree bars coloured by
+# the previous run's FV until the debounced re-run answered -- and for good
+# when that re-run failed (a gate made 10-of-25 voting: 422), while the tab
+# itself said the results were stale.
+
+def test_importance_overlay_is_cleared_while_stale():
+    src = _read(TABS / "importance.js")
+    guard = re.search(r"function applyOverlay\(\) \{.*?if \((.*?)\) \{", src, re.S).group(1)
+    assert "stale" in guard.split("||")[3], guard
+    body = _block(src, "    onStale()")
+    assert body.index("stale = true;") < body.index("applyOverlay();") < body.index("if (active && justActivated)"), \
+        "cleared on every stale signal, not only right after activation"
