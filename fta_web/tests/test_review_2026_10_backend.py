@@ -572,3 +572,34 @@ class TestDeeplyNestedBody:
         response = full_client.post("/api/nodes", json={
             "parentId": "root", "name": "x", "trace": {"tags": ["a", "b"]}})
         assert response.status_code == 200, body(response)
+
+
+# --------------------------------------------------------------------------
+# B-9: POST /api/new {"force": "false"} discarded the unsaved document
+# --------------------------------------------------------------------------
+
+
+class TestNewForceFlag:
+    """``force`` was read as ``bool(payload.get("force"))``, so the string
+    "false" (or "0", "no") -- truthy -- discarded unsaved work that the 409
+    UNSAVED_CHANGES guard exists to protect. Only a real boolean forces."""
+
+    @pytest.mark.parametrize("value", ["false", "0", "no", 1, [], {"x": 1}])
+    def test_a_non_boolean_force_is_refused_and_discards_nothing(self, tree_client, value):
+        c = tree_client
+        assert c.post("/api/nodes", json={"parentId": "root", "name": "work"}).status_code == 200
+        refused = c.post("/api/new", json={"force": value})
+        assert refused.status_code == 400, body(refused)
+        assert body(refused)["error"]["code"] == "INVALID_FIELD"
+        assert body(refused)["error"]["detail"]["field"] == "force"
+        assert get_state().dirty is True
+        assert get_state().core.find_node_by_id("root_0") is not None
+
+    def test_null_or_false_is_not_forced_and_true_is(self, tree_client):
+        c = tree_client
+        assert c.post("/api/nodes", json={"parentId": "root", "name": "work"}).status_code == 200
+        for value in (None, False):
+            assert c.post("/api/new", json={"force": value}).status_code == 409
+        assert c.post("/api/new", json={}).status_code == 409
+        assert c.post("/api/new", json={"force": True}).status_code == 200
+        assert get_state().core.find_node_by_id("root_0") is None

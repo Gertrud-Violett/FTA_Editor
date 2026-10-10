@@ -473,7 +473,15 @@ def update_metadata():
 def new_document():
     """Start an empty document. Refuses to discard unsaved work unless forced."""
     payload = _body()
-    force = bool(payload.get("force", False))
+    force = payload.get("force")
+    # A real boolean only: bool("false") is True, and this flag is the one
+    # thing between the user's unsaved work and the bin.
+    if force is not None and not isinstance(force, bool):
+        raise ApiError(
+            INVALID_FIELD, "'force' must be true or false.", 400,
+            {"field": "force", "value": force},
+        )
+    force = bool(force)
     state = get_state()
 
     with state.lock:
