@@ -65,3 +65,51 @@ def test_rate_without_an_own_t_still_uses_the_mission_time(quant):
     assert derived["params"]["TFromMission"] is True and derived["params"]["T"] == 1000.0
     assert derived["q"] == pytest.approx(-__import__("math").expm1(-0.1))
     assert derived["warnings"] == []
+
+
+# ---- E-4: a link loop that passes through a transfer is a loop too ------------------------
+
+
+def _cyclic(tree):
+    from fta_web import lint
+
+    return sorted((i["code"], i["nodeId"]) for i in lint.run(tree, None)
+                  if i["code"] == "CYCLIC_LINK")
+
+
+def test_cyclic_link_through_a_transfer_is_reported():
+    """X -(OR-link)-> T -(transfer)-> Y -(OR-link)-> X is the same loop as
+    X -> Y -> X: the engine resolves both with the gate-only fallback and
+    counts X twice (X = 0.352 = OR(0.1, OR(0.2, 0.1))). Lint built its loop
+    graph from child edges and links only, so the version with a transfer
+    was not reported at all."""
+    through_transfer = gate("root", "OR", [
+        leaf("X", 0.1, links=[{"target_id": "T", "relation": "OR"}]),
+        gate("T", "TRANSFER", [], transferTo="Y"),
+        leaf("Y", 0.2, links=[{"target_id": "X", "relation": "OR"}]),
+    ])
+    links_only = gate("root", "OR", [
+        leaf("X", 0.1, links=[{"target_id": "Y", "relation": "OR"}]),
+        leaf("Y", 0.2, links=[{"target_id": "X", "relation": "OR"}]),
+    ])
+    assert calc(through_transfer).find_node_by_id("X")["calculatedProbability"] == \
+        calc(links_only).find_node_by_id("X")["calculatedProbability"] == pytest.approx(0.352)
+    assert _cyclic(links_only) == [("CYCLIC_LINK", "X"), ("CYCLIC_LINK", "Y")]
+    assert _cyclic(through_transfer) == [("CYCLIC_LINK", "X"), ("CYCLIC_LINK", "Y")]
+
+
+def test_transfer_edges_do_not_flag_links_outside_a_loop():
+    from fta_web import lint
+
+    # T transfers to G and A AND-links to G: no loop, nothing to report.
+    tree = gate("root", "OR", [
+        gate("G", "AND", [leaf("B", 0.1), leaf("C", 0.2)]),
+        gate("T", "TRANSFER", [], transferTo="G"),
+        leaf("A", 0.3, links=[{"target_id": "G", "relation": "AND"}]),
+    ])
+    assert _cyclic(tree) == []
+    # A transfer loop without any link stays TRANSFER_CYCLE's business.
+    loop = gate("root", "OR", [gate("G", "OR", [gate("T", "TRANSFER", [], transferTo="G"),
+                                               leaf("B", 0.1)])])
+    codes = [i["code"] for i in lint.run(loop, None)]
+    assert "TRANSFER_CYCLE" in codes and "CYCLIC_LINK" not in codes

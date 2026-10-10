@@ -26,7 +26,8 @@ KOFN_ARITY                  error     FTA   KOFN with k missing, k < 1 or k > n
 XOR_ARITY                   error     FTA   XOR without exactly 2 inputs
 QUANT_PARAM_MISSING         error     FTA   a rate/standby/repairable model lacks a
                                             parameter (engine; the old value is kept)
-CYCLIC_LINK                 warning   FTA   a link closes a loop (child edges + links);
+CYCLIC_LINK                 warning   FTA   a link closes a loop (child edges, links and
+                                            transfers);
                                             the engine skips it, so the result is
                                             approximate
 TRANSFER_HAS_CHILDREN       warning   FTA   a TRANSFER has children (they are ignored)
@@ -256,7 +257,9 @@ def _has_quant_model(node: Dict[str, Any]) -> bool:
 
 def _cyclic_links(nodes: List[Dict[str, Any]], index: Dict[str, Dict[str, Any]]):
     """(owner, link) for every link whose two ends lie in one strongly connected
-    component of the child + link graph (i.e. the link closes a loop)."""
+    component of the child + link + transfer graph (i.e. the link closes a
+    loop). A transfer takes its target's value, so a loop that passes through
+    one is evaluated by the engine exactly like a loop of links."""
     pos = {id(n): i for i, n in enumerate(nodes)}
     adjacency: List[List[int]] = [[] for _ in nodes]
     any_link = False
@@ -264,6 +267,10 @@ def _cyclic_links(nodes: List[Dict[str, Any]], index: Dict[str, Dict[str, Any]])
         for child in node.get("children") or []:
             if id(child) in pos:
                 adjacency[i].append(pos[id(child)])
+        if _gate_type(node) == "TRANSFER" and node.get("transferTo") not in (None, ""):
+            target = index.get(str(node.get("transferTo")))
+            if target is not None and target is not node:
+                adjacency[i].append(pos[id(target)])
         for link in node.get("links") or []:
             if not isinstance(link, dict):
                 continue
