@@ -212,8 +212,8 @@ def _ai_failures(secret: Optional[str] = None):
 # ---- state helpers -------------------------------------------------------
 
 
-def _document_snapshot() -> Tuple[Dict[str, Any], str, str, Any]:
-    """``(tree, mode, title, document)``, deep-copied under the lock.
+def _document_snapshot() -> Tuple[Dict[str, Any], str, str, Any, Any]:
+    """``(tree, mode, title, document, analysis)``, deep-copied under the lock.
 
     A copy, not the live tree: it is about to be walked and formatted on a
     worker thread that will outlive this request if the provider hangs, and
@@ -223,6 +223,10 @@ def _document_snapshot() -> Tuple[Dict[str, Any], str, str, Any]:
     ``document`` is the live ``state.core`` the copy was taken from. New, Open
     and Import replace that object, so it says which document the model's
     answer is about -- see :func:`_unchanged_since`.
+
+    ``analysis`` is the document's settings block (mission time, cut-set
+    limits), which the "Analysis results" the model is shown are computed
+    with -- see :func:`_with_results`.
     """
     state = get_state()
     with state.lock:
@@ -231,7 +235,24 @@ def _document_snapshot() -> Tuple[Dict[str, Any], str, str, Any]:
             state.core.mode,
             state.core.title,
             state.core,
+            copy.deepcopy(getattr(state.core, "analysis", None)),
         )
+
+
+def _with_results(handler, tree: Any, mode: str, analysis: Any, func):
+    """``func`` (a handler call that builds the model's context), with the
+    editor's own results for this snapshot added to that context.
+
+    The context the vendored handler writes carries each node's tree-walk
+    value and nothing else, so for a tree with repeated events the model was
+    never told the headline (the MCUB) and reported the double counting the
+    tool already corrects. ``ai_bridge.analysis_section`` is computed here,
+    on the request thread and from the snapshot -- not under the document
+    lock, and at most the summary's 2 s -- and is empty in ETA mode or when
+    the cut sets fail, which leaves the context exactly as it was.
+    """
+    section = ai_bridge.analysis_section(tree, mode, analysis)
+    return ai_bridge.with_analysis(handler, section, func)
 
 
 def _unchanged_since(state, tree: Any, mode: str, document: Any) -> bool:
@@ -440,7 +461,7 @@ def post_chat():
     message = _required_text(payload, "message")
 
     handler = ai_bridge.get_handler()
-    tree, mode, title, document = _document_snapshot()
+    tree, mode, title, document, analysis = _document_snapshot()
     secret = ai_bridge.call_secret()
 
     with _ai_failures(secret):
@@ -452,7 +473,9 @@ def post_chat():
             return handler.send_message(message, include_fta_context=True)
 
         reply, changes = ai_bridge.run_ai_call(
-            "chat", ai_bridge.proposing(handler, document, _send)
+            "chat",
+            _with_results(handler, tree, mode, analysis,
+                          ai_bridge.proposing(handler, document, _send)),
         )
 
     return ok_response(
@@ -477,13 +500,14 @@ def post_analyze():
     _require_configured()
 
     handler = ai_bridge.get_handler()
-    tree, mode, title, document = _document_snapshot()
+    tree, mode, title, document, analysis = _document_snapshot()
     secret = ai_bridge.call_secret()
 
     with _ai_failures(secret):
         reply, changes = ai_bridge.run_ai_call(
             "analyze",
-            ai_bridge.proposing(handler, document, handler.get_quick_analysis),
+            _with_results(handler, tree, mode, analysis,
+                          ai_bridge.proposing(handler, document, handler.get_quick_analysis)),
             tree,
             mode,
             title,
@@ -694,7 +718,7 @@ def post_update():
     _require_configured()
 
     handler = ai_bridge.get_handler()
-    tree, mode, title, document = _document_snapshot()
+    tree, mode, title, document, analysis = _document_snapshot()
     secret = ai_bridge.call_secret()
 
     with _ai_failures(secret):
@@ -702,7 +726,9 @@ def post_update():
         # like any others, so they are recorded against this document as well.
         assistant_text, updated = ai_bridge.run_ai_call(
             "update",
-            ai_bridge.proposing(handler, document, handler.generate_full_fta_update),
+            _with_results(handler, tree, mode, analysis,
+                          ai_bridge.proposing(handler, document,
+                                              handler.generate_full_fta_update)),
             tree,
             mode,
             title,

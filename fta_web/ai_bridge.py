@@ -11,9 +11,16 @@ No AI logic is re-implemented. Prompts, response parsing, change application
 and JSON validation all belong to ``AI_agent_handler``; this module only calls
 it, off the request thread and under a timeout.
 
-One thing is added around the vendored handler rather than inside it (the
-core is hash-pinned, and this needs the package's own validators):
+Two things are added around the vendored handler rather than inside it (the
+core is hash-pinned, and both need this package's engine and validators):
 
+* **What the model is told about the numbers** (:func:`analysis_section`).
+  The handler's context gives every node's tree-walk value and calls the
+  root's the "Top-level Probability". For a tree with repeated events the
+  editor's headline is the MCUB, so the model would "find" the double
+  counting the tool already corrects. An "Analysis results" section with the
+  headline, its method, the repeated events and the top cut sets is appended
+  to the context (FTA mode only).
 * **Links in a suggestion** (:func:`apply_change`). The handler's add/edit
   write name, type, probability, gate and notes and nothing else, while its
   prompt invites link suggestions: a suggested link was dropped and the
@@ -92,11 +99,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.ai_bridge``
     from . import config
-    from .engine import derive_quant
+    from .engine import derive_quant, summary_with_cut_sets
     from .errors import ApiError
     from .node_schema import (
         NODE_KEYS,
         VALIDATORS,
+        canonical_mode,
         drop_duplicate_links,
         refuse_unsavable_text,
         validate_links,
@@ -104,11 +112,12 @@ try:  # normal package import: ``import fta_web.ai_bridge``
     from .tree_ops import all_ids
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
-    from engine import derive_quant  # type: ignore[no-redef]
+    from engine import derive_quant, summary_with_cut_sets  # type: ignore[no-redef]
     from errors import ApiError  # type: ignore[no-redef]
     from node_schema import (  # type: ignore[no-redef]
         NODE_KEYS,
         VALIDATORS,
+        canonical_mode,
         drop_duplicate_links,
         refuse_unsavable_text,
         validate_links,
@@ -162,6 +171,31 @@ class UnknownProvider(AiError):
 # mkdir's ~/.fta_editor as a side effect, and merely importing this module
 # should not touch the user's home directory.
 
+
+
+class WebAgentHandler(AIAgentHandler):
+    """The vendored handler, with the editor's own results in its context.
+
+    ``set_fta_context`` is where every path (chat, Analyze, Update FTA)
+    builds what the model is shown, two of them from inside the handler, so
+    this is the one place that reaches all three without editing the core.
+    """
+
+    #: The "Analysis results" text for the call in flight, set and cleared by
+    #: :func:`with_analysis` inside the call slot. Empty: the context is the
+    #: vendored handler's, byte for byte (ETA mode, cut sets unavailable).
+    analysis_section = ""
+
+    def set_fta_context(self, fta_data, mode="FTA", title=""):
+        super().set_fta_context(fta_data, mode, title)
+        if self.analysis_section:
+            # The summary's first line calls the root's tree-walk value the
+            # top-level probability; with the headline below it, say which.
+            self.current_fta_context = self.current_fta_context.replace(
+                "- Top-level Probability: ", "- Top-level Probability (tree walk): ", 1
+            ) + "\n\n" + self.analysis_section
+
+
 _handler: Optional[AIAgentHandler] = None
 _handler_lock = threading.Lock()
 
@@ -171,7 +205,7 @@ def get_handler() -> AIAgentHandler:
     global _handler
     with _handler_lock:
         if _handler is None:
-            _handler = AIAgentHandler()
+            _handler = WebAgentHandler()
         return _handler
 
 
@@ -184,7 +218,7 @@ def reset_handler() -> AIAgentHandler:
     """
     global _handler
     with _handler_lock:
-        _handler = AIAgentHandler()
+        _handler = WebAgentHandler()
         return _handler
 
 
@@ -695,6 +729,160 @@ def pending_changes_view(handler: AIAgentHandler) -> List[Dict[str, Any]]:
         change_view(change, index)
         for index, change in enumerate(handler.pending_changes)
     ]
+
+
+# ---- what the model is told about the results ----------------------------
+#
+# Deterministic text, built from the same summary the top bar shows and the
+# cut sets it was derived from (one expansion, the summary's own caps and its
+# 2 s budget). Compact on purpose: it is sent with every message.
+
+#: How many minimal cut sets, and repeated events, the section lists.
+ANALYSIS_TOP_CUT_SETS = 10
+ANALYSIS_MAX_REPEATED = 20
+#: A node name in the section is cut to this many characters.
+ANALYSIS_NAME_CHARS = 48
+
+ANALYSIS_HEADER = "--- Analysis results (computed by FTA Editor; use these, do not recompute) ---"
+ANALYSIS_FOOTER = "--- End of analysis results ---"
+
+_APPROXIMATION_TEXT = {
+    "PAND_APPROX": "priority-AND gate %s is computed as product/n! (the sequence is not "
+                   "modelled; the cut sets treat it as AND)",
+    "XOR_ARITY": "XOR gate %s has other than two inputs and is computed as odd parity",
+    "STANDBY_LARGE_LT": "standby event %s has lambda*tau > 0.2, where the lambda*tau/2 "
+                        "approximation is inaccurate",
+}
+
+
+def _six(value: Any) -> str:
+    """A number at six significant figures; "n/a" when there is none."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return "n/a"
+    number = float(value)
+    if number != number or number in (float("inf"), float("-inf")):
+        return "n/a"
+    return "%.6g" % number
+
+
+def _named(node_id: Any, name: Any) -> str:
+    """``id "name"``, the name on one line and cut to ANALYSIS_NAME_CHARS."""
+    text = " ".join(str(name if name is not None else "").split())
+    if len(text) > ANALYSIS_NAME_CHARS:
+        text = text[: ANALYSIS_NAME_CHARS - 1] + "…"
+    return '%s "%s"' % (node_id, text)
+
+
+def analysis_section(tree: Any, mode: Any = "FTA", analysis: Any = None) -> str:
+    """The "Analysis results" text appended to the model's context, or "".
+
+    "" -- nothing is added, the context is the vendored handler's -- in ETA
+    mode (an event tree has no cut sets) and when the cut sets cannot be had
+    (a voting gate too large, the 2 s budget, any failure): the section must
+    never cost the user their AI call.
+
+    Otherwise, in this order: the headline and its method, with one sentence
+    saying that an MCUB headline already counts each repeated event once; the
+    tree-walk value; the other bound; the repeated events; the top
+    ``ANALYSIS_TOP_CUT_SETS`` minimal cut sets with probability and share;
+    approximations and truncation; the mission time. Numbers have six
+    significant figures. The same document always gives the same text.
+    """
+    if canonical_mode(mode) == "ETA" or not isinstance(tree, dict) or not tree:
+        return ""
+    try:
+        summary, cut = summary_with_cut_sets(tree, analysis)
+    except Exception:  # noqa: BLE001 -- see the docstring
+        return ""
+    if not isinstance(cut, dict) or not isinstance(summary, dict):
+        return ""
+
+    lines = [ANALYSIS_HEADER]
+    headline, walk = _six(summary.get("headline")), _six(summary.get("treeWalk"))
+    if summary.get("headlineMethod") == "mcub":
+        lines.append("Top event probability (headline): %s by MCUB (min-cut upper bound "
+                     "over the minimal cut sets)." % headline)
+        lines.append("The headline already counts each repeated event once, so the double "
+                     "counting in the tree-walk value is corrected in it.")
+        lines.append("Tree walk: %s (every branch taken as independent; the 'Top-level "
+                     "Probability' and every 'Calculated Probability' above are tree-walk "
+                     "values)." % walk)
+    else:
+        lines.append("Top event probability (headline): %s by tree walk (no event is "
+                     "repeated, so no branch is counted twice)." % headline)
+        lines.append("MCUB (min-cut upper bound) for comparison: %s." % _six(summary.get("mcub")))
+    lines.append("Rare-event approximation (sum of the cut sets): %s."
+                 % _six(summary.get("rareEvent")))
+
+    repeated = [e for e in summary.get("repeatedEvents") or [] if isinstance(e, dict)]
+    if repeated:
+        shown = "; ".join(_named(e.get("id"), e.get("name"))
+                          for e in repeated[:ANALYSIS_MAX_REPEATED])
+        more = len(repeated) - ANALYSIS_MAX_REPEATED
+        lines.append("Repeated events (%d), each reached by more than one branch: %s%s."
+                     % (len(repeated), shown, "; and %d more" % more if more > 0 else ""))
+    else:
+        lines.append("Repeated events: none.")
+
+    cut_sets = [c for c in cut.get("cutSets") or [] if isinstance(c, dict)]
+    total = cut.get("total", len(cut_sets))
+    top = cut_sets[:ANALYSIS_TOP_CUT_SETS]
+    if top:
+        lines.append("Minimal cut sets: %s; the top %d by probability, as probability "
+                     "(share of the rare-event sum): events" % (total, len(top)))
+        for position, cut_set in enumerate(top, start=1):
+            events = " AND ".join(_named(e.get("id"), e.get("name"))
+                                  for e in cut_set.get("events") or [] if isinstance(e, dict))
+            lines.append("%d. %s (%s%%): %s" % (
+                position, _six(cut_set.get("probability")),
+                "%.3g" % (100.0 * float(cut_set.get("share") or 0.0)), events))
+    else:
+        lines.append("Minimal cut sets: none.")
+
+    notes = []
+    for item in summary.get("approximations") or []:
+        if not isinstance(item, dict):
+            continue
+        text = _APPROXIMATION_TEXT.get(str(item.get("code")))
+        notes.append(text % item.get("nodeId") if text
+                     else "%s at %s" % (item.get("code"), item.get("nodeId")))
+    if summary.get("nonCoherent"):
+        notes.append("the tree has XOR gates and is non-coherent (the cut sets treat XOR as OR)")
+    lines.append("Approximations: %s." % ("; ".join(notes) if notes else "none"))
+
+    truncated_by = [str(b) for b in summary.get("truncatedBy") or []]
+    if summary.get("truncated"):
+        lines.append("Cut sets truncated by the document's limits (%s): the MCUB is from "
+                     "the sets kept." % (", ".join(truncated_by) or "limit"))
+    if summary.get("capped"):
+        lines.append("The headline is computed from the first %s cut sets only (the "
+                     "headline's own cap); the Cut Sets tab may list more." % total)
+
+    settings = analysis if isinstance(analysis, dict) else {}
+    lines.append("Mission time: %s h (shown to the user in %s)."
+                 % (_six(settings.get("missionTime")), settings.get("timeUnit") or "h"))
+    lines.append(ANALYSIS_FOOTER)
+    return "\n".join(lines)
+
+
+def with_analysis(handler: AIAgentHandler, section: str, func: Callable[..., Any]
+                  ) -> Callable[..., Any]:
+    """``func`` for :func:`run_ai_call`, with ``section`` appended to the
+    context the handler builds during it (:class:`WebAgentHandler`).
+
+    Set on the worker, inside the call slot, and cleared when the handler
+    returns: calls are serialised, so one call's section can never be read
+    by another -- also not by a call that timed out and is still running.
+    """
+
+    def call(*args: Any, **kwargs: Any) -> Any:
+        handler.analysis_section = section or ""
+        try:
+            return func(*args, **kwargs)
+        finally:
+            handler.analysis_section = ""
+
+    return call
 
 
 # ---- which document a proposal was made for -----------------------------

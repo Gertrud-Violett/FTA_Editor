@@ -770,6 +770,16 @@ def summary(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None) -> 
     is the headline, ``mcub``/``rareEvent`` are None and ``truncated`` is True
     (as in 1.7.0); a timeout also sets ``capped``.
     """
+    return summary_with_cut_sets(tree, analysis)[0]
+
+
+def summary_with_cut_sets(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None
+                          ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """``(summary, cut_sets)``: :func:`summary` together with the
+    ``cutsets.compute`` result it was derived from (``None`` when the cut
+    sets failed or ran out of time), for a caller that wants the headline
+    *and* the sets it came from without expanding the tree twice (the AI
+    context: ``ai_bridge.analysis_section``). Same caps, same 2 s budget."""
     import time as _time
 
     try:
@@ -817,7 +827,7 @@ def summary(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None) -> 
             "capped": capped,
         }
     out["elapsedMs"] = round((_time.perf_counter() - started) * 1000.0, 1)
-    return out
+    return out, result
 
 
 def _summary_doc_max_count(analysis: Optional[Dict[str, Any]]) -> int:
