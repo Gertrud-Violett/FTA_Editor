@@ -50,9 +50,10 @@ uv run python desktop/src/FTA_Editor_UI.py         # or: python desktop/src/FTA_
 See [desktop/README.md](desktop/README.md) for the defects that are fixed in
 the web app but not in this fallback.
 
-Or run `python install.py`, which detects `uv` and uses it automatically,
-falling back to pip if `uv` isn't on your PATH — either way it checks
-prerequisites and offers to launch the app when it's done.
+Or run `python install.py`, which asks which app to set up (web, desktop or
+both), detects `uv` and uses it automatically, falling back to pip if `uv`
+isn't on your PATH — either way it checks prerequisites, prints the command
+that starts the app and offers to run the test suite when it's done.
 </details>
 
 <details>
@@ -92,8 +93,8 @@ Switch on **Advanced** in the top bar to get:
 - failure-rate models (λ with a mission time, standby, repairable)
 - k-out-of-n, XOR, INHIBIT, Priority-AND and transfer gates
 - house and undeveloped events
-- the **Cut Sets**, **Importance**, **Uncertainty**, **Traceability**,
-  **FMEA** and **Report** tabs
+- the **Quantification**, **Cut Sets**, **Importance**, **Uncertainty**,
+  **Traceability**, **FMEA** and **Report** tabs
 
 Nothing in the file or the results changes when you flip the switch. **Sig.
 figs** in the top bar sets how many significant figures probabilities are
@@ -158,6 +159,11 @@ See [README.md](README.md#ai-assistant-setup) for detailed setup instructions.
 
 ## Keyboard Shortcuts
 
+Web app: `Alt+N` new (browsers keep `Ctrl+N` for a new window), `Ctrl+A` /
+`Ctrl+E` / `Ctrl+D` add / edit / delete, `Ctrl+S` save, `Ctrl+Z` / `Ctrl+Y`
+undo / redo. The full list is in
+[USER_GUIDE → Keyboard Shortcuts](docs/USER_GUIDE.md#keyboard-shortcuts).
+
 Desktop app:
 
 | Shortcut | Action |
@@ -167,6 +173,7 @@ Desktop app:
 | `Ctrl+E` | Edit node |
 | `Ctrl+D` | Delete node |
 | `Ctrl+S` | Save |
+| `Ctrl+Shift+S` | Save As |
 | `Ctrl+R` | Render diagram |
 
 ## Need Help?

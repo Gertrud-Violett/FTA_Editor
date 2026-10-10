@@ -140,10 +140,11 @@ from the network. It is a single-user tool and runs as a single process — do
 not put it behind gunicorn or uWSGI, which it refuses to start under.
 
 **No Graphviz needed.** The diagram is rendered in your browser by a bundled
-WebAssembly build of Graphviz. If you *do* have Graphviz installed, the extra
-"render to file" export is enabled as well. Anything unavailable — Graphviz,
-`openpyxl` for Excel, an AI provider SDK — shows up as a disabled control with
-an explanation, never as a button that fails when you press it.
+WebAssembly build of Graphviz. If you *do* have Graphviz installed, the PNG
+export of the compact style uses it for a native 300 dpi image; otherwise the
+PNG is rasterised in the browser. Anything unavailable — `openpyxl` for Excel,
+an AI provider SDK — shows up as a disabled control with an explanation, never
+as a button that fails when you press it.
 
 ### Standalone executable (no Python required)
 
@@ -198,7 +199,7 @@ The FTA Editor includes an integrated AI assistant supporting multiple providers
    - **Google Gemini**: https://aistudio.google.com/apikey (free tier available)
    - **OpenAI**: https://platform.openai.com/api-keys
    - **Microsoft Copilot**: https://portal.azure.com (Azure OpenAI service)
-   - **Anthropic Claude**: https://console.anthropic.com/api-keys
+   - **Anthropic Claude**: https://console.anthropic.com/settings/keys
 
 2. Open FTA Editor → Click AI Settings (⚙)
 
@@ -224,9 +225,10 @@ For detailed setup instructions, see [docs/QUICK_AI_SETUP.md](docs/QUICK_AI_SETU
 python3 fta_web/run.py
 ```
 
-Open the printed URL. The left panel is the tree, the middle the node details,
-the right the live diagram; the AI assistant is in its own panel. Everything is
-in one page — there is nothing to install in the browser.
+Open the printed URL. The left panel is the tree, the middle the live diagram,
+the right the AI assistant; the node details are the **Details** tab of the
+bottom panel. Everything is in one page — there is nothing to install in the
+browser.
 
 ### Legacy desktop application (fallback)
 
@@ -296,9 +298,10 @@ FTA_Editor/
 `fta_web/core/` is a **vendored fork** of four modules from `desktop/src/`,
 taken at a pinned commit and patched for defects that are documented one by
 one in [`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md).
-`desktop/src/`, `desktop/tests/` and `desktop/data/` are frozen and pinned by
-hash; `fta_web/tests/test_vendor_integrity.py` fails if either side changes
-without the record being updated.
+`desktop/src/`, `desktop/tests/` and `desktop/data/` are frozen; the source
+and the sample data are pinned by hash, and
+`fta_web/tests/test_vendor_integrity.py` fails if either side changes without
+the record being updated.
 
 ## Testing
 
@@ -323,7 +326,7 @@ python -m pytest desktop/tests/    # the frozen legacy suite
 ## Export Formats
 
 - **JSON**: Complete tree data with metadata
-- **XML**: Standard fault tree format
+- **XML**: The tree as nested `<Node>` elements (the editor's own layout, not a standard exchange format)
 - **Excel**: Hierarchical spreadsheet with color coding, plus flat **Events** and **Analysis** sheets (1.7)
 - **DOCX report** (1.7, needs the `report` extra): headline, assumptions, diagram, events, cut sets, importance, uncertainty, validation, traceability
 
@@ -362,8 +365,8 @@ python -m pytest desktop/tests/    # the frozen legacy suite
 
 **Graphviz not found:**
 - *Web app*: the diagram still renders — it is drawn in your browser by a
-  bundled WebAssembly Graphviz. Only "render to file" needs the native binary,
-  and the app tells you so rather than failing silently.
+  bundled WebAssembly Graphviz. PNG export is then rasterised in the browser
+  instead of natively at 300 dpi, and the capability indicator says so.
 - *Desktop app*: install Graphviz from
   [graphviz.org](https://graphviz.org/download/), add it to your `PATH`, and
   restart the application.

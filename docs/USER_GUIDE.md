@@ -155,7 +155,7 @@ Initiating Event (0.001)
 - Color-coded by depth level
 - Click to select nodes
 - Shows node names
-- Red asterisk (*) marks zero-probability nodes
+- A ✖ marker flags zero-probability nodes
 
 ### Diagram Preview
 
@@ -254,15 +254,16 @@ model in the **Quantification** tab.
 
 ## AI Assistant
 
-The AI Assistant provides intelligent analysis and suggestions for your fault trees using OpenAI-compatible APIs.
+The AI Assistant provides intelligent analysis and suggestions for your fault trees. It works with OpenAI, Microsoft Copilot (Azure OpenAI), Anthropic Claude and Google Gemini.
 
 ### Setup
 
 1. Click the **⚙ (Settings)** button in the AI Assistant panel
-2. Enter your API credentials:
-   - **API Key**: Your OpenAI or compatible API key
-   - **API Endpoint**: `https://api.openai.com/v1` (default) or your custom endpoint
-   - **Model**: Select gpt-4o, gpt-4o-mini, or other models
+2. Choose a provider and enter your API credentials:
+   - **Provider**: OpenAI, Microsoft Copilot, Anthropic Claude or Google Gemini
+   - **API Key**: The provider's API key
+   - **Model**: Pick one of the suggestions (for example gpt-4o) or type any model name
+   - **API Endpoint** (under *Advanced* in the web app): filled in from the provider, `https://api.openai.com/v1` for OpenAI; change it only for a proxy or a compatible gateway
 3. Click **Test & Save** to verify and store credentials
 
 > **Security**: Credentials are stored locally at `~/.fta_editor/ai_credentials.json`, never in the repository.
@@ -280,7 +281,7 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
   and disk permissions to keep it private.
 - **Scope**: local to this machine only. The key never leaves your computer
   except in the direct request the AI Assistant makes to the provider you
-  configured (OpenAI, Anthropic or Google); it is never sent anywhere else,
+  configured (OpenAI, Microsoft Azure, Anthropic or Google); it is never sent anywhere else,
   written into a saved `.json` analysis file, or committed to the
   repository.
 - **Removing it**: click the **⚙ (Settings)** button in the AI Assistant
@@ -410,7 +411,8 @@ Flows top-down from root to leaves.
 
 ### Zero Probability Nodes
 
-Nodes with zero probability are marked with red asterisk (*) in tree view.
+Nodes with zero probability are marked with a ✖ in the tree view. In the
+diagram, a calculated probability of exactly 0 is shaded light blue.
 
 **Common Causes**:
 - Base probability set to 0.0
@@ -424,9 +426,9 @@ is frozen and has none of it; see
 [Desktop app compatibility](#desktop-app-compatibility) for what happens when
 it opens a 1.7 file.
 
-Most of the analysis features (all but validation) work on **fault trees**
-(FTA mode). In ETA mode the analysis tabs show a notice, and the API returns
-`409 MODE_UNSUPPORTED`.
+Most of the analysis features (all but validation and the DOCX report) work
+on **fault trees** (FTA mode). In ETA mode the analysis tabs show a notice,
+and the API returns `409 MODE_UNSUPPORTED`.
 
 ### Basic and Advanced mode
 
@@ -1015,8 +1017,8 @@ in the compact style. When neither is available, the report says the diagram
 is not available. ETA documents are accepted; the fault-tree-only sections
 say they do not apply.
 
-**Excel export** (`Export Excel` here, or the usual export menu) writes three
-sheets:
+**Excel export** (**Export Excel** here, or **Excel** in the action bar) writes
+three sheets:
 
 - **FTA**: the 1.6 hierarchical sheet, unchanged.
 - **Events**: one row per node in tree order. The columns are Id, Name, Parent
@@ -1200,7 +1202,8 @@ AND/OR and fixed probabilities only.
 
 ### JSON Export
 
-**File → Save JSON**
+**Save** / **Save As** in the action bar (**JSON** downloads a copy; desktop
+app: **(S)ave JSON As**)
 
 Saves complete analysis including:
 - Metadata (title, date, mode)
@@ -1220,7 +1223,7 @@ Saves complete analysis including:
 
 ### Excel Export
 
-**File → Export Excel**
+**Excel** in the action bar (desktop app: **Export Excel**)
 
 Hierarchical column structure:
 - Column A: Root events
@@ -1245,9 +1248,11 @@ headline figures). See [Report (DOCX) and Excel sheets](#report-docx-and-excel-s
 
 ### XML Export
 
-**File → Export XML**
+**XML** in the action bar (desktop app: **Export XML**)
 
-Standard fault tree XML format, compatible with other FTA tools.
+A `<FaultTree>` of nested `<Node>` elements carrying the name, type, base and
+calculated probability, logic gate, notes and links. It is the editor's own
+layout, not a standard exchange format, and it does not carry the 1.7 keys.
 
 ## Keyboard Shortcuts
 
@@ -1316,7 +1321,9 @@ renames, `Ctrl+Shift+arrows` move the focused node. In the bottom tab strip:
 A: Different modes calculate differently - this is expected. FTA is bottom-up, ETA is top-down.
 
 **Q: Can't see diagram preview**
-A: Ensure Graphviz is installed and in your PATH.
+A: The web app needs no Graphviz: the diagram is drawn in the browser, so check
+the browser console (`/static/vendor/viz-js/viz.js` must load). The desktop app
+needs Graphviz installed and in your PATH.
 
 **Q: Zero probability nodes everywhere**
 A: Check that probabilities are set > 0. In FTA mode, check logic gates.
@@ -1360,7 +1367,8 @@ A: Verify your API key is valid and has available credits. Check internet connec
 A: Consider using a faster model like `gpt-4o-mini`. Check your API rate limits.
 
 **Q: AI suggestions don't apply correctly**
-A: Ensure you've reviewed and selected the changes in the confirmation dialog.
+A: Ensure you've reviewed and ticked the changes in the *Suggested changes*
+list before **Apply selected** (the desktop app: the confirmation dialog).
 
 ## Best Practices
 
