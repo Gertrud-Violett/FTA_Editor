@@ -326,6 +326,12 @@ ACTION: [add|edit|delete|move]
 TARGET: [node_id or parent_id - must be an existing node ID]
 DATA: {{"id": "unique_id", "name": "node_name", "type": "Event|Gate|Intermediate", "probability": 0.5, "logicGate": "AND|OR", "notes": ""}}
 
+TARGET and DATA depend on the ACTION:
+- add: TARGET is the ID of the parent node; DATA is the new node.
+- edit: TARGET is the ID of the node to change; DATA is that node with its new values.
+- delete: TARGET is the ID of the node to delete; DATA is {{"id": "that_node_id"}}.
+- move: TARGET is the ID of the node to move; DATA is {{"parent_id": "id_of_the_new_parent"}}.
+
 EXAMPLE of adding nested nodes (correct approach):
 SUGGESTION: Add intermediate failure mode
 DESCRIPTION: Add "Material Degradation" under root as parent
@@ -338,6 +344,13 @@ DESCRIPTION: Add "Corrosion" under Material Degradation
 ACTION: add
 TARGET: material_deg
 DATA: {{"id": "corrosion", "name": "Corrosion", "type": "Event", "probability": 0.05, "logicGate": "", "notes": "Caused by moisture"}}
+
+EXAMPLE of moving an existing node under another parent:
+SUGGESTION: Group fatigue under material degradation
+DESCRIPTION: Move the existing node "fatigue" under "Material Degradation"
+ACTION: move
+TARGET: fatigue
+DATA: {{"parent_id": "material_deg"}}
 
 CRITICAL RULES FOR YOUR RESPONSES:
 - Never suggest changes that would break the JSON structure
@@ -607,8 +620,13 @@ Example of a valid node for DATA field:
                                 # 'NOT' is rejected: the probability engine treats
                                 # any non-AND gate as OR, so a NOT gate would compute
                                 # a silently wrong number.
+                                # Divergence D27: "" (or null) is a node without a
+                                # gate -- what SYSTEM_PROMPT's own example writes
+                                # for an Event -- and is kept.
                                 if 'logicGate' in data:
-                                    if data['logicGate'] not in ['AND', 'OR']:
+                                    if data['logicGate'] is None:
+                                        data['logicGate'] = ''
+                                    if data['logicGate'] not in ['', 'AND', 'OR']:
                                         continue
                         
                     except (json.JSONDecodeError, ValueError):
@@ -669,7 +687,8 @@ Example of a valid node for DATA field:
         if 'logicGate' in data:
             # 'NOT' is rejected: the probability engine treats any non-AND gate as
             # OR, so a NOT gate would silently compute an OR result.
-            if data['logicGate'] not in ['AND', 'OR']:
+            # "" is a node without a gate (divergence D27).
+            if data['logicGate'] not in ['', 'AND', 'OR']:
                 node_label = data.get('id') or data.get('name') or '<unknown>'
                 if data['logicGate'] == 'NOT':
                     return False, (
@@ -785,7 +804,10 @@ Example of a valid node for DATA field:
                                 value = change.data[field]
                             elif field in ['logicGate']:
                                 # 'NOT' is rejected: see _validate_node_data.
-                                if change.data[field] and change.data[field] not in ['AND', 'OR']:
+                                # Divergence D27: an empty gate says nothing about
+                                # the gate, so the node keeps the one it has (""
+                                # written over an AND would compute as an OR).
+                                if change.data[field] not in ['AND', 'OR']:
                                     continue
                                 value = change.data[field]
                             else:
@@ -823,10 +845,13 @@ Example of a valid node for DATA field:
                 if not node:
                     return False, f"Node '{change.target_id}' not found"
                 
-                if not change.data or 'parent_id' not in change.data:
+                # Divergence D28: 'new_parent_id' is what a model writes when
+                # it has to guess the key, so it is read as 'parent_id'.
+                data = change.data or {}
+                new_parent_id = data.get('parent_id') or data.get('new_parent_id')
+                if not new_parent_id:
                     return False, "Move requires 'parent_id' in data"
                 
-                new_parent_id = change.data['parent_id']
                 new_parent = core.find_node_by_id(new_parent_id)
                 if not new_parent:
                     return False, f"New parent '{new_parent_id}' not found"

@@ -181,6 +181,22 @@ October 2026 review, sprint 2 (browser frontend and analysis tabs).
   - The tree panel reads "Event Tree" in ETA mode.
   - The Graphviz capability text says what a native `dot` is used for.
 
+Release check on Windows with a live AI provider (10 October 2026).
+
+- **AI suggestions** (vendored core, divergences D27 and D28). Found with
+  Claude; both defects are as old as the assistant.
+  - A suggestion for a node without a gate was dropped without a word. The
+    assistant is shown `"logicGate": ""` as the way to write a leaf event,
+    and the parser refused exactly that: one reply held 12 suggestions and
+    the panel offered 8. An edit written this way keeps the node's gate.
+  - A suggested move was always refused (`Move requires 'parent_id' in
+    data`), because the assistant was never told how to name the new
+    parent. A restructuring suggestion is a new gate plus the moves that
+    fill it, so applying one added the gate and left it empty, and the top
+    event became 1. The prompt now says how to write a move, and
+    `new_parent_id`, which is what the model guessed, is read as well. With
+    both fixes the same replies apply in full (12 of 12 and 8 of 8).
+
 ## [1.7.1] - 2026-09-29
 
 Back-to-back test release. The same inputs were run through every path: the
