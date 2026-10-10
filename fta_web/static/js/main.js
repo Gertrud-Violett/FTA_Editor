@@ -255,6 +255,12 @@ const STRINGS = {
       'PNG export needs a system Graphviz, which was not found. Install Graphviz '
       + "(graphviz.org) and restart the editor; until then the diagram panel's "
       + 'PNG button renders in the browser instead.',
+    'api.noSession': 'This browser tab has no editor session, so it cannot reach the server.',
+    'api.network': 'Could not reach the editor server. It may have been stopped in the terminal.',
+    'api.badResponse': 'The server returned an unexpected response (HTTP {status}).',
+    'api.httpFailed': 'Request failed with HTTP {status}.',
+    'api.exportFailed': 'The export failed (HTTP {status}).',
+    'store.panelFailed': 'A panel failed to update: {error}',
 
     'confirm.delete': 'Delete "{name}" and everything beneath it?',
     'confirm.discard': 'Discard the unsaved changes and start a new analysis?',
@@ -674,6 +680,12 @@ const STRINGS = {
       'PNG 出力にはシステムの Graphviz が必要ですが、見つかりませんでした。'
       + 'Graphviz (graphviz.org) をインストールしてエディタを再起動してください。'
       + 'それまでは図パネルの PNG ボタンがブラウザ内で書き出します。',
+    'api.noSession': 'このブラウザーのタブにはエディターのセッションがないため、サーバーに接続できません。',
+    'api.network': 'エディターのサーバーに接続できませんでした。ターミナルで停止された可能性があります。',
+    'api.badResponse': 'サーバーから予期しない応答が返されました (HTTP {status})。',
+    'api.httpFailed': 'リクエストが失敗しました (HTTP {status})。',
+    'api.exportFailed': 'エクスポートに失敗しました (HTTP {status})。',
+    'store.panelFailed': 'パネルを更新できませんでした: {error}',
 
     'confirm.delete': '「{name}」と配下のノードを削除しますか？',
     'confirm.discard': '未保存の変更を破棄して新規作成しますか？',
@@ -2412,7 +2424,7 @@ async function fetchDownload(url) {
   } catch (cause) {
     throw new ApiError(
       'NETWORK_ERROR',
-      'Could not reach the editor server. It may have been stopped in the terminal.',
+      t('api.network'),
       { url, cause: String((cause && cause.message) || cause) }
     );
   }
@@ -2448,7 +2460,7 @@ async function fetchDownload(url) {
       }
       throw new ApiError(
         envelope.code || 'HTTP_' + response.status,
-        envelope.message || 'The export failed (HTTP ' + response.status + ').',
+        envelope.message || t('api.exportFailed', { status: response.status }),
         envelope.detail || null,
         response.status
       );
@@ -2980,7 +2992,7 @@ async function boot() {
   window.addEventListener(SESSION_INVALID_EVENT, onSessionInvalid);
   window.addEventListener('fta:error', (event) => {
     const detail = (event && event.detail) || {};
-    toast(detail.message || 'Something went wrong.', 'error', detail.code || null);
+    toast(detail.message || t('dialog.somethingWrong'), 'error', detail.code || null);
   });
   window.addEventListener('fta:toast', (event) => {
     const detail = (event && event.detail) || {};

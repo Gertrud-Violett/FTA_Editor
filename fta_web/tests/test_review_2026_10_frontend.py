@@ -334,6 +334,72 @@ def test_details_extra_selects_revert_when_their_change_fails():
     assert "updateExtras(node, false);" in body
 
 
+# ---- api.js / main.js / store.js: client-side errors are in the editor's language ----
+#
+# With the Japanese UI and the server stopped, every action toasted "Could not
+# reach the editor server. It may have been stopped in the terminal." in
+# English (Chromium, all /api requests aborted); the same for a tab without a
+# session, a non-JSON answer, a failed export and a panel that failed to render.
+
+_API_I18N_HARNESS = r"""
+(async () => {
+  const out = {};
+  let token = 'token';
+  globalThis.window = {
+    sessionStorage: { getItem: () => token, setItem() {}, removeItem() {} },
+    location: { href: 'http://127.0.0.1/' },
+    history: { replaceState() {} },
+    dispatchEvent() {},
+    ftaShell: { t: (key, vars) => '[' + key + (vars && vars.status ? ' ' + vars.status : '') + ']' },
+  };
+  globalThis.document = { documentElement: { lang: 'ja' } };
+  const { api } = await import(process.argv[1]);
+  const grab = async (fn) => { try { await fn(); return null; } catch (err) { return err.message; } };
+  const answer = (status, type, body) => async () => ({
+    ok: status < 400, status, headers: new Headers({ 'Content-Type': type }), text: async () => body,
+  });
+  globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  out.network = await grab(() => api.get('/state'));
+  globalThis.fetch = answer(502, 'text/html', '<html>proxy</html>');
+  out.badResponse = await grab(() => api.get('/state'));
+  globalThis.fetch = answer(500, 'application/json', '{"ok": false, "error": {}}');
+  out.httpFailed = await grab(() => api.get('/state'));
+  token = null;
+  out.noSession = await grab(() => api.get('/state'));
+  console.log(JSON.stringify(out));
+})();
+"""
+
+_CLIENT_KEYS = ("api.noSession", "api.network", "api.badResponse", "api.httpFailed",
+                "api.exportFailed", "store.panelFailed")
+
+
+@needs_node
+def test_api_client_errors_are_translated():
+    api_js = (STATIC / "api.js").as_uri()
+    out = subprocess.run(["node", "-e", _API_I18N_HARNESS, api_js],
+                         capture_output=True, text=True, check=True).stdout
+    assert json.loads(out) == {
+        "network": "[api.network]",
+        "badResponse": "[api.badResponse 502]",
+        "httpFailed": "[api.httpFailed 500]",
+        "noSession": "[api.noSession]",
+    }
+
+
+def test_client_error_keys_exist_in_both_languages_and_are_used():
+    main = _read(STATIC / "main.js")
+    strings = re.search(r"const STRINGS = \{(.*?)\n\};", main, re.S).group(1)
+    en, ja = strings.split("\n  ja:", 1)
+    for key in _CLIENT_KEYS:
+        assert "    '%s': '" % key in en, key
+        assert "    '%s': '" % key in ja, key
+    download = _braced(main, main.index("async function fetchDownload(url)"))
+    assert "t('api.network')" in download and "t('api.exportFailed'" in download
+    assert "toast(detail.message || t('dialog.somethingWrong'), 'error'" in main
+    assert "shell.t('store.panelFailed'" in _read(STATIC / "store.js")
+
+
 # ---- tree.js: New / Open drop the old document's multi-selection ----------------------
 #
 # Ctrl-click two rows, then the root (lead = root), then open a file: ids such

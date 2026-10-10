@@ -157,6 +157,24 @@ export function bootstrapToken() {
   return readStoredToken();
 }
 
+/**
+ * A message this module writes itself, in the editor's language: main.js's
+ * catalog through window.ftaShell.t, the English text when there is no shell.
+ * (The server's own messages are localized by the server; see uiLanguage.)
+ */
+function message(key, english, vars) {
+  try {
+    const shell = window.ftaShell;
+    if (shell && typeof shell.t === 'function') {
+      const text = shell.t(key, vars);
+      if (typeof text === 'string' && text && text !== key) return text;
+    }
+  } catch (_err) {
+    /* fall through to the English text */
+  }
+  return english;
+}
+
 function announceSessionInvalid(reason) {
   window.dispatchEvent(
     new CustomEvent(SESSION_INVALID_EVENT, { detail: { reason } })
@@ -213,7 +231,7 @@ function buildInit(method, body, accept) {
     announceSessionInvalid('no_token');
     throw new ApiError(
       'NO_SESSION',
-      'This browser tab has no editor session, so it cannot reach the server.',
+      message('api.noSession', 'This browser tab has no editor session, so it cannot reach the server.'),
       { reason: 'no_token' }
     );
   }
@@ -243,7 +261,7 @@ async function send(method, url, init) {
   } catch (cause) {
     throw new ApiError(
       'NETWORK_ERROR',
-      'Could not reach the editor server. It may have been stopped in the terminal.',
+      message('api.network', 'Could not reach the editor server. It may have been stopped in the terminal.'),
       { method, path: url, cause: String(cause && cause.message ? cause.message : cause) }
     );
   }
@@ -263,7 +281,8 @@ function envelopeError(response, payload) {
   const envelope = (payload && payload.error && typeof payload.error === 'object') ? payload.error : {};
   const error = new ApiError(
     envelope.code || `HTTP_${response.status}`,
-    envelope.message || `Request failed with HTTP ${response.status}.`,
+    envelope.message
+      || message('api.httpFailed', `Request failed with HTTP ${response.status}.`, { status: response.status }),
     envelope.detail || null,
     response.status
   );
@@ -289,7 +308,8 @@ async function request(method, path, body) {
     // JSON envelope. Anything else means we are not talking to our server.
     throw new ApiError(
       'BAD_RESPONSE',
-      `The server returned an unexpected response (HTTP ${response.status}).`,
+      message('api.badResponse', `The server returned an unexpected response (HTTP ${response.status}).`,
+        { status: response.status }),
       { method, path: url, body: text.slice(0, 200) },
       response.status
     );
@@ -347,7 +367,8 @@ async function download(method, path, body) {
     }
     throw new ApiError(
       response.ok ? 'BAD_RESPONSE' : `HTTP_${response.status}`,
-      `The server returned an unexpected response (HTTP ${response.status}).`,
+      message('api.badResponse', `The server returned an unexpected response (HTTP ${response.status}).`,
+        { status: response.status }),
       { method: verb, path: url, body: text.slice(0, 200) },
       response.status
     );
