@@ -2564,6 +2564,11 @@ async function actionRenderImage() {
       toast(t('msg.downloaded', { name }), 'ok');
       return;
     }
+    // No server fallback for this style: native `dot` would draw the
+    // placeholder shapes instead of the symbols. Say why nothing was saved.
+    const drawn = typeof diagramPanel.hasDiagram === 'function' && diagramPanel.hasDiagram();
+    toast(t(drawn ? 'diagram.pngFailed' : 'diagram.nothingToExport'), 'warn');
+    return;
   }
   try {
     const result = await api.post('/render', {

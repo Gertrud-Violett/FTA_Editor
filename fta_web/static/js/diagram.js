@@ -1285,6 +1285,8 @@ export function initDiagram(container) {
     exportSvg,
     exportPng,
     toPngBlob,
+    /** True once a diagram has been drawn (there is something to export). */
+    hasDiagram: () => Boolean(exportSvgText),
     getBoxSettings: effectiveBoxSettings,
     jumpTo,
     destroy() {

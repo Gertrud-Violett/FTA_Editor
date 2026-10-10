@@ -696,3 +696,22 @@ def test_ctrl_s_in_a_modal_is_claimed():
     assert "if (ctrl && !event.altKey && key === 's') event.preventDefault();" in branch.group(1)
     assert "return;" in branch.group(1)
     assert body.index("if (modalOpen()) {") < body.index("actionSave()")
+
+
+# ---- symbols-style Render never falls back to native /render (F-29) ---------------------
+#
+# Standard-symbols style with nothing drawn yet (the /api/dot fetch failed):
+# toPngBlob() gave null and Render went on to POST /api/render with style
+# "symbols" -- native dot, which only has the placeholder shapes -- and
+# downloaded that picture (Chromium, /api/render answered as Graphviz would).
+
+
+def test_symbols_render_without_a_drawing_says_so():
+    src = _read(STATIC / "main.js")
+    body = _braced(src, src.index("async function actionRenderImage()"))
+    branch = _braced(body, body.index("if (box && box.style === 'symbols'"))
+    assert branch.rstrip()[:-1].rstrip().endswith("return;"), "no fall-through to /render"
+    assert "'diagram.nothingToExport'" in branch and "'diagram.pngFailed'" in branch
+    assert "diagramPanel.hasDiagram()" in branch
+    diagram = _read(STATIC / "diagram.js")
+    assert "hasDiagram: () => Boolean(exportSvgText)," in diagram
