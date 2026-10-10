@@ -202,3 +202,23 @@ def test_sanitiser_runs_before_the_svg_is_imported():
     src = _read(STATIC / "diagram.js")
     body = _braced(src, src.index("async function render()"))
     assert body.index("sanitizeSvg(parsed);") < body.index("document.importNode(parsed, true)")
+
+
+# ---- main.js: Load and Undo/Redo wait for the edit their click started ----------------
+#
+# A click on Load or Undo blurs the field being typed in (details, title, inline
+# rename), which starts its commit. Load checked `dirty` before that commit
+# landed, so with a quick click (a touchpad tap) the "Discard the unsaved
+# changes?" question was skipped every time and the typing was lost to the file
+# opened. Undo raced the commit on the server: when /undo won, the typing was
+# applied on top and wiped the redo step of the edit Undo had just reverted.
+# Both reproduced in Chromium against the running app.
+
+
+def test_load_waits_for_pending_commits_before_checking_dirty():
+    src = _read(STATIC / "main.js")
+    body = _braced(src, src.index("async function actionLoad()"))
+    assert "await flushPendingEdits();" in body
+    assert body.index("await flushPendingEdits();") < body.index("store.state.dirty")
+    assert body.index("await flushPendingEdits();") < body.index("pickPath('open')")
+

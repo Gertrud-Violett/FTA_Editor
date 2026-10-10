@@ -2278,6 +2278,11 @@ async function adoptDocument(payload) {
 }
 
 async function actionLoad() {
+  // As in actionNew: a field still being typed in is part of "unsaved
+  // changes". The click on Load blurred it and its commit is on the wire;
+  // checking `dirty` before it lands skipped the question below and the
+  // typing was lost to the file being opened.
+  await flushPendingEdits();
   // The backend has no unsaved-changes guard on open (only /new has one), so
   // the guard lives here -- ask before the picker, not after, so a user who
   // meant to save first has not already picked a file.
