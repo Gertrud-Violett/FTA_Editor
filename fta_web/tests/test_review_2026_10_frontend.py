@@ -8,6 +8,7 @@ test_frontend_dbg2.py: pure JS is extracted from the module source (or the
 module imported) and executed under Node when it is on PATH; DOM wiring is
 pinned at source level.
 """
+import ast
 import json
 import re
 import shutil
@@ -26,8 +27,9 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _node(script: str):
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
+def _node(script: str, *args: str):
+    out = subprocess.run(["node", "-e", script, *args], capture_output=True, encoding="utf-8",
+                         check=True).stdout
     return json.loads(out)
 
 
@@ -42,6 +44,22 @@ def _braced(src: str, start: int) -> str:
             if depth == 0:
                 return src[start : i + 1]
     raise AssertionError("unbalanced braces")
+
+
+def test_node_output_is_read_as_utf8():
+    """node writes UTF-8; text mode alone decodes with the locale's code page
+    (cp1252 on Windows CI), which garbled the Japanese strings these checks
+    compare. Every node call in this file names the encoding."""
+    tree = ast.parse(_read(Path(__file__)))
+    runs = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run" and getattr(node.func.value, "id", None) == "subprocess"
+    ]
+    assert runs
+    for run in runs:
+        encoding = {kw.arg: kw.value for kw in run.keywords}.get("encoding")
+        assert isinstance(encoding, ast.Constant) and encoding.value == "utf-8", "line %d" % run.lineno
 
 
 # ---- diagram.js: the SVG sanitiser holds on its own ----------------------------------
@@ -308,8 +326,7 @@ _API_HARNESS = r"""
 @needs_node
 def test_api_requests_carry_the_editor_language():
     api_js = (STATIC / "api.js").as_uri()
-    out = subprocess.run(["node", "-e", _API_HARNESS, api_js], capture_output=True, text=True, check=True).stdout
-    assert json.loads(out) == ["ja", "ja", "en", "en", None, None]
+    assert _node(_API_HARNESS, api_js) == ["ja", "ja", "en", "en", None, None]
 
 
 def test_export_downloads_carry_the_editor_language():
@@ -352,7 +369,11 @@ _API_I18N_HARNESS = r"""
     location: { href: 'http://127.0.0.1/' },
     history: { replaceState() {} },
     dispatchEvent() {},
-    ftaShell: { t: (key, vars) => '[' + key + (vars && vars.status ? ' ' + vars.status : '') + ']' },
+    // the shell's translator with the Japanese table from main.js
+    ftaShell: {
+      t: (key, vars) => (JA[key] || '[' + key + ']').replace(
+        /\{(\w+)\}/g, (whole, name) => (vars && name in vars ? String(vars[name]) : whole)),
+    },
   };
   globalThis.document = { documentElement: { lang: 'ja' } };
   const { api } = await import(process.argv[1]);
@@ -376,17 +397,28 @@ _CLIENT_KEYS = ("api.noSession", "api.network", "api.badResponse", "api.httpFail
                 "api.exportFailed", "store.panelFailed")
 
 
+def _shell_strings(language: str) -> dict:
+    """main.js's STRINGS table for one language, as {key: text}."""
+    main = _read(STATIC / "main.js")
+    strings = re.search(r"const STRINGS = \{(.*?)\n\};", main, re.S).group(1)
+    en, ja = strings.split("\n  ja:", 1)
+    table = en if language == "en" else ja
+    return dict(re.findall(r"^    '([\w.]+)': '((?:[^'\\]|\\.)*)',?$", table, re.M))
+
+
 @needs_node
 def test_api_client_errors_are_translated():
     api_js = (STATIC / "api.js").as_uri()
-    out = subprocess.run(["node", "-e", _API_I18N_HARNESS, api_js],
-                         capture_output=True, text=True, check=True).stdout
-    assert json.loads(out) == {
-        "network": "[api.network]",
-        "badResponse": "[api.badResponse 502]",
-        "httpFailed": "[api.httpFailed 500]",
-        "noSession": "[api.noSession]",
+    ja = _shell_strings("ja")
+    harness = _API_I18N_HARNESS.replace("(async () => {", "const JA = %s;\n(async () => {" % json.dumps(ja), 1)
+    expected = {
+        "network": ja["api.network"],
+        "badResponse": ja["api.badResponse"].replace("{status}", "502"),
+        "httpFailed": ja["api.httpFailed"].replace("{status}", "500"),
+        "noSession": ja["api.noSession"],
     }
+    assert not any(text.isascii() for text in expected.values()), "Japanese text, read back from node"
+    assert _node(harness, api_js) == expected
 
 
 def test_client_error_keys_exist_in_both_languages_and_are_used():
