@@ -36,6 +36,17 @@ const AIAG_DEFAULT = Object.freeze({
   1: 1e-7, 2: 1e-6, 3: 1e-5, 4: 1e-4, 5: 5e-4, 6: 2e-3, 7: 1e-2, 8: 2e-2, 9: 5e-2, 10: 1e-1,
 });
 
+/**
+ * The occurrence table of a document's `analysis` block (a copy), or the AIAG
+ * default when it has none. The tab shows this table until the user edits it:
+ * Import sends the table on screen, and the server saves it into whatever
+ * document is open, so it must never be another document's.
+ */
+export function documentOccTable(analysis) {
+  const table = analysis && typeof analysis === 'object' ? analysis.fmeaOccurrenceTable : null;
+  return table && typeof table === 'object' ? { ...table } : { ...AIAG_DEFAULT };
+}
+
 const TEMPLATE_CSV =
   '﻿FMEA ID,Item,Failure Mode,Cause,Severity,Occurrence,Detection,RPN,Failure rate (/h)\r\n' +
   'F-001,Pump,Fails to start,Motor winding burnout,8,3,4,96,1.0e-6\r\n' +
@@ -645,17 +656,44 @@ export function mount(panel, ctx) {
   function onLanguage() {
     renderAll();
   }
-  const unSigFigs =
-    typeof ctx.onSigFigs === 'function'
-      ? ctx.onSigFigs(() => {
-          for (const input of root.querySelectorAll('.fmea-occ input')) {
-            const rank = input.dataset.rank;
-            if (!state.occInvalid.has(rank)) input.value = ctx.fmt.prob(state.occ[rank]);
-          }
-        })
-      : null;
+
+  function paintOccInputs() {
+    for (const input of root.querySelectorAll('.fmea-occ input')) {
+      const rank = input.dataset.rank;
+      if (!state.occInvalid.has(rank)) input.value = ctx.fmt.prob(state.occ[rank]);
+    }
+  }
+  const unSigFigs = typeof ctx.onSigFigs === 'function' ? ctx.onSigFigs(paintOccInputs) : null;
+
+  /**
+   * Show the document's occurrence table again (an undo changed it) unless
+   * the user has edited the one on screen, as the Cut Sets limits do.
+   */
+  function syncOccWithDocument() {
+    if (state.occTouched) return;
+    const doc = documentOccTable(store.state && store.state.analysis);
+    if (RANKS.every((rank) => doc[rank] === state.occ[rank])) return;
+    state.occ = doc;
+    state.occInvalid = new Set();
+    paintOccInputs();
+  }
+
+  // New / Open: the occurrence table, the chosen parent and the last result
+  // belonged to the old document. The previewed sheet and its mapping stay:
+  // they describe a file, not the document.
+  function onDocument() {
+    state.occ = documentOccTable(store.state && store.state.analysis);
+    state.occInvalid = new Set();
+    state.occTouched = false;
+    state.parentExplicit = false;
+    state.parentId = null;
+    state.result = null;
+    if (!state.busy) state.message = null;
+    renderAll();
+  }
 
   window.addEventListener('fta:language', onLanguage);
+  window.addEventListener('fta:document', onDocument);
   renderAll();
 
   return {
@@ -666,9 +704,11 @@ export function mount(panel, ctx) {
     deactivate() {},
     onStale() {
       fillParentSelect();
+      syncOccWithDocument();
     },
     dispose() {
       window.removeEventListener('fta:language', onLanguage);
+      window.removeEventListener('fta:document', onDocument);
       if (typeof unSigFigs === 'function') unSigFigs();
       root.remove();
     },
