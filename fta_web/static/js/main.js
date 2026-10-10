@@ -541,6 +541,12 @@ const STRINGS = {
     'tree.rootKept': 'The root node cannot be deleted, so nothing was removed.',
 
     'ai.changes.unindexed': 'These suggestions cannot be applied: the server did not number them.',
+    'ai.changes.linkAdd': 'Adds link: {relation} → {name}',
+    'ai.changes.linkRemove': 'Removes link: {relation} → {name}',
+    'ai.changes.linkNone': 'Links: no change',
+    'ai.changes.linkProblem': 'This suggestion will be rejected. {reason}',
+    'ai.changes.rejectedOne': 'Suggestion rejected — {title}. {reason}',
+    'ai.changes.ignoredOne': 'Applied — {title}. Not changed by a suggestion: {fields}',
 
     'dialog.title': 'Dialog',
     'dialog.confirmTitle': 'Confirm',
@@ -962,6 +968,12 @@ const STRINGS = {
     'tree.rootKept': 'ルートノードは削除できないため、何も削除されませんでした。',
 
     'ai.changes.unindexed': 'この提案は適用できません（サーバーが番号を付けていません）。',
+    'ai.changes.linkAdd': 'リンクを追加: {relation} → {name}',
+    'ai.changes.linkRemove': 'リンクを削除: {relation} → {name}',
+    'ai.changes.linkNone': 'リンク: 変更なし',
+    'ai.changes.linkProblem': 'この提案は適用されません。{reason}',
+    'ai.changes.rejectedOne': '提案は却下されました — {title}。{reason}',
+    'ai.changes.ignoredOne': '適用しました — {title}。提案では変更されない項目: {fields}',
 
     'dialog.title': 'ダイアログ',
     'dialog.confirmTitle': '確認',

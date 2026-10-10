@@ -43,7 +43,9 @@ other edit -- which is what makes accepting a suggestion a safe thing to try.
 **Changes are applied by the vendored handler**, never by re-implementing
 add/edit/delete/move here. ``AIAgentHandler.apply_change_to_fta`` is the same
 code path the desktop editor uses, including its refusals (root deletion,
-duplicate ids, circular moves).
+duplicate ids, circular moves). One thing is added on top of it, in
+``ai_bridge.apply_change``: a suggestion's ``links``, which the handler's
+add and edit ignore.
 
 **``/analyze`` cannot write.** It hands the handler a deep copy and never
 touches ``state.core``; the tree is byte-identical afterwards, and
@@ -455,7 +457,9 @@ def post_chat():
 
     return ok_response(
         reply=ai_bridge.scrub(reply, secret),
-        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes), secret),
+        # With the tree they were proposed for: a change that sets links says
+        # which it adds and removes (``linkChanges``), for the review card.
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes, tree), secret),
     )
 
 
@@ -487,7 +491,7 @@ def post_analyze():
 
     return ok_response(
         reply=ai_bridge.scrub(reply, secret),
-        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes), secret),
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes, tree), secret),
     )
 
 
@@ -525,6 +529,16 @@ def post_apply_changes():
     Partial success is reported, not hidden: each index lands in ``applied`` or
     in ``rejected`` with the handler's own message. If every one is rejected
     the tree is untouched and the whole request is a 400.
+
+    **One suggestion is applied as a whole or not at all.** An add or edit
+    may carry ``links`` -- the node's complete new list, validated as
+    ``PATCH /api/nodes`` validates links and, beyond it, every target must
+    exist and none may be the node itself. A suggestion with a link that
+    fails this is ``rejected`` with the reason and nothing of it is written
+    (not its new name either): it is never reported applied with its links
+    dropped. What a suggestion can never change -- ``children`` on an added
+    node, the 1.7 keys -- is listed per applied change in ``ignored`` (see
+    ``ai_bridge.apply_change``).
 
     A proposal made for another document -- one that New, Open or Import has
     replaced since (``ai_bridge.made_for``) -- is always rejected: its node
@@ -593,11 +607,17 @@ def post_apply_changes():
                 else ai_bridge.OTHER_DOCUMENT_MESSAGE
             )
             if refusal:
-                ok, message = False, refusal
+                ok, message, ignored = False, refusal, []
             else:
-                ok, message = handler.apply_change_to_fta(state.core, change)
+                # The handler's own apply, plus the suggestion's links, which
+                # it ignores; all of the suggestion or none of it.
+                ok, message, ignored = ai_bridge.apply_change(handler, state.core, change)
             record = ai_bridge.change_view(change, index)
             record["message"] = ai_bridge.scrub(message)
+            if ok:
+                # Keys of the suggestion that applying it never writes
+                # (children, 1.7 keys): named, so "applied" does not claim them.
+                record["ignored"] = ignored
             (applied if ok else rejected).append(record)
 
         if not applied:

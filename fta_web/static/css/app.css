@@ -580,6 +580,20 @@ body.is-resizing--h, body.is-resizing--h * { cursor: row-resize !important; }
 .chat-changes__text { overflow-wrap: anywhere; }
 .chat-changes__target,
 .chat-block--inline { margin-left: 21px; }
+/* What a suggestion does to its node's links (chat.js linkLines). The words
+   carry the meaning ("Adds link" / "Removes link"); the colour only helps. */
+.chat-changes__item .chat-changes__links {
+  /* Two classes: `.panel__body ul` (below) resets every list's margin. */
+  margin: 0 0 0 21px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+.chat-changes__link--add { color: var(--accent); }
+.chat-changes__link--remove,
+.chat-changes__link--problem { color: var(--danger); }
+.chat-changes__link--none { color: var(--text-dim); }
 .chat-changes__foot { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 
 .chat__busy {

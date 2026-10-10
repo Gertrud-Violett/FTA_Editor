@@ -116,7 +116,7 @@ tree_bp = Blueprint("tree", __name__, url_prefix="/api")
 
 VALID_GATES = ("AND", "OR")
 VALID_MODES = ("FTA", "ETA")
-VALID_RELATIONS = ("AND", "OR")
+VALID_RELATIONS = node_schema.VALID_RELATIONS
 #: The 1.6 fields, then the 1.7 keys (see node_schema for their meaning).
 NODE_FIELDS = (
     "name", "type", "probability", "logicGate", "notes", "links",
@@ -243,63 +243,8 @@ def _validate_notes(value: Any) -> str:
 
 
 def _validate_links(value: Any) -> List[Dict[str, Any]]:
-    """Normalize links to the on-disk shape.
-
-    Accepts ``target_id`` or ``targetId`` on input and always stores
-    ``target_id``, which is what ``FTACore`` reads and writes. Targets are
-    deliberately not resolved: dangling and circular links are legal.
-    """
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise ApiError(
-            INVALID_FIELD, "'links' must be a list.", 400, {"field": "links"}
-        )
-
-    links: List[Dict[str, Any]] = []
-    seen = set()
-    for position, raw in enumerate(value):
-        if not isinstance(raw, dict):
-            raise ApiError(
-                INVALID_FIELD,
-                "Each link must be an object with 'target_id' and 'relation'.",
-                400,
-                {"field": "links", "index": position},
-            )
-        target_id = raw.get("target_id", raw.get("targetId"))
-        if target_id is None or str(target_id).strip() == "":
-            raise ApiError(
-                INVALID_FIELD,
-                "Each link needs a non-empty 'target_id'.",
-                400,
-                {"field": "links", "index": position},
-            )
-        node_schema.refuse_unsavable_text(str(target_id), "links")
-        relation = raw.get("relation") or "OR"
-        if not isinstance(relation, str):
-            relation = str(relation)
-        relation = relation.strip().upper()
-        if relation not in VALID_RELATIONS:
-            raise ApiError(
-                INVALID_FIELD,
-                "A link 'relation' must be 'AND' or 'OR'.",
-                400,
-                {"field": "links", "index": position, "value": raw.get("relation")},
-            )
-        # The engine applies every link, so a repeated one would be counted
-        # twice (an AND-link twice multiplies by q twice). Refused, as the
-        # UI's links editor refuses it.
-        if (str(target_id), relation) in seen:
-            raise ApiError(
-                INVALID_FIELD,
-                "'%s' is already linked with relation %s; a link may appear only once."
-                % (target_id, relation),
-                400,
-                {"field": "links", "index": position},
-            )
-        seen.add((str(target_id), relation))
-        links.append({"target_id": str(target_id), "relation": relation})
-    return links
+    """``node_schema.validate_links``: the links of a node, normalised."""
+    return node_schema.validate_links(value)
 
 
 def _validate_index(value: Any) -> Optional[int]:

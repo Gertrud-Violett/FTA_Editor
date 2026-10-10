@@ -332,6 +332,12 @@ TARGET and DATA depend on the ACTION:
 - delete: TARGET is the ID of the node to delete; DATA is {{"id": "that_node_id"}}.
 - move: TARGET is the ID of the node to move; DATA is {{"parent_id": "id_of_the_new_parent"}}.
 
+To change a node's links (add or edit), put "links" in DATA:
+"links": [{{"target_id": "id_of_an_existing_node", "relation": "AND|OR"}}]
+- It is the node's COMPLETE new list: it replaces the links the node has now, and [] removes them all.
+- Leave "links" out of DATA to keep the node's links as they are.
+- A target must be an existing node, never the node itself, and listed once.
+
 EXAMPLE of adding nested nodes (correct approach):
 SUGGESTION: Add intermediate failure mode
 DESCRIPTION: Add "Material Degradation" under root as parent
@@ -351,6 +357,13 @@ DESCRIPTION: Move the existing node "fatigue" under "Material Degradation"
 ACTION: move
 TARGET: fatigue
 DATA: {{"parent_id": "material_deg"}}
+
+EXAMPLE of linking an existing node to another (one cause shared by two branches):
+SUGGESTION: Link fatigue to corrosion
+DESCRIPTION: Corrosion also starts fatigue cracks, so "fatigue" gets an OR link to "corrosion"
+ACTION: edit
+TARGET: fatigue
+DATA: {{"id": "fatigue", "name": "Fatigue", "links": [{{"target_id": "corrosion", "relation": "OR"}}]}}
 
 CRITICAL RULES FOR YOUR RESPONSES:
 - Never suggest changes that would break the JSON structure
@@ -586,7 +599,18 @@ Example of a valid node for DATA field:
                 if data_match:
                     try:
                         json_str = strip_code_fences(data_match.group(1))
-                        data = json.loads(json_str)
+                        try:
+                            data = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            # Divergence D29: the lazy pattern above stops at
+                            # the first "}", so a DATA object that holds
+                            # another object -- a link -- was cut short and
+                            # the suggestion arrived with no data at all.
+                            # Read the whole object from its opening brace.
+                            data, _ = json.JSONDecoder().raw_decode(
+                                suggestion_block, data_match.start(1))
+                            if not isinstance(data, dict):
+                                data = {}
                         
                         # Validate node structure if data provided
                         if data:

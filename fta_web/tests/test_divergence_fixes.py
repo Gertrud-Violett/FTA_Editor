@@ -15,6 +15,8 @@ Each divergence recorded in fta_web/core/DIVERGENCE.md gets coverage here:
        the system prompt's own example shows for an Event) was dropped.
   D28 - a "move" proposal could never be applied: the system prompt did not
        say how to name the new parent.
+  D29 - a proposal whose DATA held a link (a nested object) arrived with no
+       data, and the system prompt did not say how to write a link change.
 """
 
 import json
@@ -611,7 +613,7 @@ def test_d28_the_system_prompts_examples_apply_in_order():
         assert ok, message
 
     assert [(c.change_type, c.target_id) for c in changes] == [
-        ("add", "root"), ("add", "material_deg"), ("move", "fatigue"),
+        ("add", "root"), ("add", "material_deg"), ("move", "fatigue"), ("edit", "fatigue"),
     ]
     (gate,) = core.get_data()["children"]
     assert gate["id"] == "material_deg"
@@ -671,3 +673,87 @@ def test_d28_a_move_into_its_own_subtree_is_still_refused():
     ok, message = handler.apply_change_to_fta(core, change)
 
     assert (ok, message) == (False, "Cannot move: would create circular reference")
+
+
+# --------------------------------------------------------------------------
+# D29 -- a proposal whose DATA held a link arrived with no data
+# --------------------------------------------------------------------------
+
+LINK_EDIT = (
+    "SUGGESTION: Link the secondary seal to the cold\n"
+    "DESCRIPTION: The cold acts on both O-rings\n"
+    "ACTION: edit\n"
+    "TARGET: n_2\n"
+    'DATA: {"id": "n_2", "name": "Secondary seal leak", '
+    '"links": [{"target_id": "n_1", "relation": "OR"}]}\n'
+)
+
+LINK_ADD = (
+    "SUGGESTION: Add ice\n"
+    "DESCRIPTION: Ice on the pad\n"
+    "ACTION: add\n"
+    "TARGET: root\n"
+    'DATA: {"id": "ice", "name": "Ice", "type": "Event", "probability": 0.1, "logicGate": "", '
+    '"notes": "", "links": [{"target_id": "n_1", "relation": "AND"}, '
+    '{"target_id": "n_2", "relation": "OR"}]}\n'
+)
+
+
+def test_d29_a_suggestion_with_a_link_keeps_its_data():
+    (change,) = AIAgentHandler()._parse_proposed_changes(LINK_EDIT)
+
+    assert (change.change_type, change.target_id) == ("edit", "n_2")
+    assert change.data == {
+        "id": "n_2", "name": "Secondary seal leak",
+        "links": [{"target_id": "n_1", "relation": "OR"}],
+    }
+
+
+def test_d29_every_link_of_an_added_node_is_read():
+    (change,) = AIAgentHandler()._parse_proposed_changes(LINK_ADD)
+
+    assert change.data["links"] == [
+        {"target_id": "n_1", "relation": "AND"}, {"target_id": "n_2", "relation": "OR"},
+    ]
+    assert change.data["probability"] == 0.1 and change.data["logicGate"] == ""
+
+
+def test_d29_blocks_after_a_link_are_still_read_one_by_one():
+    """The whole object is read from its own brace, and no further."""
+    plain = (
+        "SUGGESTION: Rename\nDESCRIPTION: d\nACTION: edit\nTARGET: n_1\n"
+        'DATA: {"id": "n_1", "name": "Cold weather"}\n'
+    )
+    changes = AIAgentHandler()._parse_proposed_changes(LINK_EDIT + "\n" + plain + "\n" + LINK_ADD)
+
+    assert [c.target_id for c in changes] == ["n_2", "n_1", "root"]
+    assert changes[1].data == {"id": "n_1", "name": "Cold weather"}
+    assert len(changes[2].data["links"]) == 2
+
+
+def test_d29_a_nested_object_is_held_to_the_same_checks():
+    """Read whole, the DATA goes through the parser's field checks: a NOT
+    gate is still dropped (D5), nested object or not."""
+    bad = LINK_ADD.replace('"logicGate": ""', '"logicGate": "NOT"')
+
+    assert AIAgentHandler()._parse_proposed_changes(bad) == []
+
+
+def test_d29_data_that_is_not_json_is_still_an_empty_suggestion():
+    broken = LINK_EDIT.replace('"relation": "OR"}]}', '"relation": "OR"}')
+    (change,) = AIAgentHandler()._parse_proposed_changes(broken)
+
+    assert change.data == {}
+
+
+def test_d29_the_system_prompt_says_how_to_change_links():
+    prompt = AIAgentHandler.SYSTEM_PROMPT
+    format_section = prompt.split("EXAMPLE of adding")[0]
+
+    assert '"links": [{"target_id": "id_of_an_existing_node", "relation": "AND|OR"}]' in format_section
+    assert "COMPLETE new list" in format_section and "[] removes them all" in format_section
+    links = [c for c in AIAgentHandler()._parse_proposed_changes(_prompt_examples())
+             if "links" in c.data]
+    assert len(links) == 1, "SYSTEM_PROMPT must show one worked link change"
+    assert (links[0].change_type, links[0].target_id) == ("edit", "fatigue")
+    assert links[0].data["links"] == [{"target_id": "corrosion", "relation": "OR"}]

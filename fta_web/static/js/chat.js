@@ -476,6 +476,35 @@ export function initChat(host) {
     return head + (description || t('ai.changes.untitled', { n: index + 1 }));
   }
 
+  /** `Name (id)` for a link target; the id alone when the name is unknown. */
+  function linkTarget(entry) {
+    const id = firstString(entry, ['targetId', 'target_id']);
+    const name = firstString(entry, ['targetName', 'name']);
+    return name && name !== id ? name + ' (' + id + ')' : id;
+  }
+
+  /**
+   * A change's `linkChanges` ({added, removed, problem}, from the server) as
+   * lines for the card: `{kind: 'add'|'remove'|'none'|'problem', text}`.
+   * Empty when the change does not touch links.
+   */
+  function linkLines(change) {
+    const preview = change && change.linkChanges;
+    if (!preview || typeof preview !== 'object') return [];
+    const lines = [];
+    for (const entry of Array.isArray(preview.added) ? preview.added : []) {
+      lines.push({ kind: 'add', text: t('ai.changes.linkAdd', { relation: entry.relation, name: linkTarget(entry) }) });
+    }
+    for (const entry of Array.isArray(preview.removed) ? preview.removed : []) {
+      lines.push({ kind: 'remove', text: t('ai.changes.linkRemove', { relation: entry.relation, name: linkTarget(entry) }) });
+    }
+    if (!lines.length && !preview.problem) lines.push({ kind: 'none', text: t('ai.changes.linkNone') });
+    if (preview.problem) {
+      lines.push({ kind: 'problem', text: t('ai.changes.linkProblem', { reason: String(preview.problem) }) });
+    }
+    return lines;
+  }
+
   /**
    * The review list. Every box starts ticked, matching the desktop dialog
    * (src/FTA_Editor_UI.py:651) -- the assistant's whole set is the proposal, and
@@ -510,6 +539,19 @@ export function initChat(host) {
       const target = firstString(change, ['targetId', 'target_id', 'target', 'nodeId', 'node_id']);
       if (target) {
         item.appendChild(el('p', { class: 'chat-changes__target', text: t('ai.changes.target', { id: target }) }));
+      }
+      // What approving this does to the node's links, in words: the links in
+      // a suggestion replace the node's whole list, so a removal is as much
+      // part of it as an addition, and neither is visible in a title.
+      const links = linkLines(change);
+      if (links.length) {
+        const box = el('ul', { class: 'chat-changes__links' });
+        for (const line of links) {
+          box.appendChild(
+            el('li', { class: 'chat-changes__link chat-changes__link--' + line.kind, dataset: { kind: line.kind }, text: line.text })
+          );
+        }
+        item.appendChild(box);
       }
       if (change && change.data !== null && change.data !== undefined && change.data !== '') {
         const pre = el('pre', { class: 'chat-block__pre' });
@@ -563,6 +605,18 @@ export function initChat(host) {
     handle.status.textContent = message;
   }
 
+  /** One line per rejected suggestion: which one, and the server's reason. */
+  function showRejected(rejected) {
+    for (const record of rejected) {
+      if (!record || typeof record !== 'object') continue;
+      const row = say('error', 'ai.changes.rejectedOne', {
+        title: changeTitle(record, 0),
+        reason: firstString(record, ['message', 'reason']) || '—',
+      });
+      row.dataset.rejected = 'true';
+    }
+  }
+
   async function applyChanges(handle, total) {
     if (busy) {
       handle.status.textContent = t('ai.msg.busy');
@@ -585,14 +639,25 @@ export function initChat(host) {
       retireChanges(handle, t('ai.changes.applied', { n: applied, total: total }));
       if (openChanges === handle) openChanges = null;
       say('system', 'ai.changes.applied', { n: applied, total: total });
-      // A partial success names what was not applied and why, as the
-      // all-rejected 400 does through handleError.
+      // "Applied" must not claim more than was done. A suggestion is applied
+      // whole or not at all: each rejected one is named with the server's
+      // reason, and an applied one names the fields a suggestion never
+      // changes (children, 1.7 keys) if it carried any.
+      for (const record of result && Array.isArray(result.applied) ? result.applied : []) {
+        if (record && Array.isArray(record.ignored) && record.ignored.length) {
+          say('system', 'ai.changes.ignoredOne', { title: changeTitle(record, 0), fields: record.ignored.join(', ') });
+        }
+      }
       if (result && Array.isArray(result.rejected) && result.rejected.length) {
+        showRejected(result.rejected);
         showDiagnostics({ rejected: result.rejected });
       }
     } catch (err) {
       if (destroyed) return;
       handle.status.textContent = '';
+      if (err instanceof ApiError && err.detail && Array.isArray(err.detail.rejected)) {
+        showRejected(err.detail.rejected);
+      }
       handleError(err);
     } finally {
       if (!destroyed) setBusy(false);

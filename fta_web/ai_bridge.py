@@ -11,6 +11,28 @@ No AI logic is re-implemented. Prompts, response parsing, change application
 and JSON validation all belong to ``AI_agent_handler``; this module only calls
 it, off the request thread and under a timeout.
 
+One thing is added around the vendored handler rather than inside it (the
+core is hash-pinned, and this needs the package's own validators):
+
+* **Links in a suggestion** (:func:`apply_change`). The handler's add/edit
+  write name, type, probability, gate and notes and nothing else, while its
+  prompt invites link suggestions: a suggested link was dropped and the
+  change still reported as applied.
+
+What applying a suggestion promises
+-----------------------------------
+A suggestion is applied **as a whole or not at all**. Anything in it that is
+not valid -- a link whose target does not exist, a link to the node itself,
+the same link twice, a relation other than AND/OR, a probability outside
+[0, 1] -- rejects that one suggestion with the reason, and the tree is as it
+was before it; the other suggestions of the batch are still applied. Nothing
+is ever applied in part and reported as done.
+
+The one thing that is not an error: keys a suggestion can never change
+(``children`` on an added node -- each child is its own suggestion -- and the
+1.7 keys the model is not shown). They are returned per applied change as
+``ignored`` and the chat names them, so "applied" never claims them either.
+
 
 Threading: the network call never holds the document lock
 ---------------------------------------------------------
@@ -72,7 +94,14 @@ try:  # normal package import: ``import fta_web.ai_bridge``
     from . import config
     from .engine import derive_quant
     from .errors import ApiError
-    from .node_schema import NODE_KEYS, VALIDATORS, drop_duplicate_links, refuse_unsavable_text
+    from .node_schema import (
+        NODE_KEYS,
+        VALIDATORS,
+        drop_duplicate_links,
+        refuse_unsavable_text,
+        validate_links,
+    )
+    from .tree_ops import all_ids
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
     from engine import derive_quant  # type: ignore[no-redef]
@@ -82,7 +111,9 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         VALIDATORS,
         drop_duplicate_links,
         refuse_unsavable_text,
+        validate_links,
     )
+    from tree_ops import all_ids  # type: ignore[no-redef]
 
 # Importing config placed fta_web/core on sys.path, so the vendored modules
 # import under their bare names. See config.py for why that is mandatory.
@@ -608,21 +639,31 @@ def delete_credentials() -> Tuple[bool, Optional[str]]:
 # ---- proposed changes ----------------------------------------------------
 
 
-def change_view(change: AIProposedChange, index: Optional[int]) -> Dict[str, Any]:
+def change_view(change: AIProposedChange, index: Optional[int], tree: Any = None,
+                pending: Any = ()) -> Dict[str, Any]:
     """One proposed change, camelCased like the rest of the API.
 
     ``index`` is the change's position in the handler's pending list, which is
     what ``POST /api/ai/changes/apply`` takes. The client needs it because
     ``pending_changes`` accumulates across a conversation while each reply only
     reports the changes it just parsed.
+
+    With ``tree`` (the document the model was shown), a change that sets
+    ``links`` also carries ``linkChanges`` -- see :func:`link_changes` -- so
+    the chat card can show what approving it adds and removes.
     """
-    return {
+    view = {
         "index": index,
         "changeType": change.change_type,
         "targetId": change.target_id,
         "description": change.description,
         "data": copy.deepcopy(change.data or {}),
     }
+    if tree is not None:
+        preview = link_changes(change, tree, pending)
+        if preview is not None:
+            view["linkChanges"] = preview
+    return view
 
 
 def pending_index(handler: AIAgentHandler, change: AIProposedChange) -> Optional[int]:
@@ -639,10 +680,13 @@ def pending_index(handler: AIAgentHandler, change: AIProposedChange) -> Optional
 
 
 def changes_view(
-    handler: AIAgentHandler, changes: List[AIProposedChange]
+    handler: AIAgentHandler, changes: List[AIProposedChange], tree: Any = None
 ) -> List[Dict[str, Any]]:
-    """Serialize the changes one call proposed, with their pending indices."""
-    return [change_view(change, pending_index(handler, change)) for change in changes or []]
+    """Serialize the changes one call proposed, with their pending indices
+    (and, given the ``tree`` they were proposed for, their link changes)."""
+    pending = list(handler.pending_changes)
+    return [change_view(change, pending_index(handler, change), tree, pending)
+            for change in changes or []]
 
 
 def pending_changes_view(handler: AIAgentHandler) -> List[Dict[str, Any]]:
@@ -720,6 +764,10 @@ def _is_probability(value: Any) -> bool:
     return 0.0 <= number <= 1.0
 
 
+#: The node types a suggestion may give (``_parse_proposed_changes``).
+_NODE_TYPES = ("Event", "Gate", "Intermediate")
+
+
 def change_problem(change: AIProposedChange, document: Any = None) -> Optional[str]:
     """Why a proposed add/edit must not be applied to ``document``, or None."""
     if change.change_type not in ("add", "edit"):
@@ -730,6 +778,13 @@ def change_problem(change: AIProposedChange, document: Any = None) -> Optional[s
             "Not applied: the suggested probability %r is not a number between "
             "0 and 1." % (data["probability"],)
         )
+    # The parser drops a suggestion with either of these; the handler's edit
+    # would skip the field and report the rest as updated.
+    if "type" in data and data["type"] not in _NODE_TYPES:
+        return ("Not applied: the suggested type %r is not Event, Gate or Intermediate."
+                % (data["type"],))
+    if data.get("logicGate") not in (None, "", "AND", "OR"):
+        return "Not applied: the suggested gate %r is not AND or OR." % (data["logicGate"],)
     notes = data.get("notes")
     if notes is not None and not isinstance(notes, str):
         return "Not applied: the suggested notes are not text."
@@ -739,6 +794,185 @@ def change_problem(change: AIProposedChange, document: Any = None) -> Optional[s
     if change.change_type == "edit" and "probability" in data and document is not None:
         return derived_probability_reason(document.find_node_by_id(change.target_id), document)
     return None
+
+
+# ---- links in a suggestion ----------------------------------------------
+#
+# ``links`` in a suggestion's DATA is the node's complete new list, as the
+# schema the model is given describes a node: it replaces the links the node
+# has, ``[]`` removes them all, and leaving the key out keeps them. The
+# vendored add/edit ignore the key, so it is validated and written here.
+
+#: What the vendored handler answers to an edit none of whose fields it
+#: writes -- which is what an edit of the links alone looks like to it.
+NO_FIELDS_MESSAGE = "No valid fields to update"
+
+#: Keys of an add/edit DATA that are applied: the handler's own, and links.
+_APPLIED_KEYS = frozenset(("id", "name", "type", "probability", "logicGate", "notes", "links"))
+
+
+def _link_owner(change: AIProposedChange) -> Optional[str]:
+    """The id of the node whose links an add/edit sets."""
+    data = change.data if isinstance(change.data, dict) else {}
+    owner = data.get("id") if change.change_type == "add" else change.target_id
+    return None if owner is None else str(owner)
+
+
+def _suggested_links(change: AIProposedChange) -> Any:
+    """The raw ``links`` an add/edit carries, or None when it sets none
+    (the key is absent or null: the node's links stay as they are)."""
+    if change.change_type not in ("add", "edit"):
+        return None
+    data = change.data if isinstance(change.data, dict) else {}
+    return data.get("links")
+
+
+def _link_problem(raw: Any, owner: Optional[str], known_ids: Any
+                  ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """``(links, None)`` -- normalised as ``PATCH /api/nodes`` stores them --
+    or ``(None, why they cannot be applied)``.
+
+    ``node_schema.validate_links`` (a list of ``{target_id, relation}``,
+    relation AND or OR, no link twice), and then what a person's edit is not
+    held to but a model's is: every target exists and none is the node
+    itself. A dangling link is legal in a file; one the model invented is a
+    mistake, and it would silently change nothing in the numbers.
+    """
+    try:
+        links = validate_links(raw)
+    except ApiError as exc:
+        return None, "Not applied: the suggested links are not valid. %s" % exc.message
+    for link in links:
+        target = link["target_id"]
+        if owner is not None and target == owner:
+            return None, ("Not applied: the suggested link points from '%s' to itself."
+                          % owner)
+        if target not in known_ids:
+            return None, ("Not applied: the suggested link target '%s' does not exist "
+                          "in this analysis." % target)
+    return links, None
+
+
+def proposed_links(change: AIProposedChange, core: Any
+                   ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """``(links to store, None)``, ``(None, None)`` when the change sets no
+    links, or ``(None, reason)`` when its links must not be applied to the
+    document in ``core``. Caller holds the lock."""
+    raw = _suggested_links(change)
+    if raw is None:
+        return None, None
+    return _link_problem(raw, _link_owner(change), all_ids(core))
+
+
+def _link_key(link: Any) -> Optional[Tuple[str, str]]:
+    """``(target id, effective relation)`` of a stored link, as the engine
+    reads it ("AND" in any case is AND, anything else OR), or None."""
+    target = link.get("target_id") if isinstance(link, dict) else None
+    if target in (None, ""):
+        return None
+    relation = "AND" if str(link.get("relation") or "OR").strip().upper() == "AND" else "OR"
+    return str(target), relation
+
+
+def link_changes(change: AIProposedChange, tree: Any, pending: Any = ()
+                 ) -> Optional[Dict[str, Any]]:
+    """What a suggestion would do to its node's links, for the chat card:
+    ``{"added": [...], "removed": [...], "problem": str | None}``, or None
+    when it sets no links. Each entry is ``{targetId, targetName, relation}``.
+
+    Compared with ``tree``, the document the model was shown. A target that
+    an earlier ``add`` of ``pending`` creates counts as known -- suggestions
+    are applied in order -- so only a target nobody creates is a ``problem``
+    here; the same check runs again, against the live tree, on apply.
+    """
+    raw = _suggested_links(change)
+    if raw is None:
+        return None
+    nodes = _nodes_by_id(tree)
+    names = {node_id: node.get("name") for node_id, node in nodes.items()}
+    for other in pending or ():
+        data = other.data if isinstance(getattr(other, "data", None), dict) else {}
+        if getattr(other, "change_type", None) == "add" and data.get("id") is not None:
+            names.setdefault(str(data["id"]), data.get("name"))
+    owner = _link_owner(change)
+    wanted, problem = _link_problem(raw, owner, names)
+    if wanted is None:
+        try:  # still show what was asked for, beside why it will be refused
+            wanted = validate_links(raw)
+        except ApiError:
+            wanted = []
+    current: List[Tuple[str, str]] = []
+    if change.change_type == "edit" and owner in nodes:
+        for link in nodes[owner].get("links") or []:
+            key = _link_key(link)
+            if key is not None and key not in current:
+                current.append(key)
+    asked = [(link["target_id"], link["relation"]) for link in wanted]
+
+    def entry(key: Tuple[str, str]) -> Dict[str, Any]:
+        return {"targetId": key[0], "targetName": names.get(key[0]), "relation": key[1]}
+
+    return {
+        "added": [entry(key) for key in asked if key not in current],
+        "removed": [entry(key) for key in current if key not in asked],
+        "problem": problem,
+    }
+
+
+def ignored_fields(change: AIProposedChange) -> List[str]:
+    """Keys of an add/edit's DATA that applying it does not use, sorted.
+
+    ``children`` (non-empty: each child is its own suggestion), the 1.7 keys
+    and anything else the model made up. Not reported: an empty ``children``
+    and ``calculatedProbability``, which the schema the model is shown lists
+    on every node and which say nothing.
+    """
+    if change.change_type not in ("add", "edit"):
+        return []
+    data = change.data if isinstance(change.data, dict) else {}
+    ignored = []
+    for key, value in data.items():
+        if key in _APPLIED_KEYS or key == "calculatedProbability":
+            continue
+        if key == "children" and not value:
+            continue
+        ignored.append(str(key))
+    return sorted(ignored)
+
+
+def apply_change(handler: AIAgentHandler, core: Any, change: AIProposedChange
+                 ) -> Tuple[bool, str, List[str]]:
+    """Apply one proposed change to ``core``: ``(ok, message, ignored)``.
+
+    The vendored ``apply_change_to_fta`` does the work, as in the desktop
+    editor; this adds the suggestion's ``links``, which it ignores. They are
+    checked first (:func:`proposed_links`), so a suggestion with a bad link
+    is refused before anything of it is written -- see the module docstring
+    for the all-or-nothing rule. ``ignored`` is :func:`ignored_fields` for a
+    change that was applied. Caller holds the lock and recalculates.
+    """
+    links, problem = proposed_links(change, core)
+    if problem:
+        return False, problem, []
+    ok, message = handler.apply_change_to_fta(core, change)
+    if links is not None:
+        node = core.find_node_by_id(_link_owner(change))
+        links_only = (not ok and change.change_type == "edit" and node is not None
+                      and message == NO_FIELDS_MESSAGE)
+        if links_only:  # the links are the whole edit
+            ok, message = True, "✓ Updated '%s': links" % node.get("name")
+        elif ok and change.change_type == "edit":
+            message = "%s, links" % message
+        elif ok:
+            message = "%s, with %d link%s" % (message, len(links), "" if len(links) == 1 else "s")
+        if ok and node is not None:
+            node["links"] = links
+    if not ok:
+        return False, message, []
+    ignored = ignored_fields(change)
+    if ignored:
+        message = "%s. Not changed by a suggestion: %s" % (message, ", ".join(ignored))
+    return True, message, ignored
 
 
 def derived_probability_reason(node: Any, document: Any) -> Optional[str]:

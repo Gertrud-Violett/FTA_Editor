@@ -10,7 +10,7 @@
     "desktop/data/examples/sampleFTA.json": "c2a99673302a30f79156604ce0d81178f28c6ab68b2e45d4a5143d9c03ea3aa3"
   },
   "vendored": {
-    "fta_web/core/AI_agent_handler.py": "66511ee7ea3aecf7eb9485f324d2ddce47dcc9863745f683a1bf2e0d5861c584",
+    "fta_web/core/AI_agent_handler.py": "94146aa393412ce0a9fe6f831988b7ad0f3409d2edbbd40708014e611695f597",
     "fta_web/core/FTA_Editor_core.py": "aeb9bcafbff0eb105899435e9915c6ff86e17c9251d43ddda7b2cb6485b7e870",
     "fta_web/core/ai_providers.py": "7d58b4f30464e11cfcd3dc5c111174a84455f5e2e2b1a475a6f13fca8262e424",
     "fta_web/core/json_viewer.py": "528f9aca1278c6cb9d3d77e5cd223c70590bcc8e899be0f3c4171a71ffb6ef74",
@@ -39,6 +39,7 @@
     "D25",
     "D26",
     "D27",
-    "D28"
+    "D28",
+    "D29"
   ]
 }
