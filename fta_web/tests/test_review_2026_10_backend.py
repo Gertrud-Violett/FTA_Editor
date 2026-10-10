@@ -156,6 +156,8 @@ const out = { status: r.status, errors: r.errors.filter((e) => e.level === 'erro
 if (r.status === 'success') {
   out.titles = [...r.output.matchAll(/<g id="node\\d+" class="[^"]*">\\s*<title>([^<]*)<\\/title>/g)]
     .map((m) => m[1]);
+  // what DOMParser('image/svg+xml') would refuse: XML 1.0 forbids these
+  out.xmlInvalid = /[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]|&#(?:[0-8]|1[1-2]|1[4-9]|2[0-9]|3[01]);/.test(r.output);
 }
 console.log(JSON.stringify(out));
 """
@@ -239,3 +241,57 @@ class TestDigitLedIds:
         out = viz_render(dot)
         assert out["status"] == "success" and not out["errors"], out
         assert sorted(out["titles"]) == sorted(id_map), out["titles"]
+
+
+# --------------------------------------------------------------------------
+# B-3: a character XML 1.0 forbids blanked a label, or the whole diagram
+# --------------------------------------------------------------------------
+
+_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+
+
+def _ctrl_tree():
+    return {"id": "root", "name": "Top\x01event", "type": "Root", "probability": 1.0,
+            "logicGate": "OR", "notes": "", "links": [], "children": [
+                _leaf("e1", "nul\x00here"),
+                _leaf("e2", "bell\x07 esc\x1b nonchar￾"),
+                _leaf("e3", "lone \ud800 surrogate"),
+                _leaf("t1", "Transfer", gateType="TRANSFER", transferTo="e1"),
+            ]}
+
+
+class TestXmlInvalidCharacters:
+    """Graphviz parses an HTML-like label as XML. A NUL in a node name (or in
+    the title) cut the DOT short and nothing rendered at all; any other C0
+    control character, U+FFFE/U+FFFF or a lone surrogate made that node's
+    label unparseable, so the box lost its text. ``sanitize_name`` only
+    collapses whitespace, and a file is taken as written, so both reach the
+    diagram. They are drawn as U+FFFD now; the stored names are untouched."""
+
+    @pytest.mark.parametrize("style", ["compact", "symbols"])
+    def test_dot_carries_no_xml_invalid_character(self, style):
+        from fta_web.diagram_dot import build_dot_text2
+
+        core = _core(_ctrl_tree(), title="Ti\x00tle\x07")
+        dot, _ = build_dot_text2(core, style=style)
+        assert not _XML_INVALID.search(dot), repr(_XML_INVALID.search(dot))
+        assert "nul�here" in dot and "Ti�tle�" in dot
+        # the document itself is not rewritten
+        assert core.find_node_by_id("e1")["name"] == "nul\x00here"
+
+    def test_plain_text_is_unchanged(self):
+        from fta_web.rendering import xml_safe
+
+        text = "Pressure > 5 bar & T < 50 ポンプ \U0001f600\ttab\nnl"
+        assert xml_safe(text) == text
+
+    @needs_node
+    @pytest.mark.parametrize("style", ["compact", "symbols"])
+    def test_viz_renders_every_label(self, style):
+        from fta_web.diagram_dot import build_dot_text2
+
+        dot, id_map = build_dot_text2(_core(_ctrl_tree(), title="Ti\x00tle\x07"), style=style)
+        out = viz_render(dot)
+        assert out["status"] == "success" and not out["errors"], out
+        assert sorted(out["titles"]) == sorted(id_map)
+        assert out["xmlInvalid"] is False

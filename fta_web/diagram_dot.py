@@ -80,6 +80,7 @@ try:  # normal package import: ``import fta_web.diagram_dot``
         _escape_label,
         clamp_scale,
         sanitize_font_name,
+        xml_safe,
     )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]  # noqa: F401
@@ -90,6 +91,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         _escape_label,
         clamp_scale,
         sanitize_font_name,
+        xml_safe,
     )
 
 from json_viewer import gather_nodes, sanitize_id  # noqa: E402
@@ -267,9 +269,11 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
         # A leaf event has no gate: 1.6 showed its default "Gate: OR" (1.7.1
         # drops it; the symbols style never drew a gate for a leaf either).
         head = ""
-    name_plain = str(name)
+    # xml_safe: a character XML forbids would make the label unparseable.
+    name_plain = xml_safe(name)
+    head = xml_safe(head)
     meta_plain = f"{head}P:{p_str} | P_calc:{cp_str}"
-    name = html.escape(str(name), quote=False)
+    name = html.escape(name_plain, quote=False)
     head = html.escape(head, quote=False)
     meta_text = f"{head}P:{p_str} | P_calc:{cp_str}"
     font_size, small_font_size, cellpadding = 14, 9, 6
@@ -286,11 +290,11 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     name = node.get("name")
     if name is None:
         name = node.get("id", "")
-    name_plain = str(name)
-    name = html.escape(str(name), quote=False)
+    name_plain = xml_safe(name)
+    name = html.escape(name_plain, quote=False)
     extra = []
     if _gate_type(node) == "TRANSFER":
-        extra.append(html.escape(ctx.gate_text(node), quote=False))
+        extra.append(html.escape(xml_safe(ctx.gate_text(node)), quote=False))
     kind = ctx.kind_text(node)
     if kind and _gate_type(node) != "TRANSFER":
         extra.append(html.escape(kind, quote=False))
