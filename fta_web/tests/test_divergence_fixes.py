@@ -10,8 +10,15 @@ Each divergence recorded in fta_web/core/DIVERGENCE.md gets coverage here:
        future refactor of write_node() cannot introduce the reported bug.
   D5 - logicGate "NOT" is rejected at validation instead of silently computing
        as OR.
+  D7 - the move cycle-check asked the question backwards.
+  D27 - a proposal for a node without a gate ("logicGate": "", which is what
+       the system prompt's own example shows for an Event) was dropped.
+  D28 - a "move" proposal could never be applied: the system prompt did not
+       say how to name the new parent.
 """
 
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -400,3 +407,267 @@ def test_d7_unknown_node_does_not_raise():
     assert AIAgentHandler()._would_create_circular_reference(
         _lineage(), "no_such_node", "root"
     ) is False
+
+
+# ---------------------------------------------------------------------------
+# D27 -- a proposal for a node without a gate was dropped
+#
+# SYSTEM_PROMPT shows the model how to add an Event: with "logicGate": "".
+# _parse_proposed_changes accepted only "AND" and "OR", so a model that
+# followed the example had every such proposal discarded without a word
+# (seen with Claude: 12 SUGGESTION blocks in the reply, 8 proposals offered).
+# ---------------------------------------------------------------------------
+
+
+def _prompt_example():
+    """The two SUGGESTION blocks SYSTEM_PROMPT itself gives the model."""
+    match = re.search(
+        r"EXAMPLE of adding nested nodes[^\n]*\n(SUGGESTION:.*?)\n\s*(?:EXAMPLE|CRITICAL RULES)",
+        AIAgentHandler.SYSTEM_PROMPT,
+        re.DOTALL,
+    )
+    assert match, "SYSTEM_PROMPT no longer carries its worked example"
+    return match.group(1)
+
+
+def _proposal(action="add", target="root", **data):
+    full = {"id": "corrosion", "name": "Corrosion", "type": "Event", "probability": 0.05}
+    full.update(data)
+    return (
+        "SUGGESTION: Corrosion\nDESCRIPTION: missing root cause.\n"
+        "ACTION: %s\nTARGET: %s\nDATA: %s\n" % (action, target, json.dumps(full))
+    )
+
+
+def test_d27_the_system_prompts_own_example_parses_in_full():
+    changes = AIAgentHandler()._parse_proposed_changes(_prompt_example())
+
+    assert [(c.change_type, c.target_id, c.data["id"]) for c in changes] == [
+        ("add", "root", "material_deg"),
+        ("add", "material_deg", "corrosion"),
+    ]
+    assert changes[1].data["logicGate"] == ""
+
+
+def test_d27_the_system_prompts_own_example_applies_as_a_nested_pair():
+    handler = AIAgentHandler()
+    core = FTACore()
+    core.set_data(node("root", type="Root", logicGate="OR"))
+
+    for change in handler._parse_proposed_changes(_prompt_example()):
+        assert handler.validate_change(change) == (True, None)
+        ok, message = handler.apply_change_to_fta(core, change)
+        assert ok, message
+
+    (gate,) = core.get_data()["children"]
+    assert (gate["id"], gate["type"], gate["logicGate"]) == ("material_deg", "Gate", "OR")
+    (event,) = gate["children"]
+    assert (event["id"], event["type"], event["logicGate"]) == ("corrosion", "Event", "")
+
+
+@pytest.mark.parametrize("action", ["add", "edit"])
+@pytest.mark.parametrize("gate", ["", None])
+def test_d27_a_proposal_without_a_gate_is_kept(action, gate):
+    changes = AIAgentHandler()._parse_proposed_changes(_proposal(action, logicGate=gate))
+
+    assert len(changes) == 1
+    # null means the same as "": no gate. It is stored as text either way.
+    assert changes[0].data["logicGate"] == ""
+
+
+@pytest.mark.parametrize("gate", ["NOT", "XOR", "and", 0, 1, False, True, []])
+def test_d27_an_unsupported_gate_is_still_dropped(gate):
+    """D5 stands: only AND and OR compute, so nothing else may be proposed."""
+    assert AIAgentHandler()._parse_proposed_changes(_proposal(logicGate=gate)) == []
+
+
+def test_d27_validate_node_data_accepts_a_node_without_a_gate():
+    ok, err = AIAgentHandler()._validate_node_data(
+        {"id": "corrosion", "name": "Corrosion", "type": "Event", "logicGate": ""}
+    )
+
+    assert (ok, err) == (True, None)
+
+
+@pytest.mark.parametrize("gate", ["XOR", "and", None, 0, False, [], {}])
+def test_d27_validate_node_data_still_rejects_an_unsupported_gate(gate):
+    ok, err = AIAgentHandler()._validate_node_data(
+        {"id": "gate_3", "name": "Some Gate", "type": "Gate", "logicGate": gate}
+    )
+
+    assert ok is False
+    assert "gate_3" in err
+
+
+@pytest.mark.parametrize("gate", ["", None])
+def test_d27_an_edit_without_a_gate_leaves_the_nodes_gate_alone(gate):
+    """Writing "" over an AND would turn it into an OR without saying so
+    (the engine computes every gate that is not AND as OR)."""
+    handler = AIAgentHandler()
+    core = FTACore()
+    core.set_data(node("root", type="Root", logicGate="OR", children=[
+        node("both", type="Gate", logicGate="AND", children=[
+            node("a", probability=0.2), node("b", probability=0.3)]),
+    ]))
+    core.recalculate_probabilities()
+    (change,) = handler._parse_proposed_changes(_proposal(
+        "edit", target="both", id="both", name="Both fail", type="Gate",
+        probability=0.5, logicGate=gate, notes="renamed"))
+
+    ok, message = handler.apply_change_to_fta(core, change)
+    core.recalculate_probabilities()
+
+    assert ok, message
+    both = core.find_node_by_id("both")
+    assert (both["name"], both["notes"], both["logicGate"]) == ("Both fail", "renamed", "AND")
+    assert "logicGate" not in message
+    assert both["calculatedProbability"] == pytest.approx(0.2 * 0.3)
+
+
+def test_d27_an_edit_that_only_carries_an_empty_gate_changes_nothing():
+    handler = AIAgentHandler()
+    core = FTACore()
+    core.set_data(node("root", type="Root", logicGate="AND"))
+    (change,) = handler._parse_proposed_changes(
+        _proposal("edit", target="root", id="root", name="root", logicGate=""))
+    change.data = {"id": "root", "logicGate": ""}
+
+    ok, message = handler.apply_change_to_fta(core, change)
+
+    assert (ok, message) == (False, "No valid fields to update")
+    assert core.get_data()["logicGate"] == "AND"
+
+
+# ---------------------------------------------------------------------------
+# D28 -- a "move" proposal could never be applied
+#
+# SYSTEM_PROMPT offered ACTION: move without saying how to name the new
+# parent, and apply_change_to_fta read only data["parent_id"]. Claude wrote
+# "new_parent_id" every time (6 of 6 moves in two replies), so every move was
+# refused with "Move requires 'parent_id' in data" -- and a restructuring
+# batch was left half applied: the new gate was added and stayed empty.
+# ---------------------------------------------------------------------------
+
+#: One block of a real reply (Claude, 2026-10-10), verbatim.
+MODEL_MOVE = (
+    "SUGGESTION: 常用ポンプ停止を中間ゲートの下へ移動\n"
+    "DESCRIPTION: 「常用ポンプが止まる」を independent_both_fail の子に移します。\n"
+    "ACTION: move\n"
+    "TARGET: root_0\n"
+    'DATA: {"id": "root_0", "name": "常用ポンプが止まる", "type": "Gate", "probability": 1.0, '
+    '"logicGate": "OR", "notes": "移動先: independent_both_fail", '
+    '"new_parent_id": "independent_both_fail"}\n'
+)
+
+
+def _prompt_examples():
+    """Every SUGGESTION block SYSTEM_PROMPT gives the model as an example."""
+    match = re.search(
+        r"EXAMPLE of adding nested nodes[^\n]*\n(SUGGESTION:.*?)\n\s*CRITICAL RULES",
+        AIAgentHandler.SYSTEM_PROMPT,
+        re.DOTALL,
+    )
+    assert match, "SYSTEM_PROMPT no longer carries its worked examples"
+    return match.group(1)
+
+
+def _two_branches():
+    core = FTACore()
+    core.set_data(node("root", type="Root", logicGate="OR", children=[
+        node("root_0", type="Gate", logicGate="OR", children=[node("root_0_0")]),
+        node("independent_both_fail", type="Gate", logicGate="AND"),
+    ]))
+    return core
+
+
+def _move(target, data):
+    return (
+        "SUGGESTION: m\nDESCRIPTION: d\nACTION: move\nTARGET: %s\nDATA: %s\n" % (target, data)
+    )
+
+
+def test_d28_the_system_prompt_shows_a_move_with_its_new_parent():
+    blocks = AIAgentHandler()._parse_proposed_changes(_prompt_examples())
+
+    moves = [c for c in blocks if c.change_type == "move"]
+    assert len(moves) == 1, "SYSTEM_PROMPT must show one worked move"
+    assert moves[0].data == {"parent_id": "material_deg"}
+    format_section = AIAgentHandler.SYSTEM_PROMPT.split("EXAMPLE of adding")[0]
+    assert re.search(r'^- move: [^\n]*DATA is \{"parent_id": "\w+"\}', format_section, re.M), (
+        "the format section, not only the example, must name the key"
+    )
+
+
+def test_d28_the_system_prompts_examples_apply_in_order():
+    """What the model is shown must be something the handler can do."""
+    handler = AIAgentHandler()
+    core = FTACore()
+    core.set_data(node("root", type="Root", logicGate="OR", children=[node("fatigue")]))
+
+    changes = handler._parse_proposed_changes(_prompt_examples())
+    for change in changes:
+        assert handler.validate_change(change) == (True, None)
+        ok, message = handler.apply_change_to_fta(core, change)
+        assert ok, message
+
+    assert [(c.change_type, c.target_id) for c in changes] == [
+        ("add", "root"), ("add", "material_deg"), ("move", "fatigue"),
+    ]
+    (gate,) = core.get_data()["children"]
+    assert gate["id"] == "material_deg"
+    assert [child["id"] for child in gate["children"]] == ["corrosion", "fatigue"]
+
+
+def test_d28_a_move_as_the_model_wrote_it_is_applied():
+    handler = AIAgentHandler()
+    core = _two_branches()
+    (change,) = handler._parse_proposed_changes(MODEL_MOVE)
+
+    ok, message = handler.apply_change_to_fta(core, change)
+
+    assert ok, message
+    root = core.get_data()
+    assert [child["id"] for child in root["children"]] == ["independent_both_fail"]
+    (moved,) = root["children"][0]["children"]
+    assert moved["id"] == "root_0"
+    assert [child["id"] for child in moved["children"]] == ["root_0_0"], "the subtree moves with it"
+    # A move changes where the node hangs and nothing else.
+    assert (moved["name"], moved["logicGate"], moved["notes"]) == ("root_0", "OR", "")
+
+
+def test_d28_parent_id_wins_when_both_keys_are_given():
+    handler = AIAgentHandler()
+    core = _two_branches()
+    (change,) = handler._parse_proposed_changes(_move(
+        "root_0_0", '{"parent_id": "independent_both_fail", "new_parent_id": "root"}'))
+
+    ok, message = handler.apply_change_to_fta(core, change)
+
+    assert ok, message
+    target = core.find_node_by_id("independent_both_fail")
+    assert [child["id"] for child in target["children"]] == ["root_0_0"]
+
+
+@pytest.mark.parametrize("data", ['{}', '{"id": "root_0"}', '{"parent_id": ""}',
+                                  '{"new_parent_id": null}', '{"parent": "root"}'])
+def test_d28_a_move_that_names_no_parent_is_refused_and_says_which_key(data):
+    handler = AIAgentHandler()
+    core = _two_branches()
+    before = json.dumps(core.get_data(), sort_keys=True)
+    (change,) = handler._parse_proposed_changes(_move("root_0", data))
+
+    ok, message = handler.apply_change_to_fta(core, change)
+
+    assert (ok, message) == (False, "Move requires 'parent_id' in data")
+    assert json.dumps(core.get_data(), sort_keys=True) == before
+
+
+def test_d28_a_move_into_its_own_subtree_is_still_refused():
+    """D7 stands whichever key names the parent."""
+    handler = AIAgentHandler()
+    core = _two_branches()
+    (change,) = handler._parse_proposed_changes(_move("root_0", '{"new_parent_id": "root_0_0"}'))
+
+    ok, message = handler.apply_change_to_fta(core, change)
+
+    assert (ok, message) == (False, "Cannot move: would create circular reference")

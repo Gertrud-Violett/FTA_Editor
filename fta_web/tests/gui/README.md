@@ -3,7 +3,7 @@
 A back-to-back check of the web GUI. Playwright drives a real browser with
 real mouse and keyboard input, reads what the GUI shows (headline, Node
 Details, every diagram label, every analysis tab, the downloaded reports) and
-compares it with what the API computes for the same document. It has 716
+compares it with what the API computes for the same document. It has 719
 checks in 14 sections and takes about 5 minutes.
 
 It complements the numeric back-to-back suite in [`../b2b/`](../b2b/README.md),
@@ -23,7 +23,7 @@ which compares the engine, API, CLI and exe paths without a browser.
 | `more` | 61 | Escape in the title, Hide Zero, λ units, the standby model, document defaults for cut sets and Monte Carlo, the truncation marker on the headline, RRW ∞, New with the FV overlay on. |
 | `stale` | 51 | No stale values after undo / redo / delete: the Quantification form, Details, the title, the Validation list and badge. |
 | `race` | 4 | An edit made while the first Cut Sets / Importance run is still in flight (responses delayed with `page.route`). |
-| `view` | 131 | Every tab in en/light and ja/dark (screenshots), no raw i18n keys, tab-strip and tree keyboard navigation, F2 rename, drag and drop, the AI panel without credentials, four window sizes down to 420 px. |
+| `view` | 134 | Every tab in en/light and ja/dark (screenshots), no raw i18n keys, tab-strip and tree keyboard navigation, F2 rename, drag and drop, the AI panel without credentials, four window sizes down to 420 px, and Japanese event names in a 420 px window (the Importance and Quantification tables keep six characters a line). |
 | `big` | 14 | A 300-node tree: click to Details under 500 ms, no diagram re-layout on selection, the Add dialog under 3 s, five analysis tabs, the tree search. |
 | `i18n` | 3 | After a live switch to Japanese no English UI text is left in any tab, and no Japanese after switching back. |
 | `misc` | 24 | Save As without an extension, the splitter by keyboard, the sig-fig select by keyboard, basic mode showing an advanced gate read-only, the OS dark theme, a tab opened without a session token. |

@@ -34,6 +34,12 @@ find; it exits 1 on any mismatch.
   3.10) is used when `.venv314` exists (`FTA_B2B_PY2` overrides):
   `UV_PROJECT_ENVIRONMENT=.venv314 uv run --frozen --python 3.14 --extra all python -V`.
 - **node** is needed for the browser-formatter comparison (skipped without).
+- **Windows and local ports.** Flask's server speaks HTTP/1.0, so each of the
+  about 2,500 requests of a server path is its own connection, and Windows
+  keeps a closed connection's port for two minutes. On a machine that is
+  already short of ports a request then gets none (WinError 10048; Tcpip
+  event 4227 in the System log). The runner waits for a port and goes on;
+  after 150 s without one it stops and says where to look.
 
 ## Paths
 

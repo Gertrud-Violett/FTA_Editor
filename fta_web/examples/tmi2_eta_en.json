@@ -1,0 +1,133 @@
+{
+  "title": "Three Mile Island Unit 2 accident (1979), event tree: illustrative probabilities",
+  "date": "2026-10-10",
+  "mode": "ETA",
+  "tree": {
+    "id": "root",
+    "name": "Loss of main feedwater (actual)",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "Three Mile Island Unit 2 (TMI-2), 28 March 1979. The plant was at 97 percent power when the pumps that feed its steam generators tripped, 36 seconds after 4:00 a.m. The pilot-operated relief valve (PORV) on the pressurizer opened as designed, and the reactor scrammed 8 seconds after the first pump trip.\n\nThe tree asks the three questions the Commission's account turns on: \"Had the valve closed as it was designed to do, or if the control room operators had realized that the valve was stuck open and closed a backup valve to stem the flow of coolant water, or if they had simply left on the plant's high pressure injection pumps, the accident at Three Mile Island would have remained little more than a minor inconvenience for Met Ed.\" (The backup valve is the block valve between the pressurizer and the PORV. Met Ed is Metropolitan Edison, the company that operated the plant.) A fourth question, whether the containment holds, decides how much radioactivity escapes.\n\nThe questions are in the order of that sentence, not of the clock: the operators cut back the injection within minutes, and shut the block valve 2 hours and 22 minutes after the PORV had opened.\n\nThis node's probability is 1: every value below is a probability given that main feedwater is lost. Emergency feedwater was blocked for the first 8 minutes by two closed valves. The Commission's account says that this \"had no significant effect on the outcome of the accident. But it did add to the confusion that distracted the operators\". It is therefore not a branch here; a general tree for a loss of feedwater would ask about it first.\n\nThe branch probabilities are illustrative values for learning the tool. They are not from the report and they are not a risk estimate. Nodes marked (actual) trace the path the accident took.\n\nSource: Report of the President's Commission on the Accident at Three Mile Island (the Kemeny report), October 1979: \"Account of the Accident\", Wednesday, March 28.",
+    "links": [],
+    "children": [
+      {
+        "id": "root_0",
+        "name": "Relief valve closes again",
+        "type": "Event",
+        "probability": 0.98,
+        "logicGate": "OR",
+        "notes": "The relief valve (PORV) should have closed 13 seconds into the accident, when pressure had dropped to 2,205 psi. Had it closed, the Commission's account says, the accident \"would have remained little more than a minor inconvenience\". End state: no loss of coolant.\n\n0.98 is illustrative: one minus the value of the branch below.\n\nSource: Kemeny report, \"Account of the Accident\", Wednesday, March 28.",
+        "links": [],
+        "children": [],
+        "calculatedProbability": 0.98
+      },
+      {
+        "id": "root_1",
+        "name": "Relief valve sticks open (actual)",
+        "type": "Event",
+        "probability": 0.02,
+        "logicGate": "OR",
+        "notes": "The relief valve (PORV) \"was stuck open, and would remain open for 2 hours and 22 minutes\": a small-break loss-of-coolant accident (LOCA). A light in the control room showed only that the electric power that opened the valve had gone off, and the operators took the valve to be shut.\n\n0.02 is illustrative. The report gives no failure rate, but it does say the failure was not new: \"Nine times before the TMI accident, PORVs stuck open at B&W plants.\" (TMI is Three Mile Island; B&W is Babcock & Wilcox, which supplied the reactor of Unit 2.)\n\nSources: Kemeny report, \"Account of the Accident\", Wednesday, March 28; Commission Findings A.3 and E.1.b.",
+        "links": [],
+        "children": [
+          {
+            "id": "root_1_0",
+            "name": "Block valve closed in time",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "notes": "A block valve between the pressurizer and the relief valve (PORV) can be closed when the PORV sticks open. It had been done before. In September 1977 at Davis-Besse, a plant with a reactor of the same make (Babcock & Wilcox, B&W), a PORV stuck open and \"the PORV block valve was closed approximately 20 minutes after the PORV stuck open\". There were no serious consequences, but that plant \"had been operating at only 9 percent power\", and a B&W engineer wrote in an internal memorandum that at full power \"it is quite possible, perhaps probable, that core uncovery and possible fuel damage would have occurred.\" Davis-Besse shows that operators can take this action, not how much time they have. End state: the loss of coolant is stopped before the core is uncovered.\n\n0.5 is illustrative.\n\nSources: Kemeny report, Commission Findings A.7.a; \"Account of the Accident\", Wednesday, March 28.",
+            "links": [],
+            "children": [],
+            "calculatedProbability": 0.01
+          },
+          {
+            "id": "root_1_1",
+            "name": "Block valve not closed in time (actual)",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "notes": "The operators did not recognize that the relief valve (PORV) was open: \"The operators shut the block valve at 6:22 a.m., 2 hours and 22 minutes after the PORV had opened.\" Their emergency procedure for a stuck-open PORV \"did not state that unless the PORV block valve was closed, a LOCA would exist.\" (A LOCA is a loss-of-coolant accident.)\n\n0.5 is illustrative.\n\nSources: Kemeny report, \"Account of the Accident\", Wednesday, March 28; Commission Findings A.3.",
+            "links": [],
+            "children": [
+              {
+                "id": "root_1_1_0",
+                "name": "Injection left running",
+                "type": "Event",
+                "probability": 0.5,
+                "logicGate": "OR",
+                "notes": "The high pressure injection (HPI) pumps started automatically 2 minutes into the accident and poured about 1,000 gallons a minute into the reactor coolant system. The Commission found that this would have been enough even with the relief valve (PORV) open: \"If the HPI had not been throttled, core damage would have been prevented in spite of a stuck-open PORV.\" End state: the core stays covered.\n\n0.5 is illustrative.\n\nSources: Kemeny report, \"Account of the Accident\", Wednesday, March 28; Commission Findings A.4.",
+                "links": [],
+                "children": [],
+                "calculatedProbability": 0.005
+              },
+              {
+                "id": "root_1_1_1",
+                "name": "Injection throttled (actual)",
+                "type": "Event",
+                "probability": 0.5,
+                "logicGate": "OR",
+                "notes": "The operators, taught to keep the pressurizer from filling with water, throttled the high pressure injection (HPI): they \"cut back HPI from 1,000 gallons per minute to less than 100 gallons per minute.\" More water left the system than was added. The reactor coolant pumps were shut down at 5:14 and 5:41 a.m., and the core was uncovered: the Commission estimates \"failures in the cladding around 90 percent of the fuel rods.\"\n\n0.5 is illustrative.\n\nSources: Kemeny report, Commission Findings A.4 and A.12.a; \"Account of the Accident\", Wednesday, March 28.",
+                "links": [],
+                "children": [
+                  {
+                    "id": "root_1_1_1_0",
+                    "name": "Containment holds (actual)",
+                    "type": "Event",
+                    "probability": 0.99,
+                    "logicGate": "OR",
+                    "notes": "Hydrogen from the overheated core burned in the containment building at 1:50 p.m. and raised the pressure there by 28 psi. \"Almost all of the radioactive iodine released from the fuel was retained in the primary system, containment, and the auxiliary building.\" Of what did escape, the Commission found: \"Most radioactivity escaping to the environment was in the form of fission gases transported through the coolant let-down/make-up system into the auxiliary building and through the building filters and the vent header to the outside atmosphere.\" The containment building did not isolate until nearly 4 hours after the accident began. End state: a severely damaged core and a small release. \"The maximum estimated radiation dose received by any one individual in the off-site general population (excluding the plant workers) during the accident was 70 millirems.\"\n\n0.99 is illustrative. The Commission also calculated a worse case than the one that happened, a meltdown through the reactor vessel. Its calculations \"show that even if a meltdown occurred, there is a high probability that the containment building and the hard rock on which the TMI-2 containment building is built would have been able to prevent the escape of a large amount of radioactivity.\" This branch stands for that step as well.\n\nSources: Kemeny report, Commission Findings A.10, A.13 and B.1.b; Overview; \"Account of the Accident\", Wednesday, March 28.",
+                    "links": [],
+                    "children": [],
+                    "calculatedProbability": 0.00495
+                  },
+                  {
+                    "id": "root_1_1_1_1",
+                    "name": "Containment fails",
+                    "type": "Event",
+                    "probability": 0.01,
+                    "logicGate": "OR",
+                    "notes": "This did not happen. End state: a severely damaged core and a large release. The Commission asked \"What if one more thing had gone wrong?\" and looked at worse cases than the one that happened, up to a meltdown through the reactor vessel. Of its result, that the containment would probably still have prevented a large release, it says: \"We cannot be absolutely certain of these results.\"\n\n0.01 is illustrative: one minus the value of the branch above.\n\nSource: Kemeny report, Overview.",
+                    "links": [],
+                    "children": [],
+                    "calculatedProbability": 5e-05
+                  }
+                ],
+                "calculatedProbability": 0.005
+              }
+            ],
+            "calculatedProbability": 0.01
+          }
+        ],
+        "calculatedProbability": 0.02
+      }
+    ],
+    "calculatedProbability": 1.0
+  },
+  "analysis": {
+    "missionTime": 8760.0,
+    "timeUnit": "h",
+    "cutsets": {
+      "maxOrder": 6,
+      "maxCount": 5000,
+      "cutoff": 1e-15
+    },
+    "mc": {
+      "n": 10000,
+      "seed": null
+    },
+    "fmeaOccurrenceTable": {
+      "1": 1e-07,
+      "2": 1e-06,
+      "3": 1e-05,
+      "4": 0.0001,
+      "5": 0.0005,
+      "6": 0.002,
+      "7": 0.01,
+      "8": 0.02,
+      "9": 0.05,
+      "10": 0.1
+    }
+  }
+}

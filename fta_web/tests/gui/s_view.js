@@ -2,6 +2,8 @@
 // keyboard-only flows, drag & drop, the AI panel without credentials.
 // node s_view.js <url> <label> <root>
 'use strict';
+const fs = require('fs');
+const path = require('path');
 const L = require('./lib');
 const { compareCore, flatten } = require('./b2b');
 
@@ -176,6 +178,45 @@ async function main(url, label, root) {
     L.check(`${vp.width}x${vp.height}: no console errors`, e2.length === 0, e2);
     await app.context.close();
   }
+
+  // ---- narrow window, Japanese names: the event column keeps a readable width -----------
+  // Japanese text may break after any character, so the least an event cell
+  // needs is one character. Next to the number columns, which never wrap, it
+  // was squeezed to two characters a line, where an English name (which only
+  // breaks between words) makes the table scroll instead.
+  const jaFile = path.join(root, 'b2b_ja_names_' + label + '.json');
+  const leaf = (id, name, probability) => ({ id, name, type: 'Event', probability, logicGate: 'OR', notes: '', links: [], children: [] });
+  fs.writeFileSync(jaFile, JSON.stringify({
+    title: '冷却水が止まる', date: '2026-10-10', mode: 'FTA',
+    tree: {
+      id: 'root', name: '冷却水が止まる', type: 'Root', probability: 1, logicGate: 'AND', notes: '', links: [],
+      children: [
+        Object.assign(leaf('root_0', '常用ポンプが止まる', 1), { children: [leaf('root_0_0', '常用ポンプの故障', 0.00137), leaf('root_0_1', '常用の電源ブレーカが落ちる', 4.57e-5)] }),
+        Object.assign(leaf('root_1', '予備が引き継げない', 1), { children: [leaf('root_1_0', '予備ポンプの故障', 0.00833), leaf('root_1_1', '自動切替の失敗', 0.00417)] }),
+      ],
+    },
+  }));
+  app = await L.openApp(url, { prefs: { 'fta.advanced': '1', 'fta.language': 'ja' }, viewport: { width: 420, height: 860 } });
+  page = app.page;
+  await app.api('post', '/file/open', { path: jaFile });
+  await page.evaluate(() => window.ftaShell.refresh());
+  await app.settle();
+  for (const id of ['importance', 'quant']) {
+    await app.clickTab(id);
+    await page.waitForSelector('#tabpanel-' + id + ' table.anl-table tbody tr', { timeout: 15000 });
+    const cells = await page.evaluate((tid) => Array.from(
+      document.querySelectorAll('#tabpanel-' + tid + ' table.anl-table tbody tr td:first-child')).map((td) => {
+      const cs = getComputedStyle(td);
+      const width = td.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      return { text: td.textContent, perLine: Math.round(10 * width / parseFloat(cs.fontSize)) / 10 };
+    }), id);
+    const squeezed = cells.filter((c) => c.perLine < 5.9);
+    L.check(`420x860 ja: ${id} gives an event name at least 6 characters a line`, cells.length >= 4 && squeezed.length === 0, { cells: cells.length, squeezed });
+    await app.shot(`narrow_ja_${id}_${label}`, { locator: '#tabpanel-' + id + ' .anl-tablewrap' });
+  }
+  const e3 = app.errorsSince(0);
+  L.check('420x860 ja: no console errors', e3.length === 0, e3);
+  await app.context.close();
 }
 
 L.runSection('view', main);

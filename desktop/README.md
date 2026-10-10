@@ -38,6 +38,10 @@ desktop version include:
   that stops answering is waited on for many minutes (D24); an empty reply
   breaks the conversation (D25); OpenAI reasoning models (o-series, GPT-5) are
   refused (D26).
+- AI suggestions: one for a node without a gate (`"logicGate": ""`, which is
+  how the assistant is told to write a leaf event) is dropped without notice
+  (D27); a suggested move is always refused, because the assistant is not told
+  how to name the new parent (D28).
 
 ### Known defects (not fixed in the frozen app)
 

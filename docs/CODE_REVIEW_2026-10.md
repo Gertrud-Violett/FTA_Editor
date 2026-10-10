@@ -18,7 +18,8 @@ suites) and DOC-.
 
 **Delivered in three merges to `main`:** sprint 1 (backend, CLI, exports,
 AI), sprint 2 (frontend, tabs) and sprint 3 (documentation).
-`CHANGELOG.md` → [Unreleased] lists every user-visible fix.
+`CHANGELOG.md` → [1.7.2] lists every user-visible fix. The release check
+that followed, on 10 October 2026, is [at the end](#release-check-10-october-2026).
 
 ## Results
 
@@ -87,6 +88,7 @@ Windows' text-I/O defaults (cp1252, CRLF writes).
 
 The vendored core changed only through documented divergences D21–D26 (AI
 providers, re-pinned in `BASELINE.json`). `desktop/` source is untouched.
+The release check added D27 and D28 (AI suggestions), below.
 
 ## Left open (deliberately)
 
@@ -136,3 +138,50 @@ These were checked against the code, not the docs. The list is
 | 3.6 Editing ergonomics | Mostly not started | Japanese localisation done |
 | 3.7 Semantics help | Partial | formulas and fix hints; no gate/link help |
 | AI: grounded proposals, narratives, audit | Not started | — |
+
+## Release check, 10 October 2026
+
+Before 1.7.2 the reviewed `main` (`0a54d60`) was run on Windows 11 the way a
+user runs it: the test suites on Python 3.10 and 3.14, the real-browser GUI
+suite in Google Chrome, the full back-to-back matrix, and the AI assistant
+against a live provider (Anthropic, `claude-opus-5-5`) on a small pump tree.
+Each finding was reproduced, got a test that failed first, and was fixed.
+
+| Finding | Sev | Fix |
+|---|---|---|
+| A suggestion for a node without a gate (`"logicGate": ""`, which is how the system prompt's own example writes a leaf event) was dropped without a word: 12 suggestions in a reply, 8 offered | HIGH | D27 |
+| A suggested move was always refused: the prompt never said how to name the new parent, and the model wrote `new_parent_id`. A restructuring batch was left half applied, with an empty new gate and a top event of 1 | HIGH | D28 |
+| Importance and Quantification tables: below about 560 px a Japanese event name was squeezed to two (four) characters a line | LOW | a floor of six characters on the name column; 3 GUI checks |
+| The full back-to-back run died with WinError 10048 when the machine was short of TCP ports | LOW (tests) | the server transport waits for a port |
+
+With D27 and D28 the two recorded replies apply in full (12 of 12 and 8 of
+8), and a fresh reply under the new prompt applied 19 of 19. Analyze, chat,
+apply, Update FTA and undo were all exercised against the live provider.
+
+| Check (Windows 11) | `main` `0a54d60` | `release/1.7.2` |
+|---|---|---|
+| `pytest`, Python 3.10 | 2489 passed, 26 skipped | 2593 passed, 26 skipped |
+| `pytest`, Python 3.14 | 2490 passed, 25 skipped | 2594 passed, 25 skipped |
+| Real-browser GUI suite, Google Chrome | 716/716 | 719/719 |
+| Full back-to-back matrix, with the packaged 1.7.0 exe | stopped by WinError 10048 | 0 mismatches (8326 rows; at `c55196d`, the harness fix) |
+
+The packaged 1.7.2 build is put through the GUI suite and the back-to-back
+matrix when it is built; those numbers are in the release notes.
+
+Seen and left open:
+
+| What | Sev | Why open |
+|---|---|---|
+| A suggestion whose DATA holds a nested object, or a `}` inside a text, is cut at the first `}`. It is offered without its data and refused on apply | LOW | Not seen in 39 live suggestions. A fix has to decide what to do with nested children and links, which apply ignores |
+| An AI edit of the top node can set its type to `Gate` (the prompt offers Event, Gate and Intermediate, not Root) | LOW | The type is a label; nothing computes from it |
+| In ETA mode the diagram prints `Gate: OR` on every branch node, and the DOCX report is titled "Fault Tree Analysis Report" | LOW | Display only |
+
+The two worked examples added in 1.7.2 (`fta_web/examples/`) went through
+reviews by an analyst agent (facts, logic, arithmetic; two rounds) and an
+editor agent (the Japanese against the English, terms, units; three rounds)
+before they shipped. The first analyst review changed the structure of the
+Challenger tree: the cold alone no longer defeats both O-rings; the common
+cause is the cold together with a tight squeeze, as the report's tests show.
+Every quotation in the English files was read on a page image of the printed
+report, and `fta_web/tests/test_examples.py` pins the numbers as exact
+fractions worked out independently of the engine.

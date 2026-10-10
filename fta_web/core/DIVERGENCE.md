@@ -37,7 +37,7 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
 **D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**,
-**D24**, **D25**, **D26**.
+**D24**, **D25**, **D26**, **D27**, **D28**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -775,6 +775,95 @@ use it up -- such an empty reply is reported, see D25).
 **Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
 
 **Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D27 — A suggestion for a node without a gate was dropped without a word
+
+**Defect:** `SYSTEM_PROMPT` shows the model how to add an Event, and the
+example it gives writes `"logicGate": ""`. `_parse_proposed_changes` accepted a
+`logicGate` only if it was `AND` or `OR` (baseline line 596: `AND`, `OR`,
+`NOT`), and answered anything else with `continue`. So a model that followed
+the example had every such suggestion discarded: it was in the reply the user
+read, and missing from the list they could apply. `_validate_node_data`
+refused `""` the same way, while `verify_updated_fta_json` and the edit path of
+`apply_change_to_fta` had always taken it.
+
+Found with Claude (`claude-opus-5-5`) on 2026-10-10. The same replies through
+both copies:
+
+| Input | `src/` (baseline) | `fta_web/core/` with D27 and D28 |
+|---|---|---|
+| The two blocks of the prompt's own example | 1 suggestion | 2 suggestions |
+| Reply A, 12 `SUGGESTION` blocks | 8 suggestions | 12 suggestions |
+| Reply B, 8 `SUGGESTION` blocks | 6 suggestions | 8 suggestions |
+
+All six lost suggestions were an add or an edit of an Event with
+`"logicGate": ""`.
+
+**Fix:**
+
+- `_parse_proposed_changes` keeps `""`, and reads JSON `null` as `""`.
+- `_validate_node_data` accepts `""`.
+- The edit path of `apply_change_to_fta` writes a gate only when it is `AND`
+  or `OR`. At baseline it wrote `""` too. That branch could not be reached
+  from a parsed suggestion while the parser dropped them; now it can, and `""`
+  written over an AND would be computed as an OR by the engine (D5 explains
+  why). An empty gate in an edit therefore leaves the node's gate as it is.
+
+**Why it is safe:** `AND` and `OR` follow the unchanged path. `NOT` and every
+other value are still dropped by the parser and refused by the validator
+(D5). A node added with `""` is stored exactly as one added with no
+`logicGate` key always was.
+
+**Behavior change:** Suggestions for leaf events are offered and can be
+applied. An edit that carries an empty gate changes the other fields and
+keeps the gate.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D28 — A suggested move could never be applied
+
+**Defect:** `SYSTEM_PROMPT` offers `ACTION: move` and never says how to name
+the new parent. `apply_change_to_fta` reads it from `data['parent_id']` and
+nowhere else. Left to guess, Claude wrote `"new_parent_id"` in six moves out of
+six (replies A and B of D27), and each was refused with `Move requires
+'parent_id' in data`. A restructuring suggestion is a new gate plus the moves
+that fill it, so applying the batch added the gate and left it empty: an event
+with probability 1.
+
+| Input, applied in the order given | `src/` (baseline) | `fta_web/core/` with D27 and D28 |
+|---|---|---|
+| Reply A | 5 applied, 3 moves refused, top event 1 | 12 applied, top event 1.76414e-4 |
+| Reply B | 3 applied, 3 moves refused, top event 1 | 8 applied, top event 7.15358e-5 |
+
+**Fix:**
+
+- `SYSTEM_PROMPT` says what `TARGET` and `DATA` mean for each action (for a
+  move: `DATA: {"parent_id": "id_of_the_new_parent"}`) and gives a worked
+  move after the worked add.
+- `apply_change_to_fta` reads `new_parent_id` when `parent_id` is absent or
+  empty, so a reply written before the prompt changed, or by a model that
+  still guesses, is applied. `parent_id` wins when both are given.
+
+With the new prompt the same model wrote `{"parent_id": ...}` in four moves
+out of four, and all 19 suggestions of that reply were applied.
+
+**Why it is safe:** A move that names its parent as `parent_id` follows the
+unchanged path, including the refusals (the root, an unknown node, an unknown
+parent, a move into its own subtree: D7). The prompt gains text and loses none.
+
+**Behavior change:** Suggested moves can be applied. A move that names no
+parent, or an empty one, answers `Move requires 'parent_id' in data` (an empty
+`parent_id` used to answer `New parent '' not found`).
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/AI_agent_handler.py`
 
 ---
 

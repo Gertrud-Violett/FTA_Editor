@@ -928,6 +928,72 @@ class TestApplyChanges:
         assert not any(w["params"].get("kind") == "gate_type_reset"
                        for w in undone["sessionWarnings"])
 
+    def test_a_restructuring_batch_as_a_model_writes_it_applies_in_full(
+        self, configured, provider, monkeypatch
+    ):
+        """Divergences D27 and D28, end to end. The reply is shaped like a
+        real one (Claude, 2026-10-10): leaf events carry ``"logicGate": ""``,
+        as SYSTEM_PROMPT's example does, and a move names its new parent as
+        ``new_parent_id``. Before the fixes two of these six proposals were
+        never offered and three were refused, which left the new AND gate
+        empty and the top event at 1."""
+        def add(parent, name, **fields):
+            response = configured.post(
+                "/api/nodes", json=dict(fields, parentId=parent, name=name))
+            assert response.status_code == 200, body(response)
+            return body(response)["nodeId"]
+
+        configured.patch("/api/nodes/root", json={"logicGate": "AND"})
+        duty = add("root", "Duty pump stops")
+        standby = add("root", "Standby does not take over")
+        add(duty, "Duty pump fails", probability=0.001)
+        breaker = add(duty, "Breaker trips", probability=1e-4)
+        add(standby, "Standby pump fails", probability=0.01)
+        reply = "\n".join([
+            "SUGGESTION: Top becomes an OR\nDESCRIPTION: the breaker alone stops both.",
+            'ACTION: edit\nTARGET: root\nDATA: {"id": "root", "name": "No cooling water", '
+            '"logicGate": "OR"}\n',
+            "SUGGESTION: Independent failures\nDESCRIPTION: the former top AND.",
+            'ACTION: add\nTARGET: root\nDATA: {"id": "both", "name": "Both stop", '
+            '"type": "Gate", "probability": 1.0, "logicGate": "AND", "notes": ""}\n',
+            "SUGGESTION: Move the duty branch\nDESCRIPTION: under the AND.",
+            'ACTION: move\nTARGET: %s\nDATA: {"id": "%s", "name": "Duty pump stops", '
+            '"logicGate": "OR", "new_parent_id": "both"}\n' % (duty, duty),
+            "SUGGESTION: Move the standby branch\nDESCRIPTION: under the AND.",
+            'ACTION: move\nTARGET: %s\nDATA: {"parent_id": "both"}\n' % standby,
+            "SUGGESTION: Move the breaker\nDESCRIPTION: it is common to both pumps.",
+            'ACTION: move\nTARGET: %s\nDATA: {"id": "%s", "name": "Breaker trips", '
+            '"type": "Event", "probability": 0.0001, "logicGate": "", '
+            '"new_parent_id": "root"}\n' % (breaker, breaker),
+            "SUGGESTION: Add a missing cause\nDESCRIPTION: valves left closed.",
+            'ACTION: add\nTARGET: %s\nDATA: {"id": "valves", "name": "Valves left closed", '
+            '"type": "Event", "probability": 0.002, "logicGate": "", "notes": ""}\n' % standby,
+        ])
+        monkeypatch.setattr(provider, "send_message", replies(reply))
+
+        offered = body(configured.post("/api/ai/chat", json={"message": "restructure"}))["changes"]
+        response = configured.post(
+            "/api/ai/changes/apply", json={"indices": [c["index"] for c in offered]})
+
+        assert [c["changeType"] for c in offered] == ["edit", "add", "move", "move", "move", "add"]
+        assert response.status_code == 200, body(response)
+        payload = body(response)
+        assert payload["rejected"] == []
+        assert len(payload["applied"]) == 6
+        tree = payload["tree"]
+        assert tree["logicGate"] == "OR"
+        assert [c["id"] for c in tree["children"]] == ["both", breaker]
+        both = tree["children"][0]
+        assert both["logicGate"] == "AND"
+        assert [c["id"] for c in both["children"]] == [duty, standby]
+        assert [c["id"] for c in both["children"][1]["children"]][-1] == "valves"
+        # OR(0.001) * OR(0.01, 0.002), then OR with the breaker (1e-4).
+        standby_q = 1 - (1 - 0.01) * (1 - 0.002)
+        assert both["calculatedProbability"] == pytest.approx(0.001 * standby_q, rel=1e-9)
+        assert tree["calculatedProbability"] == pytest.approx(
+            1 - (1 - 0.001 * standby_q) * (1 - 1e-4), rel=1e-9)
+        assert tree["calculatedProbability"] == pytest.approx(1.11978802e-4, rel=1e-8)
+
     def test_an_out_of_range_index_says_how_many_there_are(self, proposed):
         response = proposed.post("/api/ai/changes/apply", json={"indices": [7]})
 

@@ -7,8 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-10-10
+
+Review release. It carries the October 2026 code review, in three parts: the
+backend, CLI, exports and AI; the browser frontend and the analysis tabs; the
+documentation (`docs/CODE_REVIEW_2026-10.md`). A release check on Windows with
+a live AI provider then found that the assistant's suggestions for leaf events
+were dropped and that a suggested move could never be applied; both are fixed.
+Two worked examples are new, in English and in Japanese.
+
 ### Added
 
+- **Two worked examples ship with the editor**, each in English and in
+  Japanese, as a starting point for a user's own analysis
+  (`fta_web/examples/`; `fta_editor\_internal\examples\` in the standalone
+  build):
+  - `challenger_fta_en.json`, `challenger_fta_ja.json`: a fault tree of the
+    loss of the Space Shuttle Challenger (STS 51-L, 1986). The cold and the
+    tight squeeze act on both O-rings of the joint, so the tree shows what a
+    common cause does: the top event is 0.0684 by the minimal cut sets and
+    0.0349 by the plain tree walk.
+  - `tmi2_eta_en.json`, `tmi2_eta_ja.json`: an event tree of the accident at
+    Three Mile Island Unit 2 (1979), from the stuck-open relief valve to the
+    containment.
+
+  Each node's notes cite the Rogers Commission or the Kemeny Commission
+  report, with the finding or page; quotations were checked against scans of
+  the printed reports. The probabilities are illustrative and say so in the
+  title. `fta_web/tests/test_examples.py` checks that each file opens and
+  validates clean, that saving it changes nothing, that the two languages are
+  one analysis, and the numbers against values worked out by hand. No change
+  to the interface: the files are opened with Load (README, "Example
+  analyses").
 - **The real-browser GUI suite is part of the repository**
   (`fta_web/tests/gui/`). The 716 checks the 1.7.1 release was tested with:
   Playwright drives Chromium, or an installed Google Chrome, with real mouse
@@ -180,6 +210,32 @@ October 2026 review, sprint 2 (browser frontend and analysis tabs).
   - Field bounds are stated correctly.
   - The tree panel reads "Event Tree" in ETA mode.
   - The Graphviz capability text says what a native `dot` is used for.
+
+Release check on Windows with a live AI provider (10 October 2026).
+
+- **AI suggestions** (vendored core, divergences D27 and D28). Found with
+  Claude; both defects are as old as the assistant.
+  - A suggestion for a node without a gate was dropped without a word. The
+    assistant is shown `"logicGate": ""` as the way to write a leaf event,
+    and the parser refused exactly that: one reply held 12 suggestions and
+    the panel offered 8. An edit written this way keeps the node's gate.
+  - A suggested move was always refused (`Move requires 'parent_id' in
+    data`), because the assistant was never told how to name the new
+    parent. A restructuring suggestion is a new gate plus the moves that
+    fill it, so applying one added the gate and left it empty, and the top
+    event became 1. The prompt now says how to write a move, and
+    `new_parent_id`, which is what the model guessed, is read as well. With
+    both fixes the same replies apply in full (12 of 12 and 8 of 8).
+- **Japanese event names in a narrow window.** Below about 560 px the
+  Importance table showed an event name two characters a line, and the
+  Quantification table four: Japanese text may break after any character,
+  so the number columns, which never wrap, took the room. The name column
+  now keeps six characters a line and the table scrolls sideways instead.
+  Wider windows are unchanged. The GUI suite checks it (719 checks).
+- **Back-to-back suite on Windows** (test harness only). A request of a
+  server path that got no local TCP port (WinError 10048, on a machine that
+  was short of ports) ended the full run with a traceback. The runner now
+  waits for a port and goes on, and says where to look if none comes.
 
 ## [1.7.1] - 2026-09-29
 
