@@ -90,3 +90,22 @@ def test_cli_json_has_no_nan_tokens(tmp_path, capsys):
     out = tmp_path / "res.json"
     assert cli.main(["quantify", str(doc), "--json", "--out", str(out)]) == 0
     _strict_json(out.read_text(encoding="utf-8"))
+
+
+# ---- IO-3: --top applies to --json --------------------------------------------------------
+
+
+def test_cutsets_top_applies_to_json(tmp_path, capsys):
+    """``--top N`` cut the text and CSV tables (and importance's JSON) but
+    ``cutsets --json`` still listed every cut set."""
+    tree = {"id": "root", "name": "Top", "type": "Root", "logicGate": "OR", "children": [
+        {"id": "e%d" % i, "name": "E%d" % i, "probability": 0.001 * (i + 1), "children": []}
+        for i in range(5)]}
+    doc = write_doc(tmp_path / "five.json", tree)
+    assert cli.main(["cutsets", str(doc), "--top", "2", "--json"]) == 0
+    results = json.loads(capsys.readouterr().out)["results"]
+    assert [c["rank"] for c in results["cutSets"]] == [1, 2]
+    assert results["cutSets"][0]["events"][0]["id"] == "e4"  # the most probable
+    assert results["total"] == 5  # the totals still describe the whole list
+    assert cli.main(["cutsets", str(doc), "--top", "2", "--csv"]) == 0
+    assert len(list(csv.DictReader(io.StringIO(capsys.readouterr().out)))) == 2

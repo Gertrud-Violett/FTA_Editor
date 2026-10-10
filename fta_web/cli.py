@@ -235,6 +235,9 @@ def cmd_cutsets(core, args):
     cut_sets = list(result.get("cutSets") or [])
     if getattr(args, "top", None):
         cut_sets = cut_sets[: max(1, args.top)]
+        # --json shows the same N (as importance does); total, mcub and the
+        # truncation flags still describe the whole list.
+        result = dict(result, cutSets=cut_sets)
     for c in cut_sets:
         rows.append({
             "rank": c.get("rank"), "order": c.get("order"),
