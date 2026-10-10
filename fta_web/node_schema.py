@@ -442,6 +442,56 @@ def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, An
     return warnings
 
 
+def drop_duplicate_links(tree: Any) -> List[Dict[str, Any]]:
+    """Drop every repeated link -- same ``target_id``, same effective relation
+    -- keeping the first. Mutates ``tree``; returns one load warning
+    (``kind: "duplicate_link"``) per link dropped.
+
+    The engine applies every link it finds, so a repeated link counted as a
+    second independent event: an AND-link twice multiplied by its target's
+    probability twice. The UI's links editor and ``PATCH /api/nodes`` refuse
+    a duplicate; a file can still carry one. "Effective" is what the engine
+    does with the relation: "AND" (any case) is AND, anything else OR.
+    """
+    warnings: List[Dict[str, Any]] = []
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+        links = node.get("links")
+        if not isinstance(links, list) or len(links) < 2:
+            continue
+        kept: List[Any] = []
+        seen = set()
+        for link in links:
+            target = link.get("target_id") if isinstance(link, dict) else None
+            if target in (None, ""):
+                kept.append(link)
+                continue
+            relation = "AND" if str(link.get("relation") or "OR").upper() == "AND" else "OR"
+            if (str(target), relation) in seen:
+                node_id = str(node.get("id"))
+                warnings.append({
+                    "kind": "duplicate_link",
+                    "old_id": node_id,
+                    "new_id": node_id,
+                    "name": node.get("name"),
+                    "targetId": str(target),
+                    "relation": relation,
+                    "message": "Node %r linked to %r (%s) more than once; the repeated "
+                               "link was removed (it was counted twice)."
+                               % (node_id, str(target), relation),
+                })
+                continue
+            seen.add((str(target), relation))
+            kept.append(link)
+        if len(kept) != len(links):
+            node["links"] = kept
+    return warnings
+
+
 def merge_back_node_keys(before: Dict[str, Any], after: Dict[str, Any]) -> int:
     """Copy the 1.7 keys from ``before`` onto the same-id nodes of ``after``
     wherever ``after`` lacks them. Mutates ``after``; returns how many fields

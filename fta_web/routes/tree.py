@@ -248,6 +248,7 @@ def _validate_links(value: Any) -> List[Dict[str, Any]]:
         )
 
     links: List[Dict[str, Any]] = []
+    seen = set()
     for position, raw in enumerate(value):
         if not isinstance(raw, dict):
             raise ApiError(
@@ -275,6 +276,18 @@ def _validate_links(value: Any) -> List[Dict[str, Any]]:
                 400,
                 {"field": "links", "index": position, "value": raw.get("relation")},
             )
+        # The engine applies every link, so a repeated one would be counted
+        # twice (an AND-link twice multiplies by q twice). Refused, as the
+        # UI's links editor refuses it.
+        if (str(target_id), relation) in seen:
+            raise ApiError(
+                INVALID_FIELD,
+                "'%s' is already linked with relation %s; a link may appear only once."
+                % (target_id, relation),
+                400,
+                {"field": "links", "index": position},
+            )
+        seen.add((str(target_id), relation))
         links.append({"target_id": str(target_id), "relation": relation})
     return links
 

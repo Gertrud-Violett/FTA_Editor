@@ -1040,3 +1040,97 @@ class TestNoOpEdits:
         moved = c.post("/api/nodes/root_0/move", json={"newParentId": "root", "index": 1})
         assert body(moved)["tree"]["children"][1]["id"] == "root_0"
         assert len(get_state()._undo) == 4
+
+
+# --------------------------------------------------------------------------
+# catalog helper: the Validation tab's per-kind LOAD_REPAIR texts
+# --------------------------------------------------------------------------
+
+
+def _val_catalog_keys():
+    """(en keys, ja keys) of static/js/i18n/val.js, as test_catalog_parity reads it."""
+    src = (REPO_ROOT / "fta_web" / "static" / "js" / "i18n" / "val.js").read_text(encoding="utf-8")
+    block = re.search(r"export default \{(.*?)\n\};", src, re.S).group(1)
+    en_block, ja_block = block.split("\n  ja:", 1)
+    entry = re.compile(r"'([A-Za-z0-9_.]+)'\s*:\s*'((?:[^'\\]|\\.)*)'")
+    return dict(entry.findall(en_block)), dict(entry.findall(ja_block))
+
+
+# --------------------------------------------------------------------------
+# B-18: a duplicate link was accepted and counted twice
+# --------------------------------------------------------------------------
+
+
+def _x_and_t(links):
+    return {"id": "root", "name": "Top", "logicGate": "OR", "children": [
+        _leaf("x", "X", 0.5, links=links),
+        _leaf("t", "T", 0.1),
+    ]}
+
+
+class TestDuplicateLinks:
+    """The engine applies every link it finds, so the same link twice is two
+    independent events: an AND-link to T (q = 0.1) on X (0.5) gave 0.005
+    instead of 0.05. The UI's links editor refuses a duplicate ("Already
+    linked with that relation"); the API and a loaded file did not."""
+
+    DUP = [{"target_id": "t", "relation": "AND"}, {"target_id": "t", "relation": "AND"}]
+
+    @pytest.mark.parametrize("links", [
+        DUP,
+        [{"target_id": "t", "relation": "AND"}, {"targetId": "t", "relation": "and"}],
+        [{"target_id": "t"}, {"target_id": "t", "relation": "OR"}],
+    ])
+    def test_patch_refuses_a_duplicate(self, tree_client, links):
+        install(_x_and_t([]))
+        refused = tree_client.patch("/api/nodes/x", json={"links": links})
+        assert refused.status_code == 400, body(refused)
+        error = body(refused)["error"]
+        assert error["code"] == "INVALID_FIELD"
+        assert error["detail"]["field"] == "links" and error["detail"]["index"] == 1
+        assert get_state().core.find_node_by_id("x")["links"] == []
+        assert get_state().can_undo is False
+
+    def test_create_refuses_a_duplicate_too(self, tree_client):
+        refused = tree_client.post("/api/nodes", json={"parentId": "root", "name": "n",
+                                                       "links": self.DUP})
+        assert refused.status_code == 400 and body(refused)["error"]["detail"]["field"] == "links"
+
+    def test_the_same_target_with_the_other_relation_is_not_a_duplicate(self, tree_client):
+        install(_x_and_t([]))
+        both = tree_client.patch("/api/nodes/x", json={"links": [
+            {"target_id": "t", "relation": "AND"}, {"target_id": "t", "relation": "OR"}]})
+        assert both.status_code == 200, body(both)
+
+    def test_a_loaded_duplicate_is_dropped_with_a_notice(self, files_client, sandbox):
+        write_doc(sandbox, "d.json", {"title": "d", "tree": _x_and_t(self.DUP + [
+            {"target_id": "t", "relation": "OR"}])})
+        opened = files_client.post("/api/file/open", json={"path": "d.json"})
+        assert opened.status_code == 200, body(opened)
+        doc = body(opened)
+        x = doc["tree"]["children"][0]
+        assert x["links"] == [{"target_id": "t", "relation": "AND"},
+                              {"target_id": "t", "relation": "OR"}]
+        # AND-link once, then the OR-link: OR(0.5 x 0.1, 0.1)
+        assert x["calculatedProbability"] == pytest.approx(1 - (1 - 0.05) * (1 - 0.1))
+        notices = [w for w in doc["warnings"] if w["kind"] == "duplicate_link"]
+        assert len(notices) == 1
+        assert notices[0]["new_id"] == "x"
+        assert notices[0]["targetId"] == "t" and notices[0]["relation"] == "AND"
+        issues = body(files_client.get("/api/analysis/validate"))["issues"]
+        assert any(i["code"] == "LOAD_REPAIR" and i["params"].get("kind") == "duplicate_link"
+                   and i["nodeId"] == "x" for i in issues)
+
+    def test_the_cli_counts_a_loaded_duplicate_once(self, tmp_path, capsys):
+        from fta_web import cli
+
+        path = write_doc(tmp_path, "d.json", {"title": "d", "tree": _x_and_t(self.DUP)})
+        assert cli.main(["quantify", str(path), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        # top = OR(X with its AND-link once = 0.05, T = 0.1)
+        assert payload["results"]["summary"]["treeWalk"] == pytest.approx(1 - 0.95 * 0.9)
+
+    def test_the_validation_tab_has_text_for_the_notice(self):
+        en, ja = _val_catalog_keys()
+        key = "val.code.LOAD_REPAIR.duplicate_link"
+        assert key in en and key in ja and en[key] != ja[key]
