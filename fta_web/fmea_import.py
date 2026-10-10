@@ -107,8 +107,9 @@ FIELDS = (
 #: 1000 FIT is exactly 1e-06 rather than 1.0000000000000002e-06).
 LAMBDA_UNITS = {"h": 1.0, "y": 8760.0, "FIT": 1e9}
 
-#: The encodings a CSV is read in, in this order (see :func:`_decode`: cp932
-#: only for text with kana, UTF-16/32 only with a byte-order mark).
+#: The encodings a CSV is read in (see :func:`_decode`: UTF-16/32 only with a
+#: byte-order mark; cp932 first for text with kana, else only when cp1252
+#: cannot decode the bytes).
 CSV_ENCODINGS = ("utf-8-sig", "utf-16", "utf-32", "cp932", "cp1252", "latin-1")
 
 #: Hard ceiling on rows read from one sheet (the file size cap is the other).
@@ -218,7 +219,7 @@ _KANA = re.compile("[぀-ヿ]|[ｦ-ﾟ]{2}")
 
 def _decode(data: bytes) -> str:
     """UTF-8 (BOM or not), UTF-16/32 by their BOM, cp932 when the text has
-    kana, else cp1252, else latin-1."""
+    kana, else cp1252, else cp932 (kanji only), else latin-1."""
     for bom, encoding in _WIDE_BOMS:
         if data.startswith(bom):
             try:
@@ -230,15 +231,19 @@ def _decode(data: bytes) -> str:
     except UnicodeDecodeError:
         pass
     try:
-        text = data.decode("cp932")
-        if _KANA.search(text):
-            return text
+        japanese: Optional[str] = data.decode("cp932")
     except UnicodeDecodeError:
-        pass
+        japanese = None
+    if japanese is not None and _KANA.search(japanese):
+        return japanese
     try:
         return data.decode("cp1252")
     except UnicodeDecodeError:
-        return data.decode("latin-1")  # never fails
+        pass
+    # cp1252 lacks 0x81, 0x8D, 0x8F, 0x90 and 0x9D -- C1 controls in latin-1,
+    # never text, but common cp932 bytes: Japanese without kana (kanji only)
+    # gets here, and a clean cp932 decode is a far better guess than latin-1.
+    return japanese if japanese is not None else data.decode("latin-1")
 
 
 CSV_DELIMITERS = ",;\t|"

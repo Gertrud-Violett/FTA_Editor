@@ -846,11 +846,32 @@ def test_fmea_cp932_csv_is_still_read_as_cp932(tmp_path, text):
     assert fmea_import.read_table(path)["rows"] == rows
 
 
-def test_fmea_bytes_outside_cp1252_fall_back_to_latin1():
+@pytest.mark.parametrize("text", [
+    "番号,部品,原因\nJ-1,弁,腐食\n",
+    "番号,部品,故障,原因\nJ-2,配管,破損,疲労\n",
+])
+def test_fmea_kanji_only_cp932_csv_is_read_as_cp932(tmp_path, text):
+    """Without kana the cp932 check passed on to cp1252, and from there to
+    latin-1 (C1 controls and mojibake). cp1252 lacks 0x81, 0x8D, 0x8F, 0x90
+    and 0x9D, common cp932 bytes: when it cannot decode the file, a clean
+    cp932 decode is preferred over latin-1."""
     from fta_web import fmea_import
 
-    data = "ID,Mode\nA,x\x81y\n".encode("latin-1")  # 0x81: undefined in cp1252
-    assert fmea_import._decode(data) == "ID,Mode\nA,x\x81y\n"
+    data = text.encode("cp932")
+    assert {0x81, 0x8D, 0x8F, 0x90, 0x9D} & set(data)  # what cp1252 rejects
+    path = tmp_path / "k.csv"
+    path.write_bytes(data)
+    table = fmea_import.read_table(path)
+    lines = [line.split(",") for line in text.strip().split("\n")]
+    assert table["columns"] == lines[0] and table["rows"] == lines[1:]
+
+
+def test_fmea_bytes_neither_cp1252_nor_cp932_fall_back_to_latin1():
+    from fta_web import fmea_import
+
+    # 0x81: undefined in cp1252, and a cp932 lead byte that a space cannot follow
+    data = "ID,Mode\nA,x\x81 y\n".encode("latin-1")
+    assert fmea_import._decode(data) == "ID,Mode\nA,x\x81 y\n"
 
 
 def test_fmea_action_priority_column_is_not_suggested_as_rpn():
