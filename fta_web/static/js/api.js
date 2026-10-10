@@ -185,6 +185,21 @@ function toApiPath(path) {
 }
 
 /**
+ * The editor's own EN/JA choice, which main.js mirrors on <html lang>. Sent
+ * as Accept-Language so the server words its errors in the language on
+ * screen: left to the browser, they followed the OS locale instead, and a
+ * Japanese browser put Japanese messages into the English UI.
+ */
+export function uiLanguage() {
+  try {
+    const lang = String(document.documentElement.lang || '').toLowerCase();
+    return lang === 'ja' || lang === 'en' ? lang : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+/**
  * Build the fetch() init for an /api call, or throw NO_SESSION when this tab
  * holds no token. Shared by request() (JSON) and download() (binary).
  */
@@ -205,6 +220,8 @@ function buildInit(method, body, accept) {
 
   const headers = { Accept: accept };
   headers[TOKEN_HEADER] = token;
+  const lang = uiLanguage();
+  if (lang) headers['Accept-Language'] = lang;
 
   const init = {
     method,

@@ -250,6 +250,57 @@ def test_metadata_commit_does_not_overwrite_the_focused_field():
     assert "if (!force && el === document.activeElement) continue;" in sync
 
 
+# ---- api.js: the server words its errors in the editor's language ----------------------
+#
+# The server localizes errors by ?lang= or Accept-Language, and the frontend
+# sent neither, so the browser's OS locale decided: a Japanese Chrome with the
+# editor switched to English showed "指定されたパスは許可されたフォルダーの外に
+# あるか、無効です。" in the file dialog, an English one left the Japanese UI with
+# English messages (reproduced in Chromium for PATH_REJECTED).
+
+_API_HARNESS = r"""
+(async () => {
+  const seen = [];
+  globalThis.window = {
+    sessionStorage: { getItem: () => 'token', setItem() {}, removeItem() {} },
+    location: { href: 'http://127.0.0.1/' },
+    history: { replaceState() {} },
+    dispatchEvent() {},
+  };
+  globalThis.document = { documentElement: { lang: '' } };
+  globalThis.fetch = async (url, init) => {
+    seen.push(init.headers['Accept-Language'] === undefined ? null : init.headers['Accept-Language']);
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      text: async () => '{"ok": true}',
+    };
+  };
+  const { api } = await import(process.argv[1]);
+  for (const lang of ['ja', 'en', '']) {
+    document.documentElement.lang = lang;
+    await api.get('/state');
+    await api.download('POST', '/report/docx', {});
+  }
+  console.log(JSON.stringify(seen));
+})();
+"""
+
+
+@needs_node
+def test_api_requests_carry_the_editor_language():
+    api_js = (STATIC / "api.js").as_uri()
+    out = subprocess.run(["node", "-e", _API_HARNESS, api_js], capture_output=True, text=True, check=True).stdout
+    assert json.loads(out) == ["ja", "ja", "en", "en", None, None]
+
+
+def test_export_downloads_carry_the_editor_language():
+    src = _read(STATIC / "main.js")
+    body = _braced(src, src.index("async function fetchDownload(url)"))
+    assert "headers['Accept-Language'] = language;" in body
+
+
 # ---- tree.js: New / Open drop the old document's multi-selection ----------------------
 #
 # Ctrl-click two rows, then the root (lead = root), then open a file: ids such

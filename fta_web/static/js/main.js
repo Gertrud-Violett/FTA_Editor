@@ -2397,6 +2397,8 @@ async function fetchDownload(url) {
 
   const headers = {};
   headers[TOKEN_HEADER] = token;
+  // As api.js does: the server words its errors in the editor's language.
+  headers['Accept-Language'] = language;
 
   let response;
   try {
