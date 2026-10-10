@@ -265,3 +265,49 @@ def test_export_view_leaves_an_ordinary_document_byte_identical(tmp_path):
     plain, viewed = tmp_path / "plain.xml", tmp_path / "view.xml"
     assert core.export_to_xml(str(plain))[0] and export_view(core).export_to_xml(str(viewed))[0]
     assert plain.read_bytes() == viewed.read_bytes()
+
+
+def docx_text(blob):
+    docx = pytest.importorskip("docx")
+    document = docx.Document(io.BytesIO(blob))
+    parts = [p.text for p in document.paragraphs]
+    for table in document.tables:
+        parts.extend(cell.text for row in table.rows for cell in row.cells)
+    return "\n".join(parts)
+
+
+def test_docx_report_survives_control_characters():
+    """python-docx raised 'All strings must be XML compatible' on the first
+    such character in any name, trace field, source or the title: the
+    report route answered 500 and the CLI printed a traceback."""
+    pytest.importorskip("docx")
+    from fta_web import report_docx
+
+    core = control_char_core()
+    core.find_node_by_id("b")["name"] = "Valve\ud800"  # a lone surrogate from a broken file
+    options = {"sections": list(report_docx.SECTIONS)}
+    data = report_docx.collect_report_data(core, [], options)
+    text = docx_text(report_docx.build_report(data, options))
+    assert "Plant" in text and "PumpA" in text and "TR-1" in text and "Ann Lee" in text
+    assert "OREDA" in text and "Valve" in text
+
+
+def test_docx_report_with_a_numeric_title(files_client, tmp_path):
+    """``"title": 123`` in a file: build_report's heading raised TypeError and
+    the route's download name did ``123 + "_report"`` (500)."""
+    pytest.importorskip("docx")
+    doc = write_doc(tmp_path / "n.json", title=123)
+    upload = {"file": (io.BytesIO(doc.read_bytes()), "n.json")}
+    assert files_client.post("/api/import/json", data=upload,
+                             content_type="multipart/form-data").status_code == 200
+    response = files_client.post("/api/report/docx", json={"sections": ["metadata"]})
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert "123_report.docx" in response.headers["Content-Disposition"]
+    assert "123" in docx_text(response.get_data())
+
+
+def test_docx_route_with_control_characters(files_client, tmp_path):
+    pytest.importorskip("docx")
+    open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))
+    response = files_client.post("/api/report/docx", json={})
+    assert response.status_code == 200, response.get_data(as_text=True)[:300]

@@ -32,10 +32,10 @@ import io
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.report_docx``
-    from .excel_events import event_row, iter_nodes, node_kind
+    from .excel_events import event_row, iter_nodes, node_kind, xml_text
     from .numfmt import clamp_sig_figs, format_prob
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
-    from excel_events import event_row, iter_nodes, node_kind  # type: ignore[no-redef]
+    from excel_events import event_row, iter_nodes, node_kind, xml_text  # type: ignore[no-redef]
     from numfmt import clamp_sig_figs, format_prob  # type: ignore[no-redef]
 
 #: Shown on the title page. The frozen build has no pyproject to read, so the
@@ -565,12 +565,29 @@ def _node_label(issue: Dict[str, Any], names: Dict[str, str]) -> str:
     return "%s (%s)" % (name, nid) if name else str(nid)
 
 
+def _xml_safe(value: Any) -> Any:
+    """``value`` with every string (dict keys too) through ``xml_text``.
+
+    python-docx raises on a character XML cannot hold -- a \\x0b pasted into
+    a trace field, \\x01 or a lone surrogate from a hand-edited file -- so
+    one such character anywhere lost the whole report.
+    """
+    if isinstance(value, str):
+        return xml_text(value)
+    if isinstance(value, dict):
+        return {(xml_text(k) if isinstance(k, str) else k): _xml_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_xml_safe(v) for v in value]
+    return value
+
+
 def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = None) -> bytes:
     """The report as ``.docx`` bytes. Needs python-docx."""
     from docx import Document
     from docx.enum.style import WD_STYLE_TYPE
     from docx.shared import Cm, Pt
 
+    doc_data = _xml_safe(doc_data)
     options = options or {}
     lang = options.get("lang") or doc_data.get("lang") or "en"
     sf = clamp_sig_figs(options.get("sigFigs", doc_data.get("sigFigs", 3)))
@@ -612,7 +629,8 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
     meta = doc_data.get("meta") or {}
     # ---- title page / metadata ----
     doc.add_heading(t("reportTitle"), 0)
-    doc.add_heading(meta.get("title") or t("untitled"), 1)
+    # A file can hold a non-string title ("title": 123); python-docx wants text.
+    doc.add_heading(xml_text(meta.get("title")) or t("untitled"), 1)
     if "metadata" in sections:
         for key, value in (("date", meta.get("date")), ("mode", meta.get("mode")),
                            ("generated", meta.get("generated")),
