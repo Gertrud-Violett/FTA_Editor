@@ -132,3 +132,110 @@ class TestNodeIdsWithSlashes:
         missing = c.get(node_url("no/such/node"))
         assert missing.status_code == 404
         assert body(missing)["error"]["code"] == "NODE_NOT_FOUND"
+
+
+# --------------------------------------------------------------------------
+# diagram helpers: render DOT with the vendored viz.js, as the browser does
+# --------------------------------------------------------------------------
+
+import re  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+
+VIZ_JS = REPO_ROOT / "fta_web" / "static" / "vendor" / "viz-js" / "viz.js"
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+
+_VIZ_SCRIPT = """
+import { instance } from %s;
+let dot = '';
+process.stdin.setEncoding('utf8');
+for await (const chunk of process.stdin) dot += chunk;
+const viz = await instance();
+const r = viz.render(dot, { format: 'svg' });
+const out = { status: r.status, errors: r.errors.filter((e) => e.level === 'error') };
+if (r.status === 'success') {
+  out.titles = [...r.output.matchAll(/<g id="node\\d+" class="[^"]*">\\s*<title>([^<]*)<\\/title>/g)]
+    .map((m) => m[1]);
+}
+console.log(JSON.stringify(out));
+"""
+
+
+def viz_render(dot):
+    """``{status, errors, titles}`` from viz.js for ``dot``."""
+    script = _VIZ_SCRIPT % json.dumps(VIZ_JS.resolve().as_uri())
+    done = subprocess.run(["node", "--input-type=module", "-e", script], input=dot,
+                          capture_output=True, text=True, encoding="utf-8", timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def _core(tree, title="T"):
+    from fta_web.engine import WebCore
+
+    core = WebCore()
+    core.set_data(tree)
+    core.set_metadata(title=title, date="2026-10-10")
+    core.recalculate_probabilities()
+    return core
+
+
+def _leaf(nid, name, p=0.1, **extra):
+    node = {"id": nid, "name": name, "type": "Event", "probability": p,
+            "logicGate": "OR", "notes": "", "links": [], "children": []}
+    node.update(extra)
+    return node
+
+
+def _digit_tree():
+    return {"id": "root", "name": "Top", "type": "Root", "probability": 1.0,
+            "logicGate": "OR", "notes": "", "links": [], "children": [
+                _leaf("1a", "First"),
+                _leaf("1.1", "Dotted", links=[{"target_id": "2b", "relation": "OR"}]),
+                _leaf("2b", "Second", gateType="TRANSFER", transferTo="1a"),
+                _leaf("3", "Numeral"),
+            ]}
+
+
+# --------------------------------------------------------------------------
+# B-2: an id that starts with a digit split into two DOT tokens
+# --------------------------------------------------------------------------
+
+
+class TestDigitLedIds:
+    """``1a`` (or ``1_1_<hash>``, sanitize_id's answer for ``1.1``) is not a
+    DOT ID unquoted: Graphviz reads ``1`` then ``a``, so the diagram gained a
+    stray unlabelled node ``1`` wired to the parent while the real box floated
+    unconnected, and click-to-select missed it."""
+
+    @pytest.mark.parametrize("style", ["compact", "symbols"])
+    def test_digit_led_names_are_quoted_and_mapped(self, style):
+        from fta_web.diagram_dot import build_dot_text2
+
+        dot, id_map = build_dot_text2(_core(_digit_tree()), style=style)
+        assert '"1a" [' in dot
+        assert not re.search(r"(^|[\s>-])1a\b", dot.replace('"1a"', "")), dot
+        assert id_map["1a"] == "1a"
+        dotted = [name for name, nid in id_map.items() if nid == "1.1" and "__" not in name][0]
+        assert '"%s"' % dotted in dot
+        # a plain numeral is a valid DOT ID and stays as it was
+        assert re.search(r"^\s{2}3 \[", dot, re.M)
+        # ordinary ids are not quoted (byte-identical DOT for normal trees)
+        assert re.search(r"^\s{2}root \[", dot, re.M)
+
+    def test_symbols_group_attribute_stays_well_formed(self):
+        from fta_web.diagram_dot import build_dot_text2
+
+        dot, _ = build_dot_text2(_core(_digit_tree()), style="symbols")
+        assert 'group="1a"' in dot and 'group=""' not in dot
+
+    @needs_node
+    @pytest.mark.parametrize("style", ["compact", "symbols"])
+    @pytest.mark.parametrize("rankdir", ["LR", "TB"])
+    def test_viz_draws_exactly_the_mapped_nodes(self, style, rankdir):
+        from fta_web.diagram_dot import build_dot_text2
+
+        dot, id_map = build_dot_text2(_core(_digit_tree()), style=style, rankdir=rankdir)
+        out = viz_render(dot)
+        assert out["status"] == "success" and not out["errors"], out
+        assert sorted(out["titles"]) == sorted(id_map), out["titles"]
