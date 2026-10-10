@@ -262,9 +262,9 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 2. Choose a provider and enter your API credentials:
    - **Provider**: OpenAI, Microsoft Copilot, Anthropic Claude or Google Gemini
    - **API Key**: The provider's API key
-   - **Model**: Pick one of the suggestions (for example gpt-4o) or type any model name
-   - **API Endpoint** (under *Advanced* in the web app): filled in from the provider, `https://api.openai.com/v1` for OpenAI; change it only for a proxy or a compatible gateway
-3. Click **Test & Save** to verify and store credentials
+   - **Model**: Pick one of the suggestions (for example gpt-4o) or type any model name. Once a key is saved, **Reload** asks the provider which models it can use (OpenAI, Anthropic and Gemini; Microsoft Copilot always shows the built-in list). OpenAI's reasoning models (o-series, GPT-5) work too.
+   - **API Endpoint**: filled in from the provider, `https://api.openai.com/v1` for OpenAI. In the web app it sits under *Advanced*; change it only for a proxy or an OpenAI-compatible gateway such as [GitHub Models](MULTI_PROVIDER_SETUP.md#4-github-models-through-the-openai-provider). Microsoft Copilot is the exception: its endpoint is your own Azure resource, so the field is shown in the main form (see [Microsoft Copilot setup](MICROSOFT_COPILOT_SETUP.md)).
+3. Click **Test & Save** to verify and store credentials. Saving a different provider or endpoint starts a new conversation, so the new one is never sent the old conversation; a new key for the same provider and endpoint keeps it.
 
 > **Security**: Credentials are stored locally at `~/.fta_editor/ai_credentials.json`, never in the repository.
 
@@ -285,7 +285,8 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
   written into a saved `.json` analysis file, or committed to the
   repository.
 - **Removing it**: click the **⚙ (Settings)** button in the AI Assistant
-  panel and use **Clear** to delete the stored key (this removes the file).
+  panel and use **Clear** to delete the stored key (this removes the file and
+  forgets the conversation).
   You can also delete `ai_credentials.json` by hand while the editor is
   closed.
 
@@ -293,7 +294,7 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 
 **Quick Actions**:
 - **Analyze FTA**: Posts analysis and suggestions to chat only (no changes applied).
-- **Update FTA**: AI generates a complete updated JSON, validates it, and replaces the current tree. Existing nodes are preserved; only additions are applied. Detailed error logs are shown if the AI output is invalid.
+- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed (the first five of each). One Ctrl+Z undoes the whole update, so review the tree before saving. Detailed error logs are shown if the AI output is invalid.
 - **Clear Chat**: Reset conversation history
 
 **Free Chat**:
@@ -305,7 +306,9 @@ Type any question in the input box and press Enter. Examples:
 ### Applying Changes
 
 - Use **Analyze FTA** for a safe review-only mode.
-- Use **Update FTA** to apply all additions at once: the AI returns a full JSON which is verified before replacing your current tree. If the JSON is invalid, the update is rejected and the problematic section is shown in the chat and console.
+- Use **Update FTA** to have the AI rewrite the tree in one step: the AI returns a full JSON which is verified before it replaces your current tree. If the JSON is invalid, the update is rejected and the problematic section is shown in the chat and console. If you edit, undo or open another file while the AI is writing, the update is not applied (nothing is changed); run it again. The 1.7 fields the AI is not shown (gate types, house events, quantification, traceability, FMEA links) are restored by node id.
+- Changes the AI suggests in the chat are listed as **Suggested changes**, all ticked; untick what you do not want and click **Apply selected**. One Ctrl+Z undoes the whole batch. A suggestion that cannot be applied is listed with the reason, and the rest are applied. Among the reasons: a probability the editor computes cannot be set directly (a transfer gate takes its target's value, a house event is 1 or 0 from its state, and an event with a rate, standby or repairable model is computed from its parameters), and a suggestion made before New, Open or Import replaced the document is not applied to the new one.
+- Answers can take a while. The editor waits up to 120 seconds for the provider; after that the request fails with a timeout and nothing is changed. The assistant handles one request at a time, so a provider that has stopped answering keeps it busy until its call gives up: at most about four minutes (two for Google Gemini).
 
 ### Status Indicator
 

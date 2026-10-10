@@ -1,6 +1,8 @@
 # Multi-Provider AI Setup Guide
 
-FTA Editor supports **four AI providers**: OpenAI, Anthropic Claude, Google Gemini and Microsoft Copilot (Azure OpenAI, see [MICROSOFT_COPILOT_SETUP.md](MICROSOFT_COPILOT_SETUP.md)). This guide helps you choose and configure the first three.
+FTA Editor supports **four AI providers**: OpenAI, Anthropic Claude, Google Gemini and Microsoft Copilot (Azure OpenAI, see [MICROSOFT_COPILOT_SETUP.md](MICROSOFT_COPILOT_SETUP.md)). This guide helps you choose and configure the first three, and [GitHub Models](#4-github-models-through-the-openai-provider) through the OpenAI provider.
+
+It describes the web app. The legacy desktop app keeps its 1.5 provider code: older built-in model lists, no live Anthropic list, and no support for current Claude models or OpenAI's reasoning models (see [desktop/README.md](../desktop/README.md)).
 
 ## Quick Comparison
 
@@ -73,13 +75,14 @@ FTA Editor supports **four AI providers**: OpenAI, Anthropic Claude, Google Gemi
    - **Provider**: Select "Anthropic Claude"
    - **API Key**: Paste your Claude API key
    - **Endpoint**: Auto-filled as `https://api.anthropic.com`
-   - **Model**: Choose `claude-sonnet-5` (recommended) or `claude-opus-5`
+   - **Model**: Keep the pre-selected `claude-opus-5-5`, or choose `claude-sonnet-5-5` for faster, cheaper answers
 8. Click **Test & Save**
 
-**Model Options** (the built-in list; the Claude 3 models this guide used to name are retired):
-- **Claude Sonnet** (`claude-sonnet-5`, recommended): Best balance of speed and capability
-- **Claude Opus** (`claude-opus-5`): Most capable but slower
-- **Claude Haiku** (`claude-haiku-4-5`): Fastest but less capable
+**Model Options** (the built-in list, shown until a key is saved or when the live list cannot be loaded; once your key is saved, **Reload** asks Anthropic's Models API which models your account can use):
+- **Claude Opus** (`claude-opus-5-5`, pre-selected): Most capable but slower
+- **Claude Sonnet** (`claude-sonnet-5-5`): Best balance of speed and capability
+- **Claude Haiku** (`claude-haiku-5-5`): Fastest but less capable
+- The previous generation, `claude-opus-5` and `claude-sonnet-5`, is listed too
 
 **Cost Estimate** (Claude 3.x-era prices; check Anthropic's pricing page for current ones):
 - Claude 3.5 Sonnet: ~$3/1M input, ~$15/1M output tokens (~$0.02-0.05 per FTA analysis)
@@ -125,6 +128,7 @@ FTA Editor supports **four AI providers**: OpenAI, Anthropic Claude, Google Gemi
 - **GPT-4-turbo**: Capable, good for complex analysis
 - **GPT-4**: Slower but very reliable
 - **GPT-3.5-turbo**: Budget option, still good quality
+- **Reasoning models** (the o-series, such as `o3-mini`, and GPT-5): supported. The editor sends them `max_completion_tokens` and no temperature, which is what they accept. (The Microsoft Copilot provider does not: see [its guide](MICROSOFT_COPILOT_SETUP.md#reasoning-model-deployments).)
 
 **Cost Estimate:**
 - GPT-4o: ~$5/1M input, ~$15/1M output tokens (~$0.01-0.02 per FTA analysis)
@@ -142,27 +146,27 @@ FTA Editor supports **four AI providers**: OpenAI, Anthropic Claude, Google Gemi
 
 ---
 
-### 4. GitHub Copilot (OpenAI-Compatible)
+### 4. GitHub Models (through the OpenAI provider)
 
-If you already have GitHub Copilot Pro subscription ($20/month), you get access to OpenAI models!
+GitHub Models answers OpenAI-style chat requests, so the editor reaches it
+with the **OpenAI** provider and a different endpoint. The details below follow
+[GitHub's documentation](https://docs.github.com/en/rest/models/inference),
+which also covers rate limits and billing.
 
 **Setup Steps:**
 
-1. Get GitHub Personal Access Token:
-   - Go to [github.com/settings/tokens](https://github.com/settings/tokens)
-   - Click **Generate new token (classic)**
-   - Check ✅ `read:user` scope
+1. Create a GitHub personal access token:
+   - On GitHub, open **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens**
+   - Generate a new token with the `models: read` permission
    - Copy the token
 
 2. In FTA Editor AI Settings:
-   - **Provider**: Select "OpenAI" (GitHub uses OpenAI-compatible API)
+   - **Provider**: Select "OpenAI"
    - **API Key**: Paste your GitHub token
-   - **Endpoint**: https://api.github.com/v1 or your GitHub Models endpoint
-   - **Model**: Check available models in your GitHub account
-   
-3. Click **Test & Save**
+   - **Endpoint** (under **Advanced** in the web app): `https://models.github.ai/inference`
+   - **Model**: Type the model as publisher/model, for example `openai/gpt-4.1`. The model list cannot be loaded from this endpoint, so the name has to be typed.
 
-**Cost**: Already covered by your GitHub Copilot subscription ($20/month)
+3. Click **Test & Save**
 
 ---
 
@@ -177,6 +181,8 @@ You can switch providers at any time:
 5. Click **Test & Save**
 
 Your credentials are stored on your computer only. One provider's credentials are kept at a time: saving a new provider replaces the previous key.
+
+Saving a different provider, or a different endpoint (for an OpenAI-compatible gateway, another service), starts a new conversation: the new one is never sent your conversation with the old one. A new key for the same provider and endpoint keeps the conversation.
 
 ---
 
@@ -204,6 +210,16 @@ Your credentials are stored on your computer only. One provider's credentials ar
 - Some models may not be available in all regions
 - Try a different model from the dropdown list
 - Check provider documentation for available models in your region
+
+### Request timed out (web app)
+
+The web app waits up to 120 seconds for an answer, then reports that the
+provider did not respond and changes nothing. Each provider request has the
+same 120-second deadline and one retry (Google Gemini: a single attempt), so a
+provider that has stopped answering keeps the assistant busy for at most about
+four minutes (two for Gemini); until then a new request says another AI
+request is still running. A large tree can take a while: try again, or choose
+a faster model.
 
 ### Rate limiting
 
@@ -273,7 +289,7 @@ Best for: Regular FTA analysis, small engineering teams
 ### Scenario 3: Professional Use (Complex Analysis)
 ```
 Provider: OpenAI or Claude
-Model: gpt-4o or claude-sonnet-5
+Model: gpt-4o or claude-sonnet-5-5
 Cost: ~$10-30/month
 Best for: Complex analyses, professional engineering work
 ```
@@ -281,7 +297,7 @@ Best for: Complex analyses, professional engineering work
 ### Scenario 4: High-Volume Analysis
 ```
 Provider: Claude with volume discount
-Model: claude-sonnet-5
+Model: claude-sonnet-5-5
 Cost: Contact Anthropic for volume pricing
 Best for: Enterprise, large teams, continuous analysis
 ```
@@ -292,7 +308,7 @@ Best for: Enterprise, large teams, continuous analysis
 
 1. **Never commit keys to repository**: Keys are stored in `~/.fta_editor/ai_credentials.json`
 2. **Regenerate if exposed**: Delete old key, create new one in provider console
-3. **Use minimal scopes**: Only grant necessary permissions (e.g., read:user for GitHub)
+3. **Use minimal scopes**: Only grant necessary permissions (e.g., only `models: read` on a GitHub Models token)
 4. **Set usage limits**: Enable billing alerts and limits in provider dashboard
 5. **Regular rotation**: Consider rotating keys every 6 months for security
 

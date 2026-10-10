@@ -4,11 +4,12 @@
 
 ## How Model Selection Works
 
-Once a key for your chosen provider is saved, the FTA Editor fetches the **available models** for it, so the list shows the models your account can actually use. Until then it shows the provider's built-in default models. The model field also accepts any model name you type.
+Once a key for your chosen provider is saved, the FTA Editor fetches the **available models** for it, so the list shows the models your account can actually use. Until then it shows the provider's built-in default models. Microsoft Copilot always shows the built-in list, because Azure has no model list for a key. The model field also accepts any model name you type.
 
 - **Test & Save a key** → the live model list is used from then on
 - **Click Reload** (↻ in the desktop app) → Manually refresh the model list anytime
 - Can't connect? Falls back to **default models** with a notification
+- The legacy desktop app keeps its 1.5 provider code: older built-in lists, no live Anthropic list, and no support for current Claude models or OpenAI's reasoning models (see [desktop/README.md](../desktop/README.md))
 
 ## TL;DR - Quick Start
 
@@ -57,27 +58,32 @@ Once a key for your chosen provider is saved, the FTA Editor fetches the **avail
 
 ---
 
-### 4️⃣ GitHub Copilot (With $20/month subscription)
+### 4️⃣ GitHub Models (through the OpenAI provider)
 ```
-1. You already have access via subscription!
-2. Go to: https://github.com/settings/tokens
-3. Generate personal access token (read:user scope)
-4. Open FTA Editor → AI Settings (⚙)
-5. Select "OpenAI" (GitHub uses OpenAI API)
-6. Paste token → Test & Save
+1. On GitHub: Settings → Developer settings → Personal access tokens
+   → Fine-grained tokens → Generate new token
+2. Give it the "models: read" permission, then copy the token
+3. Open FTA Editor → AI Settings (⚙)
+4. Select "OpenAI"
+5. API Endpoint (under Advanced): https://models.github.ai/inference
+6. API Key: paste the token
+7. Model: type publisher/model, e.g. openai/gpt-4.1
+8. Click "Test & Save"
 ```
-💰 **Cost**: Already included with GitHub Copilot Pro ($20/month)
+The model list cannot be loaded from this endpoint, so type the model name.
+
+💰 **Cost and limits**: see [GitHub's documentation](https://docs.github.com/en/rest/models/inference)
 
 ---
 
 ## Provider Comparison at a Glance
 
-| | **Gemini** | **Claude** | **GPT-4o** | **Copilot** |
+| | **Gemini** | **Claude** | **GPT-4o** | **GitHub Models** |
 |---|-----------|-----------|----------|-----------|
-| **Free?** | ✅ | ❌ | ❌ | ❌ |
-| **Speed** | ⚡ Fast | 🐢 Medium | ⚡⚡ Fastest | ⚡⚡ |
-| **Cost/Analysis** | $0.001 | $0.02-0.05 | $0.01-0.02 | Included |
-| **Best For** | Budget | Reasoning | General | Devs |
+| **Free?** | ✅ | ❌ | ❌ | See GitHub |
+| **Speed** | ⚡ Fast | 🐢 Medium | ⚡⚡ Fastest | Depends on the model |
+| **Cost/Analysis** | $0.001 | $0.02-0.05 | $0.01-0.02 | See GitHub |
+| **Best For** | Budget | Reasoning | General | GitHub users |
 | **Setup** | 2 min | 5 min | 5 min | 5 min |
 
 ---
@@ -131,8 +137,9 @@ Once a key for your chosen provider is saved, the FTA Editor fetches the **avail
    - **Provider**: Select `"Anthropic Claude"`
    - **API Key**: Paste your key
    - **Endpoint**: Auto-filled
-   - **Model**: Select `"claude-sonnet-5"`
+   - **Model**: Keep the pre-selected `"claude-opus-5-5"`, or select `"claude-sonnet-5-5"` for faster, cheaper answers
 3. Click **"Test & Save"**
+4. From then on, **Reload** in the dialog lists the models your Anthropic account can use
 
 **You're done! 🎉**
 
@@ -159,7 +166,7 @@ Once a key for your chosen provider is saved, the FTA Editor fetches the **avail
    - **Provider**: Select `"OpenAI"`
    - **API Key**: Paste your key
    - **Endpoint**: Auto-filled
-   - **Model**: Select `"gpt-4o"`
+   - **Model**: Select `"gpt-4o"` (reasoning models such as the o-series and GPT-5 work too)
 3. Click **"Test & Save"**
 
 **You're done! 🎉**
@@ -177,6 +184,8 @@ Anytime you want to switch:
 5. Click **"Test & Save"**
 
 Only one provider's credentials are stored: saving a new provider replaces the old key, so keep the old key if you want to switch back later.
+
+Saving a different provider, or a different endpoint, starts a new conversation: the new one is never sent your conversation with the old one.
 
 ---
 
@@ -203,6 +212,11 @@ Only one provider's credentials are stored: saving a new provider replaces the o
 - Your region might not have that model
 - Try selecting a different model from the dropdown
 - Check provider documentation for region availability
+
+### "The AI provider did not respond within 120 seconds" (web app)
+- A large tree can take a while: try again, or choose a faster model
+- Check the endpoint and model in AI Settings
+- A provider that has stopped answering keeps the assistant busy until its call gives up, at most about four minutes (two for Gemini); until then a new request says another AI request is still running
 
 ---
 

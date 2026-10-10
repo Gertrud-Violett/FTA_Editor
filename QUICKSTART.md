@@ -112,7 +112,7 @@ See the [CLI reference](docs/USER_GUIDE.md#command-line-interface).
 
 ### AI Quick Actions (optional)
 - **Analyze FTA**: Reads the current tree and posts analysis/suggestions to chat only (no changes applied).
-- **Update FTA**: Generates a complete, validated JSON from the AI and replaces the entire FTA in one step. Existing nodes are preserved; only additions are applied.
+- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed. One Ctrl+Z undoes it; review the tree before saving.
 
 ## AI Assistant Setup (Optional)
 

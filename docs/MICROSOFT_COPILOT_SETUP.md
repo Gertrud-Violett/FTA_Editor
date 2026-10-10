@@ -83,12 +83,17 @@ Microsoft Copilot for enterprises uses **Azure OpenAI Service**, which provides:
 
 ### Step 4: Configure FTA Editor
 
-1. **Build Full Endpoint URL**:
+1. **Choose the Endpoint Form**. The web app accepts any of these, with or
+   without a trailing slash:
    ```
-   Format: https://{resource-name}.openai.azure.com/openai/deployments/{deployment-name}
-   
-   Example: https://my-fta-openai.openai.azure.com/openai/deployments/gpt-4o-deployment
+   Resource URL:    https://my-fta-openai.openai.azure.com
+   With /openai:    https://my-fta-openai.openai.azure.com/openai
+   Deployment URL:  https://my-fta-openai.openai.azure.com/openai/deployments/gpt-4o-deployment
    ```
+   The deployment used is the one the URL names; with the first two forms it
+   is the **Model** field. The legacy desktop app accepts only the resource
+   URL, with the deployment name in **Model**: it sends the other two forms to
+   `/openai/openai/deployments/...`, which does not exist (a 404).
 
 2. **Launch FTA Editor**:
    ```bash
@@ -102,9 +107,9 @@ Microsoft Copilot for enterprises uses **Azure OpenAI Service**, which provides:
 4. **Configure Provider**:
    - **Provider**: Select **"Microsoft Copilot"** from the provider list
    - **API Key**: Paste your Azure OpenAI API key
-   - **API Endpoint** (under **Advanced** in the web app): Enter your full endpoint URL (with deployment name)
+   - **API Endpoint**: Enter your endpoint in one of the forms above. For Microsoft Copilot the web app shows this field in the main form, not under **Advanced**, pre-filled with `https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT`: replace both names with your own
      - Example: `https://my-fta-openai.openai.azure.com/openai/deployments/gpt-4o-deployment`
-   - **Model**: Enter your deployment name (e.g., `gpt-4o-deployment`)
+   - **Model**: Enter your deployment name (e.g., `gpt-4o-deployment`). The list offers the built-in model names only, because Azure has no model list for a key
 
 5. **Test & Save**:
    - Click **"Test & Save"**. The connection is tested first, and the settings are saved only if the test succeeds
@@ -186,7 +191,7 @@ Azure OpenAI pricing is based on token usage:
 **Solution**:
 1. Go to Azure OpenAI Studio → Deployments
 2. Verify your deployment name (case-sensitive!)
-3. Update endpoint URL: `https://{resource}.openai.azure.com/openai/deployments/{exact-deployment-name}`
+3. Update endpoint URL: `https://{resource}.openai.azure.com/openai/deployments/{exact-deployment-name}`, or keep the resource URL as the endpoint and put the exact name in **Model**
 
 ### "Authentication failed: Check your API key"
 
@@ -224,6 +229,14 @@ Azure OpenAI pricing is based on token usage:
 **Solution**:
 - In FTA Editor, the **Model** field should match your **Deployment Name**, not the underlying model
 - Example: If you named your deployment `my-gpt4`, use `my-gpt4` (not `gpt-4`)
+- In the web app, an endpoint that names a deployment (`.../openai/deployments/<name>`) wins: that deployment is used and the **Model** field is not sent
+
+### Reasoning-model deployments
+
+This provider sends every deployment `max_tokens` and a temperature, because a
+deployment name does not say which model is behind it. A deployment of a
+reasoning model (o-series, GPT-5) may refuse them; deploy a GPT-4o-class model
+for the FTA Editor. (The OpenAI provider handles reasoning models itself.)
 
 ---
 
@@ -281,7 +294,7 @@ Azure OpenAI pricing is based on token usage:
 - [ ] Create Azure OpenAI resource in Azure Portal
 - [ ] Deploy GPT-4o or GPT-4-turbo model
 - [ ] Get API key and endpoint from Azure Portal
-- [ ] Build full endpoint URL with deployment name
+- [ ] Choose the endpoint form (resource URL, or the full deployment URL)
 - [ ] Configure FTA Editor with Microsoft Copilot provider
 - [ ] Test connection successfully
 - [ ] Start using AI assistant for FTA analysis!

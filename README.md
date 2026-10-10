@@ -203,7 +203,7 @@ The FTA Editor includes an integrated AI assistant supporting multiple providers
 
 2. Open FTA Editor → Click AI Settings (⚙)
 
-3. Select provider, paste API key, configure endpoint, click "Test & Save"
+3. Select provider, paste API key (for Microsoft Copilot, also enter your Azure endpoint), click "Test & Save"
 
 Your credentials are stored locally at `~/.fta_editor/ai_credentials.json` (never in repository or cloud).
 
@@ -211,7 +211,9 @@ For detailed setup instructions, see [docs/QUICK_AI_SETUP.md](docs/QUICK_AI_SETU
 
 ### Quick Actions
 - **Analyze FTA**: Posts an assessment and suggestions to chat; does not modify your tree.
-- **Update FTA**: AI generates a complete JSON update, verified for structure and safety, then replaces the current FTA. Existing nodes are preserved; only additions are applied. Detailed error logs are shown if the AI output is invalid.
+- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed. One Ctrl+Z undoes the update, so review it before saving. If the AI output is invalid, nothing is changed and the chat shows what failed.
+
+Or type any question in the chat, for example:
 - "What root causes might be missing from this failure mode?"
 - "Can you review the probabilities in this tree?"
 - "Suggest additional failure modes for the selected node"
