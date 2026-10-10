@@ -596,7 +596,9 @@ Notes for reliability engineers:
 
 - **Mission time.** A rate event with no own T uses the document's mission
   time (default 8760 h, i.e. one year). Changing the mission time requantifies
-  every such event and is one undo step.
+  every such event and is one undo step. An own T that is not a valid number
+  (text, negative or NaN, in a file edited by hand) does not fall back to the
+  mission time: it counts as a missing parameter (see below).
 - **Standby λτ/2** is the first-order approximation of the average
   unavailability of a periodically tested component. It assumes λτ ≪ 1. When
   **λτ > 0.2** the approximation is poor (the exact average is
@@ -1295,6 +1297,11 @@ headline figures). See [Report (DOCX) and Excel sheets](#report-docx-and-excel-s
 A `<FaultTree>` of nested `<Node>` elements carrying the name, type, base and
 calculated probability, logic gate, notes and links. It is the editor's own
 layout, not a standard exchange format, and it does not carry the 1.7 keys.
+
+In the web app, the Excel, XML and DOCX exports leave out the characters XML
+cannot hold, such as control characters pasted from PowerPoint or Word; the
+whitespace-like ones (PowerPoint's soft line break) become a space. The
+analysis itself is not changed.
 
 ## Keyboard Shortcuts
 

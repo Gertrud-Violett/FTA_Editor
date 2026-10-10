@@ -172,7 +172,9 @@ it replaces the open document.
   - `q` is the derived probability, or `null` when the model cannot be
     evaluated.
   - `params` holds the resolved inputs. A `T` taken from the mission time
-    is marked `TFromMission: true`.
+    is marked `TFromMission: true`; only an absent `T` is taken from it. An
+    own `T` that is not a valid number (from a loaded file) is `null` here
+    and reported as `QUANT_PARAM_MISSING`.
   - `warnings` is a list of `{code, nodeId, params}`: `QUANT_PARAM_MISSING`,
     `STANDBY_LARGE_LT`, and the gate warnings for this node from the last
     recalculation.
@@ -568,7 +570,10 @@ mode, the headline figures). `sigFigs` sets the scientific number format of
 the probability cells; it is clamped to 1–6, and a missing or unparseable
 value gives 3. The UI sends the top bar's significant-figures setting.
 Text stays text in every sheet: a value that starts with `=` (a node named
-`=HYPERLINK(…)`, say) is never written as a formula.
+`=HYPERLINK(…)`, say) is never written as a formula. This export, the XML
+export and the DOCX report drop the characters XML cannot hold (C0 control
+characters other than tab, line feed and carriage return); the
+whitespace-like ones become a space. The document is not changed.
 
 ### New error codes
 
@@ -626,6 +631,12 @@ removes them, and `POST /api/redo` brings them back.
     (`\\host\share\x.json`) would open an SMB connection to the named
     host. Device-namespace forms (`\\?\`, `\\.\`) and a drive letter that
     `subst` maps onto the root folder are refused the same way.
+- **OS refusals** are `PATH_REJECTED` too, not 500s. A save the OS will not
+  write (a read-only folder, a file another program holds open) has
+  `reason: "unwritable"` and a folder it will not list `reason: "unreadable"`,
+  each 403 when permission is denied and 400 otherwise; a path that cannot be
+  resolved, such as a symlink loop, is `reason: "unresolvable"` (400). A
+  symlink loop inside a folder is left out of its listing.
 - **Numerics.** A PAND gate with more than 170 inputs is computed in log
   space (171! does not fit a float), and Monte Carlo samples an extreme error
   factor in log space, clamped below the float ceiling, instead of
