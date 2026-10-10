@@ -243,7 +243,9 @@ def _read_xlsx(path: Path, sheet: Optional[str]) -> Dict[str, Any]:
         raise FmeaImportError("'%s' is not a readable .xlsx workbook." % path.name,
                               "unreadable") from exc
     try:
-        names = list(book.sheetnames)
+        # Worksheets only: a chart sheet has no cells (and, as the first
+        # sheet, was the default -- AttributeError, a 500 on preview).
+        names = [ws.title for ws in book.worksheets]
         if not names:
             raise FmeaImportError("'%s' has no sheets." % path.name, "no_sheets")
         if sheet in (None, ""):

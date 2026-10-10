@@ -455,6 +455,37 @@ def test_fmea_xlsx_with_a_wrong_dimension_record(tmp_path):
     assert table["rowNumbers"] == [2, 4]
 
 
+def _xlsx_with_a_chart_sheet_first(path):
+    openpyxl = pytest.importorskip("openpyxl")
+    from openpyxl.chart import BarChart, Reference
+
+    book = openpyxl.Workbook()
+    data = book.active
+    data.title = "FMEA"
+    data.append(["ID", "Mode", "Occurrence"])
+    data.append(["A", "Leak", 4])
+    chart = BarChart()
+    chart.add_data(Reference(data, min_col=3, min_row=1, max_row=2), titles_from_data=True)
+    book.create_chartsheet("Pareto", 0).add_chart(chart)
+    book.save(path)
+    return path
+
+
+def test_fmea_xlsx_whose_first_sheet_is_a_chart(tmp_path):
+    """The first sheet is the default, and a chart sheet has no cells:
+    AttributeError ('Chartsheet' object has no attribute 'iter_rows') -- the
+    preview was a 500 before the sheet list could even be shown."""
+    from fta_web import fmea_import
+
+    path = _xlsx_with_a_chart_sheet_first(tmp_path / "chart.xlsx")
+    table = fmea_import.read_table(path)
+    assert table["sheets"] == ["FMEA"] and table["sheet"] == "FMEA"
+    assert table["rows"] == [["A", "Leak", 4]]
+    with pytest.raises(fmea_import.FmeaImportError) as info:
+        fmea_import.read_table(path, "Pareto")
+    assert info.value.reason == "unknown_sheet"
+
+
 def test_docx_route_with_control_characters(files_client, tmp_path):
     pytest.importorskip("docx")
     open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))
