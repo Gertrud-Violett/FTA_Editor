@@ -266,3 +266,60 @@ def test_a_desktop_gate_edit_still_resets_the_stale_gate_type(tmp_path):
     assert "gateType" not in core.get_data() and "k" not in core.get_data()
     assert core.get_data()["calculatedProbability"] == 0.25
     assert [w["kind"] for w in core.last_load_warnings] == ["gate_type_reset"]
+
+
+# ---- E-3: Monte Carlo says when an uncertain event is in no sampled cut set ---------------
+
+_UNC_B = {"model": "fixed", "unc": {"dist": "lognormal", "median": 0.05, "ef": 3.0}}
+
+
+def _mc_tree(b_probability):
+    """B is uncertain; the OR-link on g3 repeats E, so the cut-set method runs."""
+    return gate("root", "OR", [
+        gate("g1", "AND", [leaf("A", 0.1), leaf("B", b_probability, quant=copy.deepcopy(_UNC_B))]),
+        gate("g2", "AND", [leaf("C", 0.1), leaf("D", 0.2)]),
+        gate("g3", "AND", [leaf("E", 0.01), leaf("F", 0.01)],
+             links=[{"target_id": "E", "relation": "OR"}]),
+    ])
+
+
+def test_mc_warns_when_an_uncertain_event_is_in_no_sampled_cut_set():
+    """B's point value is 0 but its lognormal median is 0.05. The cut-set
+    method picks sets by their point probability, and the expansion drops a
+    P = 0 set without a truncation flag, so {A, B} was never sampled: std 0,
+    p95 = point estimate, B still listed as uncertain, and no warning at all."""
+    from fta_web import uncertainty
+
+    result = uncertainty.run(_mc_tree(0.0), None, n=200, seed=7)
+    assert result["method"] == "cutsets" and result["uncertainEvents"] == ["B"]
+    found = [w for w in result["warnings"] if w["code"] == "MC_EVENT_NOT_SAMPLED"]
+    assert found == [{"code": "MC_EVENT_NOT_SAMPLED", "nodeId": None,
+                      "params": {"count": 1, "eventIds": ["B"], "names": "B"}}]
+    # A warning, not a numeric change: the samples are what they were.
+    assert result["std"] == 0.0 and result["mean"] == result["pointEstimate"]
+
+
+def test_mc_does_not_warn_when_every_uncertain_event_is_sampled():
+    from fta_web import uncertainty
+
+    sampled = uncertainty.run(_mc_tree(0.05), None, n=200, seed=7)
+    assert sampled["method"] == "cutsets" and sampled["std"] > 0
+    assert "MC_EVENT_NOT_SAMPLED" not in [w["code"] for w in sampled["warnings"]]
+    tree_method = uncertainty.run(gate("root", "OR", [
+        leaf("A", 0.0, quant=copy.deepcopy(_UNC_B)), leaf("B", 0.1)]), None, n=50, seed=7)
+    assert tree_method["method"] == "tree"
+    assert "MC_EVENT_NOT_SAMPLED" not in [w["code"] for w in tree_method["warnings"]]
+
+
+def test_mc_event_not_sampled_is_translated_for_the_uncertainty_tab():
+    """renderWarnings() looks up anl.warn.<code>; without an entry the tab
+    shows the bare code."""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "static" / "js" / "i18n" / "cutsets.js"
+           ).read_text(encoding="utf-8")
+    en_block, ja_block = src.split("\n  ja:", 1)
+    for block in (en_block, ja_block):
+        text = re.search(r"'anl\.warn\.MC_EVENT_NOT_SAMPLED':\s*'([^']*)'", block).group(1)
+        assert set(re.findall(r"\{(\w+)\}", text)) == {"count", "names"}
