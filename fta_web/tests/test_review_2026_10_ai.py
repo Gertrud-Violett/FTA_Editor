@@ -517,7 +517,8 @@ def test_the_applied_count_is_what_the_server_applied():
         [None, 2],
     ]
     script = fn.group(0) + "\nconsole.log(JSON.stringify(%s.map((c) => appliedCount(c[0], c[1]))));" % json.dumps(cases)
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8", check=True).stdout
     assert json.loads(out) == [1, 2, 2, 3, 2]
 
 
@@ -1288,7 +1289,8 @@ def test_the_chat_summarises_an_update_in_one_line():
     ]
     consts = "\n".join(re.findall(r"^const SUMMARY_[A-Z_]+ = \d+;", _chat_source(), re.M))
     script = consts + "\n" + fn.group(0) + "\nconsole.log(JSON.stringify(%s.map(updateSummaryMessage)));" % json.dumps(cases)
-    out = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+    out = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                                    encoding="utf-8", check=True).stdout)
 
     assert out[0] is None
     assert out[1] == {"key": "ai.update.summary", "vars": {
