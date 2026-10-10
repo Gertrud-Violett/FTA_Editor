@@ -1,6 +1,6 @@
 # Multi-Provider AI Setup Guide
 
-FTA Editor now supports **three major AI providers**: OpenAI, Anthropic Claude, and Google Gemini. This guide helps you choose and configure the best option for your needs.
+FTA Editor supports **four AI providers**: OpenAI, Anthropic Claude, Google Gemini and Microsoft Copilot (Azure OpenAI, see [MICROSOFT_COPILOT_SETUP.md](MICROSOFT_COPILOT_SETUP.md)). This guide helps you choose and configure the first three.
 
 ## Quick Comparison
 
@@ -37,7 +37,7 @@ FTA Editor now supports **three major AI providers**: OpenAI, Anthropic Claude, 
    - **Provider**: Select "Google Gemini"
    - **API Key**: Paste your Gemini API key
    - **Endpoint**: Auto-filled as `https://generativelanguage.googleapis.com/v1beta`
-   - **Model**: Choose `gemini-1.5-pro` (recommended) or `gemini-1.5-flash`
+   - **Model**: Choose `gemini-2.5-pro` (recommended) or `gemini-2.5-flash`
 6. Click **Test & Save**
 
 **Cost Estimate:**
@@ -73,15 +73,15 @@ FTA Editor now supports **three major AI providers**: OpenAI, Anthropic Claude, 
    - **Provider**: Select "Anthropic Claude"
    - **API Key**: Paste your Claude API key
    - **Endpoint**: Auto-filled as `https://api.anthropic.com`
-   - **Model**: Choose `claude-3-5-sonnet-20241022` (recommended) or `claude-3-opus-20240229`
+   - **Model**: Choose `claude-sonnet-5` (recommended) or `claude-opus-5`
 8. Click **Test & Save**
 
-**Model Options:**
-- **Claude 3.5 Sonnet** (Recommended): Best balance of speed and capability
-- **Claude 3 Opus**: Most capable but slower
-- **Claude 3 Haiku**: Fastest but less capable
+**Model Options** (the built-in list; the Claude 3 models this guide used to name are retired):
+- **Claude Sonnet** (`claude-sonnet-5`, recommended): Best balance of speed and capability
+- **Claude Opus** (`claude-opus-5`): Most capable but slower
+- **Claude Haiku** (`claude-haiku-4-5`): Fastest but less capable
 
-**Cost Estimate:**
+**Cost Estimate** (Claude 3.x-era prices; check Anthropic's pricing page for current ones):
 - Claude 3.5 Sonnet: ~$3/1M input, ~$15/1M output tokens (~$0.02-0.05 per FTA analysis)
 - Claude 3 Haiku: ~$0.80/1M input, ~$4/1M output tokens
 
@@ -171,12 +171,12 @@ If you already have GitHub Copilot Pro subscription ($20/month), you get access 
 You can switch providers at any time:
 
 1. Click the **⚙ (Settings)** button in AI Assistant panel
-2. Select a different provider from dropdown
+2. Select a different provider from the provider list
 3. Endpoint and model options update automatically
 4. Enter API key for the new provider
 5. Click **Test & Save**
 
-Your credentials are stored securely on your computer, and you can maintain multiple provider configurations.
+Your credentials are stored on your computer only. One provider's credentials are kept at a time: saving a new provider replaces the previous key.
 
 ---
 
@@ -257,7 +257,7 @@ If you accidentally shared your API key:
 ### Scenario 1: Budget-Conscious (Learning/Testing)
 ```
 Provider: Google Gemini
-Model: gemini-1.5-flash
+Model: gemini-2.5-flash
 Cost: Free (with limitations)
 Best for: Learning, testing, simple analysis
 ```
@@ -265,7 +265,7 @@ Best for: Learning, testing, simple analysis
 ### Scenario 2: Regular Use (Small Team)
 ```
 Provider: Google Gemini (free) + OpenAI backup
-Model: gemini-1.5-flash → gpt-3.5-turbo
+Model: gemini-2.5-flash → gpt-3.5-turbo
 Cost: ~$2-5/month
 Best for: Regular FTA analysis, small engineering teams
 ```
@@ -273,7 +273,7 @@ Best for: Regular FTA analysis, small engineering teams
 ### Scenario 3: Professional Use (Complex Analysis)
 ```
 Provider: OpenAI or Claude
-Model: gpt-4o or claude-3-5-sonnet
+Model: gpt-4o or claude-sonnet-5
 Cost: ~$10-30/month
 Best for: Complex analyses, professional engineering work
 ```
@@ -281,7 +281,7 @@ Best for: Complex analyses, professional engineering work
 ### Scenario 4: High-Volume Analysis
 ```
 Provider: Claude with volume discount
-Model: claude-3-5-sonnet
+Model: claude-sonnet-5
 Cost: Contact Anthropic for volume pricing
 Best for: Enterprise, large teams, continuous analysis
 ```

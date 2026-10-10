@@ -4,10 +4,10 @@
 
 ## How Model Selection Works
 
-When you enter your API key in the FTA Editor, it automatically fetches the **available models** for your chosen provider. This ensures you always have the latest models that are actually available for your account.
+Once a key for your chosen provider is saved, the FTA Editor fetches the **available models** for it, so the list shows the models your account can actually use. Until then it shows the provider's built-in default models. The model field also accepts any model name you type.
 
-- **Enter API Key** → Models automatically populate
-- **Click Refresh Button** (↻) → Manually refresh the model list anytime
+- **Test & Save a key** → the live model list is used from then on
+- **Click Reload** (↻ in the desktop app) → Manually refresh the model list anytime
 - Can't connect? Falls back to **default models** with a notification
 
 ## TL;DR - Quick Start
@@ -19,7 +19,7 @@ When you enter your API key in the FTA Editor, it automatically fetches the **av
 3. Copy your API key
 4. Open FTA Editor → AI Settings (⚙)
 5. Select "Google Gemini"
-6. Paste API key → Models auto-populate
+6. Paste API key
 7. Click "Test & Save"
 ```
 ✅ **Free tier**: 15 requests/minute  
@@ -35,7 +35,7 @@ When you enter your API key in the FTA Editor, it automatically fetches the **av
 4. Copy your API key
 5. Open FTA Editor → AI Settings (⚙)
 6. Select "Anthropic Claude"
-7. Paste API key → Models auto-populate
+7. Paste API key
 8. Click "Test & Save"
 ```
 💰 **Cost**: ~$0.02-0.05 per FTA analysis  
@@ -96,12 +96,12 @@ When you enter your API key in the FTA Editor, it automatically fetches the **av
 2. Look for the chat panel on the right side
 3. Click the **⚙ (Settings)** button
 4. In the dialog:
-   - **Provider**: Select `"Google Gemini"` from dropdown
+   - **Provider**: Select `"Google Gemini"` from the provider list
    - **API Key**: Paste your key from Step 1
    - **Endpoint**: Auto-filled (`https://generativelanguage.googleapis.com/v1beta`)
-   - **Model**: Select `"gemini-1.5-pro"`
+   - **Model**: Select `"gemini-2.5-pro"` (or `"gemini-2.5-flash"` for speed)
 5. Click **"Test & Save"** button
-6. You'll see: ✓ "Configuration saved successfully!"
+6. You'll see: "Connected. The assistant is ready." (desktop app: ✓ "Configuration saved successfully!")
 
 ### Step 3: Start Using
 - Now you can ask FTA questions!
@@ -131,7 +131,7 @@ When you enter your API key in the FTA Editor, it automatically fetches the **av
    - **Provider**: Select `"Anthropic Claude"`
    - **API Key**: Paste your key
    - **Endpoint**: Auto-filled
-   - **Model**: Select `"claude-3-5-sonnet-20241022"`
+   - **Model**: Select `"claude-sonnet-5"`
 3. Click **"Test & Save"**
 
 **You're done! 🎉**
@@ -171,12 +171,12 @@ When you enter your API key in the FTA Editor, it automatically fetches the **av
 Anytime you want to switch:
 
 1. Click AI Settings (⚙) again
-2. Select a different provider from dropdown
+2. Select a different provider from the provider list
 3. Endpoint and model options update automatically
 4. Enter API key for new provider
 5. Click **"Test & Save"**
 
-Your old credentials are saved - you can always switch back!
+Only one provider's credentials are stored: saving a new provider replaces the old key, so keep the old key if you want to switch back later.
 
 ---
 
@@ -187,7 +187,7 @@ Your old credentials are saved - you can always switch back!
 **For Gemini:**
 - Check API key format (should be: `AIzaSy...`)
 - Verify API is enabled in Google Cloud Console
-- Try a simpler model like `gemini-1.5-flash`
+- Try a simpler model like `gemini-2.5-flash`
 
 **For Claude:**
 - Check API key starts with `sk-ant-`

@@ -100,18 +100,15 @@ Microsoft Copilot for enterprises uses **Azure OpenAI Service**, which provides:
    - Click **⚙️ AI Settings** button in the AI Assistant panel
 
 4. **Configure Provider**:
-   - **Provider**: Select **"Microsoft Copilot"** from dropdown
+   - **Provider**: Select **"Microsoft Copilot"** from the provider list
    - **API Key**: Paste your Azure OpenAI API key
-   - **API Endpoint**: Enter your full endpoint URL (with deployment name)
+   - **API Endpoint** (under **Advanced** in the web app): Enter your full endpoint URL (with deployment name)
      - Example: `https://my-fta-openai.openai.azure.com/openai/deployments/gpt-4o-deployment`
    - **Model**: Enter your deployment name (e.g., `gpt-4o-deployment`)
 
-5. **Test Connection**:
-   - Click **"Test Connection"** button
-   - Should see: ✅ "Microsoft Copilot (Azure OpenAI) connection successful!"
-
-6. **Save Settings**:
-   - Click **"Save"** button
+5. **Test & Save**:
+   - Click **"Test & Save"**. The connection is tested first, and the settings are saved only if the test succeeds
+   - Should see: "Connected. The assistant is ready." (desktop app: ✓ "Configuration saved successfully!")
    - Credentials stored locally at `~/.fta_editor/ai_credentials.json`
 
 ---
