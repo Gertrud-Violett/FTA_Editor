@@ -533,7 +533,8 @@ limits in the document (`analysis.cutsets`). That is what the Importance tab,
 the headline, the Validation tab, the report and the CLI use. Saving marks the
 document as modified and can be undone. *Show* limits how many rows are
 listed; the totals always cover every cut set. **Copy CSV** copies the list to
-the clipboard. Clicking a row outlines its events in the tree and the diagram;
+the clipboard (spreadsheet-safe, see [CSV from the browser](#csv-from-the-browser)).
+Clicking a row outlines its events in the tree and the diagram;
 leaving the tab clears the highlight. The badges above the table report
 truncation, repeated events, non-coherence (XOR) and approximations. When the
 tree has a Priority-AND gate, a badge says **PAND treated as AND in cut sets
@@ -1071,6 +1072,16 @@ three sheets:
   approximations and the truncation flag.
 
 **Export events CSV** builds the same per-event table as a CSV in the browser.
+
+#### CSV from the browser
+
+The browser's CSV output — **Export events CSV** here, and **Copy CSV** in the
+Cut Sets and Traceability tabs — is meant to be opened in a spreadsheet, so a
+text cell that a spreadsheet would run as a formula (one starting with `=`,
+`+`, `-`, `@`, a tab or a carriage return, such as `+24V supply fails` or
+`=HYPERLINK(…)`) gets a leading apostrophe. Numbers are never prefixed, so
+probability and rate columns stay numeric. The CLI's `--csv` is the raw data
+for scripts and is not changed this way.
 
 ### Diagram styles and layout
 

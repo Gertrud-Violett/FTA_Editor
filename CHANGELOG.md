@@ -53,7 +53,8 @@ Every fix has a regression test in `fta_web/tests/test_review_2026_10_*.py`.
   `AI_DOCUMENT_CHANGED`), and a proposal made for one document could be
   applied by node id to another. A provider error quoting the API key is
   scrubbed even if the credentials were cleared mid-call. Terminal escape
-  sequences in names no longer reach the CLI's text output.
+  sequences in names are printed escaped (`\x1b`) in the CLI's text output
+  instead of reaching the terminal; `--json` and `--csv` keep the text.
 - **Numbers.**
   - A legacy `logicGate` of PAND/XOR/INHIBIT/KOFN without a `gateType` was
     computed as that gate by the tree walk but as OR by cut sets and
@@ -103,7 +104,8 @@ Every fix has a regression test in `fta_web/tests/test_review_2026_10_*.py`.
     current.
   - The documented Azure endpoint form always 404'd.
   - SDK calls had no deadline (up to 30 min, or forever for Gemini); every
-    client now has an explicit timeout and one retry.
+    client now has an explicit 120 s timeout, with one retry for OpenAI,
+    Azure and Anthropic (Gemini makes a single attempt).
   - An empty reply was kept in the conversation.
   - OpenAI reasoning models (o-series, gpt-5) refused `max_tokens` and the
     temperature.
@@ -1322,7 +1324,8 @@ git push origin main
 - All existing JSON files work with both interfaces
 - No breaking changes to existing workflows
 
-See [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md) for cloud hosting guide.
+The cloud hosting guide (RENDER_DEPLOYMENT.md) was removed together with the
+Render deployment; see `fta_web/` for the current, local-only web app.
 
 ### Version 1.3.1 - UI Improvements and Bug Fixes
 

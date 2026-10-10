@@ -343,6 +343,7 @@ python -m pytest desktop/tests/    # the frozen legacy suite
 - [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
 - [API Reference](docs/API_REFERENCE.md) - Programming interface
 - [Code Review 2026-09](docs/CODE_REVIEW_2026-09.md) - Known defects, ranked, with fix order
+- [Code Review 2026-10](docs/CODE_REVIEW_2026-10.md) - October 2026 review: what was fixed, what is left open, feature status
 - [Roadmap for mechanical engineers](docs/ROADMAP_MECHANICAL_ENGINEERS.md) - Proposed features and UI changes
 - [Legacy desktop app](desktop/README.md) - The frozen Tkinter fallback and what it does not fix
 
