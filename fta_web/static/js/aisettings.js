@@ -121,6 +121,11 @@ function providerLabel(entry) {
   return meta ? t(meta.label) : String(entry.name);
 }
 
+/** Microsoft Copilot (Azure OpenAI): the endpoint is the user's own resource. */
+function isAzure(name) {
+  return /microsoft|azure/i.test(String(name || ''));
+}
+
 /* ------------------------------------------------------------- payloads ---- */
 
 /**
@@ -262,13 +267,15 @@ export function openAiSettings() {
     autocomplete: 'off',
     spellcheck: 'false',
   });
+  const endpointHint = el('p', { class: 'aiset-note', text: t('ai.endpoint.hint') });
+  const endpointBlock = el('div', { class: 'aiset-block' }, [
+    el('label', { class: 'field-label', for: endpointId, text: t('ai.field.endpoint') }),
+    endpointInput,
+    endpointHint,
+  ]);
   const advanced = el('details', { class: 'aiset-advanced' }, [
     el('summary', { class: 'aiset-advanced__summary', text: t('ai.field.advanced') }),
-    el('div', { class: 'aiset-block' }, [
-      el('label', { class: 'field-label', for: endpointId, text: t('ai.field.endpoint') }),
-      endpointInput,
-      el('p', { class: 'aiset-note', text: t('ai.endpoint.hint') }),
-    ]),
+    endpointBlock,
   ]);
 
   const status = el('p', {
@@ -431,6 +438,7 @@ export function openAiSettings() {
     const isSavedProvider =
       saved.configured && String(saved.provider || '').toLowerCase() === entry.name.toLowerCase();
 
+    placeEndpoint(entry);
     endpointInput.value = (isSavedProvider && saved.endpoint) || entry.endpoint || '';
     fillModels(entry.models, isSavedProvider ? saved.model : entry.models[0] || '');
 
@@ -445,6 +453,24 @@ export function openAiSettings() {
 
     saveButton.disabled = busy;
     updateKeyNote();
+  }
+
+  /**
+   * Every provider but one has a working default endpoint, kept out of the way
+   * under "Advanced". Microsoft Copilot's is a YOUR-RESOURCE placeholder: the
+   * Azure resource URL is mandatory and the user's own, so for it the field
+   * sits in the form itself, with a hint saying what to enter.
+   */
+  function placeEndpoint(entry) {
+    const azure = isAzure(entry && entry.name);
+    if (azure) {
+      if (endpointBlock.parentNode !== form) form.insertBefore(endpointBlock, advanced);
+    } else if (endpointBlock.parentNode !== advanced) {
+      advanced.appendChild(endpointBlock);
+    }
+    // The endpoint is all "Advanced" holds; an empty twisty would only confuse.
+    advanced.hidden = azure;
+    endpointHint.textContent = t(azure ? 'ai.endpoint.azureHint' : 'ai.endpoint.hint');
   }
 
   function fillModels(models, chosen) {
@@ -566,7 +592,12 @@ export function openAiSettings() {
         endpoint: endpoint,
         model: model,
       });
-      if (closed) return;
+      if (closed) {
+        // Cancel/Escape during the test does not undo the save: the panel
+        // and the chip must still learn it, or the chat refuses to send.
+        await refreshShell();
+        return;
+      }
       setBusy(false);
       setStatus(t('ai.status.saved'), 'ok');
       keyInput.value = '';
@@ -595,7 +626,10 @@ export function openAiSettings() {
     setBusy(true, t('ai.status.clearing'));
     try {
       await api.del('/ai/credentials');
-      if (closed) return;
+      if (closed) {
+        await refreshShell();
+        return;
+      }
       setBusy(false);
       await refreshShell();
       toast(t('ai.status.cleared'), 'info');

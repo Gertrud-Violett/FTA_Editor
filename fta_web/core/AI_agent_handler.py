@@ -488,7 +488,16 @@ Example of a valid node for DATA field:
             
             if error:
                 return f"AI Error: {error}", []
-            
+
+            # Divergence D25: a reply without text (a thinking model that spent
+            # its output budget, a safety block) is an error, not an assistant
+            # turn. Appended, it went out as "content": null on every later
+            # request, and parsing it failed with a TypeError the user saw.
+            if not isinstance(assistant_message, str) or not assistant_message.strip():
+                return ("AI Error: the AI provider returned an empty reply, so nothing "
+                        "was added to the conversation. Try again, or choose another "
+                        "model in AI settings."), []
+
             # Update conversation history (without context, to keep history clean)
             self.conversation_history.append({"role": "user", "content": user_message})
             self.conversation_history.append({"role": "assistant", "content": assistant_message})

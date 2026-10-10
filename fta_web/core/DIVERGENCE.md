@@ -34,7 +34,8 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
-**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**.
+**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**,
+**D24**, **D25**, **D26**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -565,6 +566,213 @@ directory's ACL is the protection — nothing changes and nothing fails.
 **Behavior change:** None functional; the file's content and location are unchanged.
 
 **Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D21 — Anthropic replies from thinking models: read every text block, leave room to think
+
+**Defect (review AI-07, AI-11):** `AnthropicProvider.send_message` returned
+`response.content[0].text`. The current Claude models think by default --
+`claude-opus-5`, which the settings dialog pre-selects, runs adaptive thinking
+unless told otherwise, `claude-opus-5-5` always thinks, and the 5.5 Sonnet and
+Haiku think by default -- and with the default `display: "omitted"` the reply's
+content starts with a `thinking` block (empty text) before the `text` block. A
+`ThinkingBlock` has no `.text`, so every chat, Analyze and Update answered
+`AI Error: Anthropic error: 'ThinkingBlock' object has no attribute 'text'`,
+while Test & Save (which never reads the content) reported success. The request
+also went out with the handler's `max_tokens=2000`, and thinking tokens count
+against `max_tokens`, so a long think could leave no room for the answer at all.
+
+Repro (installed `anthropic` 1.5.0, its real `Message` model): content
+`[{"type": "thinking", ...}, {"type": "text", "text": "..."}]` -> the error above.
+
+**Fix:** The reply is the concatenation of every `type == "text"` block. A reply
+with no text block is an error that names the `stop_reason` (`max_tokens`,
+`refusal`, ...) instead of an `AttributeError`. Requests are sent with
+`max_tokens = max(requested, 16000)` (`AnthropicProvider.MIN_MAX_TOKENS`):
+16000 is the documented non-streaming default and every current Claude model
+accepts at least 64K output tokens. No sampling parameter is added -- they are
+rejected by Opus 5.5/5/4.8/4.7 and Sonnet 5. `test_connection` is unchanged: with
+`max_tokens=10` a thinking model can legitimately answer with no text block,
+so requiring one there would refuse working keys.
+
+**Why it is safe:** For a model that does not think, the content is a single
+text block and the joined text is exactly what `content[0].text` returned.
+`max_tokens` is a ceiling, not a target, so a larger value changes neither the
+answer nor its cost unless the model needs the room.
+
+**Behavior change:** Chat, Analyze and Update work with thinking models; an
+empty answer says why. OpenAI, Gemini and Azure keep `max_tokens=2000`.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D22 — Anthropic model list: ask the Models API; refresh the fallback list
+
+**Defect (review AI-16):** `AnthropicProvider.get_available_models` never made a
+request ("Anthropic doesn't provide a list_models endpoint") and returned the
+built-in list with no warning, so `GET /api/ai/models` reported it as
+`source: "live"` and the settings dialog said "Loaded from the provider." for
+a list that was compiled into the app. The Models API exists
+(`client.models.list()` in the installed `anthropic` 1.5.0, auto-paginating,
+each entry with an `id`). The built-in list -- the one the dialog pre-selects
+from, and the only one available without a saved key -- led with
+`claude-opus-5`, no longer the current model.
+
+**Fix:** `get_available_models` asks `client.models.list()` and returns the
+ids in the API's order (newest first). Any failure, an empty answer included,
+returns the built-in list plus a warning, so the dialog says "Built-in
+defaults" instead of "Loaded from the provider.". The built-in list is now
+`claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5, claude-opus-5,
+claude-sonnet-5` (exact ids, no date suffixes).
+
+**Why it is safe:** The live list is only fetched with a saved Anthropic key
+(the bridge never sends another provider's key), and every failure degrades to
+the previous behaviour. The model field stays editable.
+
+**Behavior change:** The Anthropic model list is the account's real one; the
+pre-selected default for a new Anthropic setup is `claude-opus-5-5`.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D23 — Azure endpoint: pass the bare resource URL to `AzureOpenAI`
+
+**Defect (review AI-08):** `MicrosoftCopilotProvider` cut the endpoint at
+`/deployments/` and passed the rest as `azure_endpoint`. For the form the
+provider's own placeholder and `docs/MICROSOFT_COPILOT_SETUP.md` ask for,
+`https://{resource}.openai.azure.com/openai/deployments/{deployment}`, that left
+`https://{resource}.openai.azure.com/openai`; `AzureOpenAI` appends `/openai`
+itself, so every request went to `/openai/openai/deployments/{deployment}/chat/completions`
+and failed with 404 ("Deployment error: Check your deployment name..."). The
+provider could only work with an endpoint the docs never mention.
+
+Repro (installed `openai` 3.13.0 against a loopback server): endpoint
+`.../openai/deployments/fta-dep` -> `POST /openai/openai/deployments/fta-dep/chat/completions`.
+
+**Fix:** `_azure_target(endpoint, model)` strips a query string, a trailing
+`/openai/deployments/<name>[/...]` or `/openai`, and trailing slashes, and
+returns the bare resource URL plus the deployment (the one the URL names, else
+the model field). `test_connection` and `send_message` use it. The unused
+parsing in `get_available_models`, which makes no request, was dropped.
+
+**Why it is safe:** An endpoint that already worked -- the bare resource URL,
+with the deployment in the model field -- normalises to itself. `api_version`
+and the request body are unchanged.
+
+**Behavior change:** The documented endpoint form, `.../openai`, and the bare
+resource URL all reach `/openai/deployments/{deployment}/chat/completions`.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D24 — An explicit deadline and one retry on every SDK client
+
+**Defect (review AI-09):** No client was given a timeout. The OpenAI, Azure and
+Anthropic SDKs then wait 600 s per attempt and retry twice (a timeout is
+retried too), and `google.genai` has no timeout at all. The web app's bridge
+(`fta_web/ai_bridge.py`) gives up after `AI_TIMEOUT_SECONDS` (120 s), but
+Python cannot stop the worker thread, which keeps the single AI call slot until
+the SDK returns -- so after one hung call every AI request, Test & Save of a
+different provider included, answered `AI_BUSY` for up to half an hour, and
+with Gemini until the editor was restarted.
+
+Repro (installed SDKs against a loopback server that never answers): all four
+providers' `send_message` were still waiting after 10 s.
+
+**Fix:** Module constants `REQUEST_TIMEOUT_SECONDS = 120.0` (equal to the app's
+`AI_TIMEOUT_SECONDS`; a test pins the two, because this vendored module does not
+import the app's config) and `MAX_RETRIES = 1`. Every `OpenAI`, `AzureOpenAI` and
+`Anthropic` client gets `timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES`;
+the `genai.Client` gets `HttpOptions(timeout=...)` **in milliseconds** (its
+docstring says so and `get_timeout_in_seconds` divides by 1000) and no
+`retry_options`, so it makes a single attempt. Both constants are read at call
+time.
+
+**Why it is safe:** One attempt may still use the whole 120 s the editor waits
+for an answer, so no answer that used to arrive in time is cut off; a test
+answers after 0.5 s under a 5 s deadline for each provider, which also pins the
+millisecond unit. One retry still covers a transient 429/5xx.
+
+**Behavior change:** A hung provider releases the call slot after at most
+about `2 * 120 s` (OpenAI, Azure, Anthropic) or `120 s` (Gemini).
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D25 — An empty provider reply is an error, not a conversation turn
+
+**Defect (review AI-10):** `AIAgentHandler.send_message` appended the
+provider's reply to `conversation_history` before anything looked at it. A reply
+with no text -- `None` from Gemini when a 2.5 model spends `max_output_tokens` on
+thinking or the answer is safety-blocked, an empty string from a reasoning
+model cut short -- became `{"role": "assistant", "content": None}`. Parsing it
+then raised, so the user read `AI Error: expected string or bytes-like object,
+got 'NoneType'`, and every later request carried the null turn
+(`"content": null` to Anthropic, which rejects it).
+
+Repro: a Gemini candidate without parts (`finishReason: MAX_TOKENS`) -> the
+error above; the history holds `[user, {assistant: None}]`.
+
+**Fix:** After the provider error check, a reply that is not a non-blank string
+returns `AI Error: the AI provider returned an empty reply, so nothing was added
+to the conversation. ...` and leaves the history and the pending changes as
+they were.
+
+**Why it is safe:** Only a reply that could not be used is affected; every
+non-empty reply follows the unchanged path. The in-band `AI Error:` convention is
+the one the chat panel and the web app's routes already handle.
+
+**Behavior change:** An empty answer reads as one, and the conversation stays
+usable after it.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D26 — OpenAI reasoning models: `max_completion_tokens`, no temperature
+
+**Defect (review AI-15):** `OpenAIProvider` sent `max_tokens` (and
+`temperature=0.7` on chats) to every model. The installed `openai` 3.13.0
+documents `max_tokens` as "now deprecated in favor of `max_completion_tokens`,
+and is not compatible with o-series models", and the reasoning models also
+refuse a non-default temperature. The live model list offers them (its filter
+is `"gpt" in id`, which keeps every `gpt-5*`), so choosing one made Test & Save
+and every chat fail. Not reproduced against the live API (no network); the
+SDK's own documentation is the evidence, and the request bodies are pinned by
+tests against a loopback server.
+
+**Fix:** `_length_args(model, max_tokens, temperature)`: a model whose last path
+segment starts with `o<digit>` or `gpt-5` (case-insensitive, so a gateway's
+`openai/o3-mini` counts) is sent `max_completion_tokens` and no `temperature`;
+every other model is sent exactly `max_tokens` (and `temperature=0.7` on chats)
+as before. `test_connection` and `send_message` use it. The Azure provider is
+unchanged: a deployment name says nothing reliable about the model behind it.
+
+**Why it is safe:** Non-reasoning models, and OpenAI-compatible gateways that only
+know `max_tokens`, receive byte-for-byte the same request. The value is unchanged
+(`max_completion_tokens` also counts reasoning tokens, so a long think can still
+use it up -- such an empty reply is reported, see D25).
+
+**Behavior change:** o-series and GPT-5 models can be tested, saved and used.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
 
 ---
 

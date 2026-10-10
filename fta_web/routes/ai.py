@@ -119,6 +119,7 @@ AI_CONNECTION_FAILED = "AI_CONNECTION_FAILED"
 AI_INVALID_JSON = "AI_INVALID_JSON"
 AI_UPDATE_REJECTED = "AI_UPDATE_REJECTED"
 AI_CHANGE_REJECTED = "AI_CHANGE_REJECTED"
+AI_DOCUMENT_CHANGED = "AI_DOCUMENT_CHANGED"
 
 #: Says where to go, not just what is wrong. This is the one error a new user
 #: is guaranteed to hit, so it is the one that has to teach.
@@ -209,13 +210,17 @@ def _ai_failures(secret: Optional[str] = None):
 # ---- state helpers -------------------------------------------------------
 
 
-def _document_snapshot() -> Tuple[Dict[str, Any], str, str]:
-    """``(tree, mode, title)``, deep-copied under the lock.
+def _document_snapshot() -> Tuple[Dict[str, Any], str, str, Any]:
+    """``(tree, mode, title, document)``, deep-copied under the lock.
 
     A copy, not the live tree: it is about to be walked and formatted on a
     worker thread that will outlive this request if the provider hangs, and
     that walk must not be able to see a half-applied edit -- or to be handed a
     structure another request is mutating.
+
+    ``document`` is the live ``state.core`` the copy was taken from. New, Open
+    and Import replace that object, so it says which document the model's
+    answer is about -- see :func:`_unchanged_since`.
     """
     state = get_state()
     with state.lock:
@@ -223,7 +228,21 @@ def _document_snapshot() -> Tuple[Dict[str, Any], str, str]:
             copy.deepcopy(state.core.get_data()),
             state.core.mode,
             state.core.title,
+            state.core,
         )
+
+
+def _unchanged_since(state, tree: Any, mode: str, document: Any) -> bool:
+    """Whether the live document is still the one ``_document_snapshot`` saw.
+
+    The lock is not held across a provider call, so the user can edit, undo,
+    or open another file while the model is working. Caller holds the lock.
+    """
+    return (
+        state.core is document
+        and state.core.mode == mode
+        and state.core.get_data() == tree
+    )
 
 
 class _TreeHolder:
@@ -419,9 +438,10 @@ def post_chat():
     message = _required_text(payload, "message")
 
     handler = ai_bridge.get_handler()
-    tree, mode, title = _document_snapshot()
+    tree, mode, title, document = _document_snapshot()
+    secret = ai_bridge.call_secret()
 
-    with _ai_failures():
+    with _ai_failures(secret):
         # set_fta_context is pure formatting, but it writes to the handler, so
         # it runs inside the same single-call slot as send_message -- see
         # ai_bridge.run_ai_call.
@@ -429,11 +449,13 @@ def post_chat():
             handler.set_fta_context(tree, mode, title)
             return handler.send_message(message, include_fta_context=True)
 
-        reply, changes = ai_bridge.run_ai_call("chat", _send)
+        reply, changes = ai_bridge.run_ai_call(
+            "chat", ai_bridge.proposing(handler, document, _send)
+        )
 
     return ok_response(
-        reply=ai_bridge.scrub(reply),
-        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes)),
+        reply=ai_bridge.scrub(reply, secret),
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes), secret),
     )
 
 
@@ -451,16 +473,21 @@ def post_analyze():
     _require_configured()
 
     handler = ai_bridge.get_handler()
-    tree, mode, title = _document_snapshot()
+    tree, mode, title, document = _document_snapshot()
+    secret = ai_bridge.call_secret()
 
-    with _ai_failures():
+    with _ai_failures(secret):
         reply, changes = ai_bridge.run_ai_call(
-            "analyze", handler.get_quick_analysis, tree, mode, title
+            "analyze",
+            ai_bridge.proposing(handler, document, handler.get_quick_analysis),
+            tree,
+            mode,
+            title,
         )
 
     return ok_response(
-        reply=ai_bridge.scrub(reply),
-        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes)),
+        reply=ai_bridge.scrub(reply, secret),
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes), secret),
     )
 
 
@@ -498,6 +525,14 @@ def post_apply_changes():
     Partial success is reported, not hidden: each index lands in ``applied`` or
     in ``rejected`` with the handler's own message. If every one is rejected
     the tree is untouched and the whole request is a 400.
+
+    A proposal made for another document -- one that New, Open or Import has
+    replaced since (``ai_bridge.made_for``) -- is always rejected: its node
+    ids may name unrelated nodes in the document open now. So is one carrying
+    what ``PATCH /api/nodes`` would refuse and the vendored parser lets
+    through (``ai_bridge.change_problem``: a NaN probability, non-text notes),
+    and an edit of a probability the engine derives (a quantification model,
+    a house event, a transfer gate), which it would silently overrule.
     """
     _require_configured()
     payload = _body()
@@ -552,7 +587,15 @@ def post_apply_changes():
 
         for index in indices:
             change = pending[index]
-            ok, message = handler.apply_change_to_fta(state.core, change)
+            refusal = (
+                ai_bridge.change_problem(change, state.core)
+                if ai_bridge.made_for(change, state.core)
+                else ai_bridge.OTHER_DOCUMENT_MESSAGE
+            )
+            if refusal:
+                ok, message = False, refusal
+            else:
+                ok, message = handler.apply_change_to_fta(state.core, change)
             record = ai_bridge.change_view(change, index)
             record["message"] = ai_bridge.scrub(message)
             (applied if ok else rejected).append(record)
@@ -615,21 +658,37 @@ def post_update():
     Both reproduce the desktop editor's Update FTA diagnostics
     (``desktop/src/FTA_Editor_UI.py:855-895``). Nothing is applied in either case.
 
+    A third refusal, 409 ``AI_DOCUMENT_CHANGED``: the model rewrote the tree
+    it was shown, and the lock is not held while it works. If the user edited
+    meanwhile, or New/Open replaced the document, installing the rewrite would
+    silently undo those edits -- or put this analysis into the other file,
+    under its title and path, for the next Save to write there.
+
     On success the tree is replaced wholesale under the lock, with an undo
     entry pushed first -- so a rewrite that turns out to be wrong is one
-    Ctrl-Z away, which is what makes it reasonable to try at all.
+    Ctrl-Z away, which is what makes it reasonable to try at all. The model is
+    asked to keep every existing node, but nothing makes it, so the response's
+    ``updateSummary`` says what the rewrite did to them: ``added``, ``removed``
+    and ``changed`` nodes by id and name (see ``ai_bridge.update_summary``).
     """
     _require_configured()
 
     handler = ai_bridge.get_handler()
-    tree, mode, title = _document_snapshot()
+    tree, mode, title, document = _document_snapshot()
+    secret = ai_bridge.call_secret()
 
-    with _ai_failures():
+    with _ai_failures(secret):
+        # The handler parses proposals out of this reply too; they are pending
+        # like any others, so they are recorded against this document as well.
         assistant_text, updated = ai_bridge.run_ai_call(
-            "update", handler.generate_full_fta_update, tree, mode, title
+            "update",
+            ai_bridge.proposing(handler, document, handler.generate_full_fta_update),
+            tree,
+            mode,
+            title,
         )
 
-    reply = ai_bridge.scrub(assistant_text)
+    reply = ai_bridge.scrub(assistant_text, secret)
 
     if updated is None:
         raise ApiError(
@@ -637,24 +696,38 @@ def post_update():
             "The AI did not return valid JSON, so nothing was changed.",
             400,
             {
-                "excerpt": ai_bridge.scrub(ai_bridge.parse_excerpt(assistant_text)),
+                "excerpt": ai_bridge.scrub(ai_bridge.parse_excerpt(assistant_text), secret),
                 "excerptChars": ai_bridge.PARSE_EXCERPT_CHARS,
             },
         )
 
     valid, validator_message = handler.verify_updated_fta_json(updated)
+    if valid:
+        # What the vendored validator lets through and the tree API refuses
+        # (a NaN probability, non-text notes, an invalid 1.7 key).
+        validator_message = ai_bridge.update_problem(updated)
+        valid = validator_message is None
     if not valid:
         raise ApiError(
             AI_UPDATE_REJECTED,
-            "The updated analysis was rejected: %s" % (validator_message or "unknown"),
+            "The updated analysis was rejected: %s"
+            % ai_bridge.scrub(validator_message or "unknown", secret),
             400,
             ai_bridge.scrub_deep(
-                ai_bridge.validation_diagnostics(updated, validator_message)
+                ai_bridge.validation_diagnostics(updated, validator_message), secret
             ),
         )
 
     state = get_state()
     with state.lock:
+        if not _unchanged_since(state, tree, mode, document):
+            raise ApiError(
+                AI_DOCUMENT_CHANGED,
+                "The analysis changed while the AI was writing its update (an "
+                "edit, an undo, or another file opened), so the update was not "
+                "applied and nothing was changed. Run Update FTA again.",
+                409,
+            )
         state.push_undo()
         # Deep-copied on the way in: set_data stores the reference it is given
         # (FTA_Editor_core.py:53), and the parsed object is also about to be
@@ -679,5 +752,12 @@ def post_update():
         _strip_references_to_removed(state, old_tree)
         state.core.recalculate_probabilities()
         state.mark_dirty()
+        # Both trees recalculated: a value the engine derives is not a change.
+        summary = ai_bridge.update_summary(old_tree, state.core.get_data())
 
-        return ok_response(reply=reply, mergedFields=merged, **_mutation_payload(state))
+        return ok_response(
+            reply=reply,
+            mergedFields=merged,
+            updateSummary=ai_bridge.scrub_deep(summary, secret),
+            **_mutation_payload(state),
+        )

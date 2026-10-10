@@ -65,12 +65,19 @@ import json
 import logging
 import re
 import threading
+import weakref
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.ai_bridge``
     from . import config
+    from .engine import derive_quant
+    from .errors import ApiError
+    from .node_schema import NODE_KEYS, VALIDATORS
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
+    from engine import derive_quant  # type: ignore[no-redef]
+    from errors import ApiError  # type: ignore[no-redef]
+    from node_schema import NODE_KEYS, VALIDATORS  # type: ignore[no-redef]
 
 # Importing config placed fta_web/core on sys.path, so the vendored modules
 # import under their bare names. See config.py for why that is mandatory.
@@ -272,6 +279,17 @@ def _stored_api_key() -> Optional[str]:
     return key if isinstance(key, str) and key.strip() else None
 
 
+def call_secret() -> Optional[str]:
+    """The saved key, read *before* a provider call, to scrub its answer with.
+
+    :func:`scrub` redacts the key stored when it runs. A call that is still
+    out when the user clears the credentials answers after its key is gone,
+    so a provider error quoting that key would otherwise reach the browser.
+    For ``extra_secrets`` only; it never goes into a payload.
+    """
+    return _stored_api_key()
+
+
 def scrub(text: Any, *extra_secrets: Optional[str]) -> Any:
     """Remove every known API key from a string.
 
@@ -425,10 +443,9 @@ def list_models(provider_name: Any, endpoint: Any = None) -> Dict[str, Any]:
     ``warning`` that says why. It never fails: a settings dialog with no model
     list is a dialog the user cannot complete.
 
-    ``source: "live"`` means the provider reported no error. Anthropic has no
-    list-models endpoint and answers with its built-in list and no error
-    (``ai_providers.py:144``), so "live" is the provider's claim, not proof of
-    a round trip.
+    ``source: "live"`` means the provider reported no error. OpenAI,
+    Anthropic (divergence D22) and Gemini really ask; Azure answers with its
+    built-in list and a warning, so it is always "fallback".
     """
     canonical, provider = resolve_provider(provider_name)
     resolved_endpoint = (
@@ -500,11 +517,21 @@ def test_and_save_credentials(
 
     Nothing is written on failure. A bad key that overwrote a working one
     would break the editor's AI for a typo.
+
+    Saving a different recipient -- another provider, or another endpoint,
+    which for an OpenAI-compatible gateway is another service -- forgets the
+    conversation history, so the new one is never sent the old conversation.
+    Nothing saved counts as different: that also covers a call that was still
+    out when the credentials were cleared and appended its exchange later
+    (this save needs the call slot, so that call has finished by now). A new
+    key for the same recipient keeps it. Pending proposals belong to the
+    document and are kept.
     """
     canonical, provider = resolve_provider(provider_name)
     resolved_endpoint = (
         endpoint.strip() if isinstance(endpoint, str) and endpoint.strip() else None
     ) or provider.get_default_endpoint()
+    previous = _recipient(load_stored_credentials() or {})
     resolved_model = (
         model.strip() if isinstance(model, str) and model.strip() else None
     ) or default_model_for(provider)
@@ -528,27 +555,48 @@ def test_and_save_credentials(
     if not ok:
         return False, message, resolved
 
-    saved, error = get_handler().configure(
+    handler = get_handler()
+    saved, error = handler.configure(
         api_key, resolved_endpoint, resolved_model, canonical
     )
     if not saved:
         return False, scrub(str(error or "Could not save credentials."), api_key), resolved
+    if previous != (canonical, resolved_endpoint):
+        handler.conversation_history = []
 
     return True, message, resolved
 
 
+def _recipient(credentials: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """``(canonical provider, endpoint)`` a saved conversation is sent to."""
+    name = credentials.get("provider")
+    try:
+        canonical = resolve_provider(name)[0] if name else None
+    except UnknownProvider:
+        canonical = None
+    endpoint = credentials.get("api_endpoint")
+    return canonical, endpoint.strip() if isinstance(endpoint, str) else None
+
+
 def delete_credentials() -> Tuple[bool, Optional[str]]:
-    """Forget the saved key.
+    """Forget the saved key -- and the conversation that went with it.
 
     The handler caches its provider instance after the first call
     (``AI_agent_handler.py:351``) and ``AICredentialManager.delete_credentials``
     knows nothing about that cache, so it is cleared here. Without this the
     next request would still find a live provider object and try to use the
     key that was just deleted.
+
+    The conversation history goes too: Clear Chat cannot run without
+    credentials, so after Clear here it would otherwise be kept and sent to
+    whichever provider is configured next. Pending proposals stay; they belong
+    to the document, not to the provider.
     """
     handler = get_handler()
     ok, error = handler.credential_manager.delete_credentials()
     handler.provider = None
+    if ok:
+        handler.conversation_history = []
     return ok, error
 
 
@@ -598,6 +646,215 @@ def pending_changes_view(handler: AIAgentHandler) -> List[Dict[str, Any]]:
         change_view(change, index)
         for index, change in enumerate(handler.pending_changes)
     ]
+
+
+# ---- which document a proposal was made for -----------------------------
+#
+# A proposal names node ids of the tree the model was shown. New, Open and
+# Import replace ``state.core`` with a fresh object, and in the new document
+# the same ids can name unrelated nodes ("root_0" is the first child of every
+# tree), so a proposal is only ever applied to the document it was made for.
+# Held weakly on both sides: a pending list that outlives its document must
+# not keep the old tree in memory.
+
+_proposal_documents: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+#: The ``rejected`` message for a proposal whose document is gone.
+OTHER_DOCUMENT_MESSAGE = (
+    "Not applied: this suggestion was made for a different analysis, which "
+    "New or Open has replaced since, and its node ids may name unrelated "
+    "nodes here."
+)
+
+
+def proposing(handler: AIAgentHandler, document: Any, func: Callable[..., Any]) -> Callable[..., Any]:
+    """``func`` (a handler call that may propose changes) for
+    :func:`run_ai_call`, recording what it proposes as made for ``document``.
+
+    The recording runs on the worker, inside the call slot, as soon as the
+    handler returns: calls are serialised, so the not-yet-recorded pending
+    changes are exactly this call's -- also for a call that timed out and
+    finishes after its request has gone.
+    """
+
+    def call(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return func(*args, **kwargs)
+        finally:
+            ref = weakref.ref(document)
+            for change in handler.pending_changes:
+                if change not in _proposal_documents:
+                    _proposal_documents[change] = ref
+
+    return call
+
+
+def made_for(change: AIProposedChange, document: Any) -> bool:
+    """False when ``change`` was proposed for a document other than ``document``."""
+    ref = _proposal_documents.get(change)
+    return ref is None or ref() is document
+
+
+# ---- what the model may write -------------------------------------------
+#
+# The vendored validators accept what float() accepts and range-check it, but
+# every comparison with NaN is False, so NaN -- JSON ``NaN`` or the string
+# "nan" -- passes both the proposal parser and verify_updated_fta_json. One
+# NaN leaf makes every gate above it NaN, the top event included (null in the
+# browser, an MCUB of 0.0). ``notes`` is stored whatever its type, and the XML
+# export cannot serialise a list. The tree API refuses both from a person;
+# these refuse them from the model.
+
+
+def _is_probability(value: Any) -> bool:
+    """Whether what the handler stores, ``float(value)``, is in [0, 1]."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return 0.0 <= number <= 1.0
+
+
+def change_problem(change: AIProposedChange, document: Any = None) -> Optional[str]:
+    """Why a proposed add/edit must not be applied to ``document``, or None."""
+    if change.change_type not in ("add", "edit"):
+        return None
+    data = change.data if isinstance(change.data, dict) else {}
+    if "probability" in data and not _is_probability(data["probability"]):
+        return (
+            "Not applied: the suggested probability %r is not a number between "
+            "0 and 1." % (data["probability"],)
+        )
+    notes = data.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        return "Not applied: the suggested notes are not text."
+    if change.change_type == "edit" and "probability" in data and document is not None:
+        return derived_probability_reason(document.find_node_by_id(change.target_id), document)
+    return None
+
+
+def derived_probability_reason(node: Any, document: Any) -> Optional[str]:
+    """Why ``node``'s probability cannot be set directly, or None.
+
+    The engine rewrites it on every recalculation for a transfer gate (the
+    target's value), a house event (1 or 0) and an event whose quantification
+    model can be evaluated -- so an AI edit of it was reported as applied and
+    silently overruled. Asks :func:`engine.derive_quant` itself, so an
+    incomplete model (no λ) is "not derived", exactly as the engine treats it.
+    """
+    if not isinstance(node, dict):
+        return None
+    name = node.get("name") or node.get("id")
+    if str(node.get("gateType") or "").strip().upper() == "TRANSFER":
+        return (
+            "Not applied: '%s' is a transfer gate, so its probability is that of "
+            "the node it transfers to (%s). Edit that node instead."
+            % (name, node.get("transferTo") or "none set")
+        )
+    if not (node.get("children") or []) and str(node.get("eventKind") or "").strip().lower() == "house":
+        return (
+            "Not applied: '%s' is a house event, so its probability is 1 or 0 "
+            "from its state. Change the house state instead." % name
+        )
+    if isinstance(node.get("quant"), dict):
+        derived = derive_quant(node, getattr(document, "analysis", None))
+        if derived["model"] != "fixed" and derived["q"] is not None:
+            return (
+                "Not applied: the probability of '%s' is computed from its %s model "
+                "(%s), so an edited value would be overwritten. Change the model's "
+                "parameters in the Quantification tab instead."
+                % (name, derived["model"], derived["formula"])
+            )
+    return None
+
+
+def update_problem(tree: Any) -> Optional[str]:
+    """The first thing in an AI-written tree that ``verify_updated_fta_json``
+    lets through and the tree API would refuse, or None.
+
+    Run after that validator, so every node is a dict with a valid id. Worded
+    like it ("... for node <id> ..."), so :func:`locate_offending_node` finds
+    the node for the diagnostics. The 1.7 keys go through the validators
+    ``PATCH /api/nodes`` uses: the model is never shown them, so any it writes
+    are invented, and ``houseState: "yes"`` would silently count as false.
+    """
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        node_id = node.get("id")
+        if not _is_probability(node.get("probability")):
+            return "Invalid probability for node %s: %r" % (node_id, node.get("probability"))
+        notes = node.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return "Invalid notes for node %s: notes must be text" % node_id
+        for key in NODE_KEYS:
+            if node.get(key) is None:
+                continue
+            try:
+                VALIDATORS[key](node[key])
+            except ApiError as exc:
+                return "Invalid %s for node %s: %s" % (key, node_id, exc.message)
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+    return None
+
+
+# ---- what a full-JSON update did ----------------------------------------
+
+
+def _nodes_by_id(tree: Any) -> Dict[str, Dict[str, Any]]:
+    """id -> node in pre-order (the first node of a repeated id)."""
+    nodes: Dict[str, Dict[str, Any]] = {}
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        nodes.setdefault(str(node.get("id")), node)
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+    return nodes
+
+
+def _as_float(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def update_summary(before: Any, after: Any) -> Dict[str, List[Dict[str, Any]]]:
+    """What a full-tree AI update did to the document, by node id.
+
+    ``added`` and ``removed`` are ``{id, name}``; ``changed`` lists the nodes
+    present in both whose ``name``, ``probability`` (of a leaf -- a gate's own
+    value is ignored by the engine), ``gate`` (``gateType`` or ``logicGate`` of a
+    node with children) or ``quant`` differ, with those ``fields``. Compare
+    recalculated trees: a probability the engine derives (a rate model the
+    update kept) is then not reported as changed, because it is not.
+    """
+    old, new = _nodes_by_id(before), _nodes_by_id(after)
+
+    def gate(node: Dict[str, Any]) -> str:
+        return str(node.get("gateType") or node.get("logicGate") or "OR").strip().upper()
+
+    changed: List[Dict[str, Any]] = []
+    for node_id, node in new.items():
+        was = old.get(node_id)
+        if was is None:
+            continue
+        fields = []
+        if was.get("name") != node.get("name"):
+            fields.append("name")
+        if not (node.get("children") or []) and _as_float(was.get("probability")) != _as_float(node.get("probability")):
+            fields.append("probability")
+        if (node.get("children") or was.get("children")) and gate(was) != gate(node):
+            fields.append("gate")
+        if was.get("quant") != node.get("quant"):
+            fields.append("quant")
+        if fields:
+            changed.append({"id": node_id, "name": node.get("name"), "fields": fields})
+    return {
+        "added": [{"id": i, "name": n.get("name")} for i, n in new.items() if i not in old],
+        "removed": [{"id": i, "name": n.get("name")} for i, n in old.items() if i not in new],
+        "changed": changed,
+    }
 
 
 # ---- full-JSON update diagnostics ---------------------------------------
