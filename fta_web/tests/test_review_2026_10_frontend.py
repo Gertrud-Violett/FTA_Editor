@@ -632,3 +632,21 @@ def test_parse_probability_accepts_decimal_text_only():
         "0,5": "REJECT", "50%": "REJECT", "5.": "REJECT", "Infinity": "REJECT", "NaN": "REJECT",
         "": "REJECT", "  ": "REJECT", "1_0": "REJECT",
     }
+
+
+# ---- details.js: a refused gate change is put back (F-26) -----------------------------
+#
+# With the PATCH failing, the Logic Gate select kept showing the refused AND on a
+# node that stayed OR; choosing AND again fired no change, so it could not even
+# be retried (Chromium, PATCH aborted). Typed text keeps its by-design behaviour.
+
+
+def test_details_refused_gate_change_is_put_back():
+    src = _read(STATIC / "details.js")
+    body = _braced(src, src.index("function commitField(key)"))
+    callbacks = body[body.index("send(patch).then("):].split("\n      () => {")
+    assert len(callbacks) == 3, "a success and a failure callback"
+    on_failure = callbacks[2]
+    assert "if (field.spec.kind !== 'gate') return;" in on_failure
+    assert "populate(key, displayValue(now, key));" in on_failure
+    assert "updateExtras(now, false);" in on_failure

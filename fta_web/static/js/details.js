@@ -733,7 +733,14 @@ export function initDetails(container) {
         if (now && String(now.id) === nodeId) populate(key, displayValue(now, key));
       },
       () => {
-        /* reported by send(); the typed value stays (and stays dirty) so it can be corrected */
+        // Reported by send(). Typed text stays (and stays dirty) so it can be
+        // corrected; a refused gate goes back to the stored one, so the select
+        // shows what the node has and choosing the gate again retries.
+        if (field.spec.kind !== 'gate') return;
+        const now = currentNode();
+        if (!now || String(now.id) !== nodeId) return;
+        populate(key, displayValue(now, key));
+        updateExtras(now, false);
       }
     );
   }
