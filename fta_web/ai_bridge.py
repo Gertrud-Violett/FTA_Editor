@@ -277,6 +277,17 @@ def _stored_api_key() -> Optional[str]:
     return key if isinstance(key, str) and key.strip() else None
 
 
+def call_secret() -> Optional[str]:
+    """The saved key, read *before* a provider call, to scrub its answer with.
+
+    :func:`scrub` redacts the key stored when it runs. A call that is still
+    out when the user clears the credentials answers after its key is gone,
+    so a provider error quoting that key would otherwise reach the browser.
+    For ``extra_secrets`` only; it never goes into a payload.
+    """
+    return _stored_api_key()
+
+
 def scrub(text: Any, *extra_secrets: Optional[str]) -> Any:
     """Remove every known API key from a string.
 

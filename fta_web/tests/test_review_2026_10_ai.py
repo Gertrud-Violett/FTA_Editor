@@ -528,3 +528,41 @@ def test_a_partial_apply_shows_what_was_rejected():
     assert "appliedCount(result, indices.length)" in body_src
     assert "Number(result.applied)" not in body_src
     assert "showDiagnostics({ rejected: result.rejected })" in body_src
+
+
+# --------------------------------------------------------------------------
+# AI-05: a key quoted in a provider error leaked if it was cleared mid-call
+# --------------------------------------------------------------------------
+
+
+class TestTheKeyIsScrubbedEvenIfClearedMidCall:
+    """scrub() redacted only the key stored when the response was built. A
+    call still out when the user pressed Clear in AI settings answered after
+    its key was gone, so an error quoting it went to the browser verbatim."""
+
+    @pytest.mark.parametrize("path,payload", [
+        ("/api/ai/chat", {"message": "hi"}),
+        ("/api/ai/analyze", {}),
+        ("/api/ai/update", {}),
+    ])
+    def test_the_key_in_hand_is_redacted(self, app, client, provider, monkeypatch, path, payload):
+        inside, release = threading.Event(), threading.Event()
+
+        def leaky(api_key, endpoint, model, messages, max_tokens=2000):
+            inside.set()
+            release.wait(10)
+            return None, "request to https://gw.example/v1?key=%s failed: 401" % api_key
+
+        monkeypatch.setattr(provider, "send_message", leaky)
+
+        thread, outcome = in_background(app, "post", path, payload)
+        try:
+            assert inside.wait(5)
+            assert client.delete("/api/ai/credentials").status_code == 200
+        finally:
+            release.set()
+            thread.join(10)
+
+        text = outcome["response"].get_data(as_text=True)
+        assert API_KEY not in text
+        assert ai_bridge.REDACTED in text

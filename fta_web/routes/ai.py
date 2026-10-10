@@ -439,8 +439,9 @@ def post_chat():
 
     handler = ai_bridge.get_handler()
     tree, mode, title, document = _document_snapshot()
+    secret = ai_bridge.call_secret()
 
-    with _ai_failures():
+    with _ai_failures(secret):
         # set_fta_context is pure formatting, but it writes to the handler, so
         # it runs inside the same single-call slot as send_message -- see
         # ai_bridge.run_ai_call.
@@ -453,8 +454,8 @@ def post_chat():
         )
 
     return ok_response(
-        reply=ai_bridge.scrub(reply),
-        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes)),
+        reply=ai_bridge.scrub(reply, secret),
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes), secret),
     )
 
 
@@ -473,8 +474,9 @@ def post_analyze():
 
     handler = ai_bridge.get_handler()
     tree, mode, title, document = _document_snapshot()
+    secret = ai_bridge.call_secret()
 
-    with _ai_failures():
+    with _ai_failures(secret):
         reply, changes = ai_bridge.run_ai_call(
             "analyze",
             ai_bridge.proposing(handler, document, handler.get_quick_analysis),
@@ -484,8 +486,8 @@ def post_analyze():
         )
 
     return ok_response(
-        reply=ai_bridge.scrub(reply),
-        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes)),
+        reply=ai_bridge.scrub(reply, secret),
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes), secret),
     )
 
 
@@ -668,8 +670,9 @@ def post_update():
 
     handler = ai_bridge.get_handler()
     tree, mode, title, document = _document_snapshot()
+    secret = ai_bridge.call_secret()
 
-    with _ai_failures():
+    with _ai_failures(secret):
         # The handler parses proposals out of this reply too; they are pending
         # like any others, so they are recorded against this document as well.
         assistant_text, updated = ai_bridge.run_ai_call(
@@ -680,7 +683,7 @@ def post_update():
             title,
         )
 
-    reply = ai_bridge.scrub(assistant_text)
+    reply = ai_bridge.scrub(assistant_text, secret)
 
     if updated is None:
         raise ApiError(
@@ -688,7 +691,7 @@ def post_update():
             "The AI did not return valid JSON, so nothing was changed.",
             400,
             {
-                "excerpt": ai_bridge.scrub(ai_bridge.parse_excerpt(assistant_text)),
+                "excerpt": ai_bridge.scrub(ai_bridge.parse_excerpt(assistant_text), secret),
                 "excerptChars": ai_bridge.PARSE_EXCERPT_CHARS,
             },
         )
@@ -702,10 +705,11 @@ def post_update():
     if not valid:
         raise ApiError(
             AI_UPDATE_REJECTED,
-            "The updated analysis was rejected: %s" % (validator_message or "unknown"),
+            "The updated analysis was rejected: %s"
+            % ai_bridge.scrub(validator_message or "unknown", secret),
             400,
             ai_bridge.scrub_deep(
-                ai_bridge.validation_diagnostics(updated, validator_message)
+                ai_bridge.validation_diagnostics(updated, validator_message), secret
             ),
         )
 
