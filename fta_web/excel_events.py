@@ -15,11 +15,17 @@ re-opens that workbook with openpyxl and appends:
   ``engine.summary``.
 
 A pre-existing sheet of either name is replaced. No images, so no PIL.
+
+Text is passed through :func:`xml_text` on the way into any sheet: a
+character XML cannot hold makes openpyxl raise, which lost the whole export.
+The core writes its sheet from :func:`export_view`, a cleaned copy of the
+document, for the same reason (the routes' XML export uses it too).
 """
 from __future__ import annotations
 
 import copy
 import math
+import re
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.excel_events``
@@ -134,6 +140,62 @@ def _text(value: Any) -> Optional[str]:
     if isinstance(value, (list, tuple)):
         return ", ".join(str(v) for v in value if v not in (None, "")) or None
     return str(value)
+
+
+#: What XML 1.0 cannot hold at all -- C0 controls other than tab, newline and
+#: carriage return, lone surrogates, U+FFFE/U+FFFF -- and so neither can an
+#: .xlsx, a .docx or the XML export: openpyxl and python-docx raise on them,
+#: and ElementTree writes a file no parser accepts. They reach a tree through
+#: pasted text (PowerPoint's soft line break is \x0b, a Word cell mark \x07),
+#: which only names are cleaned of, and through hand-edited or third-party
+#: files.
+_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+
+
+def xml_text(value: Any) -> str:
+    """``str(value)`` ("" for None) without the characters XML cannot hold.
+
+    The whitespace-like ones (\\x0b, \\x0c, \\x1c-\\x1f) become a space, as
+    the core's ``sanitize_name`` makes them in names; the rest are dropped.
+    """
+    text = "" if value is None else str(value)
+    if _NOT_XML.search(text) is None:
+        return text
+    return _NOT_XML.sub(lambda m: " " if m.group().isspace() else "", text)
+
+
+#: The node keys the core's own writers (``export_to_excel``,
+#: ``export_to_xml``) put into the file, and a link's.
+_CORE_TEXT_KEYS = ("name", "type", "logicGate", "notes")
+_CORE_LINK_KEYS = ("target_id", "relation")
+
+
+def export_view(core):
+    """A shallow copy of ``core`` for the core's hash-pinned writers.
+
+    Its tree is a deep copy in which every text the writers emit has been
+    through :func:`xml_text`, so ``export_to_excel`` does not raise on a
+    control character (losing the whole workbook) and ``export_to_xml``
+    does not write a file no parser accepts -- or raise on a non-string
+    ``type``/``notes`` from a hand-edited file. Text that needs no cleaning
+    is left as it is, so an ordinary document exports byte for byte as
+    before. ``core`` itself is not modified.
+    """
+    view = copy.copy(core)
+    tree = copy.deepcopy(core.get_data())
+    for node, _parent, _depth in iter_nodes(tree):
+        for key in _CORE_TEXT_KEYS:
+            if key in node and not (isinstance(node[key], str) and _NOT_XML.search(node[key]) is None):
+                node[key] = xml_text(node[key])
+        for link in node.get("links") or []:
+            if not isinstance(link, dict):
+                continue
+            for key in _CORE_LINK_KEYS:
+                value = link.get(key)
+                if value is not None and not (isinstance(value, str) and _NOT_XML.search(value) is None):
+                    link[key] = xml_text(value)
+    view.fta_data = tree
+    return view
 
 
 def node_kind(node: Dict[str, Any]) -> str:
@@ -302,6 +364,9 @@ def _write_events(wb, tree: Any, sig_figs: int) -> None:
     fmt = sci_format(sig_figs)
     widths = [len(h) for h in EVENT_HEADERS]
     for row in event_rows(tree):
+        for header, kind in EVENT_COLUMNS:
+            if kind == "text" and row[header] is not None:
+                row[header] = xml_text(row[header]) or None
         ws.append([row[h] for h in EVENT_HEADERS])
         row_idx = ws.max_row
         for col_idx, (header, kind) in enumerate(EVENT_COLUMNS, start=1):
@@ -328,6 +393,8 @@ def _write_analysis(wb, core, sig_figs: int) -> None:
         cell.font = Font(bold=True)
     fmt = sci_format(sig_figs)
     for setting, value, note in analysis_rows(core):
+        if not (value is None or isinstance(value, (int, float))):
+            value = xml_text(value)  # title, date, mode: text from the file
         ws.append([setting, value, note])
         # Probabilities get the scientific format; hours and counts stay
         # General (8760 h, not 8.76E+03).
@@ -342,10 +409,12 @@ def _write_analysis(wb, core, sig_figs: int) -> None:
 def export_xlsx(core, path: str, sig_figs: int = 3) -> Tuple[bool, Optional[str]]:
     """Write ``core``'s document to ``path`` as .xlsx. ``(ok, error)``.
 
-    The "FTA" sheet is the core's, untouched. The caller holds the state lock
-    (``routes/files.py`` does) -- the tree is read, never modified.
+    The "FTA" sheet is the core's, untouched -- written from
+    :func:`export_view`, so it never fails on a control character. The
+    caller holds the state lock (``routes/files.py`` does) -- the tree is
+    read, never modified.
     """
-    ok, error = core.export_to_excel(path)
+    ok, error = export_view(core).export_to_excel(path)
     if not ok:
         return ok, error
     try:

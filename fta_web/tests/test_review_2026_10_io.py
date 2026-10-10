@@ -137,3 +137,65 @@ def test_report_that_cannot_be_written_fails_that_file_only(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "cannot write" in captured.err
     assert "cannot write" in json.loads(captured.out)["error"]
+
+
+# ---- IO-8: characters XML cannot hold (xlsx, xml, docx) ---------------------------------
+
+
+def control_char_tree():
+    """Text a user can really produce: PowerPoint's soft line break (\\x0b)
+    pasted into notes or evidence, a Word cell mark (\\x07), a hand-edited
+    or third-party file with \\x01 in a name."""
+    return {"id": "root", "name": "Top", "type": "Root", "logicGate": "OR", "children": [
+        {"id": "a", "name": "Pump\x01A", "probability": 0.1, "notes": "Seal\x0bcheck",
+         "children": [], "trace": {"evidence": "TR-1\x07", "owner": "Ann\x0bLee"},
+         "quant": {"model": "fixed", "source": "OREDA\x00"}},
+        {"id": "b", "name": "Valve", "probability": 0.2, "children": [],
+         "links": [{"target_id": "a", "relation": "OR"}]},
+    ]}
+
+
+def control_char_core(title="Plant\x03"):
+    from fta_web.engine import WebCore
+
+    core = WebCore()
+    core.set_data(control_char_tree())
+    core.set_metadata(title=title, date="2026-01-01", mode="FTA")
+    core.recalculate_probabilities()
+    return core
+
+
+def test_xml_text_drops_what_xml_cannot_hold():
+    from fta_web.excel_events import xml_text
+
+    assert xml_text("a\x01b\x00c\ud800d￾") == "abcd"
+    # whitespace-like controls become a space, as sanitize_name makes them
+    assert xml_text("Seal\x0bcheck\x0cnow\x1fx") == "Seal check now x"
+    assert xml_text("tab\tnl\ncr\r é λ 日本") == "tab\tnl\ncr\r é λ 日本"
+    assert xml_text(None) == "" and xml_text(12) == "12"
+
+
+def test_xlsx_export_survives_control_characters(tmp_path):
+    """The core's FTA sheet raised IllegalCharacterError (500); the Events
+    sheet's failure was even reported as 'openpyxl is not installed' (503)."""
+    openpyxl = pytest.importorskip("openpyxl")
+    from fta_web.excel_events import EVENT_HEADERS, export_xlsx
+
+    core = control_char_core()
+    path = tmp_path / "x.xlsx"
+    ok, error = export_xlsx(core, str(path))
+    assert ok, error
+    wb = openpyxl.load_workbook(path)
+    fta = [c.value for row in wb["FTA"].iter_rows() for c in row if c.value]
+    assert any(v.startswith("PumpA\n") and "Notes: Seal check" in v for v in fta)
+    events = wb["Events"]
+    col = {h: i + 1 for i, h in enumerate(EVENT_HEADERS)}
+    assert events.cell(row=3, column=col["Name"]).value == "PumpA"
+    assert events.cell(row=3, column=col["Evidence"]).value == "TR-1"
+    assert events.cell(row=3, column=col["Owner"]).value == "Ann Lee"
+    assert events.cell(row=3, column=col["Source"]).value == "OREDA"
+    analysis = {r[0].value: r[1].value for r in wb["Analysis"].iter_rows(min_row=2)}
+    assert analysis["Title"] == "Plant"
+    # The export reads the document; it never edits it.
+    assert core.find_node_by_id("a")["name"] == "Pump\x01A"
+    assert core.find_node_by_id("a")["notes"] == "Seal\x0bcheck"
