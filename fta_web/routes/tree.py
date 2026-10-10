@@ -506,7 +506,13 @@ def list_nodes():
         return ok_response(nodes=collect_flat(state.core))
 
 
-@tree_bp.get("/nodes/<node_id>")
+# ``path:`` on every ``/nodes/<id>`` route: an id from a file may contain
+# '/', which the client percent-encodes and the server decodes before
+# routing, so the default converter (which stops at '/') answered 404 for
+# such a node on every call. ``/nodes/<id>/move`` still matches first for a
+# POST that ends in ``/move``; an id that itself ends in ``/move`` arrives as
+# ``.../x%2Fmove/move`` and resolves to ``x/move``.
+@tree_bp.get("/nodes/<path:node_id>")
 def get_node(node_id: str):
     """One node in detail, with its computed probability and link target names."""
     state = get_state()
@@ -597,7 +603,7 @@ def _refuse_root(core, node_id: str, verb: str) -> None:
         )
 
 
-@tree_bp.patch("/nodes/<node_id>")
+@tree_bp.patch("/nodes/<path:node_id>")
 def update_node(node_id: str):
     """Partial update of the editable node fields (``NODE_FIELDS``).
 
@@ -663,7 +669,7 @@ def update_node(node_id: str):
         )
 
 
-@tree_bp.delete("/nodes/<node_id>")
+@tree_bp.delete("/nodes/<path:node_id>")
 def delete_node(node_id: str):
     """Delete a node and its subtree. The root is not deletable.
 
@@ -699,7 +705,7 @@ def delete_node(node_id: str):
         )
 
 
-@tree_bp.post("/nodes/<node_id>/move")
+@tree_bp.post("/nodes/<path:node_id>/move")
 def move_node_endpoint(node_id: str):
     """Re-parent a node, optionally at a specific position among its new siblings."""
     payload = _body()
