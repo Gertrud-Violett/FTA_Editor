@@ -13,6 +13,8 @@ Contract every mutating endpoint honours:
 
 ``POST /api/new`` is the documented exception: it resets the document, so it
 clears the history instead of pushing to it and lands on ``dirty: false``.
+An edit that would change nothing (the values already there, a move to where
+the node is) skips 2-5: no undo step, the redo history kept, not dirtied.
 
 Validation rules that are not obvious:
 
@@ -465,6 +467,11 @@ def update_metadata():
         )
 
     with state.lock:
+        core = state.core
+        if all(new is None or new == old for new, old in
+               ((title, core.title), (date, core.date), (mode, core.mode))):
+            # Nothing changes: no undo step, redo kept, not marked modified.
+            return ok_response(metadata=core.get_metadata(), **_mutation_payload(state))
         state.push_undo()
         # Fields passed as None are left untouched, including `date` (D18).
         state.core.set_metadata(title=title, date=date, mode=mode)
@@ -599,6 +606,23 @@ def create_node():
         )
 
 
+#: "This key is not on the node" -- distinct from a stored None.
+_ABSENT = object()
+
+
+def _move_is_a_no_op(core, node_id: str, new_parent_id: str, index: Optional[int]) -> bool:
+    """Whether moving ``node_id`` to ``new_parent_id`` at ``index`` would
+    leave it where it is. ``index`` counts after the node is detached and is
+    clamped, None appends -- exactly as ``tree_ops.move_node`` places it."""
+    if find_parent_id(core, node_id) != new_parent_id:
+        return False
+    siblings = [str(child.get("id")) for child in
+                core.find_node_by_id(new_parent_id).get("children") or []]
+    last = len(siblings) - 1  # the highest position once the node is detached
+    target = last if index is None else max(0, min(index, last))
+    return siblings.index(str(node_id)) == target
+
+
 def _refuse_too_deep(deepest: int, field: str) -> None:
     """400 when an edit would put a node ``deepest`` levels below the root,
     past ``config.MAX_TREE_DEPTH`` (every payload deep-copies the tree and
@@ -682,6 +706,11 @@ def update_node(node_id: str):
         extra, removals = _schema_changes(payload, existing)
         updates.update(extra)
 
+        if (all(existing.get(key, _ABSENT) == value for key, value in updates.items())
+                and not any(key in existing for key in removals)):
+            # Every value is already there: no undo step, redo kept, not
+            # marked modified.
+            return ok_response(node=_node_view(core, existing), **_mutation_payload(state))
         state.push_undo()
         core.update_node(node_id, updates)
         node = core.find_node_by_id(node_id)
@@ -764,6 +793,11 @@ def move_node_endpoint(node_id: str):
             depth_of(core, new_parent_id) + 1 + tree_height(core.find_node_by_id(node_id)),
             "newParentId",
         )
+        if _move_is_a_no_op(core, node_id, new_parent_id, index):
+            # Dropped where it already is: no undo step, redo kept, not
+            # marked modified.
+            return ok_response(nodeId=str(node_id), parentId=new_parent_id,
+                               **_mutation_payload(state))
 
         state.push_undo()
         moved, reason = move_node(core, node_id, new_parent_id, index)

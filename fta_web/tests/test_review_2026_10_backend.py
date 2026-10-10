@@ -947,3 +947,71 @@ class TestMoveCycleCheckIsLinear:
         assert tree_ops.would_create_cycle(core, "b0", "root") is False
         assert tree_ops.would_create_cycle(core, "ghost", "b0") is False
         assert tree_ops.would_create_cycle(core, "b0", "ghost") is False
+
+
+# --------------------------------------------------------------------------
+# B-18: an edit that changes nothing cost an undo step, the redo history
+#       and the "saved" state
+# --------------------------------------------------------------------------
+
+
+class TestNoOpEdits:
+    """``POST /api/analysis/settings`` (the tabs' "Save as document
+    defaults", which posts the values even when they are the document's),
+    ``POST /api/metadata``, ``PATCH /api/nodes/<id>`` and a move to where the
+    node already is pushed an undo step, cleared redo and marked a saved
+    document modified although nothing changed: Ctrl+Z then did nothing
+    visible, and the redo the user had was gone. ``POST /api/ai/changes/apply``
+    already refuses to record a step for a batch that changed nothing."""
+
+    @pytest.fixture
+    def saved_with_redo(self, files_client):
+        """A saved document with one step to undo and one to redo."""
+        c = files_client
+        assert c.post("/api/nodes", json={"parentId": "root", "name": "A", "probability": 0.1}).status_code == 200
+        assert c.post("/api/nodes", json={"parentId": "root", "name": "B", "probability": 0.2}).status_code == 200
+        assert c.post("/api/nodes", json={"parentId": "root", "name": "C", "probability": 0.3}).status_code == 200
+        assert c.post("/api/undo").status_code == 200
+        assert c.post("/api/file/save-as", json={"path": "doc.json"}).status_code == 200
+        state = get_state()
+        assert state.can_undo and state.can_redo and not state.dirty
+        return c
+
+    def _unchanged(self, response, undo_depth=2):
+        assert response.status_code == 200, body(response)
+        state = get_state()
+        assert len(state._undo) == undo_depth and state.can_redo and not state.dirty, (
+            len(state._undo), state.can_redo, state.dirty)
+        payload = body(response)
+        assert payload["canRedo"] is True and payload["dirty"] is False
+
+    def test_settings_equal_to_the_document(self, saved_with_redo):
+        c = saved_with_redo
+        self._unchanged(c.post("/api/analysis/settings", json={
+            "missionTime": 8760, "cutsets": {"maxOrder": 6}, "mc": {"seed": None}}))
+
+    def test_metadata_equal_to_the_document(self, saved_with_redo):
+        c = saved_with_redo
+        meta = body(c.get("/api/state"))["metadata"]
+        self._unchanged(c.post("/api/metadata", json=meta))
+
+    def test_patch_with_the_values_already_there(self, saved_with_redo):
+        c = saved_with_redo
+        self._unchanged(c.patch("/api/nodes/root_0", json={"name": "A", "probability": 0.1}))
+        self._unchanged(c.patch("/api/nodes/root_0", json={"quant": None, "trace": None}))
+
+    def test_move_to_where_the_node_already_is(self, saved_with_redo):
+        c = saved_with_redo
+        self._unchanged(c.post("/api/nodes/root_1/move", json={"newParentId": "root", "index": 1}))
+        self._unchanged(c.post("/api/nodes/root_1/move", json={"newParentId": "root"}))
+        self._unchanged(c.post("/api/nodes/root_0/move", json={"newParentId": "root", "index": 0}))
+
+    def test_a_real_change_is_still_one_step(self, saved_with_redo):
+        c = saved_with_redo
+        changed = c.patch("/api/nodes/root_0", json={"name": "A2"})
+        assert changed.status_code == 200
+        state = get_state()
+        assert len(state._undo) == 3 and not state.can_redo and state.dirty
+        moved = c.post("/api/nodes/root_0/move", json={"newParentId": "root", "index": 1})
+        assert body(moved)["tree"]["children"][1]["id"] == "root_0"
+        assert len(get_state()._undo) == 4
