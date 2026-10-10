@@ -372,3 +372,120 @@ class TestProposalsBelongToTheirDocument:
 
         assert client.post("/api/ai/changes/apply", json={"indices": [index]}).status_code == 400
         assert children(client) == [("root_0", "Valve stuck", 1e-5, "reviewed value")]
+
+
+# --------------------------------------------------------------------------
+# AI-03: a NaN probability or non-text notes from the model were installed
+# --------------------------------------------------------------------------
+
+
+class TestModelOutputIsValidatedLikeUserInput:
+    """``nan < 0`` and ``nan > 1`` are both False, so the vendored range
+    checks let NaN through (JSON ``NaN`` or the string ``"nan"``); one NaN
+    leaf made the top event NaN (null in the browser) and the MCUB 0.0.
+    Non-text notes were stored as given and broke the XML export."""
+
+    @pytest.mark.parametrize("literal", ["NaN", '"nan"'])
+    def test_a_nan_probability_edit_is_refused(self, client, provider, monkeypatch, literal):
+        pump = add(client, name="Pump fails", probability=0.01)
+        monkeypatch.setattr(
+            provider, "send_message", replies(edit_reply(pump, "Pump fails", literal))
+        )
+        index = body(client.post("/api/ai/chat", json={"message": "x"}))["changes"][0]["index"]
+
+        response = client.post("/api/ai/changes/apply", json={"indices": [index]})
+
+        assert response.status_code == 400
+        assert "probability" in body(response)["error"]["detail"]["rejected"][0]["message"]
+        assert get_state().core.find_node_by_id(pump)["probability"] == 0.01
+        assert get_state().core.get_data()["calculatedProbability"] == pytest.approx(0.01)
+
+    def test_a_nan_probability_add_is_refused(self, client, provider, monkeypatch):
+        monkeypatch.setattr(provider, "send_message", replies(add_reply("NaN")))
+        index = body(client.post("/api/ai/chat", json={"message": "x"}))["changes"][0]["index"]
+
+        response = client.post("/api/ai/changes/apply", json={"indices": [index]})
+
+        assert response.status_code == 400
+        assert get_state().core.find_node_by_id("corrosion") is None
+
+    @pytest.mark.parametrize("literal", ['["a", "b"]', "12"])
+    def test_notes_that_are_not_text_are_refused(self, client, provider, monkeypatch, literal):
+        pump = add(client, name="Pump fails", probability=0.01, notes="vendor data")
+        monkeypatch.setattr(
+            provider, "send_message",
+            replies(edit_reply(pump, "Pump fails", "0.02", literal)),
+        )
+        index = body(client.post("/api/ai/chat", json={"message": "x"}))["changes"][0]["index"]
+
+        response = client.post("/api/ai/changes/apply", json={"indices": [index]})
+
+        assert response.status_code == 400
+        assert "notes" in body(response)["error"]["detail"]["rejected"][0]["message"]
+        assert get_state().core.find_node_by_id(pump)["notes"] == "vendor data"
+
+    def test_a_valid_proposal_in_the_same_batch_still_applies(
+        self, client, provider, monkeypatch
+    ):
+        pump = add(client, name="Pump fails", probability=0.01)
+        monkeypatch.setattr(
+            provider, "send_message",
+            replies(edit_reply(pump, "Pump fails", "NaN") + "\n" + add_reply()),
+        )
+        changes = body(client.post("/api/ai/chat", json={"message": "x"}))["changes"]
+
+        payload = body(client.post(
+            "/api/ai/changes/apply", json={"indices": [c["index"] for c in changes]}
+        ))
+
+        assert [r["changeType"] for r in payload["rejected"]] == ["edit"]
+        assert [a["changeType"] for a in payload["applied"]] == ["add"]
+        assert get_state().core.find_node_by_id(pump)["probability"] == 0.01
+
+    @pytest.mark.parametrize(
+        "field,value,needle",
+        [
+            ("probability", float("nan"), "probability"),
+            ("probability", "nan", "probability"),
+            ("notes", {"x": 1}, "notes"),
+            ("notes", ["a"], "notes"),
+            ("houseState", "yes", "houseState"),
+            ("gateType", "MAYBE", "gateType"),
+        ],
+    )
+    def test_an_update_carrying_it_is_rejected_and_names_the_node(
+        self, client, provider, monkeypatch, field, value, needle
+    ):
+        pump = add(client, name="Pump fails", probability=0.01, notes="vendor data")
+        node = {"id": pump, "name": "Pump fails", "probability": 0.01, "notes": "vendor data"}
+        node[field] = value
+        monkeypatch.setattr(provider, "send_message", replies(json.dumps(tree_with(node))))
+        before = body(client.get("/api/state"))
+
+        response = client.post("/api/ai/update", json={})
+
+        assert response.status_code == 400
+        assert error_code(response) == "AI_UPDATE_REJECTED"
+        detail = body(response)["error"]["detail"]
+        assert detail["nodeId"] == pump
+        assert needle in detail["validatorMessage"]
+        after = body(client.get("/api/state"))
+        assert after["tree"] == before["tree"]
+        assert after["canUndo"] == before["canUndo"] and after["canRedo"] == before["canRedo"]
+
+    def test_valid_new_keys_in_an_update_are_still_accepted(self, client, provider, monkeypatch):
+        update = tree_with(
+            {"id": "vote", "name": "2oo3", "logicGate": "OR", "gateType": "KOFN", "k": 2,
+             "children": [
+                 {"id": n, "name": n, "type": "Event", "probability": 0.1, "logicGate": "OR",
+                  "notes": "", "links": [], "children": []} for n in ("a", "b", "c")
+             ]},
+            {"id": "house", "name": "Maintenance", "eventKind": "house", "houseState": True},
+        )
+        monkeypatch.setattr(provider, "send_message", replies(json.dumps(update)))
+
+        response = client.post("/api/ai/update", json={})
+
+        assert response.status_code == 200, body(response)
+        vote = get_state().core.find_node_by_id("vote")
+        assert vote["calculatedProbability"] == pytest.approx(3 * 0.1 ** 2 * 0.9 + 0.1 ** 3)

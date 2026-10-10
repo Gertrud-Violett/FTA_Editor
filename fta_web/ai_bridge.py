@@ -70,8 +70,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.ai_bridge``
     from . import config
+    from .errors import ApiError
+    from .node_schema import NODE_KEYS, VALIDATORS
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
+    from errors import ApiError  # type: ignore[no-redef]
+    from node_schema import NODE_KEYS, VALIDATORS  # type: ignore[no-redef]
 
 # Importing config placed fta_web/core on sys.path, so the vendored modules
 # import under their bare names. See config.py for why that is mandatory.
@@ -646,6 +650,72 @@ def made_for(change: AIProposedChange, document: Any) -> bool:
     """False when ``change`` was proposed for a document other than ``document``."""
     ref = _proposal_documents.get(change)
     return ref is None or ref() is document
+
+
+# ---- what the model may write -------------------------------------------
+#
+# The vendored validators accept what float() accepts and range-check it, but
+# every comparison with NaN is False, so NaN -- JSON ``NaN`` or the string
+# "nan" -- passes both the proposal parser and verify_updated_fta_json. One
+# NaN leaf makes every gate above it NaN, the top event included (null in the
+# browser, an MCUB of 0.0). ``notes`` is stored whatever its type, and the XML
+# export cannot serialise a list. The tree API refuses both from a person;
+# these refuse them from the model.
+
+
+def _is_probability(value: Any) -> bool:
+    """Whether what the handler stores, ``float(value)``, is in [0, 1]."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return 0.0 <= number <= 1.0
+
+
+def change_problem(change: AIProposedChange) -> Optional[str]:
+    """Why a proposed add/edit must not be applied, or None."""
+    if change.change_type not in ("add", "edit"):
+        return None
+    data = change.data if isinstance(change.data, dict) else {}
+    if "probability" in data and not _is_probability(data["probability"]):
+        return (
+            "Not applied: the suggested probability %r is not a number between "
+            "0 and 1." % (data["probability"],)
+        )
+    notes = data.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        return "Not applied: the suggested notes are not text."
+    return None
+
+
+def update_problem(tree: Any) -> Optional[str]:
+    """The first thing in an AI-written tree that ``verify_updated_fta_json``
+    lets through and the tree API would refuse, or None.
+
+    Run after that validator, so every node is a dict with a valid id. Worded
+    like it ("... for node <id> ..."), so :func:`locate_offending_node` finds
+    the node for the diagnostics. The 1.7 keys go through the validators
+    ``PATCH /api/nodes`` uses: the model is never shown them, so any it writes
+    are invented, and ``houseState: "yes"`` would silently count as false.
+    """
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        node_id = node.get("id")
+        if not _is_probability(node.get("probability")):
+            return "Invalid probability for node %s: %r" % (node_id, node.get("probability"))
+        notes = node.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return "Invalid notes for node %s: notes must be text" % node_id
+        for key in NODE_KEYS:
+            if node.get(key) is None:
+                continue
+            try:
+                VALIDATORS[key](node[key])
+            except ApiError as exc:
+                return "Invalid %s for node %s: %s" % (key, node_id, exc.message)
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+    return None
 
 
 # ---- full-JSON update diagnostics ---------------------------------------

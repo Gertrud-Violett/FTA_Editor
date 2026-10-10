@@ -526,7 +526,9 @@ def post_apply_changes():
 
     A proposal made for another document -- one that New, Open or Import has
     replaced since (``ai_bridge.made_for``) -- is always rejected: its node
-    ids may name unrelated nodes in the document open now.
+    ids may name unrelated nodes in the document open now. So is one carrying
+    what ``PATCH /api/nodes`` would refuse and the vendored parser lets
+    through (``ai_bridge.change_problem``: a NaN probability, non-text notes).
     """
     _require_configured()
     payload = _body()
@@ -581,10 +583,15 @@ def post_apply_changes():
 
         for index in indices:
             change = pending[index]
-            if ai_bridge.made_for(change, state.core):
-                ok, message = handler.apply_change_to_fta(state.core, change)
+            refusal = (
+                ai_bridge.change_problem(change)
+                if ai_bridge.made_for(change, state.core)
+                else ai_bridge.OTHER_DOCUMENT_MESSAGE
+            )
+            if refusal:
+                ok, message = False, refusal
             else:
-                ok, message = False, ai_bridge.OTHER_DOCUMENT_MESSAGE
+                ok, message = handler.apply_change_to_fta(state.core, change)
             record = ai_bridge.change_view(change, index)
             record["message"] = ai_bridge.scrub(message)
             (applied if ok else rejected).append(record)
@@ -687,6 +694,11 @@ def post_update():
         )
 
     valid, validator_message = handler.verify_updated_fta_json(updated)
+    if valid:
+        # What the vendored validator lets through and the tree API refuses
+        # (a NaN probability, non-text notes, an invalid 1.7 key).
+        validator_message = ai_bridge.update_problem(updated)
+        valid = validator_message is None
     if not valid:
         raise ApiError(
             AI_UPDATE_REJECTED,
