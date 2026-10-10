@@ -853,6 +853,22 @@ def test_fmea_bytes_outside_cp1252_fall_back_to_latin1():
     assert fmea_import._decode(data) == "ID,Mode\nA,x\x81y\n"
 
 
+def test_fmea_action_priority_column_is_not_suggested_as_rpn():
+    """AIAG-VDA's 'AP' (Action Priority: H / M / L) was suggested for the RPN
+    field, so every row of such a sheet was skipped as invalidRpn."""
+    from fta_web import fmea_import
+
+    columns = ["ID", "Item", "Failure Mode", "S", "O", "D", "AP"]
+    mapping = fmea_import.suggest_mapping(columns)
+    assert "rpn" not in mapping
+    tree = {"id": "root", "name": "T", "type": "Root", "probability": 1.0, "children": []}
+    result = fmea_import.apply_import(
+        tree, [["F-1", "Pump", "Leak", 8, 3, 4, "H"], ["F-2", "Valve", "Stuck", 5, 2, 2, "L"]],
+        mapping, "root", {}, "x", columns=columns)
+    assert result["skipped"] == []
+    assert [n["fmea"]["rpn"] for n in tree["children"]] == [96, 20]
+
+
 def _xlsx_with_dimension(path, ref):
     """A workbook whose sheet XML declares ``<dimension ref=ref/>``, as some
     exporters write it regardless of the data."""

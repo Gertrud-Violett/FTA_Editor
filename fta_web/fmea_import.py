@@ -409,7 +409,9 @@ def _word(token: str) -> "re.Pattern[str]":
 #: field -> (exact header texts, "contains" patterns). NFKC + lower-cased, so
 #: full-width 'ＩＤ' and 'Ｎｏ．' match too. Order of FIELDS breaks ties.
 _RULES: Dict[str, Tuple[Tuple[str, ...], Tuple[Any, ...]]] = {
-    "rpn": (("rpn", "ap"), ("rpn", "risk priority", "リスク優先", "危険優先", "優先度数")),
+    # Not "ap": AIAG-VDA's Action Priority is H / M / L, never an RPN -- as
+    # the suggestion it made every row of such a sheet an invalidRpn skip.
+    "rpn": (("rpn",), ("rpn", "risk priority", "リスク優先", "危険優先", "優先度数")),
     "lambda": (
         ("λ", "lambda", "rate", "fit", "fr"),
         ("failure rate", "故障率", "λ", "lambda", _word("fit"), "hazard rate"),
