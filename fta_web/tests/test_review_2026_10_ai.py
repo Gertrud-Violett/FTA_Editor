@@ -828,7 +828,8 @@ def loopback(monkeypatch):
     server.daemon_threads = True
     server.hang = False
     server.delay = 0.0
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    # A short poll: shutdown() waits up to one poll interval, per test.
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
     base = "http://127.0.0.1:%d" % server.server_address[1]
     for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
         monkeypatch.delenv(name, raising=False)
