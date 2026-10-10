@@ -1219,8 +1219,13 @@ export function createGateSelect(opts) {
  * Resolves with `{name, type, probability, logicGate, notes, links, gateType?}` or null if
  * the dialog was cancelled. No id is included and none may be sent: ids are
  * assigned server-side by `next_child_id` (routes/tree.py::create_node).
+ *
+ * `options.submit(fields)`, when given, creates the node: the dialog awaits it
+ * and stays open, with everything typed, until it resolves; a rejection is
+ * shown at the field the server named (or under the form) for another try.
  */
-export function openAddNodeDialog(parentId) {
+export function openAddNodeDialog(parentId, options) {
+  const opts = options && typeof options === 'object' ? options : {};
   const parent = parentId === undefined || parentId === null ? null : String(parentId);
 
   const nameField = field(t('details.name'), el('input', { type: 'text', value: '' }));
@@ -1234,6 +1239,7 @@ export function openAddNodeDialog(parentId) {
   const notesField = field(t('details.notes'), el('textarea', { rows: '4' }));
 
   const linksEditor = createLinksEditor({ selfId: null, links: [] });
+  const formError = el('p', { class: 'fta-field-error', role: 'alert', hidden: true });
 
   const modal = createModal({
     title: parent ? t('dialog.addNodeUnder', { id: parent }) : t('dialog.addNode'),
@@ -1248,6 +1254,7 @@ export function openAddNodeDialog(parentId) {
   modal.body.appendChild(el('div', { class: 'fta-row-2' }, [gateField.element]));
   modal.body.appendChild(notesField.element);
   modal.body.appendChild(linksEditor.element);
+  modal.body.appendChild(formError);
 
   modal.footer.appendChild(
     el('button', {
@@ -1257,15 +1264,39 @@ export function openAddNodeDialog(parentId) {
       onclick: () => modal.close(null),
     })
   );
-  modal.footer.appendChild(
-    el('button', { type: 'button', class: 'fta-btn is-primary', text: t('dialog.ok'), onclick: () => submit() })
-  );
+  const okButton = el('button', {
+    type: 'button',
+    class: 'fta-btn is-primary',
+    text: t('dialog.ok'),
+    onclick: () => submit(),
+  });
+  modal.footer.appendChild(okButton);
+
+  /** The server's field names, mapped to this dialog's controls. */
+  const fieldFor = {
+    name: nameField,
+    type: typeField,
+    probability: probabilityField,
+    logicGate: gateField,
+    gateType: gateField,
+    notes: notesField,
+  };
+
+  function setFormError(message) {
+    formError.textContent = message || '';
+    formError.hidden = !message;
+  }
+
+  let submitting = false;
 
   function submit() {
+    if (submitting) return;
     nameField.setError('');
     typeField.setError('');
     probabilityField.setError('');
     gateField.setError('');
+    notesField.setError('');
+    setFormError('');
 
     const name = sanitizeName(nameField.control.value);
     if (!name) {
@@ -1302,7 +1333,32 @@ export function openAddNodeDialog(parentId) {
     };
     // 1.7 gates travel as gateType; the server projects logicGate from it.
     if (GATES.indexOf(gate.value) === -1) result.gateType = gate.value;
-    modal.close(result);
+    if (typeof opts.submit !== 'function') {
+      modal.close(result);
+      return;
+    }
+    // The caller creates the node. Closing first lost everything typed when
+    // the server refused it, so the dialog waits, and says why on a refusal.
+    submitting = true;
+    okButton.disabled = true;
+    Promise.resolve()
+      .then(() => opts.submit(result))
+      .then(
+        () => modal.close(result),
+        (err) => {
+          submitting = false;
+          okButton.disabled = false;
+          const message = errorMessage(err, t('dialog.somethingWrong'));
+          const named = errorField(err);
+          const target = named && Object.prototype.hasOwnProperty.call(fieldFor, named) ? fieldFor[named] : null;
+          if (target) {
+            target.setError(message);
+            target.control.focus();
+          } else {
+            setFormError(message);
+          }
+        }
+      );
   }
 
   linksEditor.reload();

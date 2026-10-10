@@ -32,7 +32,9 @@
  *        delete -> openDeleteDialog | confirmDelete | deleteNode
  *        new    -> openNewDialog | confirmNew | newAnalysis
  *      Signature: fn(id) -- parentId for add, nodeId for edit/delete, nothing
- *      for new. A returned promise is awaited.
+ *      for new. A returned promise is awaited. Add also gets {submit}: the
+ *      dialog calls submit(fields) to create the node and stays open until
+ *      it resolves.
  *
  * If neither exists the shell falls back to its own minimal implementation and
  * says so out loud; nothing fails silently. Two of those fallbacks are the
@@ -2041,13 +2043,23 @@ async function actionAdd() {
   const fn = dialogFn('add');
   if (fn) {
     try {
-      const fields = await fn(parentId);
-      // null means the dialog was cancelled -- the fields-collecting dialog
-      // does not talk to the server itself, so the actual creation happens
-      // here, exactly like actionEdit hands off to details.js and actionNew
-      // posts to /new.
-      if (!fields) return;
-      const result = await api.post('/nodes', { parentId, ...fields });
+      // The dialog posts through `submit` and stays open, everything typed
+      // intact, until the server has made the node (closing first lost all
+      // of it on a refusal). It resolves null when cancelled; a dialog
+      // without the hook hands the fields back to be posted here. The store
+      // is updated only once the dialog is gone, so its focus restore still
+      // lands on the row that opened it.
+      let posting = null;
+      const submit = (values) => {
+        posting = api.post('/nodes', { parentId, ...values });
+        return posting;
+      };
+      const fields = await fn(parentId, { submit });
+      let result = null;
+      // Cancelled with the POST on the wire: the node may still have been made.
+      if (posting) result = await posting.catch(() => null);
+      else if (fields) result = await api.post('/nodes', { parentId, ...fields });
+      if (!result) return;
       store.applyMutation(result);
       if (result.nodeId) store.select(result.nodeId);
     } catch (err) {

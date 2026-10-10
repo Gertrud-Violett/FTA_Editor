@@ -650,3 +650,32 @@ def test_details_refused_gate_change_is_put_back():
     assert "if (field.spec.kind !== 'gate') return;" in on_failure
     assert "populate(key, displayValue(now, key));" in on_failure
     assert "updateExtras(now, false);" in on_failure
+
+
+# ---- Add dialog stays open until the node is made (F-27) -------------------------------
+#
+# The dialog closed before POST /nodes was sent, so a refused POST (400
+# INVALID_FIELD from the server, routed in Chromium) left only a toast: the typed
+# name, probability, notes and links were gone. The dialog now posts through a
+# `submit` hook from main.js and stays open, values intact, with the error at the
+# field the server named (or under the form) until the POST succeeds.
+
+
+def test_add_dialog_stays_open_until_the_node_is_made():
+    dialogs = _read(STATIC / "dialogs.js")
+    header = "export function openAddNodeDialog(parentId, options)"
+    assert header in dialogs
+    submit = _braced(dialogs, dialogs.index("function submit()", dialogs.index(header)))
+    assert "if (submitting) return;" in submit, "no second POST while the first is on the wire"
+    hook = submit[submit.index(".then(() => opts.submit(result))"):]
+    assert submit.index("okButton.disabled = true;") < submit.index(".then(() => opts.submit(result))")
+    assert "() => modal.close(result)," in hook
+    refused = hook[hook.index("(err) => {"):]
+    assert "modal.close(" not in refused, "a refused POST keeps the dialog open"
+    assert "target.setError(message);" in refused and "setFormError(message);" in refused
+
+    main = _read(STATIC / "main.js")
+    add = _braced(main, main.index("async function actionAdd()"))
+    assert "await fn(parentId, { submit })" in add
+    assert add.index("await fn(parentId, { submit })") < add.index("store.applyMutation(result);")
+    assert add.count("api.post('/nodes'") == 2, "the hook, and the fallback for a dialog without it"
