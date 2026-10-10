@@ -54,7 +54,7 @@
  * to that module.
  */
 import { api } from './api.js';
-import { clear, confirmDialog, el, injectStyles, restoreFocus } from './dialogs.js';
+import { clear, confirmDialog, el, injectStyles, isImeKey, restoreFocus } from './dialogs.js';
 
 /* ------------------------------------------------------------- shell glue -- */
 
@@ -763,6 +763,9 @@ export function openFileDialog(options) {
     // Only the top-most modal reacts, so the overwrite confirmation's Escape
     // cannot also close this dialog underneath it.
     if (!isTopMost()) return;
+    // Confirming or cancelling a conversion in the name or path box is the
+    // IME's: an Enter here would save under a half-typed name.
+    if (isImeKey(event)) return;
 
     if (!overlay.contains(event.target) && event.key !== 'Escape') {
       // Focus escaped (browser chrome, a stray programmatic focus): pull it

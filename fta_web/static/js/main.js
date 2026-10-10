@@ -2741,6 +2741,7 @@ function wireTopbar() {
     const el = $(sel);
     el.addEventListener('change', queueMetadata);
     el.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // the IME's Enter/Escape
       if (event.key === 'Enter') el.blur();
       else if (event.key === 'Escape') {
         // Escape discards the typing, as in the Details and analysis forms,
@@ -2871,6 +2872,8 @@ function modalOpen() {
 }
 
 function onKeyDown(event) {
+  // A key the IME is using (confirming or cancelling a conversion) is not ours.
+  if (event.isComposing || event.keyCode === 229) return;
   // Escape first: it has to work from inside a modal's own text fields.
   if (event.key === 'Escape') {
     const escape = new CustomEvent('fta:escape', { cancelable: true });

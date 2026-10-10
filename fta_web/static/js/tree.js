@@ -98,6 +98,7 @@ import {
   el,
   ensureBaseStyles,
   injectStyles,
+  isImeKey,
   sanitizeName,
   showError as dialogShowError,
   uid,
@@ -1773,6 +1774,7 @@ export function initTree(container) {
     if (!(target instanceof Element)) return;
 
     if (target.closest('.fta-tree-rename')) {
+      if (isImeKey(event)) return; // confirming/cancelling a conversion
       if (event.key === 'Enter') {
         event.preventDefault();
         event.stopPropagation();
@@ -1899,6 +1901,7 @@ export function initTree(container) {
   search.addEventListener('search', () => setQuery(search.value));
 
   search.addEventListener('keydown', (event) => {
+    if (isImeKey(event)) return; // confirming/cancelling a conversion
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

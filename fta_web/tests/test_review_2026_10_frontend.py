@@ -400,6 +400,67 @@ def test_client_error_keys_exist_in_both_languages_and_are_used():
     assert "shell.t('store.panelFailed'" in _read(STATIC / "store.js")
 
 
+# ---- IME: the Enter/Escape that confirm or cancel a conversion are the IME's ----------
+#
+# Chrome on macOS/Linux hands the Enter that confirms a Japanese conversion (and
+# the Escape that cancels it) to the page as keydown with isComposing set. With a
+# composition driven through CDP (Input.imeSetComposition) in Chromium, that
+# Enter submitted the Add dialog and saved the Save As dialog under the half-typed
+# name, committed the tree rename and left the details/Title field; Escape closed
+# both dialogs (discarding the typing), cancelled the rename and reverted the
+# field. keyCode 229 is the same key on platforms that report it that way.
+
+
+@needs_node
+def test_ime_key_detection():
+    src = _read(STATIC / "dialogs.js")
+    fn = _braced(src, src.index("export function isImeKey(event)")).replace("export ", "")
+    cases = [
+        {"key": "Enter", "isComposing": True, "keyCode": 229},
+        {"key": "Enter", "isComposing": True, "keyCode": 13},
+        {"key": "Process", "isComposing": False, "keyCode": 229},
+        {"key": "Enter", "isComposing": False, "keyCode": 13},
+        {"key": "Escape", "keyCode": 27},
+        None,
+    ]
+    got = _node(fn + "\nconsole.log(JSON.stringify(%s.map((e) => isImeKey(e))));" % json.dumps(cases))
+    assert got == [True, True, True, False, False, False]
+
+
+def _guard_before(body: str, guard: str, *keys: str) -> None:
+    assert guard in body, guard
+    for key in keys:
+        assert body.index(guard) < body.index(key), key
+
+
+def test_enter_and_escape_handlers_leave_composition_to_the_ime():
+    dialogs = _read(STATIC / "dialogs.js")
+    modal = _braced(dialogs, dialogs.index("function onKeydown(event)"))
+    _guard_before(modal, "if (isImeKey(event)) return;", "event.key === 'Escape'", "cfg.onEnter()")
+    assert "if (event.key === 'Enter' && !isImeKey(event)) event.preventDefault();" in dialogs
+
+    details = _read(STATIC / "details.js")
+    field = details[details.index("control.addEventListener('keydown'"):]
+    _guard_before(field, "if (isImeKey(event)) return;", "event.key === 'Enter'", "event.key === 'Escape'")
+
+    tree = _read(STATIC / "tree.js")
+    rename = tree[tree.index("if (target.closest('.fta-tree-rename')) {"):]
+    _guard_before(rename, "if (isImeKey(event)) return;", "commitRename(true)", "cancelRename()")
+    search = tree[tree.index("search.addEventListener('keydown'"):]
+    _guard_before(search, "if (isImeKey(event)) return;", "event.key === 'Escape'", "event.key === 'Enter'")
+
+    filedialog = _read(STATIC / "filedialog.js")
+    keys = _braced(filedialog, filedialog.index("function onKeydown(event)"))
+    _guard_before(keys, "if (isImeKey(event)) return;", "event.key === 'Escape'", "event.key === 'Enter'")
+
+    main = _read(STATIC / "main.js")
+    ime = "if (event.isComposing || event.keyCode === 229) return;"
+    topbar = _braced(main, main.index("function wireTopbar()"))
+    _guard_before(topbar, ime, "if (event.key === 'Enter') el.blur();")
+    shortcuts = _braced(main, main.index("function onKeyDown(event)"))
+    _guard_before(shortcuts, ime, "event.key === 'Escape'")
+
+
 # ---- tree.js: New / Open drop the old document's multi-selection ----------------------
 #
 # Ctrl-click two rows, then the root (lead = root), then open a file: ids such

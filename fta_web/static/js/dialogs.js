@@ -177,6 +177,16 @@ export function el(tag, attrs, children) {
   return node;
 }
 
+/**
+ * True for a key the IME is still using. The Enter that confirms a Japanese
+ * conversion and the Escape that cancels it reach the page as keydown with
+ * isComposing set (Chrome on macOS and Linux; keyCode 229 elsewhere), and
+ * must not submit, close, commit or revert anything.
+ */
+export function isImeKey(event) {
+  return Boolean(event) && (event.isComposing === true || event.keyCode === 229);
+}
+
 /** Remove every child of `node`. */
 export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
@@ -773,7 +783,7 @@ export function createLinksEditor(options) {
   search.addEventListener('input', renderMatches);
   // Enter in the search box must not submit or confirm the surrounding dialog.
   search.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') event.preventDefault();
+    if (event.key === 'Enter' && !isImeKey(event)) event.preventDefault();
   });
 
   function normaliseLinks(raw) {
@@ -1025,6 +1035,8 @@ function createModal(config) {
     // underneath it with a single Escape.
     const overlays = document.querySelectorAll('.fta-modal-overlay');
     if (overlays.length && overlays[overlays.length - 1] !== overlay) return;
+    // Confirming or cancelling a conversion: the IME's key, not the dialog's.
+    if (isImeKey(event)) return;
     if (!overlay.contains(event.target) && event.key !== 'Escape') {
       // Focus escaped the dialog (browser chrome, a stray programmatic focus):
       // pull it back rather than letting the page behind take keystrokes.

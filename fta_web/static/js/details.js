@@ -42,6 +42,7 @@ import {
   formatProbability,
   injectStyles,
   isAdvancedMode,
+  isImeKey,
   normalizeGate,
   parseProbability,
   sanitizeName,
@@ -753,6 +754,8 @@ export function initDetails(container) {
         syncDirty(key);
       });
       control.addEventListener('keydown', (event) => {
+        // Enter/Escape that confirm or cancel a Japanese conversion stay the IME's.
+        if (isImeKey(event)) return;
         if (event.key === 'Enter' && field.spec.kind !== 'textarea') {
           event.preventDefault();
           control.blur();
