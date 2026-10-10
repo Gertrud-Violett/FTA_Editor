@@ -1002,3 +1002,48 @@ setTimeout(() => {
 }, 150);
 """
     assert _node(script) == [["root"], ["root", "new_b"], []]
+
+
+# ---- main.js: the tree panel is titled for the mode (DOC-29) ---------------------------
+#
+# Spec §2.1 (desktop parity, also USER_GUIDE.md / ETA_MODE.md): changing the
+# mode relabels the tree panel "Fault Tree" <-> "Event Tree". The web panel
+# read "Fault Tree" in ETA mode too.
+
+
+def _shell_t_source(language: str) -> str:
+    """main.js's STRINGS and t(), with the editor language fixed."""
+    main = _read(STATIC / "main.js")
+    strings = re.search(r"const STRINGS = \{(.*?)\n\};", main, re.S).group(0)
+    return "%s\nlet language = %s;\n%s\n" % (
+        strings, json.dumps(language), _braced(main, main.index("function t(key, vars)")))
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "language, fta, eta",
+    [("en", "Fault Tree", "Event Tree"), ("ja", "フォルトツリー", "イベントツリー")],
+)
+def test_tree_panel_title_follows_the_mode(language, fta, eta):
+    main = _read(STATIC / "main.js")
+    fn = _braced(main, main.index("function syncTreeTitle(state)"))
+    script = _shell_t_source(language) + r"""
+const title = { dataset: { i18n: 'panel.tree' }, textContent: 'Fault Tree' };
+const $ = (sel) => (sel === '#tree-panel-title' ? title : null);
+""" + fn + r"""
+const seen = [];
+for (const state of [{ metadata: { mode: 'ETA' } }, { metadata: { mode: 'FTA' } }, {},
+                     { metadata: { mode: 'ETA' } }]) {
+  syncTreeTitle(state);
+  seen.push([title.textContent, title.dataset.i18n]);
+}
+console.log(JSON.stringify(seen));
+"""
+    assert _node(script) == [
+        [eta, "panel.treeEta"], [fta, "panel.tree"], [fta, "panel.tree"], [eta, "panel.treeEta"]]
+    # Wired where the mode can change: every store update (a mode edit, New,
+    # Open, Undo) runs renderShell, and so does a language switch -- which
+    # translates [data-i18n] first, hence the key kept on the element.
+    assert "syncTreeTitle(state);" in _braced(main, main.index("function renderShell(state)"))
+    assert "store.subscribe(renderShell);" in main
+    assert "if (store.state) renderShell(store.state);" in _braced(main, main.index("function applyLanguage()"))

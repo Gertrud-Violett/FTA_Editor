@@ -185,6 +185,7 @@ const STRINGS = {
     'action.aiSettings': 'AI settings',
 
     'panel.tree': 'Fault Tree',
+    'panel.treeEta': 'Event Tree',
     'panel.diagram': 'Live Diagram Preview',
     'panel.details': 'Node Details',
     'panel.ai': 'AI Assistant',
@@ -610,6 +611,7 @@ const STRINGS = {
     'action.aiSettings': 'AI設定',
 
     'panel.tree': 'フォルトツリー',
+    'panel.treeEta': 'イベントツリー',
     'panel.diagram': '図プレビュー',
     'panel.details': 'ノード詳細',
     'panel.ai': 'AIアシスタント',
@@ -2825,10 +2827,24 @@ function endBoot() {
 // shell rendering (everything outside tree.js / details.js)
 // ---------------------------------------------------------------------------
 
+/**
+ * The tree panel is titled for the mode, as on the desktop: "Fault Tree" in
+ * FTA, "Event Tree" in ETA. The key goes on data-i18n too, so a language
+ * switch (applyLanguage) translates the right one.
+ */
+function syncTreeTitle(state) {
+  const title = $('#tree-panel-title');
+  if (!title) return;
+  const key = state.metadata && state.metadata.mode === 'ETA' ? 'panel.treeEta' : 'panel.tree';
+  title.dataset.i18n = key;
+  title.textContent = t(key);
+}
+
 function renderShell(state) {
   if (!state) return;
 
   syncMetadataInputs();
+  syncTreeTitle(state);
 
   const dirty = Boolean(state.dirty);
   const badge = $('#dirty');
