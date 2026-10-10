@@ -3,7 +3,7 @@
 A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor with advanced probability calculations, visual tree editing, AI-powered analysis assistant, and export capabilities.
 
 [![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
-[![License: MIT](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
+[![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-1.7.1-green.svg)](CHANGELOG.md)
 
@@ -60,7 +60,7 @@ New in **1.7** (web app), for reliability and safety engineers:
   colour overlay on the diagram.
 - **Monte Carlo uncertainty**: lognormal error factors, a seeded and
   time-capped run, and mean, median and 5th/95th percentiles.
-- **Validation** with 21 rules, a plain-language fix for each, and click to
+- **Validation** with 22 rules, a plain-language fix for each, and click to
   jump to the node.
 - **Traceability fields**: requirement, test reference, owner, status,
   evidence and tags, searchable with `tag:`, `owner:`, `status:`, `req:` and

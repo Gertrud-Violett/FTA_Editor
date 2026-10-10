@@ -1,6 +1,6 @@
 # FTA/ETA Editor - User Guide
 
-**Version**: 1.7.0 | **Updated**: September 28, 2026
+**Version**: 1.7.1 | **Updated**: September 29, 2026
 
 Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor with AI Assistant.
 
