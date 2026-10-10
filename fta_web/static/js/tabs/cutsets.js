@@ -32,6 +32,17 @@ export const advanced = true;
 const SOURCE = 'cutsets';
 const STALE_DELAY_MS = 700;
 
+/**
+ * The empty-table message: not run yet, or no cut sets at all. Null when the
+ * result has cut sets, even if "Show" lists none of them (the summary then
+ * reads "0 of N"): "the top event cannot occur" would be false.
+ */
+export function emptyMessageKey(result) {
+  if (!result) return 'cutsets.notRun';
+  const listed = Array.isArray(result.cutSets) ? result.cutSets.length : 0;
+  return listed > 0 || result.total > 0 ? null : 'cutsets.none';
+}
+
 /** A cut set's identity across runs (ranks shift when the tree changes): its event ids. */
 export function cutSetKey(row) {
   const events = row && Array.isArray(row.events) ? row.events : [];
@@ -323,8 +334,9 @@ export function mount(panel, ctx) {
     paintSummary();
     renderWarnings(ctx, warnings, result ? result.warnings : []);
     const rows = (result && result.cutSets) || [];
-    message.hidden = rows.length > 0;
-    message.textContent = !result ? t('cutsets.notRun') : t('cutsets.none');
+    const empty = emptyMessageKey(result);
+    message.hidden = !empty;
+    message.textContent = empty ? t(empty) : '';
     hint.hidden = rows.length === 0;
     hint.textContent = t('cutsets.hint');
     paintTable();

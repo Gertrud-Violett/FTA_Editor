@@ -217,3 +217,23 @@ def test_cutsets_reselects_by_cut_set_not_rank():
     assert "cs.rank === selectedRank" not in run
     assert "selectedKey = cutSetKey(row);" in _block(src, "function highlightRow(row)")
     assert "selectedKey = null;" in _block(src, "function unselect()")
+
+
+# ---- Cut Sets: "Show 0" does not claim the top event cannot occur ---------------------
+# With Show = 0 the table was empty and the tab said "No cut sets: the top event
+# cannot occur with these settings." under a summary of "0 of 2 cut sets".
+
+@needs_node
+def test_cutsets_empty_message():
+    src = _read(TABS / "cutsets.js")
+    cases = [
+        None,
+        {"cutSets": [], "total": 0, "returned": 0},
+        {"cutSets": [], "total": 2, "returned": 0},
+        {"cutSets": [{"rank": 1, "events": []}], "total": 1, "returned": 1},
+    ]
+    got = _node(_function(src, "emptyMessageKey")
+                + "\nconsole.log(JSON.stringify(%s.map(emptyMessageKey)));" % json.dumps(cases))
+    assert got == ["cutsets.notRun", "cutsets.none", None, None]
+    paint = _block(src, "function paint()")
+    assert "const empty = emptyMessageKey(result);" in paint and "message.hidden = !empty;" in paint
