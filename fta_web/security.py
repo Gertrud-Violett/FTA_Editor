@@ -162,11 +162,16 @@ def _tokens_match(supplied: str, expected: str) -> bool:
 
 
 def _forbidden(message: str, reason: str) -> Tuple[Any, int]:
-    """Build the standard 403 using the shared envelope from errors.py."""
+    """Build the standard 403 using the shared envelope from errors.py.
+
+    Through ``api_error_response``, like every other error, so ``?lang=ja``
+    localises it (``to_payload()`` alone left the catalogued text unused).
+    """
     err = errors.ApiError(
         errors.FORBIDDEN, message, status=403, detail={"reason": reason}
     )
-    return jsonify(err.to_payload()), err.status
+    payload, status = errors.api_error_response(err)
+    return jsonify(payload), status
 
 
 def check_request(

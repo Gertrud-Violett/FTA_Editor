@@ -623,7 +623,9 @@ def export_document(fmt: str):
                 "Could not build the %s export: %s"
                 % (key.upper(), error or "unknown error"),
                 500,
-                {"format": key},
+                # reason: tells i18n this is not the missing-openpyxl case,
+                # whose text the bare code carries.
+                {"format": key, "reason": "build_failed"},
             )
         data = temp_path.read_bytes()
     finally:

@@ -527,12 +527,14 @@ class TestHugeIntegers:
 @pytest.fixture
 def app_state():
     """The ``state`` module ``create_app``'s blueprints import (bare name,
-    as under run.py), reset."""
+    as under run.py), reset before and after: other suites build
+    ``create_app`` and only reset ``fta_web.state``."""
     import fta_web.app  # noqa: F401  (puts fta_web/ on sys.path)
     import state as bare_state
 
     bare_state.reset_state()
-    return bare_state
+    yield bare_state
+    bare_state.reset_state()
 
 
 @pytest.fixture
@@ -603,3 +605,84 @@ class TestNewForceFlag:
         assert c.post("/api/new", json={}).status_code == 409
         assert c.post("/api/new", json={"force": True}).status_code == 200
         assert get_state().core.find_node_by_id("root_0") is None
+
+
+# --------------------------------------------------------------------------
+# B-11 / B-12: Japanese error messages that were never applied, or wrong
+# --------------------------------------------------------------------------
+
+
+def _japanese(text):
+    return any(ord(ch) > 0x3000 for ch in text)
+
+
+class TestJapaneseErrors:
+    PORT = 8765
+    TOKEN = "test-token-0123456789-abcdefghijklmnopqrstuvwxyz"
+
+    @pytest.fixture
+    def guarded(self):
+        import flask
+
+        import fta_web.app  # noqa: F401  (puts fta_web/ on sys.path, as test_security does)
+        import security
+
+        app = flask.Flask(__name__)
+
+        @app.route("/api/ping")
+        def ping():
+            return flask.jsonify({"ok": True})
+
+        security.init_app(app, self.TOKEN, self.PORT)
+        return app.test_client()
+
+    def test_forbidden_is_localised(self, guarded):
+        """B-11: the guard built its 403 with ``to_payload()``, bypassing
+        ``api_error_response``, so the catalogued Japanese FORBIDDEN text was
+        never used."""
+        base = "http://127.0.0.1:%d" % self.PORT
+        en = body(guarded.get("/api/ping", base_url=base))["error"]
+        ja = body(guarded.get("/api/ping?lang=ja", base_url=base))["error"]
+        assert en["code"] == ja["code"] == "FORBIDDEN"
+        assert not _japanese(en["message"]) and _japanese(ja["message"])
+        assert ja["detail"] == en["detail"] == {"reason": "missing_token"}
+        host = body(guarded.get("/api/ping?lang=ja", base_url="http://evil.example:%d" % self.PORT,
+                                headers={"X-FTA-Token": self.TOKEN}))["error"]
+        assert host["detail"]["reason"] == "host_not_allowed"
+        assert _japanese(host["message"]) and host["message"] != ja["message"]
+
+    def test_a_failed_export_is_not_called_a_missing_openpyxl(self, files_client, monkeypatch):
+        """B-12: EXPORT_UNAVAILABLE for an export that failed to build fell
+        back to the code's Japanese text, which says openpyxl is not
+        installed (and is about Excel) -- for a JSON or XML export."""
+        from FTA_Editor_core import FTACore
+
+        monkeypatch.setattr(FTACore, "export_to_xml", lambda self, path: (False, "disk on fire"))
+        en = files_client.get("/api/export/xml")
+        assert en.status_code == 500
+        assert body(en)["error"]["message"] == "Could not build the XML export: disk on fire"
+        ja = body(files_client.get("/api/export/xml?lang=ja"))["error"]
+        assert ja["code"] == "EXPORT_UNAVAILABLE" and ja["detail"]["reason"] == "build_failed"
+        assert _japanese(ja["message"]) and "openpyxl" not in ja["message"]
+
+    @pytest.mark.parametrize("reason", ["render_failed", "timeout"])
+    def test_a_failed_native_render_is_not_called_a_missing_graphviz(self, monkeypatch, reason):
+        """B-12: RENDERER_UNAVAILABLE in Japanese always said Graphviz must
+        be installed, also when it is installed and the render failed or
+        timed out."""
+        import flask
+
+        from fta_web import rendering
+        from fta_web.routes import render as render_routes
+
+        def fail(*args, **kwargs):
+            raise rendering.RenderError("dot failed", reason=reason)
+
+        monkeypatch.setattr(render_routes, "render_native", fail)
+        reset_state()
+        app = flask.Flask(__name__)
+        app.register_blueprint(render_routes.render_bp)
+        with app.test_client() as client:
+            generic = body(client.post("/api/render?lang=ja", json={"format": "png"}))["error"]
+        assert generic["detail"]["reason"] == reason
+        assert _japanese(generic["message"]) and "インストール" not in generic["message"]
