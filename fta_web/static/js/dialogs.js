@@ -646,11 +646,18 @@ export function fillGateOptions(select, value, advanced) {
   return select;
 }
 
+/**
+ * A plain decimal: digits, an optional fraction and exponent. Number() alone
+ * also reads 0x1, 0b1 and 0o1 as 1 (and 0x0 as 0), which the server's float()
+ * refuses and nobody means as a probability.
+ */
+const DECIMAL_TEXT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+
 /** Mirror of `routes/tree.py::_validate_probability`. */
 export function parseProbability(raw) {
   const text = String(raw === null || raw === undefined ? '' : raw).trim();
   const bad = () => ({ ok: false, message: t('dialog.probabilityRange') });
-  if (text === '') return bad();
+  if (!DECIMAL_TEXT.test(text)) return bad();
   const value = Number(text);
   if (!Number.isFinite(value)) return bad();
   if (value < 0 || value > 1) return bad();

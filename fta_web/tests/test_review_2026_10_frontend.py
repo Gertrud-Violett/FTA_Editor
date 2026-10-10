@@ -313,3 +313,36 @@ def test_save_waits_for_queued_keyboard_moves():
     src = _read(STATIC / "tree.js")
     body = _braced(src, src.index("function onFlush(event)"))
     assert "detail.promises.push(keyboardMoves);" in body
+
+
+# ---- dialogs.js: parseProbability takes decimal text only ------------------------------
+#
+# The Add dialog and the Details panel parsed with Number(), which reads 0x1,
+# 0b1 and 0o1 as 1 and 0x0 as 0 -- stored as a probability, although the
+# server's float() refuses that text and the analysis tabs reject hex.
+
+
+def _parse_probability_source() -> str:
+    src = _read(STATIC / "dialogs.js")
+    decl = re.search(r"^const DECIMAL_TEXT = .*;$", src, re.M)
+    fn = re.search(r"export function parseProbability\(raw\) \{.*?\n\}", src, re.S).group(0)
+    return (decl.group(0) + "\n" if decl else "") + fn.replace("export ", "")
+
+
+@needs_node
+def test_parse_probability_accepts_decimal_text_only():
+    cases = ["1e-6", "1E-6", " 0.5 ", ".5", "+0.5", "-0", "1", "0", "1e-400",
+             "0x1", "0x0", "0b1", "0o1", "0x10", "0,5", "50%", "5.", "Infinity", "NaN", "", "  ", "1_0"]
+    script = (
+        "const t = (k) => k;\n" + _parse_probability_source()
+        + "\nconsole.log(JSON.stringify(" + json.dumps(cases) + ".map((c) => {"
+        + " const r = parseProbability(c); return r.ok ? r.value : 'REJECT'; })));"
+    )
+    got = dict(zip(cases, _node(script)))
+    assert got == {
+        "1e-6": 1e-6, "1E-6": 1e-6, " 0.5 ": 0.5, ".5": 0.5, "+0.5": 0.5, "-0": 0, "1": 1, "0": 0,
+        "1e-400": 0,
+        "0x1": "REJECT", "0x0": "REJECT", "0b1": "REJECT", "0o1": "REJECT", "0x10": "REJECT",
+        "0,5": "REJECT", "50%": "REJECT", "5.": "REJECT", "Infinity": "REJECT", "NaN": "REJECT",
+        "": "REJECT", "  ": "REJECT", "1_0": "REJECT",
+    }
