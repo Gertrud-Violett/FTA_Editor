@@ -428,6 +428,8 @@ const STRINGS = {
     'ai.err.noSettings': 'The AI settings dialog could not be loaded, so setup cannot run.',
     'ai.endpoint.hint':
       'Filled in from the provider. Change it only for a proxy or a compatible gateway.',
+    'ai.endpoint.azureHint':
+      'Required: your Azure OpenAI resource URL, such as https://my-resource.openai.azure.com, or its full …/openai/deployments/<deployment> address. Replace YOUR-RESOURCE and YOUR-DEPLOYMENT with your own names.',
 
     'ai.invite.title': 'Set up the AI assistant',
     'ai.invite.body':
@@ -471,6 +473,10 @@ const STRINGS = {
     'ai.msg.updatePrompt':
       'Update this FTA with your suggestions, preserving the original JSON structure.',
     'ai.msg.updated': 'The fault tree was replaced with the verified version.',
+    'ai.update.summary': '{added} added, {changed} changed, {removed} removed — Ctrl+Z undoes it.',
+    'ai.update.summaryRemoved': '{added} added, {changed} changed, {removed} removed ({removedNames}) — Ctrl+Z undoes it.',
+    'ai.update.summaryChanged': '{added} added, {changed} changed ({changedNames}), {removed} removed — Ctrl+Z undoes it.',
+    'ai.update.summaryBoth': '{added} added, {changed} changed ({changedNames}), {removed} removed ({removedNames}) — Ctrl+Z undoes it.',
     'ai.msg.clearing': 'Clearing the conversation...',
 
     'ai.changes.title': 'Suggested changes',
@@ -841,6 +847,8 @@ const STRINGS = {
     'ai.err.noSettings': 'AI設定ダイアログを読み込めなかったため、設定を実行できません。',
     'ai.endpoint.hint':
       'プロバイダーの既定値を入力しています。プロキシや互換ゲートウェイを使う場合のみ変更してください。',
+    'ai.endpoint.azureHint':
+      '必須: Azure OpenAI リソースの URL（例: https://my-resource.openai.azure.com）、または …/openai/deployments/<デプロイ名> の完全なアドレスを入力してください。YOUR-RESOURCE と YOUR-DEPLOYMENT は実際の名前に置き換えてください。',
 
     'ai.invite.title': 'AIアシスタントの設定',
     'ai.invite.body':
@@ -884,6 +892,10 @@ const STRINGS = {
     'ai.msg.updatePrompt':
       '元のJSON構造を保ったまま、提案内容でこのFTAを更新してください。',
     'ai.msg.updated': '検証済みの版でフォールトツリーを置き換えました。',
+    'ai.update.summary': '{added}件追加、{changed}件変更、{removed}件削除しました（Ctrl+Zで元に戻せます）。',
+    'ai.update.summaryRemoved': '{added}件追加、{changed}件変更、{removed}件削除（{removedNames}）しました（Ctrl+Zで元に戻せます）。',
+    'ai.update.summaryChanged': '{added}件追加、{changed}件変更（{changedNames}）、{removed}件削除しました（Ctrl+Zで元に戻せます）。',
+    'ai.update.summaryBoth': '{added}件追加、{changed}件変更（{changedNames}）、{removed}件削除（{removedNames}）しました（Ctrl+Zで元に戻せます）。',
     'ai.msg.clearing': '会話を消去しています...',
 
     'ai.changes.title': '変更の提案',

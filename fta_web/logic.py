@@ -19,7 +19,7 @@ is one variable -- a *repeated event*. A ``house`` leaf is the constant
 Gate semantics (as in the engine)
 ---------------------------------
 ``F(node) = OR( AND( G(children), AND-link targets... ), OR-link targets... )``
-with G from ``gateType`` (falling back to ``logicGate``):
+with G from ``gateType`` (falling back to ``logicGate``, read as AND or else OR):
 
 * AND / OR -- as named; INHIBIT is AND; PAND is AND (and listed as an
   approximation: the engine's Πp/n! has no Boolean counterpart).
@@ -268,8 +268,10 @@ def compile_core(core) -> Structure:
                     refs.append(ref)
             refs_t = tuple(refs)
             if gate_type is None or gate_type not in _GATE_KINDS:
+                # As the engine: logicGate is AND or else OR (the 1.6 reading).
                 gate_value = node.get("logicGate", "OR")
                 gate = str(gate_value).strip().upper() if gate_value else "OR"
+                gate = "AND" if gate == "AND" else "OR"
             else:
                 gate = gate_type
             if gate in ("AND", "INHIBIT"):

@@ -24,6 +24,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on ubuntu-latest, weekly, on demand and on pull requests that change
   either suite, with their output uploaded as artifacts. Tests and CI only;
   the application is unchanged.
+- **Validation: `PROBABILITY_OUT_OF_RANGE`** (error, FTA and ETA). A
+  probability the engine uses that is not a number from 0 to 1 (NaN,
+  negative, above 1, text, a boolean) in a loaded file. Before this a leaf of
+  1.5 gave a headline of 1.25, and a NaN was reported as "Probability is 1.0
+  (the default)".
+- **Monte Carlo warning `MC_EVENT_NOT_SAMPLED`.** An uncertain event that is
+  in none of the cut sets the cut-set method samples (its sets fall below the
+  coverage rule, or its point value is 0) no longer drops out silently.
+- **AI Update FTA says what it changed**: how many nodes it added, and which
+  existing nodes it changed or removed. One Ctrl+Z still undoes it all.
+- **Load notices** for three new repairs: a duplicate link (dropped; it was
+  counted twice), text that can never be saved (an unpaired surrogate,
+  replaced with U+FFFD) and an advanced gate name written into the old
+  AND/OR field (promoted to the gate it names).
+- `fta_web/tests/test_requirements_sync.py` keeps `requirements.txt` and
+  `fta_web/requirements.txt` in step with the `pyproject.toml` extras.
+
+### Fixed
+
+October 2026 review, sprint 1 (Python backend, CLI, exports and AI).
+Every fix has a regression test in `fta_web/tests/test_review_2026_10_*.py`.
+
+- **Security.** Excel export stored any text starting with `=` as a live
+  formula (`=HYPERLINK(...)` became a link); text now stays text. An AI
+  update was installed even when the document had been edited, or replaced
+  by New/Open, while the model was working (it is now refused with 409
+  `AI_DOCUMENT_CHANGED`), and a proposal made for one document could be
+  applied by node id to another. A provider error quoting the API key is
+  scrubbed even if the credentials were cleared mid-call. Terminal escape
+  sequences in names no longer reach the CLI's text output.
+- **Numbers.**
+  - A legacy `logicGate` of PAND/XOR/INHIBIT/KOFN without a `gateType` was
+    computed as that gate by the tree walk but as OR by cut sets and
+    validation. It is now promoted to that gate, with a notice, so every
+    path agrees; unknown gate strings are OR, as in 1.6.
+  - A file whose mode is `"eta"` (lower case) was computed as a fault tree,
+    in the app and the CLI.
+  - A rate event with an invalid own T silently used the mission time.
+  - A duplicate link was counted twice.
+  - FMEA import read `"1.200,5"` as 1.2005 and a comma-delimited `"1,200"`
+    as 1.2 (λ 1000× too low).
+  - An AI edit of a probability the engine derives (rate model, house event,
+    transfer) was reported as applied and silently overruled; it is refused
+    with the reason.
+  - The AI could install a NaN probability, non-text notes or invalid 1.7
+    keys.
+- **Crashes and lost work.**
+  - Control characters (PowerPoint's soft line break) and lone surrogates in
+    a node's text made the XLSX, XML and DOCX exports fail or write files no
+    parser accepts, and made Save fail for good. The API refuses them; a
+    loaded file is repaired.
+  - Integers beyond the float range, bodies nested ~10k deep and trees over
+    `MAX_TREE_DEPTH` (200) levels were 500s; a too-deep file replaced the
+    open document before failing.
+  - `POST /api/new {"force": "false"}` discarded the unsaved document.
+  - Node ids containing `/` could not be edited, moved or deleted; ids
+    starting with a digit split into stray diagram nodes.
+  - A symlink loop made a folder unlistable (Python 3.10–3.12); OS write or
+    list refusals were 500s.
+  - FMEA import: UTF-16 and cp1252 files were decoded wrongly; an xlsx with
+    a wrong `<dimension>` lost every row; a chart sheet first broke the
+    preview; ragged `;` CSVs were read as one column; merged item cells lost
+    rows as "duplicates"; an AIAG-VDA "AP" column was taken for RPN; 20,000
+    rows took 81 s under the state lock (now 0.4 s).
+  - FMEA re-import overwrote unmapped fields; rows removed from the sheet
+    are now reported, not left unnoticed.
+- **CLI.** Non-UTF-8 consoles crashed; `--json` could print `NaN`; `--top`
+  was ignored with `--json`; `--out` equal to an input overwrote it, two
+  inputs sharing an output silently overwrote each other, and an
+  unwritable `--out` was a traceback; `--uncertainty` was dropped by
+  `--sections`.
+- **AI providers** (vendored core, divergences D21–D26):
+  - Anthropic failed on every reply from a thinking model (the default
+    Claude models) while "Test & Save" passed. Replies now join every text
+    block, with room to think.
+  - The model list comes from the Models API, and the fallback list is
+    current.
+  - The documented Azure endpoint form always 404'd.
+  - SDK calls had no deadline (up to 30 min, or forever for Gemini); every
+    client now has an explicit timeout and one retry.
+  - An empty reply was kept in the conversation.
+  - OpenAI reasoning models (o-series, gpt-5) refused `max_tokens` and the
+    temperature.
+  - A new provider no longer receives the previous provider's conversation.
+- **Smaller fixes.**
+  - An edit that changes nothing records no undo step.
+  - JSON export no longer rewrites the date.
+  - Errors from a failed XLSX build no longer say openpyxl is missing.
+  - 403s are localised.
+  - Validation sees link loops through a transfer.
+  - The node view shows no FTA gate warnings in ETA mode.
+  - `install.py`'s uv path now installs the `report` extra and runs pytest
+    from its own venv.
+  - The b2b runner's summary counts MCUB rows under their own tag and
+    removes its 15 MB temp folder.
 
 ## [1.7.1] - 2026-09-29
 

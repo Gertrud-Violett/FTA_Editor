@@ -5,34 +5,46 @@ Three plain functions, no Flask and no AppState, so they are testable on a
 bare dict tree and reusable from the CLI:
 
 ``read_table(path, sheet=None)``
-    ``.csv`` or ``.xlsx`` -> ``{sheets, sheet, columns, rows, rowNumbers}``.
-    The first non-empty row is the header; empty rows are skipped;
-    ``rowNumbers[i]`` is the 1-based spreadsheet row ``rows[i]`` came from,
-    so a skipped-row report can point at the line the user sees in Excel.
+    ``.csv`` or ``.xlsx`` -> ``{sheets, sheet, columns, rows, rowNumbers,
+    delimiter}``. The first non-empty row is the header; empty rows are
+    skipped; ``rowNumbers[i]`` is the 1-based spreadsheet row ``rows[i]`` came
+    from, so a skipped-row report can point at the line the user sees in
+    Excel. ``delimiter`` is the CSV's (None for a workbook).
 
 ``suggest_mapping(columns)``
     ``{field: column}`` for the import fields (see :data:`FIELDS`), guessed
     from English and Japanese header keywords. A column is used at most once.
 
-``suggest_lambda_unit(column, values=None)``
+``suggest_lambda_unit(column, values=None, delimiter=None)``
     ``FIT``/``y``/``h`` for the λ column: the unit its header names, else
     guessed from the magnitude of its values (median >= 1: FIT; 1e-3..1: /y).
 
 ``apply_import(tree, rows, mapping, parent_id, occurrence_table, source_label,
-update=True, lambda_unit="h", columns=None, row_numbers=None)``
+update=True, lambda_unit="h", columns=None, row_numbers=None, delimiter=None)``
     Mutates ``tree`` (the root node dict) and returns
     ``{created: [ids], updated: [ids], unchanged: [ids], skipped: [{row,
-    fmeaId, reason, field, value, message}]}``.
+    fmeaId, reason, field, value, message}], notInSheet: [{id, name,
+    fmeaId}]}``.
 
 Import rules
 ------------
 * **Key.** ``fmea.id`` comes from the mapped ID column, else ``"item / mode"``.
   A row with neither is skipped (``noKey``).
+* **Item fill-down.** A row with a failure mode but a blank item takes the
+  last item above it: the usual layout writes the item once per group
+  (merged cells read as blank). :func:`fill_down` does the same for the
+  preview.
 * **Update in place.** With ``update`` true a row whose key equals the
-  ``fmea.id`` of a node *anywhere* in the tree updates that node (name, the
-  ``fmea`` block, and -- for a leaf -- its quantification). With ``update``
-  false such a row is skipped (``exists``). A key repeated inside the same
-  sheet is imported once; later repeats are skipped (``duplicate``).
+  ``fmea.id`` of a node *anywhere* in the tree updates that node (the
+  ``fmea`` block, the name, and -- for a leaf -- its quantification). Only
+  the fields whose columns are mapped change (a mapped column left blank
+  empties its field); the name is re-derived only when the item or mode
+  column is mapped. With ``update`` false such a row is skipped (``exists``).
+  A key repeated inside the same sheet is imported once; later repeats are
+  skipped (``duplicate``).
+* **Rows gone from the sheet.** Nodes of an earlier import of this sheet
+  (``fmea.source`` is this import's label, or that of a node it matched)
+  whose key no row holds any more are kept, and listed in ``notInSheet``.
 * **New rows** become leaf events under ``parent_id`` with ids from
   ``tree_ops.next_child_id`` (the desktop id format), named ``"item – mode"``
   (or whichever of the two is present, else the key).
@@ -49,6 +61,10 @@ Import rules
   non-negative finite number. A failing row is skipped with the reason; the
   rest of the sheet still imports. RPN is computed as S×O×D when it is not
   mapped and all three ranks are present.
+* **Numbers in text cells** accept a decimal comma ('1,5') and European
+  grouping ('1.200,5'). In a comma-delimited CSV, where a comma cannot be the
+  decimal mark of an unquoted number, '1,200' and '12,345.6' are grouped
+  thousands (Excel's export of a '#,##0' column); elsewhere '1,200' is 1.2.
 * **Parent.** Must exist and must not be a TRANSFER gate (``FmeaImportError``
   otherwise). A parent that is currently a leaf becomes an OR gate: its
   ``logicGate`` is set to OR (unless it has a ``gateType``) and its
@@ -57,6 +73,7 @@ Import rules
 """
 from __future__ import annotations
 
+import codecs
 import csv
 import datetime as _dt
 import io
@@ -90,7 +107,10 @@ FIELDS = (
 #: 1000 FIT is exactly 1e-06 rather than 1.0000000000000002e-06).
 LAMBDA_UNITS = {"h": 1.0, "y": 8760.0, "FIT": 1e9}
 
-CSV_ENCODINGS = ("utf-8-sig", "utf-8", "cp932", "latin-1")
+#: The encodings a CSV is read in (see :func:`_decode`: UTF-16/32 only with a
+#: byte-order mark; cp932 first for text with kana, else only when cp1252
+#: cannot decode the bytes).
+CSV_ENCODINGS = ("utf-8-sig", "utf-16", "utf-32", "cp932", "cp1252", "latin-1")
 
 #: Hard ceiling on rows read from one sheet (the file size cap is the other).
 MAX_ROWS = 20000
@@ -179,29 +199,91 @@ def _tabulate(raw_rows: Iterable[Tuple[int, Sequence[Any]]]) -> Dict[str, Any]:
     return {"columns": header or [], "rows": rows, "rowNumbers": numbers}
 
 
+#: Byte-order marks of the wide encodings, UTF-32 first (its LE mark starts
+#: with UTF-16's). Excel's "Unicode Text" and Windows PowerShell write
+#: UTF-16 with a BOM; without this it decoded as latin-1, NULs and all.
+_WIDE_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32"),
+    (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16"),
+)
+
+
+#: Kana: what tells a Japanese cp932 file from a Western cp1252 one that also
+#: decodes as cp932 without an error ('Défaut' -> 'D馭aut', 'Válvula' ->
+#: 'V疝vula'). A half-width katakana counts only next to another: each of
+#: cp1252's 0xA6-0xDF (°, ±, µ, ², Ä, Ö, Ü, ß ...) decodes as a lone one
+#: ('80°C' -> '80ｰC', 'Überhitzung' -> 'ﾜberhitzung'), while half-width
+#: Japanese words are runs ('ﾎﾟﾝﾌﾟ').
+_KANA = re.compile("[぀-ヿ]|[ｦ-ﾟ]{2}")
+
+
 def _decode(data: bytes) -> str:
-    for encoding in CSV_ENCODINGS:
-        try:
-            return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("latin-1", errors="replace")  # pragma: no cover - latin-1 never fails
+    """UTF-8 (BOM or not), UTF-16/32 by their BOM, cp932 when the text has
+    kana, else cp1252, else cp932 (kanji only), else latin-1."""
+    for bom, encoding in _WIDE_BOMS:
+        if data.startswith(bom):
+            try:
+                return data.decode(encoding)  # the codec reads and drops the BOM
+            except UnicodeDecodeError:
+                break
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    try:
+        japanese: Optional[str] = data.decode("cp932")
+    except UnicodeDecodeError:
+        japanese = None
+    if japanese is not None and _KANA.search(japanese):
+        return japanese
+    try:
+        return data.decode("cp1252")
+    except UnicodeDecodeError:
+        pass
+    # cp1252 lacks 0x81, 0x8D, 0x8F, 0x90 and 0x9D -- C1 controls in latin-1,
+    # never text, but common cp932 bytes: Japanese without kana (kanji only)
+    # gets here, and a clean cp932 decode is a far better guess than latin-1.
+    return japanese if japanese is not None else data.decode("latin-1")
+
+
+CSV_DELIMITERS = ",;\t|"
+
+
+def _header_delimiter(sample: str) -> str:
+    """The candidate delimiter the first non-empty line uses most (outside
+    quotes); a comma when it uses none. Ties go to the comma."""
+    line = next((ln for ln in sample.splitlines() if ln.strip()), "")
+    counts = dict.fromkeys(CSV_DELIMITERS, 0)
+    quoted = False
+    for ch in line:
+        if ch == '"':
+            quoted = not quoted
+        elif not quoted and ch in counts:
+            counts[ch] += 1
+    best = max(CSV_DELIMITERS, key=lambda d: counts[d])
+    return best if counts[best] else ","
 
 
 def _read_csv(path: Path) -> Dict[str, Any]:
     text = _decode(path.read_bytes())
     sample = text[:65536]
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+        dialect = csv.Sniffer().sniff(sample, delimiters=CSV_DELIMITERS)
+        delimiter = dialect.delimiter
+        reader = csv.reader(io.StringIO(text, newline=""), dialect)
     except csv.Error:
-        dialect = csv.excel
-    reader = csv.reader(io.StringIO(text, newline=""), dialect)
+        # The sniffer wants the same count on ~90 % of the lines, so a short
+        # or ragged file (trailing ';' on the data rows, empty trailing
+        # fields left out) defeats it -- and a plain comma fallback read a
+        # ';' file as one column. The header line decides instead.
+        delimiter = _header_delimiter(sample)
+        reader = csv.reader(io.StringIO(text, newline=""), csv.excel, delimiter=delimiter)
     try:
         table = _tabulate((index + 1, row) for index, row in enumerate(reader))
     except csv.Error as exc:
         raise FmeaImportError("'%s' is not a readable CSV file (%s)." % (path.name, exc),
                               "unreadable")
-    table.update(sheets=[], sheet=None)
+    table.update(sheets=[], sheet=None, delimiter=delimiter)
     return table
 
 
@@ -227,7 +309,9 @@ def _read_xlsx(path: Path, sheet: Optional[str]) -> Dict[str, Any]:
         raise FmeaImportError("'%s' is not a readable .xlsx workbook." % path.name,
                               "unreadable") from exc
     try:
-        names = list(book.sheetnames)
+        # Worksheets only: a chart sheet has no cells (and, as the first
+        # sheet, was the default -- AttributeError, a 500 on preview).
+        names = [ws.title for ws in book.worksheets]
         if not names:
             raise FmeaImportError("'%s' has no sheets." % path.name, "no_sheets")
         if sheet in (None, ""):
@@ -238,13 +322,19 @@ def _read_xlsx(path: Path, sheet: Optional[str]) -> Dict[str, Any]:
             raise FmeaImportError("'%s' has no sheet named '%s'." % (path.name, sheet),
                                   "unknown_sheet", sheet=str(sheet))
         worksheet = book[chosen]
+        # Read-only mode trusts the sheet's declared <dimension>, and some
+        # exporters write 'A1' whatever the data: only A1 was read. Read the
+        # rows that are actually there instead (openpyxl's documented remedy;
+        # missing rows still come back empty, so row numbers stay right).
+        if hasattr(worksheet, "reset_dimensions"):
+            worksheet.reset_dimensions()
         table = _tabulate(
             (index + 1, row)
             for index, row in enumerate(worksheet.iter_rows(values_only=True))
         )
     finally:
         book.close()
-    table.update(sheets=names, sheet=chosen)
+    table.update(sheets=names, sheet=chosen, delimiter=None)
     return table
 
 
@@ -265,6 +355,50 @@ def rows_as_dicts(table: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [dict(zip(columns, row)) for row in table.get("rows") or []]
 
 
+def _blank_cell(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+class _ItemFill:
+    """Fill a blank item cell down from the rows above.
+
+    The usual FMEA layout writes an item once over its failure modes --
+    merged cells, which read as blank below the first, or simply left blank.
+    A row that carries a failure mode but no item takes the last item above
+    it (rows without a mode, such as a further cause, are left as they are).
+    Without this those rows lost their item, and with the key "item / mode"
+    'Valve / Stuck' became 'Stuck' and was skipped as a duplicate.
+    """
+
+    def __init__(self, mapping: Dict[str, Any]):
+        self.item = (mapping or {}).get("item")
+        self.mode = (mapping or {}).get("mode")
+        self.last: Any = None
+
+    def __call__(self, cells: Dict[str, Any]) -> Dict[str, Any]:
+        if not (self.item and self.mode):
+            return cells
+        value = cells.get(self.item)
+        if not _blank_cell(value):
+            self.last = value
+        elif self.last is not None and not _blank_cell(cells.get(self.mode)):
+            cells = dict(cells)
+            cells[self.item] = self.last
+        return cells
+
+
+def fill_down(table: Dict[str, Any], mapping: Dict[str, Any]) -> List[List[Any]]:
+    """``table``'s rows with blank item cells filled as :func:`apply_import`
+    fills them for ``mapping`` (for the preview)."""
+    columns = list(table.get("columns") or [])
+    fill = _ItemFill(mapping)
+    out = []
+    for row in table.get("rows") or []:
+        cells = fill(dict(zip(columns, row)))
+        out.append([cells.get(column) for column in columns])
+    return out
+
+
 # ---- column mapping -------------------------------------------------------------
 
 
@@ -280,7 +414,9 @@ def _word(token: str) -> "re.Pattern[str]":
 #: field -> (exact header texts, "contains" patterns). NFKC + lower-cased, so
 #: full-width 'ＩＤ' and 'Ｎｏ．' match too. Order of FIELDS breaks ties.
 _RULES: Dict[str, Tuple[Tuple[str, ...], Tuple[Any, ...]]] = {
-    "rpn": (("rpn", "ap"), ("rpn", "risk priority", "リスク優先", "危険優先", "優先度数")),
+    # Not "ap": AIAG-VDA's Action Priority is H / M / L, never an RPN -- as
+    # the suggestion it made every row of such a sheet an invalidRpn skip.
+    "rpn": (("rpn",), ("rpn", "risk priority", "リスク優先", "危険優先", "優先度数")),
     "lambda": (
         ("λ", "lambda", "rate", "fit", "fr"),
         ("failure rate", "故障率", "λ", "lambda", _word("fit"), "hazard rate"),
@@ -369,14 +505,16 @@ def header_lambda_unit(column: Any) -> Optional[str]:
     return None
 
 
-def suggest_lambda_unit(column: Any, values: Optional[Iterable[Any]] = None) -> str:
+def suggest_lambda_unit(column: Any, values: Optional[Iterable[Any]] = None,
+                        delimiter: Optional[str] = None) -> str:
     """``FIT``/``y``/``h`` for a λ column.
 
     A unit named in the header wins. Otherwise the magnitude of the column's
     values decides: a median of 1 or more is FIT, 1e-3 up to 1 is per year,
     anything smaller per hour. Importing FIT values as per-hour rates makes
     every such event certain (q = 1), so guessing from the numbers is much
-    safer than always defaulting to ``/h``.
+    safer than always defaulting to ``/h``. ``delimiter`` is the table's
+    (``read_table``): values are read as :func:`apply_import` reads them.
     """
     unit = header_lambda_unit(column)
     if unit is not None:
@@ -384,7 +522,7 @@ def suggest_lambda_unit(column: Any, values: Optional[Iterable[Any]] = None) -> 
     numbers = []
     for value in values or ():
         try:
-            number = _number(value)
+            number = _number(value, delimiter == ",")
         except (TypeError, ValueError):
             continue
         if number is not None and number >= 0:
@@ -427,8 +565,22 @@ def _text(value: Any) -> str:
     return sanitize_name(value)
 
 
-def _number(value: Any) -> Optional[float]:
-    """A float from a cell, tolerating '1,5' and '1.2E-06'. None when blank."""
+#: '1.200,5', '-12.345.678,9e-3': dots grouping thousands before a decimal
+#: comma (European number formats). Read as 1.2005 before, with the commas
+#: simply dropped -- a FIT value 1000 times too small.
+_EU_GROUPED = re.compile(r"[+-]?\d{1,3}(?:\.\d{3})+,\d+(?:[eE][+-]?\d+)?$")
+
+#: '1,200', '12,345.6': commas grouping thousands -- what Excel writes to a
+#: comma-delimited CSV for a '#,##0' column (quoted). Only read so in such a
+#: file (``comma_groups``): in a ';' or tab CSV, or a workbook's text cell,
+#: '1,200' keeps its decimal-comma reading (1.2). A leading 0 group
+#: ('0,001') is never thousands formatting.
+_COMMA_GROUPED = re.compile(r"[+-]?[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$")
+
+
+def _number(value: Any, comma_groups: bool = False) -> Optional[float]:
+    """A float from a cell, tolerating '1,5', '1.200,5' and '1.2E-06' (and
+    '1,200' as 1200 with ``comma_groups``). None when blank."""
     if value is None or value == "":
         return None
     if isinstance(value, bool):
@@ -439,8 +591,12 @@ def _number(value: Any) -> Optional[float]:
         text = unicodedata.normalize("NFKC", str(value)).strip().replace(" ", "")
         if not text:
             return None
-        if "," in text and "." not in text:
+        if comma_groups and _COMMA_GROUPED.match(text):
+            text = text.replace(",", "")
+        elif "," in text and "." not in text:
             text = text.replace(",", ".")
+        elif _EU_GROUPED.match(text):
+            text = text.replace(".", "").replace(",", ".")
         else:
             text = text.replace(",", "")
         number = float(text)
@@ -449,9 +605,9 @@ def _number(value: Any) -> Optional[float]:
     return number
 
 
-def _rank(value: Any, field: str) -> Optional[int]:
+def _rank(value: Any, field: str, comma_groups: bool = False) -> Optional[int]:
     try:
-        number = _number(value)
+        number = _number(value, comma_groups)
     except (TypeError, ValueError):
         number = float("nan")
     if number is None:
@@ -462,7 +618,7 @@ def _rank(value: Any, field: str) -> Optional[int]:
     return int(number)
 
 
-def _parse_row(get, lambda_divisor: float) -> Dict[str, Any]:
+def _parse_row(get, lambda_divisor: float, comma_groups: bool = False) -> Dict[str, Any]:
     """The validated values of one row (``get(field)`` reads a mapped cell)."""
     out: Dict[str, Any] = {
         "id": _text(get("id")),
@@ -471,11 +627,11 @@ def _parse_row(get, lambda_divisor: float) -> Dict[str, Any]:
         "cause": _text(get("cause")),
     }
     for field in ("severity", "occurrence", "detection"):
-        out[field] = _rank(get(field), field)
+        out[field] = _rank(get(field), field, comma_groups)
 
     raw_rpn = get("rpn")
     try:
-        rpn = _number(raw_rpn)
+        rpn = _number(raw_rpn, comma_groups)
     except (TypeError, ValueError):
         rpn = -1.0
     if rpn is not None and not (rpn >= 0 and float(rpn).is_integer()):
@@ -486,7 +642,7 @@ def _parse_row(get, lambda_divisor: float) -> Dict[str, Any]:
 
     raw_lambda = get("lambda")
     try:
-        lam = _number(raw_lambda)
+        lam = _number(raw_lambda, comma_groups)
     except (TypeError, ValueError):
         lam = -1.0
     if lam is not None and lam < 0:
@@ -546,8 +702,7 @@ def _occurrence_probability(table: Dict[str, Any], rank: int) -> Optional[float]
     return value
 
 
-def _node_name(values: Dict[str, Any], key: str) -> str:
-    item, mode = values["item"], values["mode"]
+def _node_name(item: Any, mode: Any, key: str) -> str:
     if item and mode:
         name = "%s – %s" % (item, mode)
     else:
@@ -555,27 +710,61 @@ def _node_name(values: Dict[str, Any], key: str) -> str:
     return sanitize_name(name)[: node_schema.MAX_TEXT]
 
 
-def _fmea_block(values: Dict[str, Any], key: str, source: str) -> Dict[str, Any]:
-    block: Dict[str, Any] = {"id": key}
+_RANKS = ("severity", "occurrence", "detection")
+
+
+def _fmea_block(values: Dict[str, Any], key: str, source: str, mapped: Iterable[str],
+                existing: Any = None) -> Dict[str, Any]:
+    """The node's ``fmea`` block after this row.
+
+    Only the fields whose columns are mapped come from the sheet (a mapped
+    column left blank empties its field); the others keep the node's
+    values -- refreshing just the failure rates must not wipe item, mode,
+    cause and ranks. RPN, when not mapped itself, follows S×O×D of the
+    resulting ranks once any rank is mapped and all three are known.
+    """
+    mapped = set(mapped)
+    block = dict(existing) if isinstance(existing, dict) else {}
+    patch: Dict[str, Any] = {"id": key}
     for field in ("item", "mode", "cause"):
-        if values[field]:
-            block[field] = values[field][: node_schema.MAX_TEXT]
-    for field in ("severity", "occurrence", "detection", "rpn"):
-        if values[field] is not None:
-            block[field] = values[field]
+        if field in mapped:
+            if values[field]:
+                patch[field] = values[field][: node_schema.MAX_TEXT]
+            else:
+                block.pop(field, None)
+    for field in _RANKS:
+        if field in mapped:
+            if values[field] is not None:
+                patch[field] = values[field]
+            else:
+                block.pop(field, None)
+    if "rpn" in mapped:
+        if values["rpn"] is not None:  # given, or the row's own S×O×D
+            patch["rpn"] = values["rpn"]
+        else:
+            block.pop("rpn", None)
+    elif mapped & set(_RANKS):
+        ranks = [patch.get(field, block.get(field)) for field in _RANKS]
+        if all(isinstance(r, int) and not isinstance(r, bool) for r in ranks):
+            patch["rpn"] = ranks[0] * ranks[1] * ranks[2]
     if source:
-        block["source"] = source[: node_schema.MAX_TEXT]
-    # Round-trip through the schema validator: what lands on disk is exactly
-    # what a PATCH could have written.
-    return node_schema.validate_fmea(block) or {}
+        patch["source"] = source[: node_schema.MAX_TEXT]
+    # Round-trip through the schema validator: what the sheet writes is
+    # exactly what a PATCH could have written.
+    block.update(node_schema.validate_fmea(patch) or {})
+    return block
 
 
 def _apply_values(node: Dict[str, Any], values: Dict[str, Any], key: str,
-                  table: Dict[str, Any], source: str, created: bool) -> None:
-    node["name"] = _node_name(values, key)
-    # The fmea block is replaced wholesale: the sheet is the source of truth
-    # for it, and a column emptied in the sheet must empty here too.
-    node["fmea"] = _fmea_block(values, key, source)
+                  table: Dict[str, Any], source: str, created: bool,
+                  mapped: Iterable[str] = FIELDS) -> None:
+    mapped = set(mapped)
+    node["fmea"] = _fmea_block(values, key, source, mapped,
+                               None if created else node.get("fmea"))
+    # The name is derived from item and mode: re-derived only when one of
+    # them is mapped (from the node's resulting values), else kept.
+    if created or mapped & {"item", "mode"}:
+        node["name"] = _node_name(node["fmea"].get("item"), node["fmea"].get("mode"), key)
 
     if not _quantifiable(node):
         return
@@ -623,12 +812,15 @@ def apply_import(
     lambda_unit: str = "h",
     columns: Optional[Sequence[str]] = None,
     row_numbers: Optional[Sequence[int]] = None,
+    delimiter: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Import ``rows`` into ``tree`` (mutated). See the module docstring.
 
     ``rows`` are ``{column: value}`` dicts, or lists aligned with ``columns``.
     ``mapping`` is ``{field: column}``; unknown fields and blank columns are
-    ignored, a column that is not in the sheet is an error.
+    ignored, a column that is not in the sheet is an error. ``delimiter`` is
+    the CSV delimiter the rows were read with (``read_table``'s; None for a
+    workbook): in a comma-delimited file '1,200' is 1200, not 1.2.
     """
     if not isinstance(tree, dict):
         raise FmeaImportError("There is no tree to import into.", "no_tree")
@@ -665,23 +857,61 @@ def apply_import(
             by_key.setdefault(str(fmea["id"]), node)
 
     factor = LAMBDA_UNITS[lambda_unit]
+    comma_groups = delimiter == ","
     table = occurrence_table or {}
     result: Dict[str, Any] = {"created": [], "updated": [], "unchanged": [], "skipped": []}
     seen = set()
 
+    # New ids: next_child_id for the first (the desktop rule), then the same
+    # rule incrementally -- each call walks the whole tree twice, so calling
+    # it per row made a 20,000-row import take 81 s inside the state lock.
+    parent_key = str(parent.get("id"))
+    taken = {str(node.get("id")) for node in _walk(tree)}
+    next_index: Optional[int] = None
+
+    def mint_id() -> str:
+        nonlocal next_index
+        if next_index is None:
+            new_id = next_child_id(view, parent_key)
+            next_index = int(new_id.rsplit("_", 1)[1])
+        else:
+            while "%s_%d" % (parent_key, next_index) in taken:
+                next_index += 1
+            new_id = "%s_%d" % (parent_key, next_index)
+        next_index += 1
+        taken.add(new_id)
+        return new_id
+
+    # For notInSheet: every key the sheet holds (invalid rows too), and the
+    # sources -- this one, and those of the nodes it matches -- that count
+    # as earlier imports of this sheet (it may have been renamed since).
+    sheet_keys = set()
+    lineage = {source_label} if source_label else set()
+
+    fill = _ItemFill(mapping)
     for index, raw in enumerate(rows or []):
         if isinstance(raw, dict):
             cells = raw
         else:
             cells = dict(zip(columns or [], raw))
+        cells = fill(cells)
         row_no = row_numbers[index] if row_numbers and index < len(row_numbers) else index + 2
 
         def get(field, _cells=cells):
             column = mapping.get(field)
             return _cells.get(column) if column else None
 
+        row_key = (_text(get("id")) or " / ".join(
+            v for v in (_text(get("item")), _text(get("mode"))) if v))[: node_schema.MAX_TEXT]
+        if row_key:
+            sheet_keys.add(row_key)
+            matched = by_key.get(row_key)
+            source = (matched.get("fmea") or {}).get("source") if matched is not None else None
+            if isinstance(source, str) and source:
+                lineage.add(source)
+
         try:
-            values = _parse_row(get, factor)
+            values = _parse_row(get, factor, comma_groups)
         except _RowError as exc:
             key_guess = _text(get("id")) or None
             result["skipped"].append({
@@ -716,14 +946,15 @@ def apply_import(
                 })
                 continue
             before = repr(sorted((k, repr(v)) for k, v in existing.items() if k != "children"))
-            _apply_values(existing, values, key, table, source_label, created=False)
+            _apply_values(existing, values, key, table, source_label, created=False,
+                          mapped=mapping)
             after = repr(sorted((k, repr(v)) for k, v in existing.items() if k != "children"))
             bucket = "updated" if before != after else "unchanged"
             result[bucket].append(str(existing.get("id")))
             continue
 
         _prepare_parent(parent)
-        new_id = next_child_id(view, str(parent.get("id")))
+        new_id = mint_id()
         node: Dict[str, Any] = {
             "id": new_id,
             "name": "",
@@ -734,11 +965,23 @@ def apply_import(
             "links": [],
             "children": [],
         }
-        _apply_values(node, values, key, table, source_label, created=True)
+        _apply_values(node, values, key, table, source_label, created=True, mapped=mapping)
         parent.setdefault("children", []).append(node)
         by_key[key] = node
         result["created"].append(new_id)
 
+    # Nodes of an earlier import of this sheet whose rows are gone: kept (the
+    # analysis may have grown around them), but reported.
+    result["notInSheet"] = []
+    for node in _walk(tree):
+        fmea = node.get("fmea")
+        if not isinstance(fmea, dict) or fmea.get("id") in (None, ""):
+            continue
+        source = fmea.get("source")
+        if str(fmea["id"]) in sheet_keys or not isinstance(source, str) or source not in lineage:
+            continue
+        result["notInSheet"].append({"id": str(node.get("id")), "name": node.get("name", ""),
+                                     "fmeaId": str(fmea["id"])})
     return result
 
 

@@ -80,6 +80,7 @@ try:  # normal package import: ``import fta_web.diagram_dot``
         _escape_label,
         clamp_scale,
         sanitize_font_name,
+        xml_safe,
     )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]  # noqa: F401
@@ -90,6 +91,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         _escape_label,
         clamp_scale,
         sanitize_font_name,
+        xml_safe,
     )
 
 from json_viewer import gather_nodes, sanitize_id  # noqa: E402
@@ -267,9 +269,11 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
         # A leaf event has no gate: 1.6 showed its default "Gate: OR" (1.7.1
         # drops it; the symbols style never drew a gate for a leaf either).
         head = ""
-    name_plain = str(name)
+    # xml_safe: a character XML forbids would make the label unparseable.
+    name_plain = xml_safe(name)
+    head = xml_safe(head)
     meta_plain = f"{head}P:{p_str} | P_calc:{cp_str}"
-    name = html.escape(str(name), quote=False)
+    name = html.escape(name_plain, quote=False)
     head = html.escape(head, quote=False)
     meta_text = f"{head}P:{p_str} | P_calc:{cp_str}"
     font_size, small_font_size, cellpadding = 14, 9, 6
@@ -286,11 +290,11 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     name = node.get("name")
     if name is None:
         name = node.get("id", "")
-    name_plain = str(name)
-    name = html.escape(str(name), quote=False)
+    name_plain = xml_safe(name)
+    name = html.escape(name_plain, quote=False)
     extra = []
     if _gate_type(node) == "TRANSFER":
-        extra.append(html.escape(ctx.gate_text(node), quote=False))
+        extra.append(html.escape(xml_safe(ctx.gate_text(node)), quote=False))
     kind = ctx.kind_text(node)
     if kind and _gate_type(node) != "TRANSFER":
         extra.append(html.escape(kind, quote=False))
@@ -330,8 +334,29 @@ def _padded(plain: str, escaped: str, pad: str) -> str:
 # ---- graph skeleton ------------------------------------------------------------
 
 
+def _token(name: str) -> str:
+    """``name`` (``[0-9A-Za-z_]`` only) as one DOT ID token.
+
+    Unquoted, DOT reads a name that starts with a digit as a number: ``1a``
+    -- or ``1_1_<hash>``, ``sanitize_id``'s answer for ``1.1`` -- splits into
+    ``1`` and ``a`` ("badly delimited number"), so the diagram gained a stray
+    node ``1`` on the parent's edge while the real box floated unconnected.
+    Such a name is quoted; an all-digit name is a DOT numeral and every other
+    name a DOT ID, so those stay as they were (the ``<title>`` Graphviz
+    writes is the name either way).
+    """
+    if name and (name.isdigit() or not name[0].isdigit()):
+        return name
+    return '"%s"' % name
+
+
 class _Names:
-    """Allocates DOT node names. Plain ids keep ``sanitize_id``'s answer."""
+    """Allocates DOT node names. Plain ids keep ``sanitize_id``'s answer.
+
+    ``plain``/``synthetic`` return the name as a DOT token (see
+    :func:`_token`); ``id_map`` and ``taken`` hold the bare names, which is
+    what the SVG ``<title>`` carries.
+    """
 
     def __init__(self, plain_ids):
         self.taken = {sanitize_id(nid) for nid in plain_ids}
@@ -340,7 +365,7 @@ class _Names:
     def plain(self, nid) -> str:
         name = sanitize_id(nid)
         self.id_map.setdefault(name, str(nid))
-        return name
+        return _token(name)
 
     def synthetic(self, nid, suffix: str) -> str:
         base = sanitize_id(nid) + suffix
@@ -350,7 +375,7 @@ class _Names:
             name = "%s_%d" % (base, n)
         self.taken.add(name)
         self.id_map[name] = str(nid)
-        return name
+        return _token(name)
 
 
 def _layout(nodes, edges):
@@ -492,6 +517,7 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
         emitted.add(nid)
         node = nodes[nid]
         box = names.plain(nid)
+        group = sanitize_id(nid)  # the bare name, inside the quoted attribute
         cp = node.get("calculatedProbability")
         gate = _gate_type(node)
         if is_conditioning(nid):
@@ -506,7 +532,7 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
         # them is heavy, so Graphviz keeps the symbol straight under (TB) /
         # beside (LR) its own box instead of drifting toward a neighbour's.
         body.append(
-            f'  {box} [shape=box, class="fta-box", group="{box}", style=filled, '
+            f'  {box} [shape=box, class="fta-box", group="{group}", style=filled, '
             f'fillcolor="{_bgcolor(cp)}", '
             f'fontcolor="black", margin="0.2,0.05", label={_box_label(node, ctx)}];'
         )
@@ -518,7 +544,7 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
             attrs = [
                 f'shape={shape}',
                 f'class="fta-gate fta-gate-{gate_class}"',
-                f'group="{box}"',
+                f'group="{group}"',
                 'width=0.55, height=0.55, fixedsize=true, fontsize=9',
                 f'fillcolor="{ctx.bg}", style=filled',
                 f'label="{_escape_label(label)}"',
@@ -535,7 +561,7 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
             if kind == "house":
                 label = "ON" if node.get("houseState") is True else "OFF"
             body.append(
-                f'  {sym} [shape={shape}, class="fta-event fta-event-{kind}", group="{box}", '
+                f'  {sym} [shape={shape}, class="fta-event fta-event-{kind}", group="{group}", '
                 f'width={size}, height={size}, fixedsize=true, fontsize=8, '
                 f'style=filled, fillcolor="{ctx.bg}", label="{label}"{orient}];'
             )

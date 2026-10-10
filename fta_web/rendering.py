@@ -131,7 +131,7 @@ def clamp_scale(value: object) -> int:
     """A whole number of padding spaces within [MIN_SCALE, MAX_SCALE]."""
     try:
         number = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError: a huge int
         return DEFAULT_SCALE
     if number != number or number in (float("inf"), float("-inf")):  # NaN/inf
         return DEFAULT_SCALE
@@ -167,14 +167,32 @@ class RendererUnavailable(RenderError):
 # ---- DOT -----------------------------------------------------------------
 
 
+#: Characters XML 1.0 does not allow at all, not even as a character
+#: reference: C0 controls other than tab/LF/CR, lone surrogates, U+FFFE and
+#: U+FFFF. Graphviz parses an HTML-like label as XML, so one of them in a node
+#: name made that label unparseable (the box lost its text); a NUL ended the
+#: DOT text early (nothing rendered at all); and the browser's SVG parser
+#: rejects an SVG that carries one. A lone surrogate also cannot be encoded
+#: as UTF-8, which the native renderer's temp file needs.
+_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def xml_safe(text: object) -> str:
+    """``text`` as a string with every character XML 1.0 forbids replaced by
+    U+FFFD, so it can be drawn. For display only: the document keeps the
+    original text."""
+    return _XML_INVALID.sub("\ufffd", str(text))
+
+
 def _escape_label(text: object) -> str:
     """Escape a value for a double-quoted DOT string literal.
 
-    Only backslash and double quote need it. ``\\n`` sequences we build
-    ourselves are added *after* this runs, so they survive as Graphviz'
-    line break rather than being escaped into a literal backslash-n.
+    Only backslash and double quote need it, after :func:`xml_safe` (a NUL
+    would end the DOT string early). ``\\n`` sequences we build ourselves
+    are added *after* this runs, so they survive as Graphviz' line break
+    rather than being escaped into a literal backslash-n.
     """
-    return str(text).replace("\\", "\\\\").replace('"', '\\"')
+    return xml_safe(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
 def build_dot_text(

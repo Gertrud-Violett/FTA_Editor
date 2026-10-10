@@ -315,7 +315,10 @@ def resolve_for_write(raw: Any, root: Path,
         "written",
     )
 
-    if resolved.is_dir():
+    # os.path.isdir, not Path.is_dir: the latter raises for a name longer
+    # than the filesystem allows (ENAMETOOLONG), which was a bare 500. Such
+    # a name is refused when the write itself fails (routes/files.py).
+    if os.path.isdir(resolved):
         raise PathRejected(
             "'%s' is a folder." % resolved.name, reason="not_a_file"
         )
@@ -324,7 +327,7 @@ def resolve_for_write(raw: Any, root: Path,
         raise PathRejected(
             "That path is outside %s." % root, reason="outside_root"
         )
-    if not parent.is_dir():
+    if not os.path.isdir(parent):
         raise PathRejected(
             "The folder for '%s' does not exist. Create it first, or choose "
             "another location." % resolved.name,
@@ -393,10 +396,12 @@ def list_directory(raw: Any, root: Path,
         target = root
     else:
         target = resolve_in_root(raw, root)
-    if not target.is_dir():
+    # os.path.isdir/exists never raise (Path.is_dir/exists do, for a name
+    # longer than the filesystem allows -- a bare 500).
+    if not os.path.isdir(target):
         raise PathRejected(
             "'%s' is not a folder." % target.name, reason="not_a_directory",
-            status=404 if not target.exists() else 400,
+            status=404 if not os.path.exists(target) else 400,
         )
 
     dirs: List[Dict[str, Any]] = []
@@ -439,8 +444,11 @@ def list_directory(raw: Any, root: Path,
                             "modified": _isoformat(stat.st_mtime),
                         }
                     )
-                except OSError:
-                    continue  # broken symlink, or it vanished mid-listing
+                except (OSError, RuntimeError):
+                    # A broken symlink, or one that vanished mid-listing; and
+                    # a symlink loop, for which Path.resolve() raises
+                    # RuntimeError up to Python 3.12 (not OSError).
+                    continue
     except PermissionError as exc:
         raise PathRejected(
             "'%s' cannot be listed: permission denied." % target.name,
@@ -478,9 +486,11 @@ def _isoformat(timestamp: float) -> Optional[str]:
 # ---- download names ------------------------------------------------------
 
 #: Anything that must not reach a ``Content-Disposition`` filename: path
-#: separators (a download named ``../../x`` is a client-side traversal) and
-#: control characters (which could split the header on a lax client).
-_UNSAFE_NAME_CHARS = re.compile(r"[\\/\x00-\x1f\x7f]+")
+#: separators (a download named ``../../x`` is a client-side traversal),
+#: control characters (which could split the header on a lax client) and
+#: lone surrogates (a title can hold one; it cannot be encoded, and the
+#: header build raised -- a 500 for an export that had been written).
+_UNSAFE_NAME_CHARS = re.compile("[\\\\/\x00-\x1f\x7f\ud800-\udfff]+")
 
 #: Filesystems stop caring long before this; the cap just keeps a pathological
 #: title out of a response header.

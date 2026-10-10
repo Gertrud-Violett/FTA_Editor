@@ -8,6 +8,21 @@ Copyright (c) makkiblog.com - BSD-2 License
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Tuple, Optional
 import json
+import re
+
+
+#: Divergence D24: every SDK client is built with an explicit deadline, in
+#: seconds. It equals ``AI_TIMEOUT_SECONDS`` in ``fta_web/config.py`` (a test
+#: pins the two; this vendored module does not import the app's config), so one
+#: attempt may use the whole time the editor waits for an answer. Read at call
+#: time, so a test can shorten it.
+REQUEST_TIMEOUT_SECONDS = 120.0
+
+#: One retry for a transient 429/5xx/connection error. The OpenAI and Anthropic
+#: SDKs retry a timeout too, so the longest a call can run is
+#: ``(MAX_RETRIES + 1) * REQUEST_TIMEOUT_SECONDS`` plus a back-off of a second.
+#: google-genai does not retry unless asked to.
+MAX_RETRIES = 1
 
 
 class AIProvider(ABC):
@@ -58,13 +73,35 @@ class OpenAIProvider(AIProvider):
     
     def get_default_models(self) -> List[str]:
         return ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"]
-    
+
+    @staticmethod
+    def _length_args(model: str, max_tokens: int, temperature: Optional[float] = None) -> Dict[str, Any]:
+        """The output-length (and sampling) arguments for ``model``.
+
+        Divergence D26: the installed openai SDK documents ``max_tokens`` as
+        "deprecated in favor of `max_completion_tokens`, and ... not compatible
+        with o-series models", and the reasoning models also refuse a sampling
+        temperature. A reasoning model (``o<digit>...`` or ``gpt-5...``, matched on
+        the last path segment so a gateway's ``openai/o3-mini`` counts) gets
+        ``max_completion_tokens`` and no ``temperature``. Every other model is sent
+        exactly what it was before, so OpenAI-compatible gateways that only know
+        ``max_tokens`` keep working.
+        """
+        name = str(model or "").strip().rsplit("/", 1)[-1].lower()
+        if re.match(r"(o\d|gpt-5)", name):
+            return {"max_completion_tokens": max_tokens}
+        args: Dict[str, Any] = {"max_tokens": max_tokens}
+        if temperature is not None:
+            args["temperature"] = temperature
+        return args
+
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available models from OpenAI API"""
         try:
             from openai import OpenAI
             
-            client = OpenAI(api_key=api_key, base_url=endpoint)
+            client = OpenAI(api_key=api_key, base_url=endpoint,
+                            timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             models = client.models.list()
             model_names = [m.id for m in models.data if "gpt" in m.id.lower()]
             return sorted(model_names), None
@@ -78,11 +115,12 @@ class OpenAIProvider(AIProvider):
         try:
             from openai import OpenAI
             
-            client = OpenAI(api_key=api_key, base_url=endpoint)
+            client = OpenAI(api_key=api_key, base_url=endpoint,
+                            timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "Hello, this is a test."}],
-                max_tokens=10
+                **self._length_args(model, 10)  # D26
             )
             return True, "OpenAI connection successful!"
         except ImportError:
@@ -97,12 +135,12 @@ class OpenAIProvider(AIProvider):
         try:
             from openai import OpenAI
             
-            client = OpenAI(api_key=api_key, base_url=endpoint)
+            client = OpenAI(api_key=api_key, base_url=endpoint,
+                            timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7
+                **self._length_args(model, max_tokens, temperature=0.7)  # D26
             )
             return response.choices[0].message.content, None
         except ImportError:
@@ -113,7 +151,14 @@ class OpenAIProvider(AIProvider):
 
 class AnthropicProvider(AIProvider):
     """Anthropic Claude API provider"""
-    
+
+    #: Divergence D21: the least max_tokens a chat request is sent with. The
+    #: current Claude models think by default and thinking tokens count against
+    #: max_tokens, so the 2000 the handler asks for could be spent on thinking
+    #: alone. 16000 is the documented non-streaming default (it stays under the
+    #: SDK's HTTP timeouts), and every current model allows at least 64K.
+    MIN_MAX_TOKENS = 16000
+
     @staticmethod
     def get_provider_name() -> str:
         return "Anthropic Claude"
@@ -133,33 +178,45 @@ class AnthropicProvider(AIProvider):
         #
         # The model field is editable, so a name released after this list was
         # written can always be typed in. Prefer the live fetch over this.
+        #
+        # Divergence D22: refreshed again, current family first.
         return [
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-haiku-5-5",
             "claude-opus-5",
             "claude-sonnet-5",
-            "claude-haiku-4-5",
-            "claude-opus-4-8",
-            "claude-sonnet-4-6",
         ]
-    
+
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
-        """Fetch available models from Anthropic API"""
+        """Fetch available models from Anthropic API.
+
+        Divergence D22: the baseline returned the built-in list without asking
+        ("Anthropic doesn't provide a list_models endpoint"). The Models API
+        exists; ``models.list()`` auto-paginates, newest first. Any failure
+        falls back to the built-in list with a warning saying why.
+        """
         try:
             from anthropic import Anthropic
-            
-            # Anthropic doesn't provide a list_models endpoint
-            # Return the most up-to-date known models
-            return self.get_default_models(), None
+
+            client = Anthropic(api_key=api_key,
+                               timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
+            models = [model.id for model in client.models.list()]
+            if not models:
+                return self.get_default_models(), "Anthropic returned an empty model list"
+            return models, None
         except ImportError:
             return self.get_default_models(), "Anthropic package not installed"
         except Exception as e:
-            return self.get_default_models(), f"Error: {str(e)}"
+            return self.get_default_models(), f"Could not fetch models: {str(e)}"
     
     def test_connection(self, api_key: str, endpoint: str, model: str) -> Tuple[bool, str]:
         """Test Anthropic connection"""
         try:
             from anthropic import Anthropic
             
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key,
+                               timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             message = client.messages.create(
                 model=model,
                 max_tokens=10,
@@ -178,7 +235,8 @@ class AnthropicProvider(AIProvider):
         try:
             from anthropic import Anthropic
             
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key,
+                               timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             
             # Convert system message if present
             system_message = ""
@@ -192,11 +250,22 @@ class AnthropicProvider(AIProvider):
             
             response = client.messages.create(
                 model=model,
-                max_tokens=max_tokens,
+                max_tokens=max(max_tokens, self.MIN_MAX_TOKENS),
                 system=system_message if system_message else None,
                 messages=user_messages
             )
-            return response.content[0].text, None
+            # Divergence D21: a thinking model's reply starts with a "thinking"
+            # block, which has no .text; the answer is every "text" block.
+            text = "".join(
+                block.text for block in response.content
+                if getattr(block, "type", None) == "text"
+            )
+            if not text:
+                return None, (
+                    "Anthropic error: the reply contained no text (stop_reason: %s)."
+                    % getattr(response, "stop_reason", None)
+                )
+            return text, None
         except ImportError:
             return None, "Anthropic package not installed. Run: pip install anthropic"
         except Exception as e:
@@ -236,10 +305,19 @@ class GeminiProvider(AIProvider):
         """A fresh client. ``endpoint`` is accepted by every provider in this
         module for interface uniformity, but the Gemini Developer API has no
         equivalent of an OpenAI-compatible custom base URL -- the old
-        ``google.generativeai`` implementation ignored it too."""
-        from google import genai
+        ``google.generativeai`` implementation ignored it too.
 
-        return genai.Client(api_key=api_key)
+        Divergence D24: ``HttpOptions.timeout`` is in *milliseconds* (its
+        docstring, and ``_api_client.get_timeout_in_seconds`` divides by 1000);
+        without it the client waits forever. No ``retry_options``: the SDK then
+        makes a single attempt."""
+        from google import genai
+        from google.genai import types
+
+        return genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=int(REQUEST_TIMEOUT_SECONDS * 1000)),
+        )
 
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available models from Google Gemini API"""
@@ -332,23 +410,39 @@ class MicrosoftCopilotProvider(AIProvider):
     
     def get_default_models(self) -> List[str]:
         return ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-35-turbo"]
-    
+
+    @staticmethod
+    def _azure_target(endpoint: str, model: str) -> Tuple[str, str]:
+        """``(azure_endpoint, deployment)`` for the endpoint the user entered.
+
+        Divergence D23: ``AzureOpenAI`` appends ``/openai`` to ``azure_endpoint``
+        itself, so the resource URL has to be passed bare. The documented form
+        ``https://{resource}.openai.azure.com/openai/deployments/{deployment}``
+        kept its ``/openai`` and every request went to
+        ``/openai/openai/deployments/...`` -- a 404. Accepted now: the bare
+        resource URL, ``.../openai`` and ``.../openai/deployments/<name>[/...]``,
+        with or without a trailing slash or query string. The deployment is the
+        one the URL names, else ``model``.
+        """
+        url = (endpoint or "").strip().split("#", 1)[0].split("?", 1)[0]
+        deployment = model
+        if "/deployments/" in url:
+            url, rest = url.split("/deployments/", 1)
+            named = rest.strip("/").split("/")[0]
+            if named:
+                deployment = named
+        url = url.rstrip("/")
+        if url.lower().endswith("/openai"):
+            url = url[: -len("/openai")]
+        return url.rstrip("/"), deployment
+
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available deployments from Azure OpenAI"""
         try:
             from openai import AzureOpenAI
-            
-            # Extract resource name and deployment from endpoint
-            # Format: https://{resource}.openai.azure.com/openai/deployments/{deployment}
-            if "/deployments/" in endpoint:
-                base_url = endpoint.rsplit("/deployments/", 1)[0]
-                deployment = endpoint.rsplit("/deployments/", 1)[1].split("/")[0]
-            else:
-                base_url = endpoint
-                deployment = "gpt-4o"
-            
-            # Try to list available models (if API supports it)
-            # Otherwise return default models
+
+            # Azure has no model-list API for a key; nothing is requested.
+            # (Divergence D23 dropped the unused endpoint parsing that was here.)
             return self.get_default_models(), "Using default models (Azure doesn't provide model list API)"
         except ImportError:
             return self.get_default_models(), "OpenAI package not installed"
@@ -359,23 +453,17 @@ class MicrosoftCopilotProvider(AIProvider):
         """Test Microsoft Copilot (Azure OpenAI) connection"""
         try:
             from openai import AzureOpenAI
-            
-            # Parse endpoint to extract base URL and deployment
-            # Expected format: https://{resource}.openai.azure.com/openai/deployments/{deployment}
-            if "/deployments/" in endpoint:
-                base_url = endpoint.rsplit("/deployments/", 1)[0]
-                deployment = endpoint.rsplit("/deployments/", 1)[1].rstrip("/").split("/")[0]
-                if not deployment:
-                    deployment = model
-            else:
-                base_url = endpoint
-                deployment = model
-            
+
+            # Divergence D23: see _azure_target.
+            base_url, deployment = self._azure_target(endpoint, model)
+
             # Azure OpenAI uses api_version
             client = AzureOpenAI(
                 api_key=api_key,
                 azure_endpoint=base_url,
-                api_version="2024-08-01-preview"
+                api_version="2024-08-01-preview",
+                timeout=REQUEST_TIMEOUT_SECONDS,  # D24
+                max_retries=MAX_RETRIES,
             )
             
             response = client.chat.completions.create(
@@ -404,21 +492,16 @@ class MicrosoftCopilotProvider(AIProvider):
         """Send message via Microsoft Copilot (Azure OpenAI) API"""
         try:
             from openai import AzureOpenAI
-            
-            # Parse endpoint to extract base URL and deployment
-            if "/deployments/" in endpoint:
-                base_url = endpoint.rsplit("/deployments/", 1)[0]
-                deployment = endpoint.rsplit("/deployments/", 1)[1].rstrip("/").split("/")[0]
-                if not deployment:
-                    deployment = model
-            else:
-                base_url = endpoint
-                deployment = model
-            
+
+            # Divergence D23: see _azure_target.
+            base_url, deployment = self._azure_target(endpoint, model)
+
             client = AzureOpenAI(
                 api_key=api_key,
                 azure_endpoint=base_url,
-                api_version="2024-08-01-preview"
+                api_version="2024-08-01-preview",
+                timeout=REQUEST_TIMEOUT_SECONDS,  # D24
+                max_retries=MAX_RETRIES,
             )
             
             response = client.chat.completions.create(

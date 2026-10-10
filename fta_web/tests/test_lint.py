@@ -381,6 +381,8 @@ def test_every_code_has_one_severity_and_the_plan_list_is_complete():
         "TRANSFER_HAS_CHILDREN", "HOUSE_HAS_CHILDREN", "ETA_BRANCH_SUM",
         "PARENT_PROBABILITY_IGNORED", "QUANT_PARAM_MISSING", "STANDBY_LARGE_LT",
         "NONCOHERENT_XOR", "CUTSETS_TRUNCATED", "RATE_IMPLAUSIBLE",
+        # 2026-10 review (E-6): a probability the engine uses is not in [0, 1].
+        "PROBABILITY_OUT_OF_RANGE",
     }
     assert set(lint.CODES) == frozen
     assert set(lint.SEVERITY.values()) == set(lint.SEVERITIES)

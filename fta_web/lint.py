@@ -26,7 +26,12 @@ KOFN_ARITY                  error     FTA   KOFN with k missing, k < 1 or k > n
 XOR_ARITY                   error     FTA   XOR without exactly 2 inputs
 QUANT_PARAM_MISSING         error     FTA   a rate/standby/repairable model lacks a
                                             parameter (engine; the old value is kept)
-CYCLIC_LINK                 warning   FTA   a link closes a loop (child edges + links);
+PROBABILITY_OUT_OF_RANGE    error     both  a probability the engine uses -- an FTA
+                                            leaf's (not a house, transfer or rate/
+                                            standby/repairable event), every ETA
+                                            node's -- is not a number in [0, 1]
+CYCLIC_LINK                 warning   FTA   a link closes a loop (child edges, links and
+                                            transfers);
                                             the engine skips it, so the result is
                                             approximate
 TRANSFER_HAS_CHILDREN       warning   FTA   a TRANSFER has children (they are ignored)
@@ -58,8 +63,8 @@ Deliberate exemptions: the top event (``root``) is never SINGLE_INPUT_GATE
 children is never DEFAULT_PROBABILITY (that is simply an empty document).
 INHIBIT/KOFN/XOR/TRANSFER gates are not SINGLE_INPUT_GATE -- their own arity
 codes cover them. In ETA mode links, gate kinds and quant models do not
-take part in the calculation, so only ETA_BRANCH_SUM and the session warnings
-are reported there.
+take part in the calculation, so only ETA_BRANCH_SUM, PROBABILITY_OUT_OF_RANGE
+and the session warnings are reported there.
 
 Order: errors, warnings, info; within a severity, document-level issues
 (``nodeId`` None) first, then tree pre-order, then issues whose node is no
@@ -89,6 +94,7 @@ SEVERITY: Dict[str, str] = {
     "KOFN_ARITY": "error",
     "XOR_ARITY": "error",
     "QUANT_PARAM_MISSING": "error",
+    "PROBABILITY_OUT_OF_RANGE": "error",
     "CYCLIC_LINK": "warning",
     "TRANSFER_HAS_CHILDREN": "warning",
     "HOUSE_HAS_CHILDREN": "warning",
@@ -119,6 +125,8 @@ MESSAGES: Dict[str, str] = {
     "XOR_ARITY": "XOR gate needs exactly 2 inputs (has {n}).",
     "QUANT_PARAM_MISSING": "The '{model}' model is missing: {missing}. "
                            "The previous probability is used.",
+    "PROBABILITY_OUT_OF_RANGE": "Probability {probability} is not a number between 0 and 1, "
+                                "so the results that use it are wrong.",
     "CYCLIC_LINK": "Link to '{targetName}' creates a loop; the calculation skips it, "
                    "so the result is approximate.",
     "TRANSFER_HAS_CHILDREN": "Transfer gate has {n} children; they are ignored.",
@@ -208,6 +216,18 @@ def _float(value: Any, default: float) -> float:
     return default if math.isnan(number) else number
 
 
+def _probability_ok(value: Any) -> bool:
+    """A finite number in [0, 1], read as the engine reads it (``float()``,
+    so a numeric string counts). A boolean or None is not a probability."""
+    if isinstance(value, bool) or value is None:
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(number) and 0.0 <= number <= 1.0
+
+
 def _walk(root: Dict[str, Any]):
     stack = [root]
     while stack:
@@ -256,7 +276,9 @@ def _has_quant_model(node: Dict[str, Any]) -> bool:
 
 def _cyclic_links(nodes: List[Dict[str, Any]], index: Dict[str, Dict[str, Any]]):
     """(owner, link) for every link whose two ends lie in one strongly connected
-    component of the child + link graph (i.e. the link closes a loop)."""
+    component of the child + link + transfer graph (i.e. the link closes a
+    loop). A transfer takes its target's value, so a loop that passes through
+    one is evaluated by the engine exactly like a loop of links."""
     pos = {id(n): i for i, n in enumerate(nodes)}
     adjacency: List[List[int]] = [[] for _ in nodes]
     any_link = False
@@ -264,6 +286,10 @@ def _cyclic_links(nodes: List[Dict[str, Any]], index: Dict[str, Dict[str, Any]])
         for child in node.get("children") or []:
             if id(child) in pos:
                 adjacency[i].append(pos[id(child)])
+        if _gate_type(node) == "TRANSFER" and node.get("transferTo") not in (None, ""):
+            target = index.get(str(node.get("transferTo")))
+            if target is not None and target is not node:
+                adjacency[i].append(pos[id(target)])
         for link in node.get("links") or []:
             if not isinstance(link, dict):
                 continue
@@ -408,6 +434,10 @@ def run(tree: Any, analysis: Optional[Dict[str, Any]] = None,
 
 def _eta_rules(nodes, add) -> None:
     for node in nodes:
+        # An event tree multiplies every node's own probability down its path.
+        probability = node.get("probability", 1.0)
+        if not _probability_ok(probability):
+            add("PROBABILITY_OUT_OF_RANGE", node, {"probability": probability})
         children = [c for c in (node.get("children") or []) if isinstance(c, dict)]
         if not children:
             continue
@@ -473,8 +503,13 @@ def _fta_rules(root, nodes, index, add, core, extra) -> None:
                 implausible = _implausible_rate(node, getattr(core, "analysis", None))
                 if implausible is not None:
                     add("RATE_IMPLAUSIBLE", node, implausible)
-            if (kind != "house" and id(node) != root_key and not _has_quant_model(node)
-                    and _float(node.get("probability", 1.0), 1.0) == 1.0):
+            # The leaf's own probability is what the engine uses, unless it is
+            # a house (houseState) or a rate/standby/repairable event (model).
+            probability = node.get("probability", 1.0)
+            uses_own = kind != "house" and not _has_quant_model(node)
+            if uses_own and not _probability_ok(probability):
+                add("PROBABILITY_OUT_OF_RANGE", node, {"probability": probability})
+            elif uses_own and id(node) != root_key and float(probability) == 1.0:
                 add("DEFAULT_PROBABILITY", node)
 
     for owner, link, target in _cyclic_links(nodes, index):

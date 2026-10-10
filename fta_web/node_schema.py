@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from typing import Any, Dict, List, Optional
 
 try:  # normal package import: ``import fta_web.node_schema``
@@ -97,6 +98,15 @@ def project_logic_gate(gate_type: Any) -> str:
     return _PROJECTION.get(gate_type.strip().upper(), "OR")
 
 
+def canonical_mode(mode: Any) -> str:
+    """A document mode as ``POST /api/metadata`` stores it: "ETA" in any case
+    or spacing is "ETA", anything else "FTA". The engine computes an event
+    tree only for the exact string "ETA" while the analysis endpoints and the
+    CLI compare case-insensitively, so a file saying "eta" was computed as a
+    fault tree and refused as an event tree."""
+    return "ETA" if str(mode or "").strip().upper() == "ETA" else "FTA"
+
+
 # ---- helpers -----------------------------------------------------------------
 
 
@@ -112,7 +122,10 @@ def _number(value: Any, field: str, *, minimum: float = 0.0,
     """A finite real number >= ``minimum`` (or > when ``exclusive_min``)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise _invalid(field, "'%s' must be a number." % field, value)
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range (a 400-digit literal)
+        number = math.inf
     if math.isnan(number) or math.isinf(number):
         raise _invalid(field, "'%s' must be a finite number." % field, value)
     if number < minimum or (exclusive_min and number == minimum):
@@ -121,12 +134,33 @@ def _number(value: Any, field: str, *, minimum: float = 0.0,
     return number
 
 
+#: An unpaired UTF-16 surrogate. Python keeps one that JSON spells
+#: (``"\\ud83d"``, half of an emoji) -- a *paired* escape becomes one astral
+#: character -- but it cannot be encoded as UTF-8, so a document holding one
+#: could not be saved, exported or printed any more.
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def refuse_unsavable_text(value: str, field: str) -> str:
+    """``value``, or a 400 ``INVALID_FIELD`` naming ``field`` when it holds an
+    unpaired surrogate (see :data:`_LONE_SURROGATE`). Every validator of
+    stored text goes through here."""
+    found = _LONE_SURROGATE.search(value)
+    if found:
+        raise _invalid(
+            field,
+            "'%s' contains an unpaired surrogate (U+%04X), which cannot be saved."
+            % (field, ord(found.group())),
+        )
+    return value
+
+
 def _text(value: Any, field: str) -> str:
     if not isinstance(value, str):
         raise _invalid(field, "'%s' must be a string." % field, value)
     if len(value) > MAX_TEXT:
         raise _invalid(field, "'%s' is longer than %d characters." % (field, MAX_TEXT))
-    return value
+    return refuse_unsavable_text(value, field)
 
 
 def _object(value: Any, field: str) -> Dict[str, Any]:
@@ -179,7 +213,7 @@ def validate_transfer_to(value: Any) -> Optional[str]:
         return None
     if isinstance(value, bool) or not isinstance(value, (str, int)):
         raise _invalid("transferTo", "'transferTo' must be a node id.", value)
-    text = str(value).strip()
+    text = refuse_unsavable_text(str(value).strip(), "transferTo")
     if not text:
         return None
     return text
@@ -288,7 +322,7 @@ def validate_trace(partial: Any) -> Optional[Dict[str, Any]]:
             for tag in value:
                 if not isinstance(tag, str):
                     raise _invalid(field, "'trace.tags' must be a list of strings.")
-                tag = tag.strip()
+                tag = refuse_unsavable_text(tag.strip(), field)
                 if tag and tag not in tags:
                     tags.append(tag[:200])
             out[key] = tags
@@ -378,17 +412,56 @@ MERGE_BACK_KEYS = (
 )
 
 
+#: The gate types logicGate (AND/OR only) can never hold: one found there is
+#: promoted to gateType by :func:`reconcile_gate_types`.
+_PROMOTABLE = tuple(g for g in GATE_TYPES if g not in ("AND", "OR"))
+
+
+def _promote(node: Dict[str, Any], gate_type: str, cause: str) -> Dict[str, Any]:
+    """Move an advanced gate name out of ``logicGate`` into ``gateType``;
+    the ``gate_type_promoted`` warning that says so."""
+    projected = project_logic_gate(gate_type)
+    node["gateType"] = gate_type
+    node["logicGate"] = projected
+    node_id = str(node.get("id"))
+    where = ("set by the AI assistant" if cause == "ai"
+             else "written by hand or by another program")
+    return {
+        "kind": "gate_type_promoted",
+        "old_id": node_id,
+        "new_id": node_id,
+        "name": node.get("name"),
+        "gateType": gate_type,
+        "logicGate": projected,
+        "cause": cause,
+        "message": "Node %r: logicGate held %s (%s), but it holds only AND or OR; "
+                   "%s is now the gate type and logicGate is %s."
+                   % (node_id, gate_type, where, gate_type, projected),
+    }
+
+
 def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, Any]]:
-    """Drop every ``gateType`` that no longer projects to its node's
-    ``logicGate``. Mutates ``tree``; returns load warnings
-    (``kind: "gate_type_reset"``, ``cause``: ``desktop`` for a loaded file,
-    ``ai`` for an AI edit -- it picks the message).
+    """Make every node's ``gateType`` and ``logicGate`` agree. Mutates
+    ``tree``; returns load warnings (``kind`` ``gate_type_reset`` or
+    ``gate_type_promoted``; ``cause``: ``desktop`` for a loaded file, ``ai``
+    for an AI edit -- it picks the message).
 
     The 1.6 desktop app edits only ``logicGate`` and keeps unknown keys, so a
     file edited there can carry a stale ``gateType`` (a KOFN whose gate the
     user switched to AND). The web engine follows ``gateType``, which would
     silently discard the desktop edit -- so ``logicGate`` is trusted, and the
     ``gateType`` goes together with the ``k``/``transferTo`` that only it used.
+
+    The desktop app only ever writes AND or OR, so only those values can be a
+    desktop edit. Any other ``logicGate`` (a hand-written ``"PAND"`` beside
+    gateType PAND) keeps the ``gateType`` and is set to its projection,
+    without a warning.
+
+    No 1.6 program writes an advanced gate name into ``logicGate`` either, so
+    one there without a ``gateType`` (a hand edit) means that gate: it is
+    *promoted* to the ``gateType`` and ``logicGate`` becomes its projection
+    (``gate_type_promoted``). Any other value is left alone; the engine reads
+    it as 1.6 does (AND, else OR).
     """
     warnings: List[Dict[str, Any]] = []
     stack = [tree] if isinstance(tree, dict) else []
@@ -400,10 +473,17 @@ def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, An
         seen.add(id(node))
         stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
         gate_type = node.get("gateType")
-        if gate_type in (None, ""):
+        if gate_type is None or (isinstance(gate_type, str) and not gate_type.strip()):
+            raw = str(node.get("logicGate") or "").strip().upper()
+            if raw in _PROMOTABLE:
+                warnings.append(_promote(node, raw, cause))
             continue
         logic = str(node.get("logicGate") or "OR").strip().upper()
-        if project_logic_gate(gate_type) == logic:
+        projected = project_logic_gate(gate_type)
+        if logic not in ("AND", "OR"):
+            node["logicGate"] = projected
+            continue
+        if projected == logic:
             continue
         node.pop("gateType", None)
         dropped = ["gateType"]
@@ -427,6 +507,145 @@ def reconcile_gate_types(tree: Any, cause: str = "desktop") -> List[Dict[str, An
                        "stored gate type was %s; the gate type was dropped and %s is used."
                        % (node_id, logic, where, str(gate_type), logic),
         })
+    return warnings
+
+
+def drop_duplicate_links(tree: Any) -> List[Dict[str, Any]]:
+    """Drop every repeated link -- same ``target_id``, same effective relation
+    -- keeping the first. Mutates ``tree``; returns one load warning
+    (``kind: "duplicate_link"``) per link dropped.
+
+    The engine applies every link it finds, so a repeated link counted as a
+    second independent event: an AND-link twice multiplied by its target's
+    probability twice. The UI's links editor and ``PATCH /api/nodes`` refuse
+    a duplicate; a file can still carry one. "Effective" is what the engine
+    does with the relation: "AND" (any case) is AND, anything else OR.
+    """
+    warnings: List[Dict[str, Any]] = []
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+        links = node.get("links")
+        if not isinstance(links, list) or len(links) < 2:
+            continue
+        kept: List[Any] = []
+        seen = set()
+        for link in links:
+            target = link.get("target_id") if isinstance(link, dict) else None
+            if target in (None, ""):
+                kept.append(link)
+                continue
+            relation = "AND" if str(link.get("relation") or "OR").upper() == "AND" else "OR"
+            if (str(target), relation) in seen:
+                node_id = str(node.get("id"))
+                warnings.append({
+                    "kind": "duplicate_link",
+                    "old_id": node_id,
+                    "new_id": node_id,
+                    "name": node.get("name"),
+                    "targetId": str(target),
+                    "relation": relation,
+                    "message": "Node %r linked to %r (%s) more than once; the repeated "
+                               "link was removed (it was counted twice)."
+                               % (node_id, str(target), relation),
+                })
+                continue
+            seen.add((str(target), relation))
+            kept.append(link)
+        if len(kept) != len(links):
+            node["links"] = kept
+    return warnings
+
+
+def _scrub(value: Any, path: str, changed: List[str], skip: Optional[str] = None) -> Any:
+    """``value`` with every unpaired surrogate -- in strings and dict keys, at
+    any depth -- replaced by U+FFFD. Dicts and lists are repaired in place
+    (and returned); the dotted path of every repaired text is appended to
+    ``changed``. ``skip`` names a dict key left alone (a node's children)."""
+    if isinstance(value, str):
+        fixed = _LONE_SURROGATE.sub("\ufffd", value)
+        if fixed != value:
+            changed.append(path)
+        return fixed
+    if isinstance(value, list):
+        for position, item in enumerate(value):
+            value[position] = _scrub(item, path, changed)
+        return value
+    if isinstance(value, dict):
+        before = len(changed)
+        entries = []
+        for key, item in value.items():
+            new_key = _LONE_SURROGATE.sub("\ufffd", key) if isinstance(key, str) else key
+            sub_path = "%s.%s" % (path, new_key) if path else str(new_key)
+            if new_key != key:
+                changed.append(sub_path)
+            entries.append((new_key, item if key == skip else _scrub(item, sub_path, changed)))
+        if len(changed) != before:
+            value.clear()
+            value.update(entries)
+        return value
+    return value
+
+
+def repair_unsavable_text(core: Any) -> List[Dict[str, Any]]:
+    """Replace every unpaired surrogate in a loaded document with U+FFFD.
+
+    Python keeps one that JSON spells, but it cannot be encoded: the document
+    could not be saved, exported or printed. Every node's text (ids, links
+    and nested objects included), the title and the date are repaired in
+    place, as are the load warnings already recorded (they reach the page,
+    the CLI and the report). Returns load warnings (``kind:
+    "invalid_text"``, ``fields``: the dotted keys repaired): one per node,
+    one for the title/date. Two ids that become equal are told apart again
+    the way the core tells duplicate ids apart.
+    """
+    warnings: List[Dict[str, Any]] = []
+    ids_changed = False
+    tree = getattr(core, "fta_data", None)
+    stack = [tree] if isinstance(tree, dict) else []
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        old_id = node.get("id")
+        changed: List[str] = []
+        _scrub(node, "", changed, skip="children")
+        if changed:
+            ids_changed = ids_changed or node.get("id") != old_id
+            fields = list(dict.fromkeys(changed))
+            node_id = str(node.get("id"))
+            warnings.append({
+                "kind": "invalid_text",
+                "old_id": node_id,
+                "new_id": node_id,
+                "name": node.get("name"),
+                "fields": fields,
+                "message": "Node %r: text that cannot be saved (an unpaired surrogate) "
+                           "was replaced with U+FFFD in %s." % (node_id, ", ".join(fields)),
+            })
+        stack.extend(reversed([c for c in node.get("children") or [] if isinstance(c, dict)]))
+
+    fields = []
+    for attr in ("title", "date"):
+        changed = []
+        setattr(core, attr, _scrub(getattr(core, attr, None), attr, changed))
+        if changed:
+            fields.append(attr)
+    if fields:
+        warnings.append({
+            "kind": "invalid_text",
+            "old_id": None,
+            "new_id": None,
+            "fields": fields,
+            "message": "The document's %s held text that cannot be saved (an unpaired "
+                       "surrogate); it was replaced with U+FFFD." % " and ".join(fields),
+        })
+    _scrub(getattr(core, "last_load_warnings", None), "", [])
+    if ids_changed:
+        core._dedupe_node_ids(tree, warnings)
     return warnings
 
 

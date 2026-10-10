@@ -139,6 +139,11 @@ def post_settings():
             if exc.value is not None:
                 detail["value"] = exc.value
             raise ApiError(INVALID_FIELD, str(exc), 400, detail)
+        if merged == state.core.analysis:
+            # Nothing changes -- the tabs' "Save as document defaults" posts
+            # its values even when they are the document's: no undo step, the
+            # redo history kept, a saved document not marked modified.
+            return ok_response(**_mutation_payload(state))
         state.push_undo()
         state.core.analysis = merged
         state.core.recalculate_probabilities()
