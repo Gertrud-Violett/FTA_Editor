@@ -119,6 +119,7 @@ AI_CONNECTION_FAILED = "AI_CONNECTION_FAILED"
 AI_INVALID_JSON = "AI_INVALID_JSON"
 AI_UPDATE_REJECTED = "AI_UPDATE_REJECTED"
 AI_CHANGE_REJECTED = "AI_CHANGE_REJECTED"
+AI_DOCUMENT_CHANGED = "AI_DOCUMENT_CHANGED"
 
 #: Says where to go, not just what is wrong. This is the one error a new user
 #: is guaranteed to hit, so it is the one that has to teach.
@@ -209,13 +210,17 @@ def _ai_failures(secret: Optional[str] = None):
 # ---- state helpers -------------------------------------------------------
 
 
-def _document_snapshot() -> Tuple[Dict[str, Any], str, str]:
-    """``(tree, mode, title)``, deep-copied under the lock.
+def _document_snapshot() -> Tuple[Dict[str, Any], str, str, Any]:
+    """``(tree, mode, title, document)``, deep-copied under the lock.
 
     A copy, not the live tree: it is about to be walked and formatted on a
     worker thread that will outlive this request if the provider hangs, and
     that walk must not be able to see a half-applied edit -- or to be handed a
     structure another request is mutating.
+
+    ``document`` is the live ``state.core`` the copy was taken from. New, Open
+    and Import replace that object, so it says which document the model's
+    answer is about -- see :func:`_unchanged_since`.
     """
     state = get_state()
     with state.lock:
@@ -223,7 +228,21 @@ def _document_snapshot() -> Tuple[Dict[str, Any], str, str]:
             copy.deepcopy(state.core.get_data()),
             state.core.mode,
             state.core.title,
+            state.core,
         )
+
+
+def _unchanged_since(state, tree: Any, mode: str, document: Any) -> bool:
+    """Whether the live document is still the one ``_document_snapshot`` saw.
+
+    The lock is not held across a provider call, so the user can edit, undo,
+    or open another file while the model is working. Caller holds the lock.
+    """
+    return (
+        state.core is document
+        and state.core.mode == mode
+        and state.core.get_data() == tree
+    )
 
 
 class _TreeHolder:
@@ -419,7 +438,7 @@ def post_chat():
     message = _required_text(payload, "message")
 
     handler = ai_bridge.get_handler()
-    tree, mode, title = _document_snapshot()
+    tree, mode, title, _document = _document_snapshot()
 
     with _ai_failures():
         # set_fta_context is pure formatting, but it writes to the handler, so
@@ -451,7 +470,7 @@ def post_analyze():
     _require_configured()
 
     handler = ai_bridge.get_handler()
-    tree, mode, title = _document_snapshot()
+    tree, mode, title, _document = _document_snapshot()
 
     with _ai_failures():
         reply, changes = ai_bridge.run_ai_call(
@@ -615,6 +634,12 @@ def post_update():
     Both reproduce the desktop editor's Update FTA diagnostics
     (``desktop/src/FTA_Editor_UI.py:855-895``). Nothing is applied in either case.
 
+    A third refusal, 409 ``AI_DOCUMENT_CHANGED``: the model rewrote the tree
+    it was shown, and the lock is not held while it works. If the user edited
+    meanwhile, or New/Open replaced the document, installing the rewrite would
+    silently undo those edits -- or put this analysis into the other file,
+    under its title and path, for the next Save to write there.
+
     On success the tree is replaced wholesale under the lock, with an undo
     entry pushed first -- so a rewrite that turns out to be wrong is one
     Ctrl-Z away, which is what makes it reasonable to try at all.
@@ -622,7 +647,7 @@ def post_update():
     _require_configured()
 
     handler = ai_bridge.get_handler()
-    tree, mode, title = _document_snapshot()
+    tree, mode, title, document = _document_snapshot()
 
     with _ai_failures():
         assistant_text, updated = ai_bridge.run_ai_call(
@@ -655,6 +680,14 @@ def post_update():
 
     state = get_state()
     with state.lock:
+        if not _unchanged_since(state, tree, mode, document):
+            raise ApiError(
+                AI_DOCUMENT_CHANGED,
+                "The analysis changed while the AI was writing its update (an "
+                "edit, an undo, or another file opened), so the update was not "
+                "applied and nothing was changed. Run Update FTA again.",
+                409,
+            )
         state.push_undo()
         # Deep-copied on the way in: set_data stores the reference it is given
         # (FTA_Editor_core.py:53), and the parsed object is also about to be
