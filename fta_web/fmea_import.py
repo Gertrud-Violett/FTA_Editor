@@ -254,6 +254,12 @@ def _read_xlsx(path: Path, sheet: Optional[str]) -> Dict[str, Any]:
             raise FmeaImportError("'%s' has no sheet named '%s'." % (path.name, sheet),
                                   "unknown_sheet", sheet=str(sheet))
         worksheet = book[chosen]
+        # Read-only mode trusts the sheet's declared <dimension>, and some
+        # exporters write 'A1' whatever the data: only A1 was read. Read the
+        # rows that are actually there instead (openpyxl's documented remedy;
+        # missing rows still come back empty, so row numbers stay right).
+        if hasattr(worksheet, "reset_dimensions"):
+            worksheet.reset_dimensions()
         table = _tabulate(
             (index + 1, row)
             for index, row in enumerate(worksheet.iter_rows(values_only=True))

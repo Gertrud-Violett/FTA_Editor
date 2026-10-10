@@ -417,6 +417,44 @@ def test_fmea_lambda_with_european_grouping_is_not_divided_by_1000(tmp_path):
     assert tree["children"][0]["quant"]["lambda"] == pytest.approx(1.2005e-6, rel=1e-12)
 
 
+def _xlsx_with_dimension(path, ref):
+    """A workbook whose sheet XML declares ``<dimension ref=ref/>``, as some
+    exporters write it regardless of the data."""
+    import re
+    import zipfile
+
+    openpyxl = pytest.importorskip("openpyxl")
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.append(["ID", "Item", "Mode", "Rate"])
+    sheet.append(["F-1", "Pump", "Leak", 1e-6])
+    sheet.append([None, None, None, None])
+    sheet.append(["F-2", "Valve", "Stuck", 2e-6])
+    plain = path.with_suffix(".plain.xlsx")
+    book.save(plain)
+    with zipfile.ZipFile(plain) as zin, zipfile.ZipFile(path, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                data = re.sub(rb'<dimension ref="[^"]*"/>',
+                              b'<dimension ref="%s"/>' % ref.encode(), data)
+            zout.writestr(item, data)
+    return path
+
+
+def test_fmea_xlsx_with_a_wrong_dimension_record(tmp_path):
+    """openpyxl's read-only mode trusts the sheet's declared dimension: with
+    'A1' (written by some exporters) the table was just the 'ID' header --
+    every row silently missing."""
+    from fta_web import fmea_import
+
+    path = _xlsx_with_dimension(tmp_path / "dim.xlsx", "A1")
+    table = fmea_import.read_table(path)
+    assert table["columns"] == ["ID", "Item", "Mode", "Rate"]
+    assert table["rows"] == [["F-1", "Pump", "Leak", 1e-6], ["F-2", "Valve", "Stuck", 2e-6]]
+    assert table["rowNumbers"] == [2, 4]
+
+
 def test_docx_route_with_control_characters(files_client, tmp_path):
     pytest.importorskip("docx")
     open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))
