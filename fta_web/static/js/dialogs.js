@@ -177,6 +177,16 @@ export function el(tag, attrs, children) {
   return node;
 }
 
+/**
+ * True for a key the IME is still using. The Enter that confirms a Japanese
+ * conversion and the Escape that cancels it reach the page as keydown with
+ * isComposing set (Chrome on macOS and Linux; keyCode 229 elsewhere), and
+ * must not submit, close, commit or revert anything.
+ */
+export function isImeKey(event) {
+  return Boolean(event) && (event.isComposing === true || event.keyCode === 229);
+}
+
 /** Remove every child of `node`. */
 export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
@@ -646,11 +656,18 @@ export function fillGateOptions(select, value, advanced) {
   return select;
 }
 
+/**
+ * A plain decimal: digits, an optional fraction and exponent. Number() alone
+ * also reads 0x1, 0b1 and 0o1 as 1 (and 0x0 as 0), which the server's float()
+ * refuses and nobody means as a probability.
+ */
+const DECIMAL_TEXT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+
 /** Mirror of `routes/tree.py::_validate_probability`. */
 export function parseProbability(raw) {
   const text = String(raw === null || raw === undefined ? '' : raw).trim();
   const bad = () => ({ ok: false, message: t('dialog.probabilityRange') });
-  if (text === '') return bad();
+  if (!DECIMAL_TEXT.test(text)) return bad();
   const value = Number(text);
   if (!Number.isFinite(value)) return bad();
   if (value < 0 || value > 1) return bad();
@@ -766,7 +783,7 @@ export function createLinksEditor(options) {
   search.addEventListener('input', renderMatches);
   // Enter in the search box must not submit or confirm the surrounding dialog.
   search.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') event.preventDefault();
+    if (event.key === 'Enter' && !isImeKey(event)) event.preventDefault();
   });
 
   function normaliseLinks(raw) {
@@ -896,16 +913,25 @@ export function createLinksEditor(options) {
     commit(previous, t('links.removed', { n: targets.length, relation: relation }));
   }
 
+  /** Bumped by every reload(), so only the newest request's answer counts. */
+  let reloadSeq = 0;
+
   /** (Re)load the node list from the API. Failures are reported inline. */
   async function reload() {
+    // An older list answering last (New/Open while it was on the wire)
+    // offered the previous document's nodes as link targets.
+    const mine = ++reloadSeq;
     try {
-      choices = await fetchNodeList();
+      const list = await fetchNodeList();
+      if (mine !== reloadSeq) return;
+      choices = list;
       nameById.clear();
       for (const choice of choices) nameById.set(String(choice.id), choice.name);
       renderMatches();
       renderLists();
       setStatus('', false);
     } catch (err) {
+      if (mine !== reloadSeq) return;
       setStatus(errorMessage(err, t('links.loadFailed')), true);
       showError(err, t('links.loadFailed'));
     }
@@ -1018,6 +1044,8 @@ function createModal(config) {
     // underneath it with a single Escape.
     const overlays = document.querySelectorAll('.fta-modal-overlay');
     if (overlays.length && overlays[overlays.length - 1] !== overlay) return;
+    // Confirming or cancelling a conversion: the IME's key, not the dialog's.
+    if (isImeKey(event)) return;
     if (!overlay.contains(event.target) && event.key !== 'Escape') {
       // Focus escaped the dialog (browser chrome, a stray programmatic focus):
       // pull it back rather than letting the page behind take keystrokes.
@@ -1200,8 +1228,13 @@ export function createGateSelect(opts) {
  * Resolves with `{name, type, probability, logicGate, notes, links, gateType?}` or null if
  * the dialog was cancelled. No id is included and none may be sent: ids are
  * assigned server-side by `next_child_id` (routes/tree.py::create_node).
+ *
+ * `options.submit(fields)`, when given, creates the node: the dialog awaits it
+ * and stays open, with everything typed, until it resolves; a rejection is
+ * shown at the field the server named (or under the form) for another try.
  */
-export function openAddNodeDialog(parentId) {
+export function openAddNodeDialog(parentId, options) {
+  const opts = options && typeof options === 'object' ? options : {};
   const parent = parentId === undefined || parentId === null ? null : String(parentId);
 
   const nameField = field(t('details.name'), el('input', { type: 'text', value: '' }));
@@ -1215,6 +1248,7 @@ export function openAddNodeDialog(parentId) {
   const notesField = field(t('details.notes'), el('textarea', { rows: '4' }));
 
   const linksEditor = createLinksEditor({ selfId: null, links: [] });
+  const formError = el('p', { class: 'fta-field-error', role: 'alert', hidden: true });
 
   const modal = createModal({
     title: parent ? t('dialog.addNodeUnder', { id: parent }) : t('dialog.addNode'),
@@ -1229,6 +1263,7 @@ export function openAddNodeDialog(parentId) {
   modal.body.appendChild(el('div', { class: 'fta-row-2' }, [gateField.element]));
   modal.body.appendChild(notesField.element);
   modal.body.appendChild(linksEditor.element);
+  modal.body.appendChild(formError);
 
   modal.footer.appendChild(
     el('button', {
@@ -1238,15 +1273,39 @@ export function openAddNodeDialog(parentId) {
       onclick: () => modal.close(null),
     })
   );
-  modal.footer.appendChild(
-    el('button', { type: 'button', class: 'fta-btn is-primary', text: t('dialog.ok'), onclick: () => submit() })
-  );
+  const okButton = el('button', {
+    type: 'button',
+    class: 'fta-btn is-primary',
+    text: t('dialog.ok'),
+    onclick: () => submit(),
+  });
+  modal.footer.appendChild(okButton);
+
+  /** The server's field names, mapped to this dialog's controls. */
+  const fieldFor = {
+    name: nameField,
+    type: typeField,
+    probability: probabilityField,
+    logicGate: gateField,
+    gateType: gateField,
+    notes: notesField,
+  };
+
+  function setFormError(message) {
+    formError.textContent = message || '';
+    formError.hidden = !message;
+  }
+
+  let submitting = false;
 
   function submit() {
+    if (submitting) return;
     nameField.setError('');
     typeField.setError('');
     probabilityField.setError('');
     gateField.setError('');
+    notesField.setError('');
+    setFormError('');
 
     const name = sanitizeName(nameField.control.value);
     if (!name) {
@@ -1283,7 +1342,32 @@ export function openAddNodeDialog(parentId) {
     };
     // 1.7 gates travel as gateType; the server projects logicGate from it.
     if (GATES.indexOf(gate.value) === -1) result.gateType = gate.value;
-    modal.close(result);
+    if (typeof opts.submit !== 'function') {
+      modal.close(result);
+      return;
+    }
+    // The caller creates the node. Closing first lost everything typed when
+    // the server refused it, so the dialog waits, and says why on a refusal.
+    submitting = true;
+    okButton.disabled = true;
+    Promise.resolve()
+      .then(() => opts.submit(result))
+      .then(
+        () => modal.close(result),
+        (err) => {
+          submitting = false;
+          okButton.disabled = false;
+          const message = errorMessage(err, t('dialog.somethingWrong'));
+          const named = errorField(err);
+          const target = named && Object.prototype.hasOwnProperty.call(fieldFor, named) ? fieldFor[named] : null;
+          if (target) {
+            target.setError(message);
+            target.control.focus();
+          } else {
+            setFormError(message);
+          }
+        }
+      );
   }
 
   linksEditor.reload();

@@ -42,6 +42,7 @@ import {
   formatProbability,
   injectStyles,
   isAdvancedMode,
+  isImeKey,
   normalizeGate,
   parseProbability,
   sanitizeName,
@@ -133,10 +134,17 @@ const FIELDS = [
  * Every PATCH from this panel runs through one chain so a blur commit can
  * never overtake an earlier one, and `fta:flush` (Save, exports) can await the
  * tail. `sequence` numbers the requests so only the newest response is
- * applied: the server view is cumulative, so an older one is stale by then.
+ * applied: the server view is cumulative, so an older one is stale by then --
+ * unless the newest is refused, when the last success (`heldBack`) is.
  */
 let pending = Promise.resolve();
 let sequence = 0;
+/**
+ * The newest successful response not installed because a newer commit was
+ * queued behind it. If that newer commit is refused, this is the server's
+ * view after all and goes into the store.
+ */
+let heldBack = null;
 
 /** The stored value of a field, as the form displays it. */
 function displayValue(node, key) {
@@ -492,19 +500,22 @@ export function initDetails(container) {
       if (node) updateExtras(node, true);
     }
   });
-  const quiet = () => {
-    /* reported by send() */
+  // A refused change is reported by send(); the select then goes back to what
+  // is stored instead of showing a value the node does not have.
+  const revertExtras = () => {
+    const node = currentNode();
+    if (node) updateExtras(node, false);
   };
   extras.transferSelect.addEventListener('change', () => {
     const value = extras.transferSelect.value;
-    send({ transferTo: value === '' ? null : value }).catch(quiet);
+    send({ transferTo: value === '' ? null : value }).catch(revertExtras);
   });
   extras.kindSelect.addEventListener('change', () => {
     const value = extras.kindSelect.value;
-    send({ eventKind: value === 'basic' ? null : value }).catch(quiet);
+    send({ eventKind: value === 'basic' ? null : value }).catch(revertExtras);
   });
   extras.houseSelect.addEventListener('change', () => {
-    send({ houseState: extras.houseSelect.value === 'on' }).catch(quiet);
+    send({ houseState: extras.houseSelect.value === 'on' }).catch(revertExtras);
   });
 
   const linksTitle = el('h3', { class: 'fta-details-links-title' });
@@ -606,9 +617,22 @@ export function initDetails(container) {
     const request = pending.then(async () => {
       try {
         const result = await api.patch('/nodes/' + encodeURIComponent(id), patch);
-        if (seq === sequence) store.applyMutation(result);
+        if (seq === sequence) {
+          heldBack = null;
+          store.applyMutation(result);
+        } else {
+          heldBack = result;
+        }
         return result;
       } catch (err) {
+        // Earlier successes were held back for this, the newest commit. It
+        // was refused, so install the last of them: otherwise the store kept
+        // a view the server had replaced (old name shown, badge "Saved").
+        if (seq === sequence && heldBack) {
+          const view = heldBack;
+          heldBack = null;
+          store.applyMutation(view);
+        }
         const fallback = t('details.saveFailed');
         const message = errorMessage(err, fallback);
         setBanner(message);
@@ -701,6 +725,19 @@ export function initDetails(container) {
     return patch;
   }
 
+  /**
+   * After a refused commit, a text box keeps what was typed, also when the
+   * view send() installed for an earlier, held-back success repopulated it.
+   */
+  function restoreTyping(key, nodeId, typed) {
+    const field = fields[key];
+    const now = currentNode();
+    if (field.spec.kind === 'gate' || !now || String(now.id) !== nodeId) return;
+    if (document.activeElement === field.control || field.control.value === typed) return;
+    field.control.value = typed;
+    syncDirty(key);
+  }
+
   function commitField(key) {
     const node = currentNode();
     const field = fields[key];
@@ -721,6 +758,7 @@ export function initDetails(container) {
     }
     const patch = key === 'logicGate' ? gatePatch(node, result.value) : { [key]: result.value };
     const nodeId = String(node.id);
+    const typed = field.control.value;
     send(patch).then(
       () => {
         // The store already holds the response, so the box is clean again
@@ -729,7 +767,15 @@ export function initDetails(container) {
         if (now && String(now.id) === nodeId) populate(key, displayValue(now, key));
       },
       () => {
-        /* reported by send(); the typed value stays (and stays dirty) so it can be corrected */
+        // Reported by send(). Typed text stays (and stays dirty) so it can be
+        // corrected; a refused gate goes back to the stored one, so the select
+        // shows what the node has and choosing the gate again retries.
+        restoreTyping(key, nodeId, typed);
+        if (field.spec.kind !== 'gate') return;
+        const now = currentNode();
+        if (!now || String(now.id) !== nodeId) return;
+        populate(key, displayValue(now, key));
+        updateExtras(now, false);
       }
     );
   }
@@ -750,6 +796,8 @@ export function initDetails(container) {
         syncDirty(key);
       });
       control.addEventListener('keydown', (event) => {
+        // Enter/Escape that confirm or cancel a Japanese conversion stay the IME's.
+        if (isImeKey(event)) return;
         if (event.key === 'Enter' && field.spec.kind !== 'textarea') {
           event.preventDefault();
           control.blur();

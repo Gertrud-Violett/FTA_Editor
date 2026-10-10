@@ -1,7 +1,9 @@
 /**
  * tabs/analysis_common.js -- helpers shared by the four analysis tabs
- * (quant, cutsets, importance, uncertainty). Not a tab itself: host.js only
- * imports the nine ids it knows, so this file is never mounted.
+ * (quant, cutsets, importance, uncertainty), and csvCell(), the one CSV cell
+ * writer of every tab export (trace.js and report.js import it too). Not a
+ * tab itself: host.js only imports the nine ids it knows, so this file is
+ * never mounted.
  *
  * Registers all four analysis catalogs (each tab also registers its own, which
  * is harmless: registerStrings keeps the first, identical, definition) and
@@ -181,6 +183,24 @@ export function formatPlain(value) {
     return num.toExponential(6).replace(/\.?0+e/, 'e').replace('e+', 'e');
   }
   return String(Number(num.toPrecision(10)));
+}
+
+/**
+ * One CSV cell, for every tab's CSV export and "Copy CSV" (cutsets.js,
+ * trace.js, report.js). Quoted when it holds a comma, a quote or a line break.
+ * Text whose first character is = + - @, a tab or a carriage return gets a
+ * leading apostrophe (OWASP CSV injection): a spreadsheet would run "=1+1" as
+ * a formula and show "+24V supply fails" as #NAME?. Numbers -- numeric values,
+ * and text that reads as a finite number ("-0.12", "1e-6") -- are never
+ * prefixed, so numeric columns stay numeric. Arrays are joined with "; ";
+ * null and undefined are empty.
+ */
+export function csvCell(value) {
+  if (value === null || value === undefined) return '';
+  let text = Array.isArray(value) ? value.join('; ') : String(value);
+  const numeric = typeof value === 'number' || /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text.trim());
+  if (!numeric && /^[=+\-@\t\r]/.test(text)) text = "'" + text;
+  return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
 
 /** Copy text to the clipboard; resolves true on success. */

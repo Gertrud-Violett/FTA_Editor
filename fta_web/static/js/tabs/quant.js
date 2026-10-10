@@ -60,6 +60,16 @@ function writeLambdaUnit(unit) {
   }
 }
 
+/**
+ * The message key for a value outside a field's bounds: [min, max], (min, ∞)
+ * when `exclusive`, else [min, ∞). It must state the real constraint: q = 2
+ * and a mission time of 0 both used to read "Enter a number of at least 0."
+ */
+export function invalidKey({ exclusive = false, max = Infinity } = {}) {
+  if (Number.isFinite(max)) return 'quant.invalidRange';
+  return exclusive ? 'quant.invalidAbove' : 'quant.invalid';
+}
+
 function isLeaf(node) {
   return !(node && Array.isArray(node.children) && node.children.length);
 }
@@ -167,6 +177,7 @@ export function mount(panel, ctx) {
     input.addEventListener('blur', () => commitField(field));
     input.addEventListener('input', () => setInvalid(field, ''));
     input.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key === 'Enter') {
         event.preventDefault();
         input.blur();
@@ -202,13 +213,14 @@ export function mount(panel, ctx) {
   }
 
   function numberParser(min, { exclusive = false, max = Infinity, allowBlank = true } = {}) {
+    const message = () => t(invalidKey({ exclusive, max }), { min, max });
     return (raw) => {
       const value = parseNumber(raw);
       if (value === null) {
-        return allowBlank ? { ok: true, value: null } : { ok: false, message: t('quant.invalid', { min }) };
+        return allowBlank ? { ok: true, value: null } : { ok: false, message: message() };
       }
       if (Number.isNaN(value) || value < min || (exclusive && value === min) || value > max) {
-        return { ok: false, message: t('quant.invalid', { min }) };
+        return { ok: false, message: message() };
       }
       return { ok: true, value };
     };
@@ -539,6 +551,7 @@ export function mount(panel, ctx) {
     const tr = event.target instanceof Element ? event.target.closest('tr[data-id]') : null;
     if (!tr) return;
     if (event.type === 'keydown') {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
     }

@@ -32,7 +32,9 @@
  *        delete -> openDeleteDialog | confirmDelete | deleteNode
  *        new    -> openNewDialog | confirmNew | newAnalysis
  *      Signature: fn(id) -- parentId for add, nodeId for edit/delete, nothing
- *      for new. A returned promise is awaited.
+ *      for new. A returned promise is awaited. Add also gets {submit}: the
+ *      dialog calls submit(fields) to create the node and stays open until
+ *      it resolves.
  *
  * If neither exists the shell falls back to its own minimal implementation and
  * says so out loud; nothing fails silently. Two of those fallbacks are the
@@ -183,6 +185,7 @@ const STRINGS = {
     'action.aiSettings': 'AI settings',
 
     'panel.tree': 'Fault Tree',
+    'panel.treeEta': 'Event Tree',
     'panel.diagram': 'Live Diagram Preview',
     'panel.details': 'Node Details',
     'panel.ai': 'AI Assistant',
@@ -255,6 +258,12 @@ const STRINGS = {
       'PNG export needs a system Graphviz, which was not found. Install Graphviz '
       + "(graphviz.org) and restart the editor; until then the diagram panel's "
       + 'PNG button renders in the browser instead.',
+    'api.noSession': 'This browser tab has no editor session, so it cannot reach the server.',
+    'api.network': 'Could not reach the editor server. It may have been stopped in the terminal.',
+    'api.badResponse': 'The server returned an unexpected response (HTTP {status}).',
+    'api.httpFailed': 'Request failed with HTTP {status}.',
+    'api.exportFailed': 'The export failed (HTTP {status}).',
+    'store.panelFailed': 'A panel failed to update: {error}',
 
     'confirm.delete': 'Delete "{name}" and everything beneath it?',
     'confirm.discard': 'Discard the unsaved changes and start a new analysis?',
@@ -316,7 +325,7 @@ const STRINGS = {
     'cap.foot': 'Restart the editor after installing anything, so it can be detected.',
     'cap.unknown': 'Not known yet.',
     'cap.chip.ok': 'All features available',
-    'cap.chip.graphviz': 'Diagram quality limited',
+    'cap.chip.graphviz': 'PNG export limited',
     'cap.chip.excel': 'Excel export unavailable',
     'cap.chip.several': '{n} features limited',
     'cap.chip.ai': 'Set up AI',
@@ -326,12 +335,12 @@ const STRINGS = {
     'cap.state.ready': 'Ready',
     'cap.state.optional': 'Optional',
     'cap.state.unknown': 'Unknown',
-    'cap.dot.name': 'Diagram rendering',
+    'cap.dot.name': 'High-resolution PNG export',
     'cap.dot.okState': 'System Graphviz',
     'cap.dot.badState': 'Browser renderer',
-    'cap.dot.ok': 'Diagrams are drawn by the Graphviz installed on this machine, with exact font metrics and native high-resolution PNG export.',
-    'cap.dot.bad': 'Diagrams are drawn in the browser. Labels in Japanese, Chinese and Korean are sized from estimated metrics rather than the real font, so their boxes may sit a little loose or tight, and PNG export is rasterised here rather than natively at 300 dpi. Everything else is identical.',
-    'cap.dot.fix': 'Install Graphviz from graphviz.org and restart; the editor will use it automatically.',
+    'cap.dot.ok': 'The diagram on screen is drawn in the browser by the bundled WebAssembly Graphviz. The Graphviz installed on this machine draws the PNG export of the "Compact boxes" style natively at 300 dpi, with exact font metrics.',
+    'cap.dot.bad': 'The diagram on screen is the same either way: the bundled WebAssembly Graphviz draws it in the browser. Without a system Graphviz, the PNG export of the "Compact boxes" style is rasterised here from that drawing rather than drawn natively at 300 dpi, so label boxes (most visibly Japanese, Chinese and Korean ones) may sit a little loose or tight. "Standard symbols" PNGs always come from the browser.',
+    'cap.dot.fix': 'Install Graphviz from graphviz.org and restart; the editor will use it for PNG export automatically.',
     'cap.excel.name': 'Excel export',
     'cap.excel.ok': 'Analyses can be exported as .xlsx.',
     'cap.excel.bad': 'Excel export is unavailable because the openpyxl package is not installed. JSON and XML export are unaffected.',
@@ -608,6 +617,7 @@ const STRINGS = {
     'action.aiSettings': 'AI設定',
 
     'panel.tree': 'フォルトツリー',
+    'panel.treeEta': 'イベントツリー',
     'panel.diagram': '図プレビュー',
     'panel.details': 'ノード詳細',
     'panel.ai': 'AIアシスタント',
@@ -680,6 +690,12 @@ const STRINGS = {
       'PNG 出力にはシステムの Graphviz が必要ですが、見つかりませんでした。'
       + 'Graphviz (graphviz.org) をインストールしてエディタを再起動してください。'
       + 'それまでは図パネルの PNG ボタンがブラウザ内で書き出します。',
+    'api.noSession': 'このブラウザーのタブにはエディターのセッションがないため、サーバーに接続できません。',
+    'api.network': 'エディターのサーバーに接続できませんでした。ターミナルで停止された可能性があります。',
+    'api.badResponse': 'サーバーから予期しない応答が返されました (HTTP {status})。',
+    'api.httpFailed': 'リクエストが失敗しました (HTTP {status})。',
+    'api.exportFailed': 'エクスポートに失敗しました (HTTP {status})。',
+    'store.panelFailed': 'パネルを更新できませんでした: {error}',
 
     'confirm.delete': '「{name}」と配下のノードを削除しますか？',
     'confirm.discard': '未保存の変更を破棄して新規作成しますか？',
@@ -738,7 +754,7 @@ const STRINGS = {
     'cap.foot': 'インストール後はエディタを再起動してください。再起動時に検出されます。',
     'cap.unknown': 'まだ確認できていません。',
     'cap.chip.ok': 'すべての機能が利用可能',
-    'cap.chip.graphviz': '図の品質に制限あり',
+    'cap.chip.graphviz': 'PNG出力に制限あり',
     'cap.chip.excel': 'Excel出力が利用不可',
     'cap.chip.several': '{n} 件の機能に制限あり',
     'cap.chip.ai': 'AIを設定',
@@ -748,12 +764,12 @@ const STRINGS = {
     'cap.state.ready': '準備完了',
     'cap.state.optional': '任意',
     'cap.state.unknown': '不明',
-    'cap.dot.name': '図の描画',
+    'cap.dot.name': '高解像度PNG出力',
     'cap.dot.okState': 'システムのGraphviz',
     'cap.dot.badState': 'ブラウザ内描画',
-    'cap.dot.ok': 'このマシンにインストールされたGraphvizで図を描画します。フォントメトリクスは正確で、PNGは高解像度でネイティブ出力されます。',
-    'cap.dot.bad': '図はブラウザ内で描画します。日本語・中国語・韓国語のラベルは実際のフォントではなく推定メトリクスで幅を求めるため、外枠がやや緩く、または詰まって見えることがあります。PNG出力も300 dpiのネイティブ出力ではなくここでラスタライズします。それ以外は同一です。',
-    'cap.dot.fix': 'graphviz.org からGraphvizをインストールして再起動してください。自動的に使用されます。',
+    'cap.dot.ok': '画面上の図は、同梱のWebAssembly版Graphvizがブラウザ内で描画します。このマシンにインストールされたGraphvizは、「コンパクト（箱）」スタイルのPNGを正確なフォントメトリクスにより300 dpiでネイティブに出力します。',
+    'cap.dot.bad': '画面上の図はどちらの場合も同じで、同梱のWebAssembly版Graphvizがブラウザ内で描画します。システムのGraphvizがない場合、「コンパクト（箱）」スタイルのPNG出力は300 dpiのネイティブ描画ではなく、その図をここでラスタライズしたものになるため、ラベルの外枠（特に日本語・中国語・韓国語）がやや緩く、または詰まって見えることがあります。「標準記号」スタイルのPNGは常にブラウザ内で出力します。',
+    'cap.dot.fix': 'graphviz.org からGraphvizをインストールして再起動してください。PNG出力に自動的に使用されます。',
     'cap.excel.name': 'Excel出力',
     'cap.excel.ok': '解析を .xlsx 形式で出力できます。',
     'cap.excel.bad': 'openpyxl パッケージが未インストールのため、Excel出力は利用できません。JSONとXMLの出力には影響しません。',
@@ -1914,7 +1930,10 @@ async function commitMetadata() {
   try {
     const result = await api.post('/metadata', metadataFromInputs());
     store.applyMutation(result);
-    syncMetadataInputs(true); // the server sanitizes the title; show the truth
+    // The server sanitizes the title; show the truth -- but not in a field
+    // typed in since: after Title, Tab, Date the answer can arrive mid-typing,
+    // and forcing it spliced the old date into the new one, which was saved.
+    syncMetadataInputs();
     toast(t('msg.metadataSaved'), 'ok');
   } catch (err) {
     showError(err);
@@ -2038,13 +2057,23 @@ async function actionAdd() {
   const fn = dialogFn('add');
   if (fn) {
     try {
-      const fields = await fn(parentId);
-      // null means the dialog was cancelled -- the fields-collecting dialog
-      // does not talk to the server itself, so the actual creation happens
-      // here, exactly like actionEdit hands off to details.js and actionNew
-      // posts to /new.
-      if (!fields) return;
-      const result = await api.post('/nodes', { parentId, ...fields });
+      // The dialog posts through `submit` and stays open, everything typed
+      // intact, until the server has made the node (closing first lost all
+      // of it on a refusal). It resolves null when cancelled; a dialog
+      // without the hook hands the fields back to be posted here. The store
+      // is updated only once the dialog is gone, so its focus restore still
+      // lands on the row that opened it.
+      let posting = null;
+      const submit = (values) => {
+        posting = api.post('/nodes', { parentId, ...values });
+        return posting;
+      };
+      const fields = await fn(parentId, { submit });
+      let result = null;
+      // Cancelled with the POST on the wire: the node may still have been made.
+      if (posting) result = await posting.catch(() => null);
+      else if (fields) result = await api.post('/nodes', { parentId, ...fields });
+      if (!result) return;
       store.applyMutation(result);
       if (result.nodeId) store.select(result.nodeId);
     } catch (err) {
@@ -2134,6 +2163,11 @@ async function actionDelete() {
 }
 
 async function actionHistory(kind) {
+  // A click on Undo/Redo blurs the field being typed in, which starts its
+  // commit. Wait for it, so the step lands first and Undo reverts it, instead
+  // of racing it on the server: when /undo won, the typing was applied on top
+  // and wiped the redo step of the edit Undo had just reverted.
+  await flushPendingEdits();
   // The store knows whether there is anything to undo/redo (the toolbar
   // buttons are disabled on it). Asking the server anyway got a refused 400,
   // which Chrome logs as a console error, for every Ctrl+Z on a fresh document.
@@ -2290,6 +2324,11 @@ async function adoptDocument(payload) {
 }
 
 async function actionLoad() {
+  // As in actionNew: a field still being typed in is part of "unsaved
+  // changes". The click on Load blurred it and its commit is on the wire;
+  // checking `dirty` before it lands skipped the question below and the
+  // typing was lost to the file being opened.
+  await flushPendingEdits();
   // The backend has no unsaved-changes guard on open (only /new has one), so
   // the guard lives here -- ask before the picker, not after, so a user who
   // meant to save first has not already picked a file.
@@ -2396,6 +2435,8 @@ async function fetchDownload(url) {
 
   const headers = {};
   headers[TOKEN_HEADER] = token;
+  // As api.js does: the server words its errors in the editor's language.
+  headers['Accept-Language'] = language;
 
   let response;
   try {
@@ -2409,7 +2450,7 @@ async function fetchDownload(url) {
   } catch (cause) {
     throw new ApiError(
       'NETWORK_ERROR',
-      'Could not reach the editor server. It may have been stopped in the terminal.',
+      t('api.network'),
       { url, cause: String((cause && cause.message) || cause) }
     );
   }
@@ -2445,7 +2486,7 @@ async function fetchDownload(url) {
       }
       throw new ApiError(
         envelope.code || 'HTTP_' + response.status,
-        envelope.message || 'The export failed (HTTP ' + response.status + ').',
+        envelope.message || t('api.exportFailed', { status: response.status }),
         envelope.detail || null,
         response.status
       );
@@ -2537,6 +2578,11 @@ async function actionRenderImage() {
       toast(t('msg.downloaded', { name }), 'ok');
       return;
     }
+    // No server fallback for this style: native `dot` would draw the
+    // placeholder shapes instead of the symbols. Say why nothing was saved.
+    const drawn = typeof diagramPanel.hasDiagram === 'function' && diagramPanel.hasDiagram();
+    toast(t(drawn ? 'diagram.pngFailed' : 'diagram.nothingToExport'), 'warn');
+    return;
   }
   try {
     const result = await api.post('/render', {
@@ -2726,6 +2772,7 @@ function wireTopbar() {
     const el = $(sel);
     el.addEventListener('change', queueMetadata);
     el.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // the IME's Enter/Escape
       if (event.key === 'Enter') el.blur();
       else if (event.key === 'Escape') {
         // Escape discards the typing, as in the Details and analysis forms,
@@ -2792,10 +2839,24 @@ function endBoot() {
 // shell rendering (everything outside tree.js / details.js)
 // ---------------------------------------------------------------------------
 
+/**
+ * The tree panel is titled for the mode, as on the desktop: "Fault Tree" in
+ * FTA, "Event Tree" in ETA. The key goes on data-i18n too, so a language
+ * switch (applyLanguage) translates the right one.
+ */
+function syncTreeTitle(state) {
+  const title = $('#tree-panel-title');
+  if (!title) return;
+  const key = state.metadata && state.metadata.mode === 'ETA' ? 'panel.treeEta' : 'panel.tree';
+  title.dataset.i18n = key;
+  title.textContent = t(key);
+}
+
 function renderShell(state) {
   if (!state) return;
 
   syncMetadataInputs();
+  syncTreeTitle(state);
 
   const dirty = Boolean(state.dirty);
   const badge = $('#dirty');
@@ -2856,6 +2917,8 @@ function modalOpen() {
 }
 
 function onKeyDown(event) {
+  // A key the IME is using (confirming or cancelling a conversion) is not ours.
+  if (event.isComposing || event.keyCode === 229) return;
   // Escape first: it has to work from inside a modal's own text fields.
   if (event.key === 'Escape') {
     const escape = new CustomEvent('fta:escape', { cancelable: true });
@@ -2868,10 +2931,16 @@ function onKeyDown(event) {
   // Boot gate: no shortcut may act before every panel has loaded. Escape
   // (above) stays live so a toast can still be dismissed.
   if (isBooting()) return;
-  if (modalOpen()) return;
 
   const ctrl = event.ctrlKey || event.metaKey;
   const key = (event.key || '').toLowerCase();
+
+  if (modalOpen()) {
+    // A dialog has the keyboard and no shortcut acts behind it -- but Ctrl+S
+    // and Ctrl+Shift+S must not fall through to the browser's "Save page as".
+    if (ctrl && !event.altKey && key === 's') event.preventDefault();
+    return;
+  }
 
   // Ctrl+S is checked before the text-entry guard below: saving has to work
   // with the caret still in the Title box, and actionSave flushes that field
@@ -2977,7 +3046,7 @@ async function boot() {
   window.addEventListener(SESSION_INVALID_EVENT, onSessionInvalid);
   window.addEventListener('fta:error', (event) => {
     const detail = (event && event.detail) || {};
-    toast(detail.message || 'Something went wrong.', 'error', detail.code || null);
+    toast(detail.message || t('dialog.somethingWrong'), 'error', detail.code || null);
   });
   window.addEventListener('fta:toast', (event) => {
     const detail = (event && event.detail) || {};
@@ -3002,10 +3071,12 @@ async function boot() {
   });
   window.addEventListener('beforeunload', (event) => {
     // Typed-but-not-committed text is not in store.state.dirty yet: details.js
-    // marks such a field data-dirty, and an open inline rename is one too.
+    // marks such a field data-dirty, an open inline rename is one too, and so
+    // is a Title or Date box that differs from the stored metadata.
     const unsavedField =
       document.querySelector('#details-root [data-dirty="true"]') ||
-      document.querySelector('#tree-root .fta-tree-rename');
+      document.querySelector('#tree-root .fta-tree-rename') ||
+      (store.state && metadataChanged());
     if ((store.state && store.state.dirty) || unsavedField) {
       event.preventDefault();
       event.returnValue = '';

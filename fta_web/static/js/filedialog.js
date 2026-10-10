@@ -54,7 +54,7 @@
  * to that module.
  */
 import { api } from './api.js';
-import { clear, confirmDialog, el, injectStyles, restoreFocus } from './dialogs.js';
+import { clear, confirmDialog, el, injectStyles, isImeKey, restoreFocus } from './dialogs.js';
 
 /* ------------------------------------------------------------- shell glue -- */
 
@@ -527,6 +527,9 @@ export function openFileDialog(options) {
   async function navigate(target, quiet) {
     if (!target) return false;
     const mine = ++generation;
+    // A path typed into the path box while this listing is on its way (the
+    // first one can be slow) stays; only an untouched box shows the folder.
+    const pathBefore = pathInput.value;
     setBusy(true);
     if (!quiet) setMessage(t('file.loading'), 'busy');
     try {
@@ -544,7 +547,7 @@ export function openFileDialog(options) {
         .filter((entry) => matchesExtension(entry.name, extensions))
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       renderList();
-      pathInput.value = cwd;
+      if (pathInput.value === pathBefore) pathInput.value = cwd;
       // fsbrowser caps a listing at MAX_LIST_ENTRIES and says so. A silently
       // half-listed folder is exactly how a user concludes their file is gone.
       setMessage(res.truncated ? t('file.truncated') : '', res.truncated ? 'warn' : null);
@@ -763,6 +766,9 @@ export function openFileDialog(options) {
     // Only the top-most modal reacts, so the overwrite confirmation's Escape
     // cannot also close this dialog underneath it.
     if (!isTopMost()) return;
+    // Confirming or cancelling a conversion in the name or path box is the
+    // IME's: an Enter here would save under a half-typed name.
+    if (isImeKey(event)) return;
 
     if (!overlay.contains(event.target) && event.key !== 'Escape') {
       // Focus escaped (browser chrome, a stray programmatic focus): pull it
@@ -882,9 +888,17 @@ export function openFileDialog(options) {
     if (home && home.cwd) candidates.push(home.cwd);
     if (home && home.root) candidates.push(home.root);
 
+    // The first listing can be slow, and by the time it lands the user may
+    // already be typing a name or a path: taking the focus then (or
+    // re-selecting the stem) made the next keystrokes replace what they had
+    // typed -- "typed_name.json" was saved as "name.json".
+    const typing = () =>
+      document.activeElement === nameInput || document.activeElement === pathInput;
+
     for (const candidate of candidates) {
       if (closed) return;
       if (await navigate(candidate)) {
+        if (typing()) return;
         // Save mode starts in the name box with the stem selected, so typing
         // replaces the name and Enter saves; open mode starts in the list.
         if (mode === 'save') {
@@ -899,7 +913,7 @@ export function openFileDialog(options) {
     }
 
     if (!closed && homeError) setMessage(errorText(homeError, 'file.errList'), 'error');
-    if (!closed) cancelButton.focus();
+    if (!closed && !typing()) cancelButton.focus();
   })();
 
   return done;

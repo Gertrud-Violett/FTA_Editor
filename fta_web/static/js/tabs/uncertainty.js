@@ -37,6 +37,15 @@ const RUN_MAX_N = 100000;
 const SAVE_MAX_N = 1000000;
 const MAX_TIME = 60;
 
+/**
+ * A seed the browser can send exactly: a whole number from 0 up to
+ * Number.MAX_SAFE_INTEGER, or null (blank). The server takes up to 2^63 - 1,
+ * but a larger number typed here would silently become a different seed.
+ */
+export function seedIsValid(seed) {
+  return seed === null || (Number.isSafeInteger(seed) && seed >= 0);
+}
+
 function svg(tag, attrs, text) {
   const node = document.createElementNS(SVG_NS, tag);
   for (const [key, value] of Object.entries(attrs || {})) {
@@ -99,7 +108,7 @@ export function mount(panel, ctx) {
     const time = parseNumber(inTime.value);
     const effN = n === null ? defaults().n : n;
     const badN = Number.isNaN(n) || !Number.isInteger(effN) || effN < 1 || effN > RUN_MAX_N;
-    const badSeed = Number.isNaN(seed) || (seed !== null && (!Number.isInteger(seed) || seed < 0));
+    const badSeed = !seedIsValid(seed);
     const badTime = Number.isNaN(time) || (time !== null && (time <= 0 || time > MAX_TIME));
     const overRunMax = badN && Number.isInteger(effN) && effN > RUN_MAX_N;
     markInvalid(inN, badN, overRunMax ? t('unc.runMax', { max: RUN_MAX_N }) : '');
@@ -119,7 +128,7 @@ export function mount(panel, ctx) {
     const n = parseNumber(inN.value);
     const seed = parseNumber(inSeed.value);
     const badN = Number.isNaN(n) || (n !== null && (!Number.isInteger(n) || n < 1 || n > SAVE_MAX_N));
-    const badSeed = Number.isNaN(seed) || (seed !== null && (!Number.isInteger(seed) || seed < 0));
+    const badSeed = !seedIsValid(seed);
     markInvalid(inN, badN);
     markInvalid(inSeed, badSeed);
     if (badN || badSeed) return;
@@ -158,11 +167,16 @@ export function mount(panel, ctx) {
     paintToolbar();
     tick();
     const gen = docGen;
+    // The server samples the tree as it is now. An edit made while the run is
+    // in flight (store identity, as tabs/host.js tracks it) leaves the answer
+    // describing the tree before that edit: show it as stale.
+    const sampled = ctx.store.state || {};
     try {
       const res = await ctx.api.post('/analysis/uncertainty', body);
       if (gen === docGen) {
         result = res;
-        stale = false;
+        const now = ctx.store.state || {};
+        stale = now.tree !== sampled.tree || now.analysis !== sampled.analysis;
       }
     } catch (err) {
       if (gen === docGen) reportError(ctx, err);
@@ -339,6 +353,7 @@ export function mount(panel, ctx) {
       before = { value: input.value, edited: edited.has(input) };
     });
     input.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key === 'Enter') {
         event.preventDefault();
         run();

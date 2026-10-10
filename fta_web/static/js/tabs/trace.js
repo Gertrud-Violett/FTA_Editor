@@ -26,6 +26,7 @@
 import { clear, el, injectStyles } from '../dialogs.js';
 import { TRACE_STATUS } from '../schema.js';
 import strings from '../i18n/trace.js';
+import { csvCell } from './analysis_common.js';
 
 export const id = 'trace';
 export const advanced = true;
@@ -103,11 +104,6 @@ function recordOf(entry) {
     evidence: textOf(trace.evidence),
     tags: Array.isArray(trace.tags) ? trace.tags.map(String) : [],
   };
-}
-
-function csvCell(value) {
-  const text = Array.isArray(value) ? value.join('; ') : textOf(value);
-  return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
 
 async function copyText(text) {
@@ -361,6 +357,7 @@ export function mount(panel, ctx) {
   }
 
   function onEditorKey(event) {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
     if (event.key === 'Enter') {
       event.preventDefault();
       finishEdit(true, true);
@@ -444,6 +441,7 @@ export function mount(panel, ctx) {
   }
 
   function onTableKey(event) {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
     const td = event.target instanceof Element ? event.target.closest('td.trace-edit') : null;
     if (!td || td.classList.contains('is-editing')) return;
     if (event.key === 'Enter' || event.key === 'F2') {
