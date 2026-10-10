@@ -139,6 +139,20 @@ def test_report_that_cannot_be_written_fails_that_file_only(tmp_path, capsys):
     assert "cannot write" in json.loads(captured.out)["error"]
 
 
+def test_out_never_overwrites_an_input_file(tmp_path, capsys):
+    """``quantify plant.json --json --out plant.json`` replaced the analysis
+    with the results, silently (exit 0): the tree was gone."""
+    doc = write_doc(tmp_path / "plant.json")
+    before = doc.read_bytes()
+    assert cli.main(["quantify", str(doc), "--json", "--out", str(doc)]) == 2
+    assert "input" in capsys.readouterr().err
+    assert doc.read_bytes() == before
+    # the same file under another spelling
+    other = tmp_path / "x" / ".." / "plant.json"
+    assert cli.main(["validate", str(doc), "--out", str(other)]) == 2
+    assert doc.read_bytes() == before
+
+
 # ---- IO-19: terminal control sequences from a file -------------------------------------
 
 

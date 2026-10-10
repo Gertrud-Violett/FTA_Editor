@@ -530,6 +530,16 @@ def _stdout_unicode() -> bool:
     return encoding.replace("-", "").replace("_", "").startswith("utf")
 
 
+def _same_file(a: Any, b: Any) -> bool:
+    """Whether paths ``a`` and ``b`` name one file (any spelling or link)."""
+    try:
+        if os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b):
+            return True
+    except OSError:
+        pass
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
 def _write(path: Path, text: str) -> bool:
     """Write ``text`` to ``path``; False (and a message) when that fails --
     ``--out`` under a regular file, no permission, a full disk."""
@@ -576,6 +586,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         out_is_dir = True
     if command == "report" and many and out is not None and not out_is_dir:
         print("error: --out must be a directory when several files are given", file=sys.stderr)
+        return EXIT_USAGE
+    if out is not None and not out_is_dir and any(_same_file(out, path) for path in files):
+        # `quantify plant.json --json --out plant.json` replaced the analysis
+        # with its results, silently.
+        print("error: --out %s is an input file; it would be overwritten" % args.out,
+              file=sys.stderr)
         return EXIT_USAGE
 
     entries: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
