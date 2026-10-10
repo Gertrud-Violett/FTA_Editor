@@ -60,6 +60,16 @@ function writeLambdaUnit(unit) {
   }
 }
 
+/**
+ * The message key for a value outside a field's bounds: [min, max], (min, ∞)
+ * when `exclusive`, else [min, ∞). It must state the real constraint: q = 2
+ * and a mission time of 0 both used to read "Enter a number of at least 0."
+ */
+export function invalidKey({ exclusive = false, max = Infinity } = {}) {
+  if (Number.isFinite(max)) return 'quant.invalidRange';
+  return exclusive ? 'quant.invalidAbove' : 'quant.invalid';
+}
+
 function isLeaf(node) {
   return !(node && Array.isArray(node.children) && node.children.length);
 }
@@ -202,13 +212,14 @@ export function mount(panel, ctx) {
   }
 
   function numberParser(min, { exclusive = false, max = Infinity, allowBlank = true } = {}) {
+    const message = () => t(invalidKey({ exclusive, max }), { min, max });
     return (raw) => {
       const value = parseNumber(raw);
       if (value === null) {
-        return allowBlank ? { ok: true, value: null } : { ok: false, message: t('quant.invalid', { min }) };
+        return allowBlank ? { ok: true, value: null } : { ok: false, message: message() };
       }
       if (Number.isNaN(value) || value < min || (exclusive && value === min) || value > max) {
-        return { ok: false, message: t('quant.invalid', { min }) };
+        return { ok: false, message: message() };
       }
       return { ok: true, value };
     };

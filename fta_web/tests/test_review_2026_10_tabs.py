@@ -292,3 +292,30 @@ def test_answer_that_crossed_an_edit_is_stale(tab, endpoint):
     assert run.index("const asked = ctx.store.state || {};") < run.index("await ctx.api.post(%s)" % endpoint)
     assert "stale = now.tree !== asked.tree || now.analysis !== asked.analysis;" in run
     assert "stale = false;" not in run
+
+
+# ---- Quantification: the invalid-value message states the real bounds ------------------
+# Every field said "Enter a number of at least {min}.": q = 2 and a mission
+# time of 0 (which must be greater than 0) were both refused with "Enter a
+# number of at least 0."
+
+@needs_node
+def test_quant_invalid_message_states_the_bounds():
+    src = _read(TABS / "quant.js")
+    cases = [
+        {"max": 1},                # q
+        {"exclusive": True},       # mission time, T, tau, MTTR, uncertainty value
+        {},                        # lambda, mu, error factor (min 1)
+    ]
+    got = _node(_function(src, "invalidKey") + "\nconsole.log(JSON.stringify(%s.map((o) => invalidKey(o))));"
+                % json.dumps(cases))
+    assert got == ["quant.invalidRange", "quant.invalidAbove", "quant.invalid"]
+    parser = _block(src, "function numberParser(min, { exclusive = false, max = Infinity, allowBlank = true } = {}) {")
+    assert "t(invalidKey({ exclusive, max }), { min, max })" in parser
+    assert "t('quant.invalid', { min })" not in parser
+    cat = _read(STATIC / "i18n" / "quant.js")
+    en, ja = cat.split("\n  ja:", 1)
+    for key, holders in (("quant.invalidAbove", ["{min}"]), ("quant.invalidRange", ["{min}", "{max}"])):
+        for part in (en, ja):
+            line = re.search(r"'%s': '([^']*)'" % re.escape(key), part).group(1)
+            assert all(h in line for h in holders), (key, line)
