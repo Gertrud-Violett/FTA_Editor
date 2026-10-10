@@ -97,6 +97,15 @@ def project_logic_gate(gate_type: Any) -> str:
     return _PROJECTION.get(gate_type.strip().upper(), "OR")
 
 
+def canonical_mode(mode: Any) -> str:
+    """A document mode as ``POST /api/metadata`` stores it: "ETA" in any case
+    or spacing is "ETA", anything else "FTA". The engine computes an event
+    tree only for the exact string "ETA" while the analysis endpoints and the
+    CLI compare case-insensitively, so a file saying "eta" was computed as a
+    fault tree and refused as an event tree."""
+    return "ETA" if str(mode or "").strip().upper() == "ETA" else "FTA"
+
+
 # ---- helpers -----------------------------------------------------------------
 
 

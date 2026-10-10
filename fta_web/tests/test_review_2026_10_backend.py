@@ -392,6 +392,31 @@ class TestModeFromAFile:
         assert body(imported)["metadata"]["mode"] == "ETA"
         assert _calc(body(imported)["tree"], "a1") == pytest.approx(0.01)
 
+    # B-19: the same normalisation at the loader, so the CLI gets it too.
+
+    @pytest.mark.parametrize("raw, canonical", [("eta", "ETA"), (" Eta ", "ETA"), ("fta", "FTA"),
+                                                ("bogus", "FTA"), (None, "FTA"), (5, "FTA")])
+    def test_the_loader_stores_the_canonical_mode(self, tmp_path, raw, canonical):
+        from fta_web.engine import WebCore
+
+        path = write_doc(tmp_path, "m.json", {"title": "t", "mode": raw, "tree": _EVENT_TREE})
+        core = WebCore()
+        assert core.load_from_json(str(path)) == (True, None)
+        assert core.mode == canonical
+        if canonical == "ETA":
+            assert _calc(core.get_data(), "a1") == pytest.approx(0.01)
+
+    def test_the_cli_quantifies_an_eta_file_as_an_event_tree(self, tmp_path, capsys):
+        from fta_web import cli
+
+        path = write_doc(tmp_path, "m.json", {"title": "t", "mode": "eta", "tree": _EVENT_TREE})
+        assert cli.main(["quantify", str(path), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["mode"] == "ETA"
+        assert payload["results"]["summary"]["headline"] == pytest.approx(0.1)
+        calculated = {e["id"]: e["calculated"] for e in payload["results"]["events"]}
+        assert calculated["a1"] == pytest.approx(0.01)
+
 
 # --------------------------------------------------------------------------
 # B-7: the OS refusing a write (or a name) was a bare 500

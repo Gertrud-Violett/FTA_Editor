@@ -61,11 +61,11 @@ from typing import Any, Dict, List, Optional, Tuple
 try:  # normal package import: ``import fta_web.engine``
     from . import config  # noqa: F401  (puts fta_web/core on sys.path)
     from .node_schema import project_logic_gate  # noqa: F401  (re-exported)
-    from .node_schema import reconcile_gate_types
+    from .node_schema import canonical_mode, reconcile_gate_types
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]  # noqa: F401
     from node_schema import project_logic_gate  # type: ignore[no-redef]  # noqa: F401
-    from node_schema import reconcile_gate_types  # type: ignore[no-redef]
+    from node_schema import canonical_mode, reconcile_gate_types  # type: ignore[no-redef]
 
 from FTA_Editor_core import FTACore, _tidy  # noqa: E402
 
@@ -470,6 +470,8 @@ class WebCore(FTACore):
             if error == _CORE_ENCODING_ERROR:
                 error = _diagnose_unreadable(file_path) or error
             return ok, error
+        # "eta" was computed as a fault tree; recalculated below as stored.
+        self.mode = canonical_mode(self.mode)
         raw = _read_document(file_path)
         if isinstance(raw, dict) and "tree" in raw and "analysis" in raw:
             self.analysis, problems = coerce_analysis(raw.get("analysis"))

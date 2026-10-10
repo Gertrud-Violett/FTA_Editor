@@ -264,17 +264,9 @@ def _install_document(state, core: FTACore, path: Optional[Path],
     AppState and this is the supported way to drop them -- and it also clears
     the path and the dirty flag, which are then set to the values this load
     implies. The freshly loaded core replaces the empty one reset() made.
-
-    The file's ``mode`` is normalised to FTA/ETA first, as
-    ``POST /api/metadata`` only ever stores: the engine computes an event
-    tree only for the exact string "ETA" while the analysis endpoints compare
-    case-insensitively, so a file saying "eta" was computed as a fault tree,
-    shown as FTA and refused by Cut Sets as an event tree.
+    (Its ``mode`` is already FTA or ETA: ``WebCore.load_from_json`` stores
+    the canonical mode, for these routes and the CLI alike.)
     """
-    mode = "ETA" if str(core.mode or "").strip().upper() == "ETA" else "FTA"
-    if core.mode != mode:
-        core.mode = mode
-        core.recalculate_probabilities()
     state.reset()
     state.core = core
     state.current_path = path
