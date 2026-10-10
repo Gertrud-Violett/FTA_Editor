@@ -8,6 +8,7 @@ Copyright (c) makkiblog.com - BSD-2 License
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Tuple, Optional
 import json
+import re
 
 
 #: Divergence D24: every SDK client is built with an explicit deadline, in
@@ -72,7 +73,28 @@ class OpenAIProvider(AIProvider):
     
     def get_default_models(self) -> List[str]:
         return ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"]
-    
+
+    @staticmethod
+    def _length_args(model: str, max_tokens: int, temperature: Optional[float] = None) -> Dict[str, Any]:
+        """The output-length (and sampling) arguments for ``model``.
+
+        Divergence D26: the installed openai SDK documents ``max_tokens`` as
+        "deprecated in favor of `max_completion_tokens`, and ... not compatible
+        with o-series models", and the reasoning models also refuse a sampling
+        temperature. A reasoning model (``o<digit>...`` or ``gpt-5...``, matched on
+        the last path segment so a gateway's ``openai/o3-mini`` counts) gets
+        ``max_completion_tokens`` and no ``temperature``. Every other model is sent
+        exactly what it was before, so OpenAI-compatible gateways that only know
+        ``max_tokens`` keep working.
+        """
+        name = str(model or "").strip().rsplit("/", 1)[-1].lower()
+        if re.match(r"(o\d|gpt-5)", name):
+            return {"max_completion_tokens": max_tokens}
+        args: Dict[str, Any] = {"max_tokens": max_tokens}
+        if temperature is not None:
+            args["temperature"] = temperature
+        return args
+
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available models from OpenAI API"""
         try:
@@ -98,7 +120,7 @@ class OpenAIProvider(AIProvider):
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "Hello, this is a test."}],
-                max_tokens=10
+                **self._length_args(model, 10)  # D26
             )
             return True, "OpenAI connection successful!"
         except ImportError:
@@ -118,8 +140,7 @@ class OpenAIProvider(AIProvider):
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7
+                **self._length_args(model, max_tokens, temperature=0.7)  # D26
             )
             return response.choices[0].message.content, None
         except ImportError:

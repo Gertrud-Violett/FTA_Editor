@@ -987,3 +987,47 @@ class TestAnEmptyReplyIsNotKept:
 
         assert [m["role"] for m in seen["messages"]] == ["system", "user"]
         assert all(isinstance(m["content"], str) and m["content"] for m in seen["messages"])
+
+
+# --------------------------------------------------------------------------
+# AI-15, divergence D26: OpenAI reasoning models
+# --------------------------------------------------------------------------
+
+
+class TestOpenAIReasoningModels:
+    """The installed openai SDK documents max_tokens as "deprecated in favor of
+    `max_completion_tokens`, and ... not compatible with o-series models"; the
+    live model list offers gpt-5* (its filter is "gpt" in the id). Test & Save
+    and every chat sent max_tokens (and temperature=0.7) to them."""
+
+    MESSAGES = [{"role": "user", "content": "hi"}]
+
+    def _bodies(self, loopback, model, provider_name="OpenAI", suffix="/v1"):
+        pytest.importorskip("openai")
+        base, requests, _server = loopback
+        provider = AIProviderFactory.get_provider(provider_name)
+        assert provider.test_connection("k", base + suffix, model)[0]
+        assert provider.send_message("k", base + suffix, model, self.MESSAGES, max_tokens=2000)[1] is None
+        return [r["body"] for r in requests]
+
+    @pytest.mark.parametrize("model", ["gpt-5", "gpt-5-mini", "GPT-5", "o3", "o4-mini", "o1-preview", "openai/o3-mini"])
+    def test_reasoning_models_get_max_completion_tokens_and_no_temperature(self, loopback, model):
+        test_body, chat_body = self._bodies(loopback, model)
+
+        assert test_body["max_completion_tokens"] == 10 and "max_tokens" not in test_body
+        assert chat_body["max_completion_tokens"] == 2000 and "max_tokens" not in chat_body
+        assert "temperature" not in test_body and "temperature" not in chat_body
+
+    @pytest.mark.parametrize("model", ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "omni-local", "llama3"])
+    def test_other_models_are_sent_as_before(self, loopback, model):
+        test_body, chat_body = self._bodies(loopback, model)
+
+        assert test_body["max_tokens"] == 10
+        assert chat_body["max_tokens"] == 2000 and chat_body["temperature"] == 0.7
+        assert "max_completion_tokens" not in chat_body
+
+    def test_azure_deployments_are_unchanged(self, loopback):
+        """A deployment name says nothing reliable about the model behind it."""
+        _test_body, chat_body = self._bodies(loopback, "gpt-5", "Microsoft Copilot", suffix="")
+
+        assert chat_body["max_tokens"] == 2000 and chat_body["temperature"] == 0.7

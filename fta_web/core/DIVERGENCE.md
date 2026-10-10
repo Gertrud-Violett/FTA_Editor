@@ -35,7 +35,7 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
 **D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**,
-**D24**, **D25**.
+**D24**, **D25**, **D26**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -741,6 +741,38 @@ usable after it.
 **Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
 
 **Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D26 — OpenAI reasoning models: `max_completion_tokens`, no temperature
+
+**Defect (review AI-15):** `OpenAIProvider` sent `max_tokens` (and
+`temperature=0.7` on chats) to every model. The installed `openai` 3.13.0
+documents `max_tokens` as "now deprecated in favor of `max_completion_tokens`,
+and is not compatible with o-series models", and the reasoning models also
+refuse a non-default temperature. The live model list offers them (its filter
+is `"gpt" in id`, which keeps every `gpt-5*`), so choosing one made Test & Save
+and every chat fail. Not reproduced against the live API (no network); the
+SDK's own documentation is the evidence, and the request bodies are pinned by
+tests against a loopback server.
+
+**Fix:** `_length_args(model, max_tokens, temperature)`: a model whose last path
+segment starts with `o<digit>` or `gpt-5` (case-insensitive, so a gateway's
+`openai/o3-mini` counts) is sent `max_completion_tokens` and no `temperature`;
+every other model is sent exactly `max_tokens` (and `temperature=0.7` on chats)
+as before. `test_connection` and `send_message` use it. The Azure provider is
+unchanged: a deployment name says nothing reliable about the model behind it.
+
+**Why it is safe:** Non-reasoning models, and OpenAI-compatible gateways that only
+know `max_tokens`, receive byte-for-byte the same request. The value is unchanged
+(`max_completion_tokens` also counts reasoning tokens, so a long think can still
+use it up -- such an empty reply is reported, see D25).
+
+**Behavior change:** o-series and GPT-5 models can be tested, saved and used.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
 
 ---
 
