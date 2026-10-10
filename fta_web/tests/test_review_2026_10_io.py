@@ -385,6 +385,38 @@ def test_fmea_csv_in_utf16(tmp_path, encoding, bom, delimiter):
     assert table["rows"] == FMEA_ROWS
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("1.200,5", 1200.5),          # was 1.2005
+    ("1.234.567,8", 1234567.8),   # was rejected
+    ("-12.345,25", -12345.25),
+    ("1.200,5e-3", 1.2005),
+    # unchanged
+    ("1,200.5", 1200.5), ("1,5", 1.5), ("1.5", 1.5), ("2,0e-6", 2e-6), ("1e-6", 1e-6),
+    ("1 000", 1000.0), ("1.2e-6,", 1.2e-6),
+])
+def test_fmea_number_with_european_grouping(text, expected):
+    from fta_web import fmea_import
+
+    assert fmea_import._number(text) == pytest.approx(expected, rel=1e-15)
+
+
+def test_fmea_lambda_with_european_grouping_is_not_divided_by_1000(tmp_path):
+    """A FIT column formatted '#.##0,0' in a European Excel: 1.200,5 FIT was
+    imported as 1.2005 FIT -- a failure rate 1000 times too low, silently."""
+    from fta_web import fmea_import
+
+    path = tmp_path / "eu.csv"
+    path.write_text("ID;Mode;Lambda (FIT)\nA;Leak;1.200,5\n", encoding="utf-8")
+    table = fmea_import.read_table(path)
+    tree = {"id": "root", "name": "Top", "type": "Root", "probability": 1.0,
+            "logicGate": "OR", "notes": "", "links": [], "children": []}
+    result = fmea_import.apply_import(
+        tree, table["rows"], {"id": "ID", "mode": "Mode", "lambda": "Lambda (FIT)"}, "root",
+        {}, "eu.csv", lambda_unit="FIT", columns=table["columns"])
+    assert result["created"] == ["root_0"]
+    assert tree["children"][0]["quant"]["lambda"] == pytest.approx(1.2005e-6, rel=1e-12)
+
+
 def test_docx_route_with_control_characters(files_client, tmp_path):
     pytest.importorskip("docx")
     open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))

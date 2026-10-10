@@ -443,8 +443,14 @@ def _text(value: Any) -> str:
     return sanitize_name(value)
 
 
+#: '1.200,5', '-12.345.678,9e-3': dots grouping thousands before a decimal
+#: comma (European number formats). Read as 1.2005 before, with the commas
+#: simply dropped -- a FIT value 1000 times too small.
+_EU_GROUPED = re.compile(r"[+-]?\d{1,3}(?:\.\d{3})+,\d+(?:[eE][+-]?\d+)?$")
+
+
 def _number(value: Any) -> Optional[float]:
-    """A float from a cell, tolerating '1,5' and '1.2E-06'. None when blank."""
+    """A float from a cell, tolerating '1,5', '1.200,5' and '1.2E-06'. None when blank."""
     if value is None or value == "":
         return None
     if isinstance(value, bool):
@@ -457,6 +463,8 @@ def _number(value: Any) -> Optional[float]:
             return None
         if "," in text and "." not in text:
             text = text.replace(",", ".")
+        elif _EU_GROUPED.match(text):
+            text = text.replace(".", "").replace(",", ".")
         else:
             text = text.replace(",", "")
         number = float(text)
