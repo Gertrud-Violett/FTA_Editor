@@ -794,6 +794,82 @@ console.log(JSON.stringify([fields.type.control.value, fields.logicGate.control.
     assert "restoreTyping(key, nodeId, typed);" in on_failure
 
 
+# ---- filedialog.js: a late first listing leaves the user's typing alone (F-32) ----------
+#
+# Save As focuses the name box and selects the stem once the first folder
+# listing arrives. With the listing late (400 ms routed in Chromium) and the
+# user already typing in the name box, that re-selection landed mid-word and
+# the next keystrokes replaced the name: "typed_name.json" came out as
+# "name.json". The GUI suite hit the same race and saved b2b_core_url.json.json.
+# A failed first listing likewise moved the focus to Cancel, where the next
+# Enter closed the dialog. The dialog's own start position still applies when
+# the user is not typing (including after a keystroke pulled the focus in).
+
+_FILE_INIT_HARNESS = r"""
+const document = { activeElement: null };
+function control(name) {
+  return {
+    name, value: '', selection: null,
+    focus() { document.activeElement = this; },
+    setSelectionRange(start, end) { this.selection = [start, end]; },
+  };
+}
+const upButton = control('up');
+const pathInput = control('path');
+const list = control('list');
+const nameInput = control('name');
+const cancelButton = control('cancel');
+const parts = [upButton, pathInput, list, nameInput, cancelButton];
+const dialog = { contains: (node) => parts.includes(node) };
+const api = { get: async () => ({ cwd: '/work', root: '/root' }) };
+function isSessionError() { return false; }
+function setMessage() {}
+function errorText() { return 'failed'; }
+let closed = false;
+function close() { closed = true; }
+const opts = {};
+const [mode, listed, user] = SCENARIO;
+nameInput.value = 'pump.json';
+async function navigate() {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  // what the user did while the listing was on its way
+  if (user === 'name') {
+    nameInput.focus();
+    nameInput.value = 'typed_name.json';
+    nameInput.selection = [15, 15];
+  }
+  if (user === 'path') pathInput.focus();
+  if (user === 'key') upButton.focus(); // a keystroke pulled the focus into the dialog
+  return listed;
+}
+"""
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "scenario, expected",
+    [
+        (["save", True, None], ["name", "pump.json", [0, 4]]),
+        (["save", True, "name"], ["name", "typed_name.json", [15, 15]]),
+        (["save", True, "path"], ["path", "pump.json", None]),
+        (["save", True, "key"], ["name", "pump.json", [0, 4]]),
+        (["open", True, None], ["list", "pump.json", None]),
+        (["open", True, "path"], ["path", "pump.json", None]),
+        (["save", False, None], ["cancel", "pump.json", None]),
+        (["save", False, "name"], ["name", "typed_name.json", [15, 15]]),
+    ],
+)
+def test_file_dialog_first_listing_does_not_interrupt_typing(scenario, expected):
+    src = _read(STATIC / "filedialog.js")
+    init = _braced(src, src.index("(async () => {", src.index("document.body.appendChild(overlay);")))
+    script = _FILE_INIT_HARNESS.replace("SCENARIO", json.dumps(scenario)) + (
+        "\nconst run = %s);"
+        "\nrun().then(() => console.log(JSON.stringify("
+        "[document.activeElement && document.activeElement.name, nameInput.value, nameInput.selection])));"
+        % init)
+    assert _node(script) == expected
+
+
 # ---- dialogs.js: the link picker installs only its newest node list (F-31) -------------
 #
 # Select a node (GET /nodes for the old document, answering late) and press

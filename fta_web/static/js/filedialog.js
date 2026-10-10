@@ -885,9 +885,17 @@ export function openFileDialog(options) {
     if (home && home.cwd) candidates.push(home.cwd);
     if (home && home.root) candidates.push(home.root);
 
+    // The first listing can be slow, and by the time it lands the user may
+    // already be typing a name or a path: taking the focus then (or
+    // re-selecting the stem) made the next keystrokes replace what they had
+    // typed -- "typed_name.json" was saved as "name.json".
+    const typing = () =>
+      document.activeElement === nameInput || document.activeElement === pathInput;
+
     for (const candidate of candidates) {
       if (closed) return;
       if (await navigate(candidate)) {
+        if (typing()) return;
         // Save mode starts in the name box with the stem selected, so typing
         // replaces the name and Enter saves; open mode starts in the list.
         if (mode === 'save') {
@@ -902,7 +910,7 @@ export function openFileDialog(options) {
     }
 
     if (!closed && homeError) setMessage(errorText(homeError, 'file.errList'), 'error');
-    if (!closed) cancelButton.focus();
+    if (!closed && !typing()) cancelButton.focus();
   })();
 
   return done;
