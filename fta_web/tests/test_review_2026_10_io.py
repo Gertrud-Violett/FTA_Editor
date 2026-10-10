@@ -199,3 +199,69 @@ def test_xlsx_export_survives_control_characters(tmp_path):
     # The export reads the document; it never edits it.
     assert core.find_node_by_id("a")["name"] == "Pump\x01A"
     assert core.find_node_by_id("a")["notes"] == "Seal\x0bcheck"
+
+
+@pytest.fixture
+def files_client(tmp_path):
+    import flask
+
+    from fta_web.routes.files import files_bp
+    from fta_web.routes.report import report_bp
+    from fta_web.routes.tree import tree_bp
+    from fta_web.state import get_state, reset_state
+
+    reset_state()
+    app = flask.Flask(__name__)
+    for bp in (tree_bp, files_bp, report_bp):
+        app.register_blueprint(bp)
+    get_state().fs_root = tmp_path
+    with app.test_client() as client:
+        yield client
+
+
+def open_doc(client, path):
+    response = client.post("/api/file/open", json={"path": str(path)})
+    assert response.status_code == 200, response.get_data(as_text=True)
+
+
+def test_xml_export_is_well_formed_with_control_characters(files_client, tmp_path):
+    """ElementTree wrote the raw \\x01 / \\x0b into the file: a 200 download
+    that no XML parser accepts ('not well-formed (invalid token)')."""
+    import xml.etree.ElementTree as ET
+
+    open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree()))
+    response = files_client.get("/api/export/xml")
+    assert response.status_code == 200
+    root = ET.fromstring(response.get_data())
+    pump = root.find("Node").find("Node")
+    assert pump.get("name") == "PumpA"
+    assert pump.find("Notes").text == "Seal check"
+    link = root.find("Node").findall("Node")[1].find("Links").find("Link")
+    assert link.text == "PumpA"
+
+
+def test_xml_export_of_non_string_type_and_notes(files_client, tmp_path):
+    """A hand-edited ``"type": 5`` / ``"notes": 5`` made ElementTree raise
+    'cannot serialize 5' (500)."""
+    import xml.etree.ElementTree as ET
+
+    tree = {"id": "root", "name": "Top", "type": None, "logicGate": "OR", "children": [
+        {"id": "a", "name": "A", "type": 5, "notes": 7, "probability": 0.1, "children": []}]}
+    open_doc(files_client, write_doc(tmp_path / "t.json", tree))
+    response = files_client.get("/api/export/xml")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    node = ET.fromstring(response.get_data()).find("Node").find("Node")
+    assert node.get("type") == "5" and node.find("Notes").text == "7"
+
+
+def test_export_view_leaves_an_ordinary_document_byte_identical(tmp_path):
+    from fta_web.engine import WebCore
+    from fta_web.excel_events import export_view
+
+    core = WebCore()
+    ok, error = core.load_from_json(str(REPO / "fta_web" / "examples" / "sampleFTA.json"))
+    assert ok, error
+    core.find_node_by_id("root")["notes"] = "Ünïcode <&> \"quotes\"\nline 2\ttab"
+    plain, viewed = tmp_path / "plain.xml", tmp_path / "view.xml"
+    assert core.export_to_xml(str(plain))[0] and export_view(core).export_to_xml(str(viewed))[0]
+    assert plain.read_bytes() == viewed.read_bytes()
