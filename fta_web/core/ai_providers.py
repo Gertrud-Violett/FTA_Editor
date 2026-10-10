@@ -360,23 +360,39 @@ class MicrosoftCopilotProvider(AIProvider):
     
     def get_default_models(self) -> List[str]:
         return ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-35-turbo"]
-    
+
+    @staticmethod
+    def _azure_target(endpoint: str, model: str) -> Tuple[str, str]:
+        """``(azure_endpoint, deployment)`` for the endpoint the user entered.
+
+        Divergence D23: ``AzureOpenAI`` appends ``/openai`` to ``azure_endpoint``
+        itself, so the resource URL has to be passed bare. The documented form
+        ``https://{resource}.openai.azure.com/openai/deployments/{deployment}``
+        kept its ``/openai`` and every request went to
+        ``/openai/openai/deployments/...`` -- a 404. Accepted now: the bare
+        resource URL, ``.../openai`` and ``.../openai/deployments/<name>[/...]``,
+        with or without a trailing slash or query string. The deployment is the
+        one the URL names, else ``model``.
+        """
+        url = (endpoint or "").strip().split("#", 1)[0].split("?", 1)[0]
+        deployment = model
+        if "/deployments/" in url:
+            url, rest = url.split("/deployments/", 1)
+            named = rest.strip("/").split("/")[0]
+            if named:
+                deployment = named
+        url = url.rstrip("/")
+        if url.lower().endswith("/openai"):
+            url = url[: -len("/openai")]
+        return url.rstrip("/"), deployment
+
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available deployments from Azure OpenAI"""
         try:
             from openai import AzureOpenAI
-            
-            # Extract resource name and deployment from endpoint
-            # Format: https://{resource}.openai.azure.com/openai/deployments/{deployment}
-            if "/deployments/" in endpoint:
-                base_url = endpoint.rsplit("/deployments/", 1)[0]
-                deployment = endpoint.rsplit("/deployments/", 1)[1].split("/")[0]
-            else:
-                base_url = endpoint
-                deployment = "gpt-4o"
-            
-            # Try to list available models (if API supports it)
-            # Otherwise return default models
+
+            # Azure has no model-list API for a key; nothing is requested.
+            # (Divergence D23 dropped the unused endpoint parsing that was here.)
             return self.get_default_models(), "Using default models (Azure doesn't provide model list API)"
         except ImportError:
             return self.get_default_models(), "OpenAI package not installed"
@@ -387,18 +403,10 @@ class MicrosoftCopilotProvider(AIProvider):
         """Test Microsoft Copilot (Azure OpenAI) connection"""
         try:
             from openai import AzureOpenAI
-            
-            # Parse endpoint to extract base URL and deployment
-            # Expected format: https://{resource}.openai.azure.com/openai/deployments/{deployment}
-            if "/deployments/" in endpoint:
-                base_url = endpoint.rsplit("/deployments/", 1)[0]
-                deployment = endpoint.rsplit("/deployments/", 1)[1].rstrip("/").split("/")[0]
-                if not deployment:
-                    deployment = model
-            else:
-                base_url = endpoint
-                deployment = model
-            
+
+            # Divergence D23: see _azure_target.
+            base_url, deployment = self._azure_target(endpoint, model)
+
             # Azure OpenAI uses api_version
             client = AzureOpenAI(
                 api_key=api_key,
@@ -432,17 +440,10 @@ class MicrosoftCopilotProvider(AIProvider):
         """Send message via Microsoft Copilot (Azure OpenAI) API"""
         try:
             from openai import AzureOpenAI
-            
-            # Parse endpoint to extract base URL and deployment
-            if "/deployments/" in endpoint:
-                base_url = endpoint.rsplit("/deployments/", 1)[0]
-                deployment = endpoint.rsplit("/deployments/", 1)[1].rstrip("/").split("/")[0]
-                if not deployment:
-                    deployment = model
-            else:
-                base_url = endpoint
-                deployment = model
-            
+
+            # Divergence D23: see _azure_target.
+            base_url, deployment = self._azure_target(endpoint, model)
+
             client = AzureOpenAI(
                 api_key=api_key,
                 azure_endpoint=base_url,

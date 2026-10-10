@@ -34,7 +34,7 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
-**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**.
+**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -634,6 +634,39 @@ the previous behaviour. The model field stays editable.
 
 **Behavior change:** The Anthropic model list is the account's real one; the
 pre-selected default for a new Anthropic setup is `claude-opus-5-5`.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D23 — Azure endpoint: pass the bare resource URL to `AzureOpenAI`
+
+**Defect (review AI-08):** `MicrosoftCopilotProvider` cut the endpoint at
+`/deployments/` and passed the rest as `azure_endpoint`. For the form the
+provider's own placeholder and `docs/MICROSOFT_COPILOT_SETUP.md` ask for,
+`https://{resource}.openai.azure.com/openai/deployments/{deployment}`, that left
+`https://{resource}.openai.azure.com/openai`; `AzureOpenAI` appends `/openai`
+itself, so every request went to `/openai/openai/deployments/{deployment}/chat/completions`
+and failed with 404 ("Deployment error: Check your deployment name..."). The
+provider could only work with an endpoint the docs never mention.
+
+Repro (installed `openai` 3.13.0 against a loopback server): endpoint
+`.../openai/deployments/fta-dep` -> `POST /openai/openai/deployments/fta-dep/chat/completions`.
+
+**Fix:** `_azure_target(endpoint, model)` strips a query string, a trailing
+`/openai/deployments/<name>[/...]` or `/openai`, and trailing slashes, and
+returns the bare resource URL plus the deployment (the one the URL names, else
+the model field). `test_connection` and `send_message` use it. The unused
+parsing in `get_available_models`, which makes no request, was dropped.
+
+**Why it is safe:** An endpoint that already worked -- the bare resource URL,
+with the deployment in the model field -- normalises to itself. `api_version`
+and the request body are unchanged.
+
+**Behavior change:** The documented endpoint form, `.../openai`, and the bare
+resource URL all reach `/openai/deployments/{deployment}/chat/completions`.
 
 **Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
 

@@ -761,3 +761,113 @@ class TestAnthropicModelList:
 
         assert payload["source"] == "live"
         assert payload["models"] == ["claude-opus-5-5", "claude-sonnet-5-5"]
+
+
+# --------------------------------------------------------------------------
+# A loopback HTTP server that answers like the provider APIs, for driving the
+# real SDKs without a network (used by the D23 and D24 tests)
+# --------------------------------------------------------------------------
+
+_OPENAI_CHAT = {
+    "id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": "m",
+    "choices": [{"index": 0, "finish_reason": "stop",
+                 "message": {"role": "assistant", "content": "openai says hi"}}],
+}
+_CLAUDE_MESSAGE = {
+    "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
+    "content": [{"type": "text", "text": "claude says hi"}], "stop_reason": "end_turn",
+    "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 1},
+}
+_GEMINI_REPLY = {"candidates": [{"content": {"parts": [{"text": "gemini says hi"}], "role": "model"},
+                                 "finishReason": "STOP", "index": 0}]}
+
+
+@pytest.fixture
+def loopback(monkeypatch):
+    """``(base_url, requests, server)``; ``server.hang = True`` makes every
+    request wait (without answering) until the test ends."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    requests = []
+    release = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def _answer(self, payload, status=200):
+            data = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _route(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            requests.append({"method": self.command, "path": self.path,
+                             "body": json.loads(raw) if raw else None})
+            if server.hang:
+                release.wait(30)
+                return
+            path = self.path
+            if "/chat/completions" in path and not path.startswith("/openai/openai/"):
+                return self._answer(_OPENAI_CHAT)
+            if path.startswith("/v1/messages"):
+                return self._answer(_CLAUDE_MESSAGE)
+            if ":generateContent" in path:
+                return self._answer(_GEMINI_REPLY)
+            return self._answer({"error": {"message": "no route " + path}}, 404)
+
+        do_GET = do_POST = _route
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server.hang = False
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = "http://127.0.0.1:%d" % server.server_address[1]
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+    yield base, requests, server
+    release.set()
+    server.shutdown()
+    server.server_close()
+
+
+# --------------------------------------------------------------------------
+# AI-08, divergence D23: the documented Azure endpoint never worked
+# --------------------------------------------------------------------------
+
+
+class TestAzureEndpointForms:
+    """docs/MICROSOFT_COPILOT_SETUP.md says to enter
+    https://{resource}.openai.azure.com/openai/deployments/{deployment}. The
+    provider passed ".../openai" as azure_endpoint, the SDK appends "/openai"
+    itself, and every request went to /openai/openai/deployments/... -- 404."""
+
+    @pytest.mark.parametrize("suffix", [
+        "/openai/deployments/fta-dep",
+        "/openai/deployments/fta-dep/",
+        "/openai/deployments/fta-dep/chat/completions?api-version=2024-08-01-preview",
+        "/openai",
+        "/openai/",
+        "/",
+        "",
+    ])
+    def test_the_request_reaches_the_deployment(self, loopback, suffix):
+        pytest.importorskip("openai")
+        base, requests, _server = loopback
+        azure = AIProviderFactory.get_provider("Microsoft Copilot")
+        endpoint = base + suffix
+        model = "fta-dep"  # the deployment when the URL names none
+
+        ok, message = azure.test_connection("k", endpoint, model)
+        reply = azure.send_message("k", endpoint, model, [{"role": "user", "content": "hi"}])
+
+        assert ok, message
+        assert reply == ("openai says hi", None)
+        assert [r["path"].split("?")[0] for r in requests] == [
+            "/openai/deployments/fta-dep/chat/completions"] * 2
