@@ -116,3 +116,20 @@ def test_fmea_parent_select_follows_the_tree_selection():
     run = _block(src, "async function runImport()")
     # the jump onto an imported event must not move the select afterwards
     assert run.index("state.parentExplicit = true;") < run.index("ctx.jumpTo(")
+
+
+# ---- Uncertainty: a run that overlapped an edit is stale -------------------------------
+# The server samples the tree as it is when the request arrives (a deep copy,
+# outside the lock), so editing during a run is allowed. onStale only marked
+# an existing result, and the answer then set stale = false: a run started
+# before the edit was shown as current (point estimate 0.301 next to a
+# headline of 0.4006), with no "the tree has changed" note.
+
+def test_uncertainty_run_overlapping_an_edit_is_stale():
+    src = _read(TABS / "uncertainty.js")
+    run = _block(src, "async function run()")
+    snap = run.index("const sampled = ctx.store.state || {};")
+    assert snap < run.index("await ctx.api.post('/analysis/uncertainty', body)"), \
+        "the tree must be noted before the request"
+    assert "stale = now.tree !== sampled.tree || now.analysis !== sampled.analysis;" in run
+    assert "stale = false;" not in run, "an answer must not clear staleness unconditionally"

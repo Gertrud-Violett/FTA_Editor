@@ -158,11 +158,16 @@ export function mount(panel, ctx) {
     paintToolbar();
     tick();
     const gen = docGen;
+    // The server samples the tree as it is now. An edit made while the run is
+    // in flight (store identity, as tabs/host.js tracks it) leaves the answer
+    // describing the tree before that edit: show it as stale.
+    const sampled = ctx.store.state || {};
     try {
       const res = await ctx.api.post('/analysis/uncertainty', body);
       if (gen === docGen) {
         result = res;
-        stale = false;
+        const now = ctx.store.state || {};
+        stale = now.tree !== sampled.tree || now.analysis !== sampled.analysis;
       }
     } catch (err) {
       if (gen === docGen) reportError(ctx, err);
