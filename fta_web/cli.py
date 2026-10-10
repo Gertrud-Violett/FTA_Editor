@@ -542,6 +542,56 @@ def _same_file(a: Any, b: Any) -> bool:
     return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
+def _report_target(path: str, out: Optional[Path], out_is_dir: bool) -> Path:
+    """Where ``report`` writes ``path``'s document."""
+    name = Path(path).stem + "_report.docx"
+    if out is None:
+        return Path(path).with_name(name)
+    return out / name if out_is_dir else out
+
+
+def _result_target(path: str, out: Path, command: str, ext: str) -> Path:
+    """``<stem>.<command><ext>`` in the --out directory."""
+    return out / ("%s.%s%s" % (Path(path).stem, command, ext))
+
+
+def _planned_outputs(command: str, files: List[str], out: Optional[Path], out_is_dir: bool,
+                     ext: str) -> List[Tuple[Optional[str], Path]]:
+    """``(input, path)`` for every file the run will write; input is None for
+    one combined output."""
+    if command == "report":
+        return [(path, _report_target(path, out, out_is_dir)) for path in files]
+    if out is None:
+        return []
+    if len(files) > 1 and out_is_dir:
+        return [(path, _result_target(path, out, command, ext)) for path in files]
+    return [(None, _result_target(files[0], out, command, ext) if out_is_dir else out)]
+
+
+def _output_problem(planned: List[Tuple[Optional[str], Path]], files: List[str]) -> Optional[str]:
+    """Why these outputs must not be written, or None.
+
+    An output must never replace an input (``quantify plant.json --json --out
+    plant.json`` replaced the analysis with its results), and two inputs
+    must not share one (a/plant.json and b/plant.json with ``--out dir/``
+    both became dir/plant.quantify.json: one result silently lost).
+    """
+    for _source, target in planned:
+        for path in files:
+            if _same_file(target, path):
+                return "writing %s would overwrite the input file %s" % (target, path)
+    writers: Dict[str, str] = {}
+    for source, target in planned:
+        if source is None:
+            continue
+        key = os.path.normcase(os.path.abspath(target))
+        first = writers.setdefault(key, source)
+        if not _same_file(first, source):
+            return ("%s and %s would both be written to %s; run them separately or give the "
+                    "files different names" % (first, source, target))
+    return None
+
+
 def _write(path: Path, text: str) -> bool:
     """Write ``text`` to ``path``; False (and a message) when that fails --
     ``--out`` under a regular file, no permission, a full disk."""
@@ -589,11 +639,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if command == "report" and many and out is not None and not out_is_dir:
         print("error: --out must be a directory when several files are given", file=sys.stderr)
         return EXIT_USAGE
-    if out is not None and not out_is_dir and any(_same_file(out, path) for path in files):
-        # `quantify plant.json --json --out plant.json` replaced the analysis
-        # with its results, silently.
-        print("error: --out %s is an input file; it would be overwritten" % args.out,
-              file=sys.stderr)
+    problem = _output_problem(_planned_outputs(command, files, out, out_is_dir, ext), files)
+    if problem:
+        print("error: %s" % problem, file=sys.stderr)
         return EXIT_USAGE
 
     entries: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
@@ -616,14 +664,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         entry["title"], entry["mode"] = meta.get("title"), meta.get("mode")
         try:
             if command == "report":
-                stem = Path(path).stem
-                if out is None:
-                    target = Path(path).with_name(stem + "_report.docx")
-                elif out_is_dir:
-                    target = out / (stem + "_report.docx")
-                else:
-                    target = out
-                results, rows, status = cmd_report(core, args, target)
+                results, rows, status = cmd_report(core, args,
+                                                   _report_target(path, out, out_is_dir))
             else:
                 results, rows, status = HANDLERS[command](core, args)
             entry["results"] = results
@@ -640,11 +682,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if out is not None and command != "report":
         if many and out_is_dir:
             for entry, rows in entries:
-                target = out / ("%s.%s%s" % (Path(entry["file"]).stem, command, ext))
+                target = _result_target(entry["file"], out, command, ext)
                 if not _write(target, render_output(fmt, command, [(entry, rows)], sf)):
                     worst = max(worst, EXIT_FAIL)
         else:
-            target = out / ("%s.%s%s" % (Path(files[0]).stem, command, ext)) if out_is_dir else out
+            target = _result_target(files[0], out, command, ext) if out_is_dir else out
             if not _write(target, render_output(fmt, command, entries, sf)):
                 worst = max(worst, EXIT_FAIL)
     else:

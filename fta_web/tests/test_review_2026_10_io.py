@@ -173,6 +173,60 @@ def test_report_uncertainty_flag_adds_the_section_to_explicit_sections(tmp_path,
     assert seen == {"sections": ["metadata", "headline", "uncertainty"], "run": True}
 
 
+def _same_stem_inputs(tmp_path):
+    paths = []
+    for sub, p in (("a", 0.1), ("b", 0.2)):
+        (tmp_path / sub).mkdir()
+        tree = {"id": "root", "name": "Top", "type": "Root", "logicGate": "OR", "children": [
+            {"id": "x", "name": "X", "probability": p, "children": []}]}
+        paths.append(write_doc(tmp_path / sub / "plant.json", tree, title="Plant " + sub))
+    return paths
+
+
+@pytest.mark.parametrize("command, extra", [
+    ("quantify", ["--json"]), ("validate", ["--csv"]), ("cutsets", []),
+])
+def test_two_inputs_writing_one_output_file_are_refused(tmp_path, capsys, command, extra):
+    """a/plant.json and b/plant.json with --out dir/ both became
+    dir/plant.<command>.<ext>: one result silently overwritten, exit 0."""
+    a, b = _same_stem_inputs(tmp_path)
+    out = tmp_path / "results"
+    assert cli.main([command, str(a), str(b), "--out", str(out) + os.sep] + extra) == 2
+    err = capsys.readouterr().err
+    assert str(a) in err and str(b) in err
+    assert not out.exists()  # refused before anything was written
+
+
+def test_two_reports_into_one_file_are_refused(tmp_path, capsys):
+    pytest.importorskip("docx")
+    a, b = _same_stem_inputs(tmp_path)
+    out = tmp_path / "reports"
+    assert cli.main(["report", str(a), str(b), "--out", str(out), "--sections", "metadata"]) == 2
+    assert str(a) in capsys.readouterr().err and not out.exists()
+    # Beside each input (no --out) they do not collide.
+    assert cli.main(["report", str(a), str(b), "--sections", "metadata"]) == 0
+    assert (a.parent / "plant_report.docx").is_file() and (b.parent / "plant_report.docx").is_file()
+
+
+def test_the_same_input_twice_is_not_a_collision(tmp_path):
+    a, _b = _same_stem_inputs(tmp_path)
+    out = tmp_path / "results"
+    assert cli.main(["quantify", str(a), str(a), "--json", "--out", str(out) + os.sep]) == 0
+    assert (out / "plant.quantify.json").is_file()
+
+
+def test_a_per_input_output_never_overwrites_another_input(tmp_path, capsys):
+    """IO-11 covered a single --out file; a per-input target can also be an input."""
+    (tmp_path / "res").mkdir()
+    victim = write_doc(tmp_path / "res" / "plant.quantify.json", title="Victim")
+    before = victim.read_bytes()
+    plant = write_doc(tmp_path / "plant.json")
+    assert cli.main(["quantify", str(victim), str(plant), "--json",
+                     "--out", str(tmp_path / "res")]) == 2
+    assert "input" in capsys.readouterr().err
+    assert victim.read_bytes() == before
+
+
 # ---- IO-19: terminal control sequences from a file -------------------------------------
 
 
