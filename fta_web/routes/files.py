@@ -425,10 +425,17 @@ def _save_document(core: FTACore, target: Path) -> None:
     one filesystem and cannot fail with EXDEV) and renames it into place.
     Nothing observes a partially written analysis, and a failure leaves the
     previous file exactly as it was.
+
+    The OS refusing the temp file or the rename -- a read-only folder, a file
+    another program holds open, a name too long for the filesystem -- is a
+    ``PATH_REJECTED`` (:func:`_write_refused`), not a bare 500.
     """
-    handle, temp_name = tempfile.mkstemp(
-        prefix=".fta_save_", suffix=".tmp", dir=str(target.parent)
-    )
+    try:
+        handle, temp_name = tempfile.mkstemp(
+            prefix=".fta_save_", suffix=".tmp", dir=str(target.parent)
+        )
+    except OSError as exc:
+        raise _write_refused(target, exc) from exc
     os.close(handle)
     temp_path = Path(temp_name)
     # save_to_json() records the path it wrote as ``last_saved_file``. Left
@@ -446,13 +453,36 @@ def _save_document(core: FTACore, target: Path) -> None:
                 {"reason": "write_failed"},
             )
         _apply_mode(target, temp_path)
-        os.replace(temp_path, target)
+        try:
+            os.replace(temp_path, target)
+        except OSError as exc:
+            raise _write_refused(target, exc) from exc
         core.last_saved_file = str(target)
     except Exception:
         core.last_saved_file = previous
         raise
     finally:
         _unlink_quietly(temp_path)
+
+
+def _write_refused(target: Path, exc: OSError) -> fsbrowser.PathRejected:
+    """The OS refusing to write ``target``, as the sandbox's own refusal.
+
+    The user's recovery is the same as for every path refusal -- choose
+    another location -- and the wording mirrors
+    ``fsbrowser.resolve_for_open``'s for a file that cannot be read: the
+    file's name and the OS reason, never the full path.
+    """
+    if isinstance(exc, PermissionError):
+        return fsbrowser.PathRejected(
+            "'%s' cannot be written: permission denied." % target.name,
+            reason="unwritable",
+            status=403,
+        )
+    return fsbrowser.PathRejected(
+        "'%s' cannot be written (%s)." % (target.name, exc.strerror or type(exc).__name__),
+        reason="unwritable",
+    )
 
 
 def _apply_mode(target: Path, temp_path: Path) -> None:

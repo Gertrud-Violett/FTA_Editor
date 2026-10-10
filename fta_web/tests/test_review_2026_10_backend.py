@@ -391,3 +391,71 @@ class TestModeFromAFile:
         assert imported.status_code == 200, body(imported)
         assert body(imported)["metadata"]["mode"] == "ETA"
         assert _calc(body(imported)["tree"], "a1") == pytest.approx(0.01)
+
+
+# --------------------------------------------------------------------------
+# B-7: the OS refusing a write (or a name) was a bare 500
+# --------------------------------------------------------------------------
+
+
+def _rejected(response, statuses=(400, 403, 404)):
+    payload = body(response)
+    assert response.status_code in statuses, payload
+    assert payload["error"]["code"] == "PATH_REJECTED", payload
+    return payload
+
+
+class TestWriteRefusedByTheOs:
+    """``mkstemp`` in a read-only folder, ``os.replace`` onto a file another
+    program holds open (Windows) or a name longer than the filesystem allows
+    raised straight out of the save, and the user read "Internal server
+    error; see the server log." They are path refusals like the sandbox's
+    own: PATH_REJECTED (403 for permission denied), naming the file, and the
+    document stays unsaved."""
+
+    def _dirty(self, client):
+        assert client.post("/api/nodes", json={"parentId": "root", "name": "work"}).status_code == 200
+
+    def test_a_name_too_long_for_the_filesystem(self, files_client, sandbox):
+        self._dirty(files_client)
+        _rejected(files_client.post("/api/file/save-as", json={"path": "x" * 300 + ".json"}))
+        assert get_state().dirty is True and get_state().current_path is None
+        assert list(sandbox.iterdir()) == []
+
+    def test_listing_a_name_too_long_for_the_filesystem(self, files_client):
+        _rejected(files_client.get("/api/fs/list", query_string={"path": "y" * 5000}))
+
+    def test_permission_denied_creating_the_temp_file(self, files_client, sandbox, monkeypatch):
+        import tempfile
+
+        def refuse(*args, **kwargs):
+            raise PermissionError(13, "Permission denied", kwargs.get("dir"))
+
+        self._dirty(files_client)
+        monkeypatch.setattr(tempfile, "mkstemp", refuse)
+        payload = _rejected(files_client.post("/api/file/save-as", json={"path": "a.json"}),
+                            statuses=(403,))
+        assert payload["error"]["detail"]["reason"] == "unwritable"
+        assert "a.json" in payload["error"]["message"]
+        assert str(sandbox) not in payload["error"]["message"]
+        assert get_state().dirty is True and get_state().current_path is None
+        ja = body(files_client.post("/api/file/save-as?lang=ja", json={"path": "a.json"}))
+        assert "書き込み権限" in ja["error"]["message"]
+
+    def test_permission_denied_replacing_the_file(self, files_client, sandbox, monkeypatch):
+        import os
+
+        target = write_doc(sandbox, "a.json", {"title": "old", "tree": {"id": "root", "name": "R"}})
+        assert files_client.post("/api/file/open", json={"path": "a.json"}).status_code == 200
+        self._dirty(files_client)
+        before = target.read_bytes()
+
+        def refuse(src, dst):
+            raise PermissionError(13, "Permission denied", str(dst))
+
+        monkeypatch.setattr(os, "replace", refuse)
+        _rejected(files_client.post("/api/file/save"), statuses=(403,))
+        monkeypatch.undo()
+        assert target.read_bytes() == before  # the old file is intact
+        assert sorted(p.name for p in sandbox.iterdir()) == ["a.json"]  # no temp left
+        assert get_state().dirty is True

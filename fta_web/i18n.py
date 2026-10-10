@@ -104,6 +104,13 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
     "PATH_REJECTED": {
         "ja": "指定されたパスは許可されたフォルダーの外にあるか、無効です。",
     },
+    # "<code>:<detail.reason>" -- the OS refused the write (routes/files.py).
+    "PATH_REJECTED:unwritable": {
+        "ja": (
+            "そのファイルには保存できません（書き込み権限がないか、名前が長すぎます）。"
+            "別の場所か名前を選んでください。"
+        ),
+    },
     "NO_CURRENT_PATH": {
         "ja": "この分析はまだ保存されていません。「名前を付けて保存」を使用してください。",
     },
