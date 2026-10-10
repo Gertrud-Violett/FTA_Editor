@@ -25,7 +25,10 @@ def _read(path: Path) -> str:
 
 
 def _node(script: str):
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
+    # Node writes UTF-8 to a pipe everywhere; Python would decode it with the
+    # locale's code page (cp1252 on Windows) without an explicit encoding.
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8", check=True).stdout
     return json.loads(out)
 
 
