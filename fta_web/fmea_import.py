@@ -29,6 +29,10 @@ Import rules
 ------------
 * **Key.** ``fmea.id`` comes from the mapped ID column, else ``"item / mode"``.
   A row with neither is skipped (``noKey``).
+* **Item fill-down.** A row with a failure mode but a blank item takes the
+  last item above it: the usual layout writes the item once per group
+  (merged cells read as blank). :func:`fill_down` does the same for the
+  preview.
 * **Update in place.** With ``update`` true a row whose key equals the
   ``fmea.id`` of a node *anywhere* in the tree updates that node (name, the
   ``fmea`` block, and -- for a leaf -- its quantification). With ``update``
@@ -316,6 +320,50 @@ def rows_as_dicts(table: Dict[str, Any]) -> List[Dict[str, Any]]:
     """``read_table`` rows as ``{column: value}`` dicts."""
     columns = table.get("columns") or []
     return [dict(zip(columns, row)) for row in table.get("rows") or []]
+
+
+def _blank_cell(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+class _ItemFill:
+    """Fill a blank item cell down from the rows above.
+
+    The usual FMEA layout writes an item once over its failure modes --
+    merged cells, which read as blank below the first, or simply left blank.
+    A row that carries a failure mode but no item takes the last item above
+    it (rows without a mode, such as a further cause, are left as they are).
+    Without this those rows lost their item, and with the key "item / mode"
+    'Valve / Stuck' became 'Stuck' and was skipped as a duplicate.
+    """
+
+    def __init__(self, mapping: Dict[str, Any]):
+        self.item = (mapping or {}).get("item")
+        self.mode = (mapping or {}).get("mode")
+        self.last: Any = None
+
+    def __call__(self, cells: Dict[str, Any]) -> Dict[str, Any]:
+        if not (self.item and self.mode):
+            return cells
+        value = cells.get(self.item)
+        if not _blank_cell(value):
+            self.last = value
+        elif self.last is not None and not _blank_cell(cells.get(self.mode)):
+            cells = dict(cells)
+            cells[self.item] = self.last
+        return cells
+
+
+def fill_down(table: Dict[str, Any], mapping: Dict[str, Any]) -> List[List[Any]]:
+    """``table``'s rows with blank item cells filled as :func:`apply_import`
+    fills them for ``mapping`` (for the preview)."""
+    columns = list(table.get("columns") or [])
+    fill = _ItemFill(mapping)
+    out = []
+    for row in table.get("rows") or []:
+        cells = fill(dict(zip(columns, row)))
+        out.append([cells.get(column) for column in columns])
+    return out
 
 
 # ---- column mapping -------------------------------------------------------------
@@ -766,11 +814,13 @@ def apply_import(
         taken.add(new_id)
         return new_id
 
+    fill = _ItemFill(mapping)
     for index, raw in enumerate(rows or []):
         if isinstance(raw, dict):
             cells = raw
         else:
             cells = dict(zip(columns or [], raw))
+        cells = fill(cells)
         row_no = row_numbers[index] if row_numbers and index < len(row_numbers) else index + 2
 
         def get(field, _cells=cells):

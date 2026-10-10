@@ -9,11 +9,13 @@ path the client picked with the sandboxed file dialog -- exactly like
 is 4xx ``PATH_REJECTED`` with ``detail.reason``.
 
 ``POST /api/fmea/preview``
-    Body ``{path, sheet?}``. Returns ``{path, name, sheets: [names], sheet,
-    columns: [header], rows: [[cell]] (first 50), rowNumbers, rowCount,
+    Body ``{path, sheet?, mapping?}``. Returns ``{path, name, sheets: [names],
+    sheet, columns: [header], rows: [[cell]] (first 50), rowNumbers, rowCount,
     suggestedMapping: {field: column}, suggestedLambdaUnit: h|y|FIT, fields,
     occurrenceTable}`` -- the table is the document's
-    ``analysis.fmeaOccurrenceTable``. Read-only.
+    ``analysis.fmeaOccurrenceTable``. ``rows`` are as the import reads them:
+    a blank item is filled down (``fmea_import.fill_down``) for ``mapping``,
+    else for the suggested mapping. Read-only.
 
 ``POST /api/fmea/import``
     Body ``{path, sheet?, mapping: {field: column}, lambdaUnit: h|y|FIT,
@@ -247,6 +249,10 @@ def post_preview():
     target, table = _read(payload)
     columns = table["columns"]
     suggested = fmea_import.suggest_mapping(columns)
+    # The rows as the import will read them: a blank item under its group's
+    # first row is filled down (for the body's mapping, else the suggested).
+    rows = fmea_import.fill_down(
+        table, _mapping_arg(payload) if "mapping" in payload else suggested)
     unit = (fmea_import.suggest_lambda_unit(
         suggested["lambda"], fmea_import.column_values(table, suggested["lambda"]),
         delimiter=table.get("delimiter"))
@@ -257,7 +263,7 @@ def post_preview():
         sheets=table["sheets"],
         sheet=table["sheet"],
         columns=columns,
-        rows=table["rows"][:PREVIEW_ROWS],
+        rows=rows[:PREVIEW_ROWS],
         rowNumbers=table["rowNumbers"][:PREVIEW_ROWS],
         rowCount=len(table["rows"]),
         fields=list(fmea_import.FIELDS),

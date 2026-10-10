@@ -624,6 +624,89 @@ def test_fmea_import_route_reads_comma_groups_of_a_comma_csv(tmp_path):
     assert node["quant"]["lambda"] == pytest.approx(1.2e-6, rel=1e-12)
 
 
+GROUPED_FMEA = [
+    ["Item", "Failure Mode", "Cause", "Occurrence"],
+    ["Pump", "Leak", "Seal wear", 4],
+    [None, "Stuck", "Corrosion", 5],
+    [None, None, "Ice", None],          # another cause of the row above: no mode
+    [None, "Noise", "Bearing", 3],
+    ["Valve", "Leak", "Seat", 3],
+    [None, "Stuck", "Dirt", 6],
+]
+GROUPED_NAMES = ["Pump – Leak", "Pump – Stuck", "Pump – Noise", "Valve – Leak", "Valve – Stuck"]
+
+
+def _grouped_csv(tmp_path):
+    lines = [",".join("" if v is None else str(v) for v in row) for row in GROUPED_FMEA]
+    path = tmp_path / "grouped.csv"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _grouped_xlsx_merged(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    book = openpyxl.Workbook()
+    for row in GROUPED_FMEA:
+        book.active.append(row)
+    book.active.merge_cells("A2:A5")   # the item written once over its modes
+    book.active.merge_cells("A6:A7")
+    path = tmp_path / "grouped.xlsx"
+    book.save(path)
+    return path
+
+
+@pytest.mark.parametrize("make", [_grouped_csv, _grouped_xlsx_merged])
+def test_fmea_item_written_once_per_group_is_filled_down(tmp_path, make):
+    """The usual FMEA layout writes the item once over its failure modes
+    (merged, or blank below). Those rows lost their item -- and without an
+    ID column 'Valve / Stuck' became 'Stuck', a 'duplicate' of 'Pump /
+    Stuck', and was skipped."""
+    from fta_web import fmea_import
+
+    table = fmea_import.read_table(make(tmp_path))
+    mapping = fmea_import.suggest_mapping(table["columns"])
+    assert mapping["item"] == "Item" and "id" not in mapping
+    tree = {"id": "root", "name": "Top", "type": "Root", "probability": 1.0, "children": []}
+    result = fmea_import.apply_import(tree, table["rows"], mapping, "root", {}, "g",
+                                      columns=table["columns"], row_numbers=table["rowNumbers"],
+                                      delimiter=table["delimiter"])
+    assert [n["name"] for n in tree["children"]] == GROUPED_NAMES
+    assert [n["fmea"]["id"] for n in tree["children"]][4] == "Valve / Stuck"
+    assert tree["children"][1]["fmea"]["item"] == "Pump"
+    # Only the cause-only row (no item, no mode) is skipped, as before.
+    assert [(s["row"], s["reason"]) for s in result["skipped"]] == [(4, "noKey")]
+
+
+def test_fmea_fill_down_with_an_id_column_and_a_blank_first_item(tmp_path):
+    from fta_web import fmea_import
+
+    path = tmp_path / "ids.csv"
+    path.write_text("ID,Item,Mode\nF-0,,Drift\nF-1,Pump,Leak\nF-2,,Stuck\n", encoding="utf-8")
+    table = fmea_import.read_table(path)
+    tree = {"id": "root", "name": "Top", "type": "Root", "probability": 1.0, "children": []}
+    fmea_import.apply_import(tree, table["rows"], {"id": "ID", "item": "Item", "mode": "Mode"},
+                             "root", {}, "ids.csv", columns=table["columns"])
+    assert [n["name"] for n in tree["children"]] == ["Drift", "Pump – Leak", "Pump – Stuck"]
+
+
+def test_fmea_preview_shows_the_filled_item(tmp_path):
+    import flask
+
+    from fta_web.routes.fmea import fmea_bp
+    from fta_web.routes.tree import tree_bp
+    from fta_web.state import get_state, reset_state
+
+    _grouped_csv(tmp_path)
+    reset_state()
+    app = flask.Flask(__name__)
+    app.register_blueprint(tree_bp)
+    app.register_blueprint(fmea_bp)
+    get_state().fs_root = tmp_path
+    with app.test_client() as client:
+        payload = client.post("/api/fmea/preview", json={"path": "grouped.csv"}).get_json()
+    assert [row[0] for row in payload["rows"]] == ["Pump", "Pump", None, "Pump", "Valve", "Valve"]
+
+
 def _xlsx_with_dimension(path, ref):
     """A workbook whose sheet XML declares ``<dimension ref=ref/>``, as some
     exporters write it regardless of the data."""
