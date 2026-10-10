@@ -63,3 +63,30 @@ def test_cli_exit_code_3_survives_a_non_ascii_file_name(tmp_path):
     code, _out, err = run_cli("validate", tmp_path / "nö.json", encoding="ascii")
     assert code == 3, err
     assert "Traceback" not in err
+
+
+# ---- IO-2: --json is strict JSON ------------------------------------------------------
+
+
+def _strict_json(text):
+    def refuse(token):
+        raise ValueError("non-standard JSON token %s" % token)
+
+    return json.loads(text, parse_constant=refuse)
+
+
+def test_cli_json_has_no_nan_tokens(tmp_path, capsys):
+    """A probability of NaN (Python's json reads the bare literal) reached the
+    summary and was printed as ``NaN``, which JSON.parse, jq and every strict
+    parser reject. It is null now, as in the API's responses."""
+    tree = {"id": "root", "name": "Top", "type": "Root", "logicGate": "OR", "children": [
+        {"id": "a", "name": "A", "probability": float("nan"), "children": []},
+        {"id": "b", "name": "B", "probability": 0.1, "children": []}]}
+    doc = write_doc(tmp_path / "nan.json", tree)
+    assert cli.main(["quantify", str(doc), "--json"]) == 0
+    payload = _strict_json(capsys.readouterr().out)
+    assert payload["results"]["summary"]["treeWalk"] is None
+
+    out = tmp_path / "res.json"
+    assert cli.main(["quantify", str(doc), "--json", "--out", str(out)]) == 0
+    _strict_json(out.read_text(encoding="utf-8"))

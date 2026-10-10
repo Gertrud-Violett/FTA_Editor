@@ -31,6 +31,7 @@ import csv
 import glob
 import io
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -450,11 +451,29 @@ def _json_default(value: Any):
     return str(value)
 
 
+def _finite(value: Any) -> Any:
+    """``value`` with every NaN/Infinity float replaced by None.
+
+    ``--json`` is strict JSON, like the API's responses (app.py's
+    FiniteJSONProvider): a document can hold ``NaN`` (Python's json reads
+    the bare literal) and the analyses then return it, but JSON.parse, jq
+    and every other strict parser reject the ``NaN`` token.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(item) for item in value]
+    return value
+
+
 def render_output(fmt: str, command: str, entries, sf: int, ascii_only: bool = False) -> str:
     if fmt == "json":
         payload = [e for e, _rows in entries]
         body = payload[0] if len(payload) == 1 else payload
-        return json.dumps(body, ensure_ascii=ascii_only, indent=2, default=_json_default) + "\n"
+        return json.dumps(_finite(body), ensure_ascii=ascii_only, indent=2,
+                          default=_json_default, allow_nan=False) + "\n"
     if fmt == "csv":
         return csv_text(entries)
     return "\n\n".join(human_block(e, command, rows, sf) for e, rows in entries) + "\n"
