@@ -221,7 +221,7 @@ def control_char_core(title="Plant\x03"):
 def test_xml_text_drops_what_xml_cannot_hold():
     from fta_web.excel_events import xml_text
 
-    assert xml_text("a\x01b\x00c\ud800d￾") == "abcd"
+    assert xml_text("a\x01b\x00c\ud800d\ufffe") == "abcd"
     # whitespace-like controls become a space, as sanitize_name makes them
     assert xml_text("Seal\x0bcheck\x0cnow\x1fx") == "Seal check now x"
     assert xml_text("tab\tnl\ncr\r é λ 日本") == "tab\tnl\ncr\r é λ 日本"

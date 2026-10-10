@@ -149,7 +149,7 @@ def _text(value: Any) -> Optional[str]:
 #: pasted text (PowerPoint's soft line break is \x0b, a Word cell mark \x07),
 #: which only names are cleaned of, and through hand-edited or third-party
 #: files.
-_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
 def xml_text(value: Any) -> str:
