@@ -24,7 +24,9 @@
 > back-to-back suite (`fta_web/tests/b2b/`) reports it as `OR-UNION`.
 
 `fta_web/core/` holds a **vendored fork** of four modules copied from `src/` at baseline
-commit **`e5f655f`**. `src/`, `tests/` and `data/` are frozen and pinned by hash; the fork
+commit **`e5f655f`**. `src/`, `tests/` and `data/` are frozen; the `src/` modules and
+`data/examples/sampleFTA.json` are pinned by hash, the rest (the tests included) by
+policy only. The fork
 is the copy that FTA Editor v1.6 owns and is allowed to patch.
 
 **This file is the complete record of how `fta_web/core/` differs from `src/` at that
