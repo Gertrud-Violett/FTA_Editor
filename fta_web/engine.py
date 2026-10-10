@@ -124,7 +124,10 @@ class AnalysisError(ValueError):
 def _finite(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise AnalysisError(field, "'%s' must be a number." % field, value)
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range (a 400-digit literal)
+        number = math.inf
     if math.isnan(number) or math.isinf(number):
         raise AnalysisError(field, "'%s' must be a finite number." % field, value)
     return number
@@ -266,7 +269,10 @@ def _param(quant: Dict[str, Any], key: str) -> Optional[float]:
     value = quant.get(key)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    value = float(value)
+    try:
+        value = float(value)
+    except OverflowError:  # an int beyond the float range
+        return None
     if math.isnan(value) or math.isinf(value) or value < 0:
         return None
     return value

@@ -113,3 +113,51 @@ def test_transfer_edges_do_not_flag_links_outside_a_loop():
                                                leaf("B", 0.1)])])
     codes = [i["code"] for i in lint.run(loop, None)]
     assert "TRANSFER_CYCLE" in codes and "CYCLIC_LINK" not in codes
+
+
+# ---- E-5: an integer too large for a float is invalid, not a crash ------------------------
+
+#: What ``json.loads`` makes of a 401-digit integer literal: an int that
+#: ``float()`` refuses with OverflowError (not ValueError).
+HUGE = 10 ** 400
+
+
+def test_huge_integer_node_parameter_is_a_400_not_a_500():
+    from fta_web import node_schema
+    from fta_web.errors import ApiError
+
+    for partial, field in (({"lambda": HUGE}, "quant.lambda"), ({"T": HUGE}, "quant.T"),
+                           ({"unc": {"ef": HUGE}}, "quant.unc.ef")):
+        with pytest.raises(ApiError) as info:
+            node_schema.validate_quant(partial)
+        assert info.value.detail["field"] == field
+
+
+def test_huge_integer_analysis_setting_is_rejected_or_reset():
+    for patch in ({"missionTime": HUGE}, {"cutsets": {"cutoff": HUGE}},
+                  {"fmeaOccurrenceTable": {"3": HUGE}}):
+        with pytest.raises(engine.AnalysisError):
+            engine.merge_analysis(engine.default_analysis(), patch)
+    analysis, problems = engine.coerce_analysis({"missionTime": HUGE, "mc": {"n": 50}})
+    assert problems == ["missionTime"]
+    assert analysis["missionTime"] == 8760.0 and analysis["mc"]["n"] == 50
+
+
+def test_huge_integer_model_parameter_keeps_the_old_probability():
+    core = calc(gate("root", "OR", [leaf("a", 0.125, quant={"model": "rate", "lambda": HUGE})]))
+    assert core.find_node_by_id("a")["probability"] == 0.125
+    assert [w["code"] for w in core.quant_warnings] == ["QUANT_PARAM_MISSING"]
+
+
+def test_file_with_a_huge_integer_setting_loads_with_a_repair_notice(tmp_path):
+    """The analysis block of a file is coerced on load: an invalid setting is
+    reset with a LOAD_REPAIR notice (API_REFERENCE). A 401-digit integer
+    raised OverflowError out of load_from_json instead (a 500 on open)."""
+    path = tmp_path / "huge.json"
+    path.write_text('{"title": "t", "tree": {"id": "root", "name": "top", "children": []},'
+                    ' "analysis": {"missionTime": 1%s}}' % ("0" * 400), encoding="utf-8")
+    core = WebCore()
+    assert core.load_from_json(str(path)) == (True, None)
+    assert core.analysis["missionTime"] == 8760.0
+    assert [w["fields"] for w in core.last_load_warnings
+            if w["kind"] == "analysis_invalid"] == [["missionTime"]]
