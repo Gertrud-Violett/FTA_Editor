@@ -1,6 +1,6 @@
 # FTA/ETA Editor - User Guide
 
-**Version**: 1.7.2 | **Updated**: October 10, 2026
+**Version**: 1.7.3 | **Updated**: October 11, 2026
 
 Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor with AI Assistant.
 
@@ -33,6 +33,7 @@ Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor 
   - [Traceability and tree search](#traceability-and-tree-search)
   - [FMEA import](#fmea-import)
   - [Report (DOCX) and Excel sheets](#report-docx-and-excel-sheets)
+  - [The top box: headline and tree walk](#the-top-box-headline-and-tree-walk)
   - [Diagram styles and layout](#diagram-styles-and-layout)
 - [Command-line interface](#command-line-interface)
 - [Desktop app compatibility](#desktop-app-compatibility)
@@ -189,7 +190,9 @@ switch with it. Two things deliberately stay the same in both themes —
 #### What the Node Colours Mean
 
 A node box is shaded by its **calculated** probability (`P_calc`, the lower
-line in the box), not the value you typed:
+line in the box), not the value you typed. (The top box of a tree with
+repeated events also shows the headline: see
+[The top box](#the-top-box-headline-and-tree-walk).)
 
 | Colour | Calculated probability | Reading |
 |---|---|---|
@@ -297,6 +300,17 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 - **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed (the first five of each). One Ctrl+Z undoes the whole update, so review the tree before saving. Detailed error logs are shown if the AI output is invalid.
 - **Clear Chat**: Reset conversation history
 
+**What the AI is told about the numbers**: with every request the AI gets the
+tree (each node's base and calculated probability, gate and links) and, in
+FTA mode, the editor's own results for it: the top-event probability shown in
+the top bar and its method (MCUB or tree walk), the tree-walk value, the
+repeated events, the ten most probable minimal cut sets with their share,
+any approximation (Priority-AND, XOR) or truncation, and the mission time.
+For a tree with repeated events it is told that the headline already counts
+each of them once, so it does not report the tree walk's double counting as
+a finding. In ETA mode, or when the cut sets cannot be computed within the
+headline's 2 s budget, it gets the tree alone.
+
 **Free Chat**:
 Type any question in the input box and press Enter. Examples:
 - "What root causes might be missing from this failure mode?"
@@ -308,6 +322,8 @@ Type any question in the input box and press Enter. Examples:
 - Use **Analyze FTA** for a safe review-only mode.
 - Use **Update FTA** to have the AI rewrite the tree in one step: the AI returns a full JSON which is verified before it replaces your current tree. If the JSON is invalid, the update is rejected and the problematic section is shown in the chat and console. If you edit, undo or open another file while the AI is writing, the update is not applied (nothing is changed); run it again. The 1.7 fields the AI is not shown (gate types, house events, quantification, traceability, FMEA links) are restored by node id.
 - Changes the AI suggests in the chat are listed as **Suggested changes**, all ticked; untick what you do not want and click **Apply selected**. One Ctrl+Z undoes the whole batch. A suggestion that cannot be applied is listed with the reason, and the rest are applied. Among the reasons: a probability the editor computes cannot be set directly (a transfer gate takes its target's value, a house event is 1 or 0 from its state, and an event with a rate, standby or repairable model is computed from its parameters), and a suggestion made before New, Open or Import replaced the document is not applied to the new one.
+- **Links in a suggestion.** A suggestion to add or edit a node can change that node's links. The links it gives are the node's complete new list, so the card says what approving it does: one line for each link it adds (*Adds link: OR → name (id)*) and each it removes (*Removes link: …*). A link must point at an existing node (one added by an earlier suggestion of the same set counts), not at the node itself, and appear once, with the relation AND or OR.
+- **A suggestion is applied as a whole or not at all.** If any part of it is not valid, for example a link to a node that does not exist, that suggestion is not applied, neither its links nor its new name, and the chat says *Suggestion rejected* with the reason. It is never reported as applied with a part left out. The one exception is named in the chat as well: a suggestion cannot give an added node its children (each child is its own suggestion) or set the advanced fields (gate type, quantification model, and so on); if it carries those, it is applied and the chat lists them as *not changed by a suggestion*.
 - Answers can take a while. The editor waits up to 120 seconds for the provider; after that the request fails with a timeout and nothing is changed. The assistant handles one request at a time, so a provider that has stopped answering keeps it busy until its call gives up: at most about four minutes (two for Google Gemini).
 
 ### Status Indicator
@@ -712,6 +728,10 @@ repeated events correctly because they are Boolean.
   the run short, so open the Cut Sets tab for the full result; *Cut sets
   truncated by the document limits* means the document's max order, max
   count or cutoff dropped sets, as the Cut Sets tab would also show.
+- The **top event's node** shows the same number: the diagram's top box,
+  Node Details for the root and the report's diagram give the MCUB, marked,
+  with the root's tree-walk value beside it
+  ([The top box](#the-top-box-headline-and-tree-walk)).
 - It refreshes from `GET /api/analysis/summary` about 400 ms after each edit
   to the tree, the analysis settings or the mode. A slower, outdated answer is
   discarded. If the request fails, the headline quietly shows the tree walk.
@@ -1036,7 +1056,7 @@ Sections (tick the ones you want; the choice is remembered):
 | Metadata | Title, analysis date, mode, generation time, tool version |
 | Headline | Top-event probability, the method (MCUB or tree walk) and the alternative value |
 | Assumptions | Mission time, the models used (with formulas and counts), approximations, non-coherence, repeated events, cut-set limits |
-| Diagram | The diagram image (see below) |
+| Diagram | The diagram image (see below). When the top box shows the MCUB headline, a sentence under the picture says so and gives both values |
 | Events | The basic-event table: id, name, kind, model, parameters (λ, T, τ, μ, MTTR), q, calculated value and source (data provenance) |
 | Cut sets | The top 50 by default, with totals, MCUB, rare-event value and a truncation note |
 | Importance | The top 30 by FV, by default |
@@ -1071,6 +1091,12 @@ three sheets:
   rare-event value, repeated-event count, non-coherence, the number of
   approximations and the truncation flag.
 
+*Calculated probability* in the Events sheet is the tree-walk value of every
+node, the top event included, so the column is one quantity. When the
+headline is the MCUB, the top event's cell has a comment that gives the
+headline and points to the Analysis sheet, and the *Tree walk* row there
+notes that it is the value the Events sheet shows for the top event.
+
 **Export events CSV** builds the same per-event table as a CSV in the browser.
 
 #### CSV from the browser
@@ -1082,6 +1108,42 @@ text cell that a spreadsheet would run as a formula (one starting with `=`,
 `=HYPERLINK(…)`) gets a leading apostrophe. Numbers are never prefixed, so
 probability and rate columns stay numeric. The CLI's `--csv` is the raw data
 for scripts and is not changed this way.
+
+### The top box: headline and tree walk
+
+Every box in the diagram shows its node's calculated probability, which is
+the tree-walk value. For most trees the top box is then the headline. For a
+tree with repeated events (links, transfers) or an XOR gate the headline is
+the MCUB, and until 1.7.3 the top box showed the root's tree-walk value
+instead, so the diagram disagreed with the top bar (0.0349 against 0.0684 in
+the Challenger example).
+
+When the headline is the MCUB, the top event shows it, marked, with its
+tree-walk value beside it:
+
+| Where | What the top event shows |
+|---|---|
+| Diagram, compact boxes | `P_calc:0.0684 (MCUB) \| tree walk 0.0349` |
+| Diagram, standard symbols | `Q=0.0684 (MCUB)` and, on a smaller line, `tree walk 0.0349` |
+| Node Details, root selected | **0.0684** (MCUB) · tree walk 0.0349 |
+| DOCX report | The diagram as above, with a sentence under it |
+| Excel | The Analysis sheet has both values; the root's cell in the Events sheet has a comment |
+
+This holds in both layouts and both themes, in the SVG and PNG exports and in
+`POST /api/render`. A line above the diagram says what the top box shows
+while it shows the MCUB.
+
+**Only the top event.** Every other box keeps its tree-walk value. A cut-set
+value for each gate would need one cut-set expansion per gate, and it would
+be a different quantity: the tree-walk values are the ones that combine along
+the edges you see, child to parent.
+
+**When the top box stays a tree-walk value:** when the headline is the tree
+walk (no repeated events and no XOR), in ETA mode, and when the cut sets
+could not be had in the headline's 2 s budget or were cut short by the
+headline's own cap of 2,000 sets (the **≈** marker with *Quick estimate*).
+In the last case the top bar shows a bound from the first sets, and the box
+does not repeat it.
 
 ### Diagram styles and layout
 
@@ -1385,11 +1447,12 @@ seal" is an AND as well. Two events, the cold and the tight squeeze of the
 O-rings, act on both rings: the secondary O-ring has a link to the node that
 combines them. Things to look at, with **Advanced** on:
 
-- The headline reads **0.0684** with the **MCUB** badge, and the root node's
-  calculated probability is **0.0349**. The second number is the plain tree
-  walk, which counts the cold and the squeeze once for each O-ring, as if each
-  ring had its own. The first comes from the minimal cut sets and counts them
-  once; it is an upper bound, and the exact value for these numbers is 0.0670.
+- The headline reads **0.0684** with the **MCUB** badge, and the diagram's
+  top box reads `P_calc:0.0684 (MCUB) | tree walk 0.0349`. The second number
+  is the root node's own calculated probability, the plain tree walk, which
+  counts the cold and the squeeze once for each O-ring, as if each ring had
+  its own. The first comes from the minimal cut sets and counts them once; it
+  is an upper bound, and the exact value for these numbers is 0.0670.
   See [Top-event value](#top-event-value-tree-walk-mcub-and-rare-event).
 - **Cut Sets** lists three sets. The first, the cold and the squeeze with the
   two decision events, is 0.0625, about 91 % of the total: two O-rings are no
@@ -1494,6 +1557,14 @@ A: Consider using a faster model like `gpt-4o-mini`. Check your API rate limits.
 **Q: AI suggestions don't apply correctly**
 A: Ensure you've reviewed and ticked the changes in the *Suggested changes*
 list before **Apply selected** (the desktop app: the confirmation dialog).
+A suggestion the chat reports as *Suggestion rejected* was not applied at all; the
+reason is beside it (see [Applying Changes](#applying-changes)).
+
+**Q: The AI says my tree double-counts a shared event**
+A: Until 1.7.3 the AI was shown only the tree-walk values, so for a tree with
+repeated events it reported the double counting that the headline (MCUB)
+already corrects. It is now given the headline and its method. Check the top
+bar: with the **MCUB** badge, shared events are counted once.
 
 ## Best Practices
 

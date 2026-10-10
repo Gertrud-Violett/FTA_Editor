@@ -2,7 +2,7 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 1.7.2 (Updated: October 10, 2026)
+**Version**: 1.7.3 (Updated: October 11, 2026)
 
 The editor runs in your **browser**, with no Graphviz to install — that is the
 primary way to run it. The original Tkinter desktop app is kept in `desktop/`

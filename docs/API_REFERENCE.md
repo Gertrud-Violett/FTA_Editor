@@ -1,6 +1,6 @@
 # API Reference
 
-**Version**: 1.7.2 | **Updated**: October 10, 2026
+**Version**: 1.7.3 | **Updated**: October 11, 2026
 
 Complete API documentation for programmatic use of FTA/ETA Editor.
 
@@ -231,6 +231,50 @@ derives (a rate, standby or repairable model, a house event, a transfer
 gate) are listed in `rejected` with the reason. The rest of the batch is
 applied; when every one is rejected the request is a 400 and nothing
 changes.
+
+- **Links (1.7.3).** The `data` of an `add` or `edit` proposal may carry
+  `links`: `[{"target_id", "relation"}]`, the node's complete new list. It
+  replaces the links the node has, `[]` removes them all, and a proposal
+  without the key (or with `null`) leaves them as they are. They are
+  validated as `PATCH /api/nodes` validates `links` (a list of objects,
+  relation `AND` or `OR`, no link twice) and, beyond that, every target must
+  exist in the tree at that point of the batch and none may be the node
+  itself. Until 1.7.3 the key was ignored and the proposal still reported as
+  applied; a links-only edit answered `No valid fields to update`.
+- **A proposal is applied as a whole or not at all.** One whose links fail
+  the checks above is listed in `rejected` with the reason
+  (`Not applied: the suggested link target 'x' does not exist in this
+  analysis.`) and nothing of it is written, its other fields included. No
+  proposal is applied in part.
+- Each record in `applied` has `message` and `ignored`: the keys of the
+  proposal's `data` that applying never writes (`children` when not empty,
+  the 1.7 keys, anything unknown), sorted; `[]` for an ordinary proposal.
+  They are not an error, and `message` names them.
+- `POST /api/ai/chat` and `POST /api/ai/analyze` return each proposal that
+  sets links with `linkChanges`:
+  `{"added": [{"targetId", "targetName", "relation"}], "removed": [...],
+  "problem": null}`, compared with the tree the model was shown. `problem`
+  is the reason it will be rejected, when that is already known (a target
+  that neither exists nor is added by an earlier proposal).
+
+**What the model is sent (1.7.3).** `chat`, `analyze` and `update` send the
+tree as text, as before, and in FTA mode append an "Analysis results"
+section to it (`ai_bridge.analysis_section`), computed from the same snapshot
+with one cut-set expansion under the summary's limits (at most 2,000 sets
+and 2 s, outside the document lock):
+
+- the headline and its method, MCUB or tree walk, with one sentence saying
+  that an MCUB headline already counts each repeated event once;
+- the tree-walk value and the rare-event sum;
+- the repeated events (`id "name"`, at most 20);
+- the 10 most probable minimal cut sets with probability and share;
+- approximations (Priority-AND, XOR arity, non-coherence, large λτ) and
+  whether the cut sets were truncated or capped;
+- the mission time and the display unit.
+
+Numbers have six significant figures and the text is the same for the same
+document. Nothing is added in ETA mode, or when the cut sets fail or run out
+of time; the request then goes out as it did in 1.7.2.
 
 ### Analysis endpoints
 
@@ -531,12 +575,13 @@ Errors:
 | `sigFigs` | 1–6 (clamped) | 3 |
 
 An invalid `style` or `rankdir` is `400 INVALID_FIELD`. `GET /api/dot` echoes
-the three values and adds `idMap`:
+the three values and adds `idMap` and `rootHeadline`:
 
 ```json
 {"ok": true, "dot": "digraph G {...}", "renderer": "wasm", "style": "symbols",
  "rankdir": "TB", "sigFigs": 3,
- "idMap": {"root": "root", "root__gate": "root", "root_0_1": "root_0_1", "root_0_1__event": "root_0_1"}}
+ "idMap": {"root": "root", "root__gate": "root", "root_0_1": "root_0_1", "root_0_1__event": "root_0_1"},
+ "rootHeadline": {"method": "mcub", "value": 0.068353515625, "treeWalk": 0.0349375}}
 ```
 
 - `idMap` maps every DOT node name to its tree node id. That includes the
@@ -546,6 +591,26 @@ the three values and adds `idMap`:
   still work.
 - `POST /api/render` draws the Graphviz *approximations* of the symbols. The
   true symbols exist only in the browser renderer.
+- **The root's label (1.7.3).** Every node's label shows its
+  `calculatedProbability`, the tree-walk value. When the headline is the
+  MCUB, the root's label shows the headline instead, marked, with the
+  tree-walk value beside it: `P_calc:0.0684 (MCUB) | tree walk 0.0349` in the
+  compact style, `Q=0.0684 (MCUB)` over a smaller `tree walk 0.0349` line in
+  the symbols style. `rootHeadline` is then `{method: "mcub", value,
+  treeWalk}`; otherwise it is `null` and the DOT is what 1.7.2 produced.
+  `POST /api/render` draws the same DOT.
+  - The rule is `engine.root_headline(summary)`: `headlineMethod` is `mcub`
+    and `capped` is false. A headline that is the tree walk (which includes
+    cut sets that failed or timed out), ETA mode and a summary cut short by
+    its own 2,000-set cap all leave the root's tree-walk label.
+  - Only the root. A cut-set value per gate would cost one expansion per
+    gate and is a different quantity from the one the tree walk propagates
+    along the edges.
+  - The tree is copied once under the document lock; the headline and the
+    DOT are both computed from that copy, outside the lock. A tree without a
+    link, a transfer or an XOR gate is drawn directly, with no cut sets
+    computed. The headline is remembered for the last document, so a theme
+    or layout change does not recompute it.
 
 ### File browser: `ext` filter
 
@@ -574,6 +639,13 @@ Text stays text in every sheet: a value that starts with `=` (a node named
 export and the DOCX report drop the characters XML cannot hold (C0 control
 characters other than tab, line feed and carriage return); the
 whitespace-like ones become a space. The document is not changed.
+
+The Events sheet's *Calculated probability* is the tree-walk value of every
+node. When the headline is the MCUB (`engine.root_headline`), the root's cell
+in that column carries a comment with the headline, and the Analysis sheet's
+*Tree walk* row is noted as the value the Events sheet shows for the top
+event (1.7.3). `POST /api/report/docx` draws its own diagram with the root's
+headline label and puts a sentence under the picture.
 
 ### New error codes
 
@@ -656,6 +728,7 @@ them modifies the tree it is given.
 
 ```python
 import sys; sys.path.insert(0, "fta_web")
+import engine
 from engine import WebCore, summary
 import cutsets, importance, uncertainty, lint
 
@@ -666,6 +739,7 @@ core.recalculate_probabilities()
 tree, analysis = core.get_data(), core.get_analysis()
 
 summary(tree, analysis)                  # {treeWalk, mcub, rareEvent, headline, headlineMethod, ...}
+engine.root_headline(summary(tree, analysis))  # {method: "mcub", value, treeWalk} or None (1.7.3)
 cs = cutsets.compute(tree, analysis, {"maxOrder": 4})   # may raise cutsets.CutsetError
 importance.compute(cs)                   # [{id, name, q, fv, birnbaum, raw, rrw, rrwInfinite, cutSetCount}]
 uncertainty.run(tree, analysis, n=10000, seed=1, time_limit=30.0)
@@ -679,6 +753,12 @@ core.save_to_json("plant.json")          # writes `analysis` beside `tree`
 - `core.quant_warnings` holds the last recalculation's `{code, nodeId, params}`
   warnings.
 - `engine.derive_quant(node, analysis)` evaluates one node's model.
+- `engine.summary_with_cut_sets(tree, analysis)` returns `(summary, cut_sets)`:
+  the summary and the `cutsets.compute` result it came from (`None` when the
+  cut sets failed), from one expansion.
+- `diagram_dot.document_dot(core, lock=None, **options)` returns
+  `(dot, id_map, root_headline)`; `diagram_dot.build_dot_text2(core, ...,
+  root_headline=None)` draws a tree with the headline it is given.
 - `engine.kofn_probability(probs, k)` and `engine.xor_probability(probs)` are
   the gate formulas.
 - The CLI (`fta_web/cli.py`) is a thin wrapper over these functions. See the

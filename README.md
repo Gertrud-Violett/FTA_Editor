@@ -5,7 +5,7 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 [![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.7.2-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.7.3-green.svg)](CHANGELOG.md)
 
 There are two ways to run it:
 
@@ -240,7 +240,7 @@ move; then use it as the starting point for your own analysis.
 
 | File | What it is | What to look at |
 |---|---|---|
-| `challenger_fta_en.json`, `challenger_fta_ja.json` | A fault tree of the loss of the Space Shuttle Challenger (STS 51-L, 1986): the joint that did not seal, and the launch that was not stopped | A common cause. The cold and the tight squeeze act on both O-rings, so the top event (0.0684, with the **MCUB** badge) is higher than the root node's own tree-walk value (0.0349). **Cut Sets** and **Importance** show why |
+| `challenger_fta_en.json`, `challenger_fta_ja.json` | A fault tree of the loss of the Space Shuttle Challenger (STS 51-L, 1986): the joint that did not seal, and the launch that was not stopped | A common cause. The cold and the tight squeeze act on both O-rings, so the top event (0.0684, with the **MCUB** badge, also in the diagram's top box) is higher than the root node's own tree-walk value (0.0349), shown beside it. **Cut Sets** and **Importance** show why |
 | `tmi2_eta_en.json`, `tmi2_eta_ja.json` | An event tree of the accident at Three Mile Island Unit 2 (1979): relief valve, block valve, high pressure injection, containment | ETA mode. Each end state is the product of the branch probabilities on the way to it; the branches marked "(actual)" are the path the accident took |
 | `sampleFTA.json` | The small AND/OR tree of the 1.x releases | |
 
