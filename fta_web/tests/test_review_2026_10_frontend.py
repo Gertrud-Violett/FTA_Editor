@@ -971,6 +971,232 @@ listed.then((ok) => console.log(JSON.stringify([ok, cwd, pathInput.value])));
     assert _node(script) == [True, "/home/work", shown]
 
 
+# ---- filedialog.js: a path entered while a listing is on its way is acted on -----------
+#
+# Found after the review, checking the packaged 1.7.2 (10 October 2026). The
+# dialog opens with two requests, /fs/home and the listing of the start
+# folder, and neither was coordinated with a path the user enters meanwhile
+# (typed or pasted into the path box, then Enter or Go). In Chrome, with the
+# request held by a route:
+#   - Enter while the first listing was on its way did nothing at all. The
+#     typed path stayed in the box and the list showed the start folder.
+#   - Enter before /fs/home had answered listed the typed folder; the start-up
+#     then listed the start folder over it and rewrote the path box.
+# A script that opened Load and entered a path at once hit the first case
+# whenever the home folder was slow to read. The path is now kept and acted on
+# once the start folder is listed; the last one entered wins.
+
+_FILE_DIALOG_START_HARNESS = r"""
+const window = { setTimeout, clearTimeout };
+const document = { activeElement: null };
+function control(name) {
+  return {
+    name, value: '', disabled: false, selection: null,
+    focus() { document.activeElement = this; },
+    select() {},
+    setSelectionRange(start, end) { this.selection = [start, end]; },
+    setAttribute() {},
+  };
+}
+const upButton = control('up');
+const pathInput = control('path');
+const list = control('list');
+const nameInput = control('name');
+const cancelButton = control('cancel');
+const acceptButton = control('accept');
+const [mode, actions, homeFails] = SCENARIO;
+const opts = {};
+const extensions = ['.json'];
+const extensionLabel = '.json';
+let cwd = '';
+let parent = null;
+let dirs = [];
+let files = [];
+let generation = 0;
+let busy = false;
+let starting = true;
+let pendingPath = null;
+let closed = false;
+let lastNavigateError = null;
+const errors = [];
+function setMessage(text, kind) { if (kind === 'error') errors.push(text); }
+function t(key) { return key; }
+function listQuery() { return ''; }
+function matchesExtension() { return true; }
+function renderList() {}
+function isSessionError() { return false; }
+function errorText(err) { return err && err.code ? err.code : 'failed'; }
+let closedWith;
+function close(value) { closed = true; closedWith = value; generation += 1; }
+function dirName(path) { return path.slice(0, path.lastIndexOf('/')); }
+function baseName(path) { return path.slice(path.lastIndexOf('/') + 1); }
+nameInput.value = 'pump.json';
+
+// The server answers a request only when the driver below lets it. A path
+// that ends in .json is a file: listing it is refused.
+const asked = [];
+const api = {
+  get: (url) => new Promise((resolve, reject) => {
+    asked.push({
+      what: url.startsWith('/fs/home') ? 'home' : decodeURIComponent(url.split('path=')[1]),
+      resolve,
+      reject,
+    });
+  }),
+};
+function answer(request) {
+  if (request.what === 'home' && homeFails) {
+    request.reject({ code: 'SERVER_ERROR' });
+  } else if (request.what === 'home') {
+    request.resolve({ cwd: '/home/u', root: '/home/u' });
+  } else if (request.what.endsWith('.json')) {
+    request.reject({ code: 'PATH_REJECTED', detail: { reason: 'not_a_directory' } });
+  } else {
+    request.resolve({ path: request.what, parent: '/home', dirs: [], files: [] });
+  }
+}
+"""
+
+_FILE_DIALOG_START_DRIVER = r"""
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+(async () => {
+  let answered = 0;
+  let idle = 0;
+  while (idle < 8) {
+    await tick();
+    // What the user does: `during` n, while request number n is still
+    // unanswered; `after` n, once n requests are answered and none is open.
+    const due = actions.filter((a) => !a.done && (a.after === undefined
+      ? asked.length > a.during && answered <= a.during
+      : answered === a.after && asked.length === a.after));
+    if (due.length) {
+      for (const action of due) {
+        action.done = true;
+        if (action.close) {
+          close(null);
+        } else {
+          pathInput.focus();
+          pathInput.value = action.path;
+          goToPath(pathInput.value); // what Enter in the path box, and Go, call
+        }
+      }
+      continue;
+    }
+    if (answered < asked.length) {
+      answer(asked[answered]);
+      answered += 1;
+      idle = 0;
+    } else {
+      idle += 1;
+    }
+  }
+  console.log(JSON.stringify({
+    asked: asked.map((request) => request.what),
+    folder: cwd,
+    pathBox: pathInput.value,
+    focus: document.activeElement && document.activeElement.name,
+    name: nameInput.value,
+    errors,
+    closedWith: closedWith === undefined ? 'still open' : closedWith,
+  }));
+})();
+"""
+
+
+def _file_dialog_start(scenario):
+    """Run the dialog's own start-up, listing and typed-path code against a
+    server that answers one request at a time, with the user acting in between."""
+    src = _read(STATIC / "filedialog.js")
+    starts = ["function setBusy(next)", "async function navigate(target, quiet)",
+              "async function goToPath(raw)"]
+    if "function flushPendingPath()" in src:
+        starts.append("function flushPendingPath()")
+    functions = "\n".join(_braced(src, src.index(start)) for start in starts)
+    # the start-up, with whatever follows its closing brace up to the end of
+    # openFileDialog(): how it is called, and what runs when it is over
+    begin = src.index("(async () => {", src.index("document.body.appendChild(overlay);"))
+    body = _braced(src, begin)
+    after = src[begin + len(body):src.index("return done;", begin)]
+    return _node(_FILE_DIALOG_START_HARNESS.replace("SCENARIO", json.dumps(scenario))
+                 + functions + "\n" + body + after + _FILE_DIALOG_START_DRIVER)
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "mode, during",
+    [
+        ("open", 1),  # Enter while the first listing is on its way
+        ("open", 0),  # Enter before the dialog knows its start folder
+        ("save", 1),
+        ("save", 0),
+    ],
+)
+def test_file_dialog_goes_to_a_path_entered_during_start_up(mode, during):
+    got = _file_dialog_start([mode, [{"during": during, "path": "/typed/dir"}]])
+    assert got == {
+        # the start folder first, then the folder that was asked for
+        "asked": ["home", "/home/u", "/typed/dir"],
+        "folder": "/typed/dir",
+        "pathBox": "/typed/dir",
+        "focus": "path",  # the user is in the path box; start-up leaves the focus there
+        "name": "pump.json",
+        "errors": [],
+        "closedWith": "still open",
+    }
+
+
+@needs_node
+def test_file_dialog_goes_to_an_entered_path_when_the_start_folder_is_unknown():
+    """/fs/home fails, so start-up has no folder to list and no listing ends:
+    the path entered meanwhile is acted on when start-up is over."""
+    got = _file_dialog_start(["open", [{"during": 0, "path": "/typed/dir"}], True])
+    assert got["asked"] == ["home", "/typed/dir"]
+    assert (got["folder"], got["pathBox"], got["focus"]) == ("/typed/dir", "/typed/dir", "path")
+    assert got["errors"] == ["SERVER_ERROR"]  # shown for /fs/home, before the folder was listed
+
+
+@needs_node
+def test_file_dialog_goes_to_the_last_path_entered_during_start_up():
+    got = _file_dialog_start(["open", [{"during": 1, "path": "/first"}, {"during": 1, "path": "/second"}]])
+    assert got["asked"] == ["home", "/home/u", "/second"]
+    assert (got["folder"], got["pathBox"], got["errors"]) == ("/second", "/second", [])
+
+
+@needs_node
+def test_file_dialog_closed_during_start_up_asks_for_nothing_more():
+    got = _file_dialog_start(["open", [{"during": 1, "path": "/typed/dir"}, {"during": 1, "close": True}]])
+    assert got["asked"] == ["home", "/home/u"]
+    assert (got["folder"], got["closedWith"]) == ("", None)
+
+
+@needs_node
+def test_file_dialog_goes_to_a_path_entered_during_a_later_listing():
+    """Not only at start-up: the list is busy whenever a folder is being read."""
+    got = _file_dialog_start(["open", [{"after": 2, "path": "/slow"}, {"during": 2, "path": "/typed/dir"}]])
+    assert got["asked"] == ["home", "/home/u", "/slow", "/typed/dir"]
+    assert (got["folder"], got["pathBox"], got["errors"]) == ("/typed/dir", "/typed/dir", [])
+
+
+@needs_node
+def test_file_dialog_finishes_with_one_entered_path_before_it_turns_to_the_next():
+    """A file's path opens that file (the listing is refused, and the dialog
+    then takes the path as the choice). A second path entered while the first
+    is being looked at must not get in between: acted on at once, it cleared
+    the refusal the first one was about to read, and the file did not open."""
+    got = _file_dialog_start(["open", [{"after": 2, "path": "/home/u/pump.json"},
+                                       {"during": 2, "path": "/typed/dir"}]])
+    assert got["asked"] == ["home", "/home/u", "/home/u/pump.json"]
+    assert (got["closedWith"], got["errors"]) == ("/home/u/pump.json", [])
+
+
+@needs_node
+@pytest.mark.parametrize("mode, focus", [("open", "list"), ("save", "name")])
+def test_file_dialog_start_up_is_unchanged_when_nothing_is_entered(mode, focus):
+    got = _file_dialog_start([mode, []])
+    assert got == {"asked": ["home", "/home/u"], "folder": "/home/u", "pathBox": "/home/u",
+                   "focus": focus, "name": "pump.json", "errors": [], "closedWith": "still open"}
+
+
 # ---- dialogs.js: the link picker installs only its newest node list (F-31) -------------
 #
 # Select a node (GET /nodes for the old document, answering late) and press

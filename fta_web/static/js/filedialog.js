@@ -259,6 +259,8 @@ export function openFileDialog(options) {
   let activeIndex = -1;
   let generation = 0;
   let busy = false;
+  let starting = true; // until the start folder is listed, or could not be
+  let pendingPath = null; // a path entered while a listing was on its way
   let closed = false;
   let typeBuffer = '';
   let typeTimer = 0;
@@ -402,6 +404,8 @@ export function openFileDialog(options) {
     busy = next;
     list.setAttribute('aria-busy', next ? 'true' : 'false');
     acceptButton.disabled = next;
+    // From a timer, so that whoever awaited this listing finishes first.
+    if (!next && pendingPath !== null) window.setTimeout(flushPendingPath, 0);
   }
 
   /* ---- listing ---- */
@@ -589,7 +593,16 @@ export function openFileDialog(options) {
    */
   async function goToPath(raw) {
     const value = String(raw || '').trim();
-    if (!value || busy) return;
+    if (!value || closed) return;
+    if (busy || starting) {
+      // A listing is on its way, and the first one can be slow. Dropping the
+      // Enter left the typed path in the box over the start folder's list;
+      // going there at once let the start-up list its own folder over it.
+      // Keep the path (the last one entered) and go once the list is idle.
+      pendingPath = value;
+      return;
+    }
+    pendingPath = null;
     setMessage('');
     lastNavigateError = null;
     const ok = await navigate(value, true);
@@ -623,6 +636,12 @@ export function openFileDialog(options) {
     nameInput.value = base;
     nameInput.focus();
     nameInput.select();
+  }
+
+  /** Go to the path that was entered while a listing was on its way. */
+  function flushPendingPath() {
+    if (closed || busy || starting || pendingPath === null) return;
+    goToPath(pendingPath);
   }
 
   /** Enter / double-click on the highlighted row. */
@@ -914,7 +933,10 @@ export function openFileDialog(options) {
 
     if (!closed && homeError) setMessage(errorText(homeError, 'file.errList'), 'error');
     if (!closed && !typing()) cancelButton.focus();
-  })();
+  })().finally(() => {
+    starting = false;
+    flushPendingPath();
+  });
 
   return done;
 }

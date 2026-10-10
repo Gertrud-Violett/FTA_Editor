@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **File dialog: a path entered while a folder is still being read is not
+  lost.** Enter (or Go) on a path typed into the path box was ignored while
+  the dialog's first listing was on its way: the path stayed in the box and
+  the list showed the start folder. Entered even earlier, before the dialog
+  knew its start folder, the path was listed and then replaced by the start
+  folder. Both only showed when the start folder was slow to read; a script
+  that opened Load and entered a path at once hit them. The path is now kept
+  and acted on as soon as the list is idle; the last one entered wins. Found
+  while checking the packaged 1.7.2. The GUI suite checks it (721 checks).
 - **Tests: three temp-folder checks no longer fail when two test runs
   overlap** (tests only). `test_export_leaves_no_temp_files_behind` and two
   more compared the machine's shared temp folder before and after a request,

@@ -176,6 +176,12 @@ Seen and left open:
 | An AI edit of the top node can set its type to `Gate` (the prompt offers Event, Gate and Intermediate, not Root) | LOW | The type is a label; nothing computes from it |
 | In ETA mode the diagram prints `Gate: OR` on every branch node, and the DOCX report is titled "Fault Tree Analysis Report" | LOW | Display only |
 
+Found on the packaged 1.7.2 itself and fixed after the release
+(`CHANGELOG.md` → [Unreleased]): Enter on a path typed into the file dialog
+was lost while the dialog was still reading its start folder (LOW; the
+release notes list it as a known issue), and three tests that watch the
+temp folder failed when two test runs overlapped.
+
 The two worked examples added in 1.7.2 (`fta_web/examples/`) went through
 reviews by an analyst agent (facts, logic, arithmetic; two rounds) and an
 editor agent (the Japanese against the English, terms, units; three rounds)
