@@ -775,3 +775,24 @@ class TestTreeDepthLimit:
         # one level shallower is fine
         ok = c.post("/api/nodes/x/move", json={"newParentId": "n%d" % (MAX_TREE_DEPTH - 2)})
         assert ok.status_code == 200, body(ok)
+
+
+# --------------------------------------------------------------------------
+# B-13: GET /api/export/json rewrote the open document's date
+# --------------------------------------------------------------------------
+
+
+class TestExportIsReadOnly:
+    """``save_to_json`` fills an empty date with today before writing. The
+    JSON export calls it on the live document, so a GET changed the
+    document -- not undoable, not marked modified. The download still
+    carries the date a Save would write."""
+
+    def test_export_leaves_an_empty_date_alone(self, files_client):
+        c = files_client
+        assert c.post("/api/metadata", json={"date": ""}).status_code == 200
+        exported = c.get("/api/export/json")
+        assert exported.status_code == 200
+        assert json.loads(exported.get_data(as_text=True))["date"] != ""
+        assert body(c.get("/api/state"))["metadata"]["date"] == ""
+        assert get_state().core.date == ""

@@ -541,12 +541,16 @@ def _unlink_quietly(path: Path) -> None:
 def _export_json(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
     """The document as the editor's own JSON, byte-for-byte what Save writes."""
     previous = getattr(core, "last_saved_file", None)
+    date = core.date
     try:
         return core.save_to_json(path)
     finally:
         # An export is not a save: the document keeps whatever file it belongs
-        # to, and must not start considering this temp file its home.
+        # to, and must not start considering this temp file its home. Nor
+        # does it keep the date save_to_json fills into an empty one: a GET
+        # must not change the document (the download still carries it).
         core.last_saved_file = previous
+        core.date = date
 
 
 def _export_xml(core: FTACore, path: str) -> Tuple[bool, Optional[str]]:
