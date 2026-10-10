@@ -315,6 +315,44 @@ def test_save_waits_for_queued_keyboard_moves():
     assert "detail.promises.push(keyboardMoves);" in body
 
 
+# ---- tree.js: rows are found by id whatever characters the id holds -------------------
+#
+# itemById spliced the id into a CSS selector, escaping only quotes. Ids come
+# from the file: with a backslash the selector missed the row (focus fell to
+# <body> after an inline rename), with a newline querySelector threw on every
+# render ("A panel failed to update") and F2 could not rename the node.
+# Reproduced in Chromium with a file holding such ids. The host below answers
+# querySelector the way the browser parses that selector.
+
+_ITEM_HOST = r"""
+const items = ['root', 'back\\slash', 'new\nline', 'q"uote', 'plain'].map((id) => ({ dataset: { id } }));
+function cssString(raw) {
+  if (raw.indexOf('\n') !== -1) throw new SyntaxError('not a valid selector');
+  return raw.replace(/\\([0-9a-fA-F]{1,6})\s?|\\([\s\S])/g,
+    (_m, hex, ch) => (hex !== undefined ? String.fromCodePoint(parseInt(hex, 16)) : ch));
+}
+const host = {
+  querySelectorAll(selector) { return selector === '.fta-tree-item' ? items : []; },
+  querySelector(selector) {
+    const m = /^\.fta-tree-item\[data-id="([\s\S]*)"\]$/.exec(selector);
+    if (!m) throw new Error('unexpected selector ' + selector);
+    const wanted = cssString(m[1]);
+    return items.find((item) => item.dataset.id === wanted) || null;
+  },
+};
+"""
+
+
+@needs_node
+def test_tree_finds_rows_whose_ids_hold_backslashes_or_newlines():
+    src = _read(STATIC / "tree.js")
+    fn = _braced(src, src.index("function itemById(id)"))
+    script = _ITEM_HOST + fn + (
+        "\nconsole.log(JSON.stringify(items.map((item) => {"
+        " try { return itemById(item.dataset.id) === item; } catch (err) { return String(err.name); } })));")
+    assert _node(script) == [True, True, True, True, True]
+
+
 # ---- dialogs.js: parseProbability takes decimal text only ------------------------------
 #
 # The Add dialog and the Details panel parsed with Number(), which reads 0x1,

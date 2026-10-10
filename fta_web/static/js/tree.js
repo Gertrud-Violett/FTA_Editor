@@ -1244,7 +1244,14 @@ export function initTree(container) {
   }
 
   function itemById(id) {
-    return host.querySelector('.fta-tree-item[data-id="' + String(id).replace(/"/g, '\\"') + '"]');
+    // Compared, not spliced into a selector: ids come from the file, and a
+    // backslash in one made the selector miss the row (focus fell to <body>
+    // after a rename) while a newline made querySelector throw on every render.
+    const wanted = String(id);
+    for (const item of host.querySelectorAll('.fta-tree-item')) {
+      if (item.dataset.id === wanted) return item;
+    }
+    return null;
   }
 
   function rowOf(item) {
