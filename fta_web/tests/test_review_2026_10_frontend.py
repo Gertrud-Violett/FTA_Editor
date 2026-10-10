@@ -251,3 +251,65 @@ def test_tree_drops_its_multi_selection_on_a_new_document():
     main = _read(STATIC / "main.js")
     for fn in ("async function adoptDocument(payload)", "async function actionNew()"):
         assert "announceDocument();" in _braced(main, main.index(fn)), fn
+
+
+# ---- tree.js: quick keyboard moves are applied one after another ---------------------
+#
+# Three quick Ctrl+Shift+Down on the first of four siblings left it second or
+# third, never last: every press computed its target index from the same
+# not-yet-updated tree, so presses were lost and each still cost an undo step
+# (Chromium: B,C,A,D instead of B,C,D,A in 5 runs of 5).
+
+_MOVE_HARNESS = r"""
+const kids = { root: ['a', 'b', 'c', 'd'], a: [], b: [], c: [], d: [] };
+const parentOf = (id) => Object.keys(kids).find((p) => kids[p].indexOf(id) !== -1) || null;
+function rootId() { return 'root'; }
+function parentIdOf(id) { return parentOf(id); }
+function childIdsOf(id) { return (kids[id] || []).slice(); }
+function movable(nodeId, newParentId) { return nodeId !== newParentId; }
+function say() {}
+function t(key) { return key; }
+function fail(err) { throw err; }
+let destroyed = false;
+// The round trip: the tree the next press reads changes only when it ends.
+function requestMove(id, newParentId, index) {
+  return new Promise((resolve) => setTimeout(() => {
+    const from = parentOf(id);
+    kids[from] = kids[from].filter((x) => x !== id);
+    const list = kids[newParentId];
+    if (index === null || index === undefined || index > list.length) list.push(id);
+    else list.splice(index, 0, id);
+    resolve();
+  }, 15));
+}
+"""
+
+
+def _keyboard_move_source() -> str:
+    src = _read(STATIC / "tree.js")
+    parts = [_braced(src, src.index("function moveByKeyboard(id, direction)"))]
+    decl = re.search(r"^\s*let keyboardMoves = .*?;$", src, re.M)
+    if decl:
+        parts.append(decl.group(0))
+    at = src.find("function queueKeyboardMove(")
+    if at != -1:
+        parts.append(_braced(src, at))
+    return "\n".join(parts)
+
+
+@needs_node
+def test_quick_keyboard_moves_each_count():
+    src = _read(STATIC / "tree.js")
+    keydown = _braced(src, src.index("host.addEventListener('keydown'"))
+    handler = re.search(r"if \(direction\) \{(.*?)\}", keydown, re.S).group(1)
+    call = "queueKeyboardMove" if "queueKeyboardMove(id, direction)" in handler else "moveByKeyboard"
+    script = _MOVE_HARNESS + _keyboard_move_source() + (
+        "\nfor (let i = 0; i < 3; i += 1) %s('a', 'down');"
+        "\nsetTimeout(() => console.log(JSON.stringify(kids.root)), 400);" % call)
+    assert _node(script) == ["b", "c", "d", "a"]
+
+
+def test_save_waits_for_queued_keyboard_moves():
+    src = _read(STATIC / "tree.js")
+    body = _braced(src, src.index("function onFlush(event)"))
+    assert "detail.promises.push(keyboardMoves);" in body

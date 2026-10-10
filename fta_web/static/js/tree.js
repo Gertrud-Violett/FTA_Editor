@@ -1419,8 +1419,7 @@ export function initTree(container) {
       // Post-detach indices: moving up inserts before the previous sibling
       // (at - 1); moving down inserts after the next one, which has shifted
       // into this node's old slot, so it is at + 1 either way.
-      requestMove(nodeId, parent, to, true);
-      return;
+      return requestMove(nodeId, parent, to, true);
     }
 
     if (direction === 'in') {
@@ -1433,8 +1432,7 @@ export function initTree(container) {
         say(t('tree.moveInvalid'), 'warn');
         return;
       }
-      requestMove(nodeId, newParent, null, false);
-      return;
+      return requestMove(nodeId, newParent, null, false);
     }
 
     // 'out': become the parent's next sibling.
@@ -1444,7 +1442,23 @@ export function initTree(container) {
       return;
     }
     const parentAt = childIdsOf(grandparent).indexOf(parent);
-    requestMove(nodeId, grandparent, parentAt < 0 ? null : parentAt + 1, false);
+    return requestMove(nodeId, grandparent, parentAt < 0 ? null : parentAt + 1, false);
+  }
+
+  /**
+   * Keyboard moves run one after another, each worked out from the tree the
+   * previous one left. Computed on the spot, quick presses (or a held key)
+   * all started from the same not-yet-updated tree: three Ctrl+Shift+Down
+   * moved the node two places, and the lost press still cost an undo step.
+   * Save and export wait for the whole queue through fta:flush.
+   */
+  let keyboardMoves = Promise.resolve();
+
+  function queueKeyboardMove(id, direction) {
+    keyboardMoves = keyboardMoves
+      .then(() => (destroyed ? undefined : moveByKeyboard(id, direction)))
+      .catch((err) => fail(err));
+    return keyboardMoves;
   }
 
   /* ---- drag and drop ------------------------------------------------------ */
@@ -1786,7 +1800,7 @@ export function initTree(container) {
       const direction = moves[event.key];
       if (direction) {
         event.preventDefault();
-        moveByKeyboard(id, direction);
+        queueKeyboardMove(id, direction);
         return;
       }
     }
@@ -1980,6 +1994,7 @@ export function initTree(container) {
     const detail = event && event.detail;
     if (!detail || !Array.isArray(detail.promises)) return;
     if (pending) detail.promises.push(pending);
+    detail.promises.push(keyboardMoves);
   }
 
   /** Open every ancestor of `ids`. @returns {boolean} whether anything opened. */
