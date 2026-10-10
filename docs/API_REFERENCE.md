@@ -413,8 +413,8 @@ is not a JSON envelope.
 
 #### `POST /api/fmea/preview`
 
-Body `{path, sheet?}`. `path` is a server-side path chosen through the file
-dialog. It gets the same root, traversal and symlink checks as
+Body `{path, sheet?, mapping?}`. `path` is a server-side path chosen through
+the file dialog. It gets the same root, traversal and symlink checks as
 `/api/file/open`. Only `.csv` and `.xlsx` are accepted, at most 10 MB. The
 endpoint is read-only.
 
@@ -431,8 +431,12 @@ endpoint is read-only.
  "defaultOccurrenceTable": {"1": 1e-7, "10": 0.1}}
 ```
 
-`rows` holds at most the first 50 rows. `occurrenceTable` is the document's
-table; `defaultOccurrenceTable` is the AIAG default.
+`rows` holds at most the first 50 rows, as the import reads them: a blank
+item under a row with a failure mode is filled down, for `mapping` when the
+body has one, else for `suggestedMapping`. `occurrenceTable` is the
+document's table; `defaultOccurrenceTable` is the AIAG default.
+`suggestedMapping` never offers an AIAG-VDA "AP" (action priority) column
+for `rpn`.
 
 `suggestedLambdaUnit` is the unit the λ header names (`FIT`; `/y`, `per year`,
 `年`; `/h`, `per hour`, `時間`). When the header names none, it comes from the
@@ -449,7 +453,14 @@ The `skipped[].reason` values are `noKey`, `duplicate`, `exists`,
 
 - It is one undo step, pushed only when something changes.
 - Rows whose key matches a node's `fmea.id` update that node in place; the
-  others become new leaf events under `parentId`.
+  others become new leaf events under `parentId`. An update changes only the
+  fields whose columns are mapped (a mapped column left blank empties its
+  field).
+- Nodes of an earlier import of the same sheet whose key no row holds any
+  more are kept and listed in `notInSheet`.
+- Text numbers: `1,5` and `1.200,5` (1200.5) are read with a decimal comma;
+  in a comma-delimited CSV `1,200` is 1200 (thousands grouping), elsewhere
+  1.2.
 - An `occurrenceTable` that differs from the document's is saved into
   `analysis.fmeaOccurrenceTable` in the same undo step.
 
@@ -459,6 +470,7 @@ The response is the mutation payload plus:
 {"created": ["root_2_0"], "updated": ["root_0_1"], "unchanged": [],
  "skipped": [{"row": 7, "fmeaId": "P-07", "reason": "invalidRank", "field": "occurrence",
               "value": 12, "message": "..."}],
+ "notInSheet": [{"id": "root_2_3", "name": "Pump – Bearing seizure", "fmeaId": "P-09"}],
  "changed": true, "source": "pfmea.xlsx [PFMEA]"}
 ```
 

@@ -933,11 +933,16 @@ FMEA row id on each node so the two analyses stay linked.
    `.csv` and `.xlsx` files instead of `.json`. The file must be within the
    browser's root and at most 10 MB, and the tool reads at most 20,000 rows
    and 200 columns. `.xlsx` needs `openpyxl`; otherwise save the sheet as CSV.
-   The first non-empty row is the header. A preview shows the first 50 rows.
-   For a workbook, pick the sheet.
+   The first non-empty row is the header. A preview shows the first 50 rows,
+   as they will be imported. For a workbook, pick the sheet. A CSV is read as
+   UTF-16 or UTF-32 when it starts with a byte-order mark, else as UTF-8 (with
+   or without a BOM), else as Shift_JIS (cp932) when the text has kana, else as
+   Windows-1252, else as cp932 (kanji-only text), and as Latin-1 as a last
+   resort.
 2. **Columns.** Map each import field to a column: *id, item, mode, cause,
    severity, occurrence, detection, rpn, λ*. A mapping is suggested from
-   English and Japanese header words.
+   English and Japanese header words. An AIAG-VDA *AP* (action priority,
+   H/M/L) column is not suggested for RPN.
 3. **Target and values.**
    - *Parent*: the node the new events go under. It defaults to the selected
      node. If the parent is a leaf, it becomes an OR gate. It cannot be a
@@ -956,11 +961,19 @@ Import rules:
 
 - **Key.** Each row's key is the mapped id column. If no id column is mapped,
   the key is "item / mode". A row with neither is skipped.
+- **Blank items.** A row that has a failure mode but a blank item takes the
+  item of the row above. The usual layout writes an item once over its failure
+  modes, and merged cells read as blank below the first.
 - **Re-import updates in place.** With *update* on (the default), a row whose
   key equals an existing node's `fmea.id` anywhere in the tree updates that
-  node: its name, its `fmea` block and, for a leaf, its numbers. With update
-  off, such a row is skipped. A key repeated within the sheet is imported
-  once.
+  node: its `fmea` block, its name and, for a leaf, its numbers. Only the
+  fields whose columns are mapped change (a mapped column left blank empties
+  its field), and the name is re-derived only when the item or mode column is
+  mapped. With update off, such a row is skipped. A key repeated within the
+  sheet is imported once.
+- **Rows gone from the sheet.** Nodes from an earlier import of the same
+  sheet whose key no row holds any more are kept, not deleted, and listed
+  after the import.
 - **New rows** become leaf events under the parent, named "item – mode".
 - **Numbers.** The first rule that applies is used:
   1. A λ value gives the **rate** model with that λ.
@@ -971,6 +984,11 @@ Import rules:
 
   Re-importing merges into an existing `quant`, so your T and uncertainty
   survive.
+- **Number formats.** A decimal comma (`1,5`) and European grouping
+  (`1.200,5` is 1200.5) are read. In a comma-delimited CSV, where a comma
+  cannot be the decimal mark of an unquoted number, `1,200` and `12,345.6` are
+  thousands groupings (1200 and 12345.6), as Excel writes a `#,##0` column;
+  elsewhere `1,200` is 1.2.
 - **Validation.** Ranks must be integers 1–10, RPN a non-negative integer, and
   λ a non-negative number. A bad row is skipped with its reason and sheet row
   number, and the rest is still imported. RPN is computed as S×O×D when it is
@@ -994,8 +1012,9 @@ Occurrence ranks are ordinal judgements, not measured probabilities. Prefer a
 λ from field or handbook data where you have one.
 
 After an import, the tab lists how many rows were created, updated, unchanged
-and skipped (with reasons). It also highlights the imported nodes in the tree
-and the diagram.
+and skipped (with reasons), and the nodes of an earlier import whose rows are
+no longer in the sheet. It also highlights the imported nodes in the tree and
+the diagram.
 
 ### Report (DOCX) and Excel sheets
 
