@@ -13,6 +13,7 @@ import cat from '../i18n/cutsets.js';
 import {
   clear,
   copyText,
+  csvCell,
   debounce,
   el,
   ensureStyles,
@@ -32,6 +33,23 @@ export const advanced = true;
 const SOURCE = 'cutsets';
 const STALE_DELAY_MS = 700;
 
+/**
+ * The empty-table message: not run yet, or no cut sets at all. Null when the
+ * result has cut sets, even if "Show" lists none of them (the summary then
+ * reads "0 of N"): "the top event cannot occur" would be false.
+ */
+export function emptyMessageKey(result) {
+  if (!result) return 'cutsets.notRun';
+  const listed = Array.isArray(result.cutSets) ? result.cutSets.length : 0;
+  return listed > 0 || result.total > 0 ? null : 'cutsets.none';
+}
+
+/** A cut set's identity across runs (ranks shift when the tree changes): its event ids. */
+export function cutSetKey(row) {
+  const events = row && Array.isArray(row.events) ? row.events : [];
+  return events.map((e) => String(e.id)).sort().join('\u0001');
+}
+
 export function mount(panel, ctx) {
   ensureStyles();
   const t = translator(ctx);
@@ -40,6 +58,7 @@ export function mount(panel, ctx) {
   let active = false;
   let result = null;
   let selectedRank = null;
+  let selectedKey = null; // cutSetKey of the selected row
   let running = false;
   let seq = 0;
   let hasRun = false;
@@ -129,15 +148,19 @@ export function mount(panel, ctx) {
     const mine = ++seq;
     running = true;
     paintToolbar();
+    const asked = ctx.store.state || {}; // the tree this answer describes
     try {
       const res = await ctx.api.post('/analysis/cutsets', payload);
       if (mine !== seq) return;
       result = res;
       hasRun = true;
-      stale = false;
-      // Keep the selection if the same cut set is still there.
-      if (selectedRank !== null) {
-        const row = result.cutSets.find((cs) => cs.rank === selectedRank);
+      // An edit made while the request was in flight leaves the answer stale
+      // (onStale has scheduled the re-run that replaces it, which may fail).
+      const now = ctx.store.state || {};
+      stale = now.tree !== asked.tree || now.analysis !== asked.analysis;
+      // Keep the selection if the same cut set is still there (at any rank).
+      if (selectedKey !== null) {
+        const row = result.cutSets.find((cs) => cutSetKey(cs) === selectedKey);
         if (row) highlightRow(row);
         else unselect();
       }
@@ -155,11 +178,13 @@ export function mount(panel, ctx) {
 
   function highlightRow(row) {
     selectedRank = row.rank;
+    selectedKey = cutSetKey(row);
     ctx.highlight(row.events.map((e) => e.id), SOURCE);
   }
 
   function unselect() {
     selectedRank = null;
+    selectedKey = null;
     ctx.clearHighlight(SOURCE);
   }
 
@@ -314,8 +339,9 @@ export function mount(panel, ctx) {
     paintSummary();
     renderWarnings(ctx, warnings, result ? result.warnings : []);
     const rows = (result && result.cutSets) || [];
-    message.hidden = rows.length > 0;
-    message.textContent = !result ? t('cutsets.notRun') : t('cutsets.none');
+    const empty = emptyMessageKey(result);
+    message.hidden = !empty;
+    message.textContent = empty ? t(empty) : '';
     hint.hidden = rows.length === 0;
     hint.textContent = t('cutsets.hint');
     paintTable();
@@ -341,6 +367,7 @@ export function mount(panel, ctx) {
 
   tableWrap.addEventListener('click', (event) => choose(rowFrom(event)));
   tableWrap.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
     if (event.key !== 'Enter' && event.key !== ' ') return;
     const row = rowFrom(event);
     if (!row) return;
@@ -363,6 +390,7 @@ export function mount(panel, ctx) {
       before = { value: input.value, edited: edited.has(input) };
     });
     input.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
       if (event.key === 'Enter') {
         event.preventDefault();
         run();
@@ -378,10 +406,9 @@ export function mount(panel, ctx) {
   }
   copyBtn.addEventListener('click', async () => {
     if (!result || !result.cutSets) return;
-    const quote = (s) => '"' + String(s).replace(/"/g, '""') + '"';
     const lines = [
       [t('cutsets.col.rank'), t('cutsets.col.order'), t('cutsets.col.prob'), t('cutsets.col.share'), t('cutsets.col.events')]
-        .map(quote).join(','),
+        .map(csvCell).join(','),
     ];
     for (const row of result.cutSets) {
       lines.push([
@@ -389,8 +416,8 @@ export function mount(panel, ctx) {
         row.order,
         row.probability,
         row.share,
-        quote(row.events.map((e) => e.name || e.id).join(' ; ')),
-      ].join(','));
+        row.events.map((e) => e.name || e.id).join(' ; '),
+      ].map(csvCell).join(','));
     }
     const ok = await copyText(lines.join('\r\n') + '\r\n');
     if (ok) ctx.toast(t('cutsets.copied', { n: result.cutSets.length }), 'info');
@@ -409,8 +436,10 @@ export function mount(panel, ctx) {
     stale = false;
     edited.clear();
     unselect();
+    // Refill the limit inputs from the new document first: run() reads them,
+    // and the typed values belonged to the old one.
+    paint();
     if (active) run();
-    else paint();
   };
   window.addEventListener('fta:document', onDocument);
   const unSig = ctx.onSigFigs(repaint);

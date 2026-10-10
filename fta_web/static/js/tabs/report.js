@@ -11,6 +11,7 @@
  * Tab contract: see tabs/host.js.
  */
 import catalog from '../i18n/report.js';
+import { csvCell } from './analysis_common.js';
 
 export const id = 'report';
 export const advanced = true;
@@ -60,12 +61,6 @@ export function blobToBase64(blob) {
     };
     reader.readAsDataURL(blob);
   });
-}
-
-function csvCell(value) {
-  if (value === null || value === undefined) return '';
-  const text = Array.isArray(value) ? value.join('; ') : String(value);
-  return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
 
 const CSV_COLUMNS = [

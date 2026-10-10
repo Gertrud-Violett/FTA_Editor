@@ -82,7 +82,9 @@ export function mount(panel, ctx) {
   panel.appendChild(root);
 
   function applyOverlay() {
-    if (!active || !overlayOn || !result || isEta(ctx)) {
+    // Stale values (an edit since the run, or a re-run that failed) describe
+    // an older tree: they must not colour the changed one.
+    if (!active || !overlayOn || !result || stale || isEta(ctx)) {
       ctx.setOverlay(null);
       return;
     }
@@ -101,12 +103,16 @@ export function mount(panel, ctx) {
     const mine = ++seq;
     running = true;
     paintToolbar();
+    const asked = ctx.store.state || {}; // the tree this answer describes
     try {
       const res = await ctx.api.post('/analysis/importance', {});
       if (mine !== seq) return;
       result = res;
       hasRun = true;
-      stale = false;
+      // An edit made while the request was in flight leaves the answer stale
+      // (onStale has scheduled the re-run that replaces it, which may fail).
+      const now = ctx.store.state || {};
+      stale = now.tree !== asked.tree || now.analysis !== asked.analysis;
     } catch (err) {
       if (mine !== seq) return;
       reportError(ctx, err);
@@ -247,6 +253,7 @@ export function mount(panel, ctx) {
     if (!onHeader(event)) onRow(event);
   });
   tableWrap.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     if (!onHeader(event)) onRow(event);
@@ -306,9 +313,9 @@ export function mount(panel, ctx) {
       if (!hasRun && !running) return;
       stale = true;
       paint();
+      applyOverlay(); // clears it: old values must not colour the changed tree
       if (active && justActivated) {
         runSoon.cancel();
-        ctx.setOverlay(null); // old values must not colour the changed tree
         run();
       } else if (active) runSoon();
     },
