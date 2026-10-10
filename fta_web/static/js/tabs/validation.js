@@ -157,6 +157,27 @@ export function truncationReasonText(reason, translate) {
     .join(', ');
 }
 
+/**
+ * QUANT_PARAM_MISSING's {model} and {missing} in words: the model's label as
+ * the Quantification tab shows it (quant.model.<id>, without its formula) and
+ * the parameters (engine.derive_quant's ids) as their symbols -- "μ / MTTR"
+ * for a repairable model, where either one will do. `translate` returns null
+ * for an unknown key; an unknown model or parameter is kept as it is.
+ */
+export function quantMissingText(model, missing, translate) {
+  const symbols = { lambda: 'λ', T: 'T', tau: 'τ', mu: 'μ', mttr: 'MTTR', q: 'q' };
+  const ids = Array.isArray(missing) ? missing : missing === null || missing === undefined ? [] : [missing];
+  const names = ids.map((id) => {
+    if (id === 'mu' && model === 'repairable') return 'μ / MTTR';
+    return Object.prototype.hasOwnProperty.call(symbols, id) ? symbols[id] : String(id);
+  });
+  const label = translate('quant.model.' + model);
+  return {
+    model: label === null || label === undefined ? String(model) : String(label).split(':')[0].trim(),
+    missing: names.length ? names.join(', ') : '-',
+  };
+}
+
 /** An issue's identity for dismissal. main.js validationSignature() must match. */
 function signature(issue) {
   return [issue.code, issue.nodeId, issue.message].join('\u0001');
@@ -328,6 +349,9 @@ export function mount(panel, ctx) {
     }
     if (issue.code === 'CUTSETS_TRUNCATED' && typeof out.reason === 'string') {
       out.reason = truncationReasonText(out.reason, lookup);
+    }
+    if (issue.code === 'QUANT_PARAM_MISSING' && typeof params.model === 'string') {
+      Object.assign(out, quantMissingText(params.model, params.missing, lookup));
     }
     return out;
   }

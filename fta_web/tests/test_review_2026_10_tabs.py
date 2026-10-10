@@ -403,3 +403,45 @@ def test_every_tab_csv_writer_uses_the_shared_cell():
     assert copy.count(".map(csvCell).join(',')") == 2, "header and every row"
     trace = _block(_read(TABS / "trace.js"), "copyButton.addEventListener('click', async () =>")
     assert "COLUMNS.map((c) => csvCell(rec[c])).join(',')" in trace
+
+
+# ---- Validation: QUANT_PARAM_MISSING names the model and its parameters ----------------
+# lint passes the raw ids ({model: "rate", missing: ["lambda", "T"]}), so the
+# message read "The rate model is missing: lambda, T." and, in Japanese,
+# "rate モデルの値が足りません: lambda, T。". Now: the model's label from the
+# Quantification tab (quant.model.<id>, without its formula) and the
+# parameter symbols, "μ / MTTR" where either one completes a repairable model.
+
+def _catalog(path: Path):
+    entry = re.compile(r"'([A-Za-z0-9_.]+)'\s*:\s*'((?:[^'\\]|\\.)*)'")
+    en, ja = _read(path).split("\n  ja:", 1)
+    return dict(entry.findall(en)), dict(entry.findall(ja))
+
+
+@needs_node
+def test_validation_quant_param_missing_in_words():
+    src = _read(TABS / "validation.js")
+    q_en, q_ja = _catalog(STATIC / "i18n" / "quant.js")
+    v_en, v_ja = _catalog(STATIC / "i18n" / "val.js")
+    cases = [["rate", ["lambda", "T"]], ["standby", ["tau"]], ["repairable", ["mu"]],
+             ["repairable", ["lambda", "mu"]], ["fixed", ["q"]], ["odd", ["x"]], ["rate", None]]
+    out = {}
+    for lang, table in (("en", q_en), ("ja", q_ja)):
+        script = _function(src, "quantMissingText") + (
+            "\nconst table = %s; const tr = (k) => (k in table ? table[k] : null);"
+            "\nconsole.log(JSON.stringify(%s.map(([m, p]) => quantMissingText(m, p, tr))));"
+        ) % (json.dumps(table, ensure_ascii=False), json.dumps(cases))
+        out[lang] = _node(script)
+    assert [r["missing"] for r in out["en"]] == ["λ, T", "τ", "μ / MTTR", "λ, μ / MTTR", "q", "x", "-"]
+    assert [r["model"] for r in out["en"]] == ["Failure rate", "Periodically tested standby", "Repairable",
+                                               "Repairable", "Fixed probability", "odd", "Failure rate"]
+    assert [r["model"] for r in out["ja"]] == ["故障率", "定期試験される待機系", "修理可能", "修理可能",
+                                               "固定確率", "odd", "故障率"]
+    key = "val.code.QUANT_PARAM_MISSING"
+    assert set(re.findall(r"\{\w+\}", v_en[key])) == set(re.findall(r"\{\w+\}", v_ja[key])) == {"{model}", "{missing}"}
+    fill = lambda text, vars: re.sub(r"\{(\w+)\}", lambda m: vars[m.group(1)], text)  # noqa: E731
+    assert fill(v_en[key], out["en"][0]) == "The Failure rate model is missing: λ, T. The old probability is used instead."
+    assert fill(v_ja[key], out["ja"][0]) == "故障率モデルの値が足りません: λ, T。代わりに以前の確率を使っています。"
+    body = _block(src, "function displayParams(issue)")
+    assert "if (issue.code === 'QUANT_PARAM_MISSING' && typeof params.model === 'string')" in body
+    assert "Object.assign(out, quantMissingText(params.model, params.missing, lookup));" in body

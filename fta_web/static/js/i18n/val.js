@@ -114,7 +114,7 @@ export default {
     'val.code.INHIBIT_ARITY': 'INHIBIT ゲートには入力 1 つと条件事象 1 つがちょうど必要です(子 {n} 個、うち条件事象 {conditions} 個)。',
     'val.code.KOFN_ARITY': 'K-out-of-N の設定がありえない値です: 入力 {n} 個に対して k = {k}。',
     'val.code.XOR_ARITY': 'XOR ゲートには入力がちょうど 2 つ必要です(現在 {n} 個)。',
-    'val.code.QUANT_PARAM_MISSING': '{model} モデルの値が足りません: {missing}。代わりに以前の確率を使っています。',
+    'val.code.QUANT_PARAM_MISSING': '{model}モデルの値が足りません: {missing}。代わりに以前の確率を使っています。',
     'val.code.CYCLIC_LINK': '{targetName} へのリンクがループになっています。計算ではこのリンクを飛ばすので、結果は近似値です。',
     'val.code.TRANSFER_HAS_CHILDREN': 'このトランスファーゲートには子が {n} 個あります。計算では無視されます。',
     'val.code.HOUSE_HAS_CHILDREN': 'この家形事象には子が {n} 個あるため、オン/オフの設定が無視されます。',
