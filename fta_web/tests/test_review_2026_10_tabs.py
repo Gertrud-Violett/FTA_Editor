@@ -336,3 +336,70 @@ def test_validation_dismiss_tooltip_matches_the_behaviour():
     ja_text = re.search(r"'val\.dismissTitle': '([^']*)'", ja).group(1)
     assert "until the tree changes" not in en_text and "another document" in en_text
     assert "ツリーが変わるまで" not in ja_text and "別の文書を開くまで" in ja_text
+
+
+# ---- CSV exports: user text never runs as a spreadsheet formula -------------------------
+# The Report tab's events CSV and the Cut Sets / Traceability "Copy CSV" buttons
+# wrote names, tags and trace fields as they are: Excel runs a cell such as
+# "=1+1" or "@SUM(A1)" as a formula and shows "+24V supply fails" or "-15V rail
+# lost" as #NAME?. Policy (OWASP CSV injection): text starting with = + - @, a
+# tab or a carriage return gets a leading apostrophe; numbers -- numeric values
+# and text that reads as a finite number ("-0.12", "1e-6") -- never do.
+
+def _csv_cell_source() -> str:
+    return _function(_read(TABS / "analysis_common.js"), "csvCell")
+
+
+@needs_node
+def test_csv_cell_neutralises_formulas_but_keeps_numbers():
+    cases = [
+        "=1+1", "+24V supply fails", "-15V rail lost", "@SUM(A1)", "\t=1+1", "\r=1+1",
+        -0.12,  # a negative numeric value (e.g. a Birnbaum difference) stays a number
+        "-0.12", "1e-6", "-1e-6", "+5", " -3 ", 0, 3,
+        "Pump, A", 'say "hi"', "a\nb", '=HYPERLINK("http://x","y")',
+        ["a", "=b"], ["=b", "a"], None, "", "日本語", "-",
+    ]
+    script = _csv_cell_source() + "\nconsole.log(JSON.stringify(%s.map((v) => csvCell(v))));"
+    got = _node(script % json.dumps(cases, ensure_ascii=False))
+    assert got == [
+        "'=1+1", "'+24V supply fails", "'-15V rail lost", "'@SUM(A1)", "'\t=1+1", "\"'\r=1+1\"",
+        "-0.12",
+        "-0.12", "1e-6", "-1e-6", "+5", " -3 ", "0", "3",
+        '"Pump, A"', '"say ""hi"""', '"a\nb"', '"\'=HYPERLINK(""http://x"",""y"")"',
+        "a; =b", "'=b; a", "", "", "日本語", "'-",
+    ]
+
+
+@needs_node
+def test_events_csv_neutralises_user_text_and_keeps_numbers():
+    report = _read(TABS / "report.js")
+    code = "\n".join([
+        _csv_cell_source(),
+        re.search(r"const CSV_COLUMNS = \[.*?\];", report, re.S).group(0),
+        _function(report, "eventsCsv"),
+    ])
+    tree = {"id": "root", "name": "=1+1", "logicGate": "OR", "probability": 1, "calculatedProbability": 0.25, "children": [
+        {"id": "root_0", "name": "+24V supply fails", "probability": 1e-7, "calculatedProbability": 1e-7,
+         "quant": {"model": "rate", "lambda": 2.5e-6, "T": 8760},
+         "trace": {"owner": "@SUM(A1)", "requirementId": "-15V rail lost", "tags": ["=x", "y"]},
+         "children": []}]}
+    text = _node(code + "\nconsole.log(JSON.stringify(eventsCsv(%s)));" % json.dumps(tree))
+    header, root, leaf = [line.split(",") for line in text.strip().split("\r\n")]
+    root, leaf = dict(zip(header, root)), dict(zip(header, leaf))
+    assert root["name"] == "'=1+1" and leaf["name"] == "'+24V supply fails"
+    assert leaf["owner"] == "'@SUM(A1)" and leaf["requirementId"] == "'-15V rail lost"
+    assert leaf["tags"] == "'=x; y"
+    assert (leaf["probability"], leaf["lambda"], leaf["T"], leaf["depth"]) == ("1e-7", "0.0000025", "8760", "1")
+    assert root["calculatedProbability"] == "0.25" and root["parentId"] == ""
+
+
+def test_every_tab_csv_writer_uses_the_shared_cell():
+    for name in ("report.js", "trace.js", "cutsets.js"):
+        src = _read(TABS / name)
+        assert re.search(r"import \{[^}]*\bcsvCell\b[^}]*\} from './analysis_common\.js';", src), name
+        assert "function csvCell(" not in src, "%s keeps a private CSV writer" % name
+    copy = _block(_read(TABS / "cutsets.js"), "copyBtn.addEventListener('click', async () =>")
+    assert "const quote = " not in copy
+    assert copy.count(".map(csvCell).join(',')") == 2, "header and every row"
+    trace = _block(_read(TABS / "trace.js"), "copyButton.addEventListener('click', async () =>")
+    assert "COLUMNS.map((c) => csvCell(rec[c])).join(',')" in trace

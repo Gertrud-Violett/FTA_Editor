@@ -13,6 +13,7 @@ import cat from '../i18n/cutsets.js';
 import {
   clear,
   copyText,
+  csvCell,
   debounce,
   el,
   ensureStyles,
@@ -403,10 +404,9 @@ export function mount(panel, ctx) {
   }
   copyBtn.addEventListener('click', async () => {
     if (!result || !result.cutSets) return;
-    const quote = (s) => '"' + String(s).replace(/"/g, '""') + '"';
     const lines = [
       [t('cutsets.col.rank'), t('cutsets.col.order'), t('cutsets.col.prob'), t('cutsets.col.share'), t('cutsets.col.events')]
-        .map(quote).join(','),
+        .map(csvCell).join(','),
     ];
     for (const row of result.cutSets) {
       lines.push([
@@ -414,8 +414,8 @@ export function mount(panel, ctx) {
         row.order,
         row.probability,
         row.share,
-        quote(row.events.map((e) => e.name || e.id).join(' ; ')),
-      ].join(','));
+        row.events.map((e) => e.name || e.id).join(' ; '),
+      ].map(csvCell).join(','));
     }
     const ok = await copyText(lines.join('\r\n') + '\r\n');
     if (ok) ctx.toast(t('cutsets.copied', { n: result.cutSets.length }), 'info');
