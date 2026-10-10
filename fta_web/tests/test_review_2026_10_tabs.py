@@ -97,3 +97,22 @@ def test_fmea_follows_the_document_table_until_edited():
     assert "paintOccInputs();" in sync
     on_stale = _block(src, "    onStale()")
     assert "syncOccWithDocument();" in on_stale, "an undo that changes the document's table repaints it"
+
+
+# ---- FMEA: "Import under" shows the node Import will use ------------------------------
+# The select was filled when the tab painted and never followed the tree. With
+# the tab open, a click on another tree node left it showing "Top (root)" while
+# Import (defaultParent(): the selection, until the user picks a parent) added
+# the events under the clicked node.
+
+def test_fmea_parent_select_follows_the_tree_selection():
+    src = _read(TABS / "fmea.js")
+    body = _block(src, "const unsubscribe = store.subscribe(() =>")
+    assert "store.selectedId === seenSelection" in body
+    assert "if (!state.parentExplicit) fillParentSelect();" in body, "an explicit pick still sticks"
+    assert "if (typeof unsubscribe === 'function') unsubscribe();" in _block(src, "    dispose()")
+    fill = _block(src, "function fillParentSelect()")
+    assert "const chosen = defaultParent();" in fill and "state.parentId = chosen;" in fill
+    run = _block(src, "async function runImport()")
+    # the jump onto an imported event must not move the select afterwards
+    assert run.index("state.parentExplicit = true;") < run.index("ctx.jumpTo(")

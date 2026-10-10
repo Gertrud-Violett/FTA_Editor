@@ -692,6 +692,15 @@ export function mount(panel, ctx) {
     renderAll();
   }
 
+  // "Import under" follows the tree selection until the user picks a parent:
+  // Import uses defaultParent(), so the select must show that same node.
+  let seenSelection = store.selectedId;
+  const unsubscribe = store.subscribe(() => {
+    if (store.selectedId === seenSelection) return;
+    seenSelection = store.selectedId;
+    if (!state.parentExplicit) fillParentSelect();
+  });
+
   window.addEventListener('fta:language', onLanguage);
   window.addEventListener('fta:document', onDocument);
   renderAll();
@@ -710,6 +719,7 @@ export function mount(panel, ctx) {
       window.removeEventListener('fta:language', onLanguage);
       window.removeEventListener('fta:document', onDocument);
       if (typeof unSigFigs === 'function') unSigFigs();
+      if (typeof unsubscribe === 'function') unsubscribe();
       root.remove();
     },
   };
