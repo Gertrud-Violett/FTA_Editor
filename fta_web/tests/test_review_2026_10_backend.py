@@ -842,3 +842,37 @@ class TestSymlinkLoopInAListing:
         assert listed.status_code == 200, body(listed)
         assert [f["name"] for f in body(listed)["files"]] == ["ok.json"]
         assert body(listed)["dirs"] == []
+
+
+# --------------------------------------------------------------------------
+# B-15: an XLSX export that failed on the data blamed a missing openpyxl
+# --------------------------------------------------------------------------
+
+
+class TestXlsxFailureIsNotMissingOpenpyxl:
+    """``excel_events`` reports every failure while adding its sheets as
+    "Failed to add the Events sheet (openpyxl): ...", and the export route
+    mapped any error mentioning openpyxl to 503 "Excel export needs the
+    'openpyxl' package, which is not installed" -- so a control character in
+    a node's data source (which openpyxl refuses in a cell) sent the user to
+    reinstall a package they have. Only an import failure means that."""
+
+    def test_a_data_error_is_reported_as_a_failed_build(self, files_client):
+        pytest.importorskip("openpyxl")
+        c = files_client
+        assert c.post("/api/nodes", json={"parentId": "root", "name": "Pump", "probability": 0.1,
+                                          "quant": {"source": "OREDA\x01 2015"}}).status_code == 200
+        failed = c.get("/api/export/xlsx")
+        assert failed.status_code == 500, body(failed)
+        error = body(failed)["error"]
+        assert error["code"] == "EXPORT_UNAVAILABLE"
+        assert error["detail"]["reason"] == "build_failed"
+        assert "pip install" not in error["message"] and "not installed" not in error["message"]
+
+    def test_an_import_failure_still_explains_how_to_install(self, files_client, monkeypatch):
+        from FTA_Editor_core import FTACore
+
+        monkeypatch.setattr(FTACore, "export_to_excel", lambda self, path: (
+            False, "Failed to export Excel: import of openpyxl halted; None in sys.modules"))
+        missing = body(files_client.get("/api/export/xlsx"))
+        assert missing["error"]["detail"]["package"] == "openpyxl", missing

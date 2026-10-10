@@ -589,6 +589,18 @@ def _openpyxl_available() -> bool:
         return False
 
 
+def _openpyxl_import_failed(error: Optional[str]) -> bool:
+    """Whether an xlsx exporter error says openpyxl could not be *imported*.
+
+    Not merely that it mentions openpyxl: ``excel_events`` reports every
+    failure while adding its sheets as "... (openpyxl): <reason>", and a
+    reason such as a control character openpyxl refuses in a cell is a
+    problem in the document, not a missing package.
+    """
+    text = error or ""
+    return "openpyxl" in text and ("No module named" in text or "import" in text.lower())
+
+
 def _excel_unavailable() -> ApiError:
     return ApiError(
         EXPORT_UNAVAILABLE,
@@ -639,7 +651,7 @@ def export_document(fmt: str):
                 _document_stem(state), suffix
             )
         if not ok:
-            if key == "xlsx" and "openpyxl" in (error or ""):
+            if key == "xlsx" and _openpyxl_import_failed(error):
                 # openpyxl was importable a moment ago but failed on use: a
                 # broken install, or a stub left by a test. Same remedy, so
                 # the same actionable message rather than the raw exception.
