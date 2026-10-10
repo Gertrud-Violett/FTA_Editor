@@ -12,6 +12,7 @@ does ``from ai_providers import AIProviderFactory`` at module level, so
 This insertion happens at conftest import time -- before any test module is
 imported -- so the individual test files need no ``sys.path`` boilerplate.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -54,3 +55,24 @@ def fta_core():
     from FTA_Editor_core import FTACore
 
     return FTACore()
+
+
+def pytest_terminal_summary(terminalreporter):
+    """On GitHub Actions, name every failing test in an ``::error`` annotation.
+
+    The run page shows annotations to anyone; the job log needs a sign-in. So
+    a red job -- the Windows one above all, which nobody can reproduce on
+    Linux -- says which test failed, where, and its last lines of output.
+    """
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    stats = terminalreporter.stats
+    for report in list(stats.get("failed", [])) + list(stats.get("error", [])):
+        location = getattr(report, "location", None) or (getattr(report, "nodeid", ""), None, "")
+        path, line = location[0], (location[1] or 0) + 1
+        text = (getattr(report, "longreprtext", "") or "").strip()
+        tail = "\n".join(text.splitlines()[-3:]) or "failed"
+        message = "%s: %s" % (getattr(report, "nodeid", path), tail)
+        # Workflow-command escaping: '%' first, then the line breaks.
+        message = message[:1000].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        terminalreporter.write_line("::error file=%s,line=%d::%s" % (path, line, message))

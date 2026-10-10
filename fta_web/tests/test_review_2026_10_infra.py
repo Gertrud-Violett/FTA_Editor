@@ -112,3 +112,48 @@ def test_b2b_summary_keeps_every_plain_tag_of_a_desktop_row():
     row = B.Row("t", "desktop", "calculatedProbability", "divergence", 1,
                 note="D14 / %s: ..." % B.OR_LOG)
     assert runner.divergence_tags(row) == [B.OR_LOG, "D14"]
+
+
+# ---- conftest.py: failing tests are named on the GitHub run page -----------------------
+
+class _Report:
+    def __init__(self, nodeid, location, text):
+        self.nodeid, self.location, self.longreprtext = nodeid, location, text
+
+
+class _Reporter:
+    def __init__(self, stats):
+        self.stats, self.lines = stats, []
+
+    def write_line(self, line):
+        self.lines.append(line)
+
+
+def _conftest():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "fta_conftest_under_test", REPO / "fta_web" / "tests" / "conftest.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_failures_become_github_annotations(monkeypatch):
+    # The job logs need a GitHub sign-in; annotations show on the public run
+    # page, so a red Windows job says which test failed.
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    failed = _Report("fta_web/tests/test_x.py::test_y[a,b]", ("fta_web/tests/test_x.py", 41, "test_y"),
+                     "E   assert 'â€¦' == '…'\n100% done\nAssertionError")
+    reporter = _Reporter({"failed": [failed]})
+    _conftest().pytest_terminal_summary(reporter)
+    assert reporter.lines == [
+        "::error file=fta_web/tests/test_x.py,line=42::"
+        "fta_web/tests/test_x.py::test_y[a,b]: E   assert 'â€¦' == '…'%0A100%25 done%0AAssertionError"]
+
+
+def test_no_annotations_outside_github_actions(monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    reporter = _Reporter({"failed": [_Report("t::x", ("t", 0, "x"), "E   boom")]})
+    _conftest().pytest_terminal_summary(reporter)
+    assert reporter.lines == []
