@@ -374,3 +374,42 @@ def test_a_valid_default_probability_is_still_reported_as_default():
     tree = gate("root", "OR", [leaf("A", 1.0), leaf("B", 0.5)])
     codes = [i["code"] for i in _issues(tree)]
     assert "DEFAULT_PROBABILITY" in codes and "PROBABILITY_OUT_OF_RANGE" not in codes
+
+
+# ---- E-9: no stale FTA gate warnings in the node view of an event tree ----------------------
+
+
+@pytest.fixture
+def tree_client():
+    flask = pytest.importorskip("flask")
+    from fta_web.routes.tree import tree_bp
+    from fta_web.state import reset_state
+
+    reset_state()
+    app = flask.Flask(__name__)
+    app.register_blueprint(tree_bp)
+    app.config.update(TESTING=True)
+    with app.test_client() as client:
+        yield client
+    reset_state()
+
+
+def test_node_view_has_no_fta_gate_warnings_in_eta_mode(tree_client):
+    """WebCore only refreshes quant_warnings in its FTA walk, so after a
+    switch to ETA the node view kept serving the last FTA run's KOFN_ARITY
+    (gates are not evaluated in an event tree)."""
+    client = tree_client
+    gid = client.post("/api/nodes", json={"parentId": "root", "name": "G"}).get_json()["nodeId"]
+    assert client.post("/api/nodes", json={"parentId": gid, "name": "a",
+                                           "probability": 0.5}).status_code == 200
+    assert client.patch("/api/nodes/%s" % gid, json={"gateType": "KOFN", "k": 5}).status_code == 200
+
+    def warning_codes():
+        node = client.get("/api/nodes/%s" % gid).get_json()["node"]
+        return [w["code"] for w in node["quantDerived"]["warnings"]]
+
+    assert warning_codes() == ["KOFN_ARITY"]
+    assert client.post("/api/metadata", json={"mode": "ETA"}).status_code == 200
+    assert warning_codes() == []
+    assert client.post("/api/metadata", json={"mode": "FTA"}).status_code == 200
+    assert warning_codes() == ["KOFN_ARITY"]

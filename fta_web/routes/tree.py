@@ -401,7 +401,10 @@ def _node_view(core, node: Dict[str, Any]) -> Dict[str, Any]:
         view[key] = copy.deepcopy(node.get(key))
     derived = derive_quant(node, getattr(core, "analysis", None))
     node_id = str(node.get("id"))
-    extra = [
+    # quant_warnings come from the last *FTA* recalculation; an event tree
+    # evaluates no gates, so in ETA mode they would be stale.
+    eta = str(getattr(core, "mode", "") or "").upper() == "ETA"
+    extra = [] if eta else [
         w for w in getattr(core, "quant_warnings", None) or []
         if w.get("nodeId") == node_id and w not in derived["warnings"]
     ]
