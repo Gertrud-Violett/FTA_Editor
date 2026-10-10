@@ -811,6 +811,8 @@ def loopback(monkeypatch):
             if server.hang:
                 release.wait(30)
                 return
+            if server.delay:
+                time.sleep(server.delay)
             path = self.path
             if "/chat/completions" in path and not path.startswith("/openai/openai/"):
                 return self._answer(_OPENAI_CHAT)
@@ -825,6 +827,7 @@ def loopback(monkeypatch):
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True
     server.hang = False
+    server.delay = 0.0
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = "http://127.0.0.1:%d" % server.server_address[1]
     for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
@@ -871,3 +874,78 @@ class TestAzureEndpointForms:
         assert reply == ("openai says hi", None)
         assert [r["path"].split("?")[0] for r in requests] == [
             "/openai/deployments/fta-dep/chat/completions"] * 2
+
+
+# --------------------------------------------------------------------------
+# AI-09, divergence D24: every SDK client has a deadline
+# --------------------------------------------------------------------------
+
+
+def _provider_call(name, base, monkeypatch):
+    """A send_message call for provider ``name`` aimed at the loopback server."""
+    messages = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "hi"}]
+    provider = AIProviderFactory.get_provider(name)
+    if name == "OpenAI":
+        pytest.importorskip("openai")
+        return lambda: provider.send_message("k", base + "/v1", "gpt-4o", messages)
+    if name == "Microsoft Copilot":
+        pytest.importorskip("openai")
+        return lambda: provider.send_message("k", base, "fta-dep", messages)
+    if name == "Anthropic Claude":
+        pytest.importorskip("anthropic")
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", base)
+        return lambda: provider.send_message("k", "ignored", "claude-opus-5-5", messages)
+    pytest.importorskip("google.genai")
+    monkeypatch.setenv("GOOGLE_GEMINI_BASE_URL", base + "/")
+    return lambda: provider.send_message("AIzaKey", "ignored", "gemini-2.5-flash", messages)
+
+
+PROVIDERS = ["OpenAI", "Microsoft Copilot", "Anthropic Claude", "Google Gemini"]
+
+
+class TestEveryProviderCallHasADeadline:
+    """No client was given a timeout: OpenAI and Anthropic wait 600 s per try
+    with 2 retries (a timeout is retried), google-genai waits forever. A call
+    the bridge had given up on kept the single AI call slot, so every AI
+    request -- Test & Save of another provider included -- was AI_BUSY for up
+    to half an hour, and with Gemini until the editor was restarted."""
+
+    @pytest.mark.parametrize("name", PROVIDERS)
+    def test_a_hung_provider_lets_go(self, loopback, monkeypatch, name):
+        import ai_providers
+
+        base, requests, server = loopback
+        server.hang = True
+        monkeypatch.setattr(ai_providers, "REQUEST_TIMEOUT_SECONDS", 0.3, raising=False)
+        call = _provider_call(name, base, monkeypatch)
+        outcome = {}
+        worker = threading.Thread(target=lambda: outcome.update(result=call()), daemon=True)
+
+        worker.start()
+        worker.join(10)
+
+        assert "result" in outcome, "%s was still waiting after 10 s" % name
+        text, error = outcome["result"]
+        assert text is None and error
+        assert 1 <= len(requests) <= ai_providers.MAX_RETRIES + 1
+
+    @pytest.mark.parametrize("name", PROVIDERS)
+    def test_a_slow_answer_inside_the_deadline_arrives(self, loopback, monkeypatch, name):
+        """Pins the unit: google-genai takes milliseconds, the others seconds."""
+        import ai_providers
+
+        base, _requests, server = loopback
+        server.delay = 0.5
+        monkeypatch.setattr(ai_providers, "REQUEST_TIMEOUT_SECONDS", 5.0, raising=False)
+
+        text, error = _provider_call(name, base, monkeypatch)()
+
+        assert error is None and text.endswith("says hi")
+
+    def test_the_deadline_is_the_apps_ai_timeout(self):
+        import ai_providers
+
+        from fta_web import config
+
+        assert ai_providers.REQUEST_TIMEOUT_SECONDS == config.AI_TIMEOUT_SECONDS
+        assert ai_providers.MAX_RETRIES <= 1

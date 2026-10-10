@@ -10,6 +10,20 @@ from typing import Dict, Any, List, Tuple, Optional
 import json
 
 
+#: Divergence D24: every SDK client is built with an explicit deadline, in
+#: seconds. It equals ``AI_TIMEOUT_SECONDS`` in ``fta_web/config.py`` (a test
+#: pins the two; this vendored module does not import the app's config), so one
+#: attempt may use the whole time the editor waits for an answer. Read at call
+#: time, so a test can shorten it.
+REQUEST_TIMEOUT_SECONDS = 120.0
+
+#: One retry for a transient 429/5xx/connection error. The OpenAI and Anthropic
+#: SDKs retry a timeout too, so the longest a call can run is
+#: ``(MAX_RETRIES + 1) * REQUEST_TIMEOUT_SECONDS`` plus a back-off of a second.
+#: google-genai does not retry unless asked to.
+MAX_RETRIES = 1
+
+
 class AIProvider(ABC):
     """Abstract base class for AI providers"""
     
@@ -64,7 +78,8 @@ class OpenAIProvider(AIProvider):
         try:
             from openai import OpenAI
             
-            client = OpenAI(api_key=api_key, base_url=endpoint)
+            client = OpenAI(api_key=api_key, base_url=endpoint,
+                            timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             models = client.models.list()
             model_names = [m.id for m in models.data if "gpt" in m.id.lower()]
             return sorted(model_names), None
@@ -78,7 +93,8 @@ class OpenAIProvider(AIProvider):
         try:
             from openai import OpenAI
             
-            client = OpenAI(api_key=api_key, base_url=endpoint)
+            client = OpenAI(api_key=api_key, base_url=endpoint,
+                            timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "Hello, this is a test."}],
@@ -97,7 +113,8 @@ class OpenAIProvider(AIProvider):
         try:
             from openai import OpenAI
             
-            client = OpenAI(api_key=api_key, base_url=endpoint)
+            client = OpenAI(api_key=api_key, base_url=endpoint,
+                            timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -161,7 +178,8 @@ class AnthropicProvider(AIProvider):
         try:
             from anthropic import Anthropic
 
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key,
+                               timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             models = [model.id for model in client.models.list()]
             if not models:
                 return self.get_default_models(), "Anthropic returned an empty model list"
@@ -176,7 +194,8 @@ class AnthropicProvider(AIProvider):
         try:
             from anthropic import Anthropic
             
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key,
+                               timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             message = client.messages.create(
                 model=model,
                 max_tokens=10,
@@ -195,7 +214,8 @@ class AnthropicProvider(AIProvider):
         try:
             from anthropic import Anthropic
             
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key,
+                               timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES)  # D24
             
             # Convert system message if present
             system_message = ""
@@ -264,10 +284,19 @@ class GeminiProvider(AIProvider):
         """A fresh client. ``endpoint`` is accepted by every provider in this
         module for interface uniformity, but the Gemini Developer API has no
         equivalent of an OpenAI-compatible custom base URL -- the old
-        ``google.generativeai`` implementation ignored it too."""
-        from google import genai
+        ``google.generativeai`` implementation ignored it too.
 
-        return genai.Client(api_key=api_key)
+        Divergence D24: ``HttpOptions.timeout`` is in *milliseconds* (its
+        docstring, and ``_api_client.get_timeout_in_seconds`` divides by 1000);
+        without it the client waits forever. No ``retry_options``: the SDK then
+        makes a single attempt."""
+        from google import genai
+        from google.genai import types
+
+        return genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=int(REQUEST_TIMEOUT_SECONDS * 1000)),
+        )
 
     def get_available_models(self, api_key: str, endpoint: str) -> Tuple[List[str], Optional[str]]:
         """Fetch available models from Google Gemini API"""
@@ -411,7 +440,9 @@ class MicrosoftCopilotProvider(AIProvider):
             client = AzureOpenAI(
                 api_key=api_key,
                 azure_endpoint=base_url,
-                api_version="2024-08-01-preview"
+                api_version="2024-08-01-preview",
+                timeout=REQUEST_TIMEOUT_SECONDS,  # D24
+                max_retries=MAX_RETRIES,
             )
             
             response = client.chat.completions.create(
@@ -447,7 +478,9 @@ class MicrosoftCopilotProvider(AIProvider):
             client = AzureOpenAI(
                 api_key=api_key,
                 azure_endpoint=base_url,
-                api_version="2024-08-01-preview"
+                api_version="2024-08-01-preview",
+                timeout=REQUEST_TIMEOUT_SECONDS,  # D24
+                max_retries=MAX_RETRIES,
             )
             
             response = client.chat.completions.create(

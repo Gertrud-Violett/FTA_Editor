@@ -34,7 +34,8 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 `divergences` array lists exactly the IDs that are applied here.
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
-**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**.
+**D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**,
+**D24**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -667,6 +668,43 @@ and the request body are unchanged.
 
 **Behavior change:** The documented endpoint form, `.../openai`, and the bare
 resource URL all reach `/openai/deployments/{deployment}/chat/completions`.
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/ai_providers.py`
+
+---
+
+## D24 — An explicit deadline and one retry on every SDK client
+
+**Defect (review AI-09):** No client was given a timeout. The OpenAI, Azure and
+Anthropic SDKs then wait 600 s per attempt and retry twice (a timeout is
+retried too), and `google.genai` has no timeout at all. The web app's bridge
+(`fta_web/ai_bridge.py`) gives up after `AI_TIMEOUT_SECONDS` (120 s), but
+Python cannot stop the worker thread, which keeps the single AI call slot until
+the SDK returns -- so after one hung call every AI request, Test & Save of a
+different provider included, answered `AI_BUSY` for up to half an hour, and
+with Gemini until the editor was restarted.
+
+Repro (installed SDKs against a loopback server that never answers): all four
+providers' `send_message` were still waiting after 10 s.
+
+**Fix:** Module constants `REQUEST_TIMEOUT_SECONDS = 120.0` (equal to the app's
+`AI_TIMEOUT_SECONDS`; a test pins the two, because this vendored module does not
+import the app's config) and `MAX_RETRIES = 1`. Every `OpenAI`, `AzureOpenAI` and
+`Anthropic` client gets `timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_RETRIES`;
+the `genai.Client` gets `HttpOptions(timeout=...)` **in milliseconds** (its
+docstring says so and `get_timeout_in_seconds` divides by 1000) and no
+`retry_options`, so it makes a single attempt. Both constants are read at call
+time.
+
+**Why it is safe:** One attempt may still use the whole 120 s the editor waits
+for an answer, so no answer that used to arrive in time is cut off; a test
+answers after 0.5 s under a 5 s deadline for each provider, which also pins the
+millisecond unit. One retry still covers a transient 429/5xx.
+
+**Behavior change:** A hung provider releases the call slot after at most
+about `2 * 120 s` (OpenAI, Azure, Anthropic) or `120 s` (Gemini).
 
 **Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
 
