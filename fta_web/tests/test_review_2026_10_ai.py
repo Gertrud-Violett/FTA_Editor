@@ -1054,3 +1054,74 @@ def test_the_document_changed_refusal_is_localised(app, client, provider, monkey
     error = body(outcome["response"])["error"]
     assert error["code"] == "AI_DOCUMENT_CHANGED"
     assert any(ord(c) > 0x3000 for c in error["message"]), error["message"]
+
+
+# --------------------------------------------------------------------------
+# AI-13: an AI probability edit on a derived probability is refused
+# --------------------------------------------------------------------------
+
+
+def _probability_edit(node_id, name, probability="0.3"):
+    return (
+        "SUGGESTION: Revise\nDESCRIPTION: field data.\nACTION: edit\nTARGET: %s\n"
+        'DATA: {"id": "%s", "name": "%s", "probability": %s}\n' % (node_id, node_id, name, probability)
+    )
+
+
+class TestDerivedProbabilitiesAreNotEditedByTheAI:
+    """The engine recomputes the probability of a rate/standby/repairable event,
+    a house event and a transfer gate on every recalculation, so an AI edit of
+    it was reported as "✓ Updated ...: probability" and silently overruled."""
+
+    def _apply(self, client, provider, monkeypatch, reply):
+        monkeypatch.setattr(provider, "send_message", replies(reply))
+        index = body(client.post("/api/ai/chat", json={"message": "x"}))["changes"][0]["index"]
+        return client.post("/api/ai/changes/apply", json={"indices": [index]})
+
+    @pytest.mark.parametrize("fields,needle", [
+        ({"quant": {"model": "rate", "lambda": 1e-6, "T": 1000}}, "rate model"),
+        ({"quant": {"model": "standby", "lambda": 1e-4, "tau": 100}}, "standby model"),
+        ({"quant": {"model": "repairable", "lambda": 1e-4, "mttr": 8}}, "repairable model"),
+        ({"eventKind": "house", "houseState": True}, "house event"),
+    ])
+    def test_the_change_is_rejected_with_what_to_edit_instead(
+        self, client, provider, monkeypatch, fields, needle
+    ):
+        node_id = add(client, name="Derived", probability=0.5, **fields)
+        before = json.dumps(get_state().core.find_node_by_id(node_id), sort_keys=True)
+
+        response = self._apply(client, provider, monkeypatch, _probability_edit(node_id, "Derived"))
+
+        assert response.status_code == 400
+        message = body(response)["error"]["detail"]["rejected"][0]["message"]
+        assert needle in message and "instead" in message
+        assert json.dumps(get_state().core.find_node_by_id(node_id), sort_keys=True) == before
+
+    def test_a_transfer_gate_is_rejected(self, client, provider, monkeypatch):
+        target = add(client, name="Target", probability=0.2)
+        transfer = add(client, name="Transfer", gateType="TRANSFER", transferTo=target)
+
+        response = self._apply(client, provider, monkeypatch, _probability_edit(transfer, "Transfer"))
+
+        assert response.status_code == 400
+        assert "transfer gate" in body(response)["error"]["detail"]["rejected"][0]["message"]
+        assert get_state().core.find_node_by_id(transfer)["probability"] == pytest.approx(0.2)
+
+    def test_a_model_that_cannot_be_evaluated_does_not_derive_anything(self, client, provider, monkeypatch):
+        """quant.model rate without lambda keeps the entered probability."""
+        node_id = add(client, name="Incomplete", probability=0.5, quant={"model": "rate"})
+
+        response = self._apply(client, provider, monkeypatch, _probability_edit(node_id, "Incomplete"))
+
+        assert response.status_code == 200, body(response)
+        assert get_state().core.find_node_by_id(node_id)["probability"] == 0.3
+
+    def test_an_edit_that_leaves_the_probability_alone_still_applies(self, client, provider, monkeypatch):
+        node_id = add(client, name="Rate", probability=0.5, quant={"model": "rate", "lambda": 1e-6, "T": 1000})
+        reply = ("SUGGESTION: Rename\nDESCRIPTION: clearer.\nACTION: edit\nTARGET: %s\n"
+                 'DATA: {"id": "%s", "name": "Pump seal leak"}\n' % (node_id, node_id))
+
+        response = self._apply(client, provider, monkeypatch, reply)
+
+        assert response.status_code == 200, body(response)
+        assert get_state().core.find_node_by_id(node_id)["name"] == "Pump seal leak"

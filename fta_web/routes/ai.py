@@ -530,7 +530,9 @@ def post_apply_changes():
     replaced since (``ai_bridge.made_for``) -- is always rejected: its node
     ids may name unrelated nodes in the document open now. So is one carrying
     what ``PATCH /api/nodes`` would refuse and the vendored parser lets
-    through (``ai_bridge.change_problem``: a NaN probability, non-text notes).
+    through (``ai_bridge.change_problem``: a NaN probability, non-text notes),
+    and an edit of a probability the engine derives (a quantification model,
+    a house event, a transfer gate), which it would silently overrule.
     """
     _require_configured()
     payload = _body()
@@ -586,7 +588,7 @@ def post_apply_changes():
         for index in indices:
             change = pending[index]
             refusal = (
-                ai_bridge.change_problem(change)
+                ai_bridge.change_problem(change, state.core)
                 if ai_bridge.made_for(change, state.core)
                 else ai_bridge.OTHER_DOCUMENT_MESSAGE
             )

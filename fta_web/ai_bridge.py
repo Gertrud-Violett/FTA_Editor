@@ -70,10 +70,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.ai_bridge``
     from . import config
+    from .engine import derive_quant
     from .errors import ApiError
     from .node_schema import NODE_KEYS, VALIDATORS
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
+    from engine import derive_quant  # type: ignore[no-redef]
     from errors import ApiError  # type: ignore[no-redef]
     from node_schema import NODE_KEYS, VALIDATORS  # type: ignore[no-redef]
 
@@ -682,8 +684,8 @@ def _is_probability(value: Any) -> bool:
     return 0.0 <= number <= 1.0
 
 
-def change_problem(change: AIProposedChange) -> Optional[str]:
-    """Why a proposed add/edit must not be applied, or None."""
+def change_problem(change: AIProposedChange, document: Any = None) -> Optional[str]:
+    """Why a proposed add/edit must not be applied to ``document``, or None."""
     if change.change_type not in ("add", "edit"):
         return None
     data = change.data if isinstance(change.data, dict) else {}
@@ -695,6 +697,43 @@ def change_problem(change: AIProposedChange) -> Optional[str]:
     notes = data.get("notes")
     if notes is not None and not isinstance(notes, str):
         return "Not applied: the suggested notes are not text."
+    if change.change_type == "edit" and "probability" in data and document is not None:
+        return derived_probability_reason(document.find_node_by_id(change.target_id), document)
+    return None
+
+
+def derived_probability_reason(node: Any, document: Any) -> Optional[str]:
+    """Why ``node``'s probability cannot be set directly, or None.
+
+    The engine rewrites it on every recalculation for a transfer gate (the
+    target's value), a house event (1 or 0) and an event whose quantification
+    model can be evaluated -- so an AI edit of it was reported as applied and
+    silently overruled. Asks :func:`engine.derive_quant` itself, so an
+    incomplete model (no λ) is "not derived", exactly as the engine treats it.
+    """
+    if not isinstance(node, dict):
+        return None
+    name = node.get("name") or node.get("id")
+    if str(node.get("gateType") or "").strip().upper() == "TRANSFER":
+        return (
+            "Not applied: '%s' is a transfer gate, so its probability is that of "
+            "the node it transfers to (%s). Edit that node instead."
+            % (name, node.get("transferTo") or "none set")
+        )
+    if not (node.get("children") or []) and str(node.get("eventKind") or "").strip().lower() == "house":
+        return (
+            "Not applied: '%s' is a house event, so its probability is 1 or 0 "
+            "from its state. Change the house state instead." % name
+        )
+    if isinstance(node.get("quant"), dict):
+        derived = derive_quant(node, getattr(document, "analysis", None))
+        if derived["model"] != "fixed" and derived["q"] is not None:
+            return (
+                "Not applied: the probability of '%s' is computed from its %s model "
+                "(%s), so an edited value would be overwritten. Change the model's "
+                "parameters in the Quantification tab instead."
+                % (name, derived["model"], derived["formula"])
+            )
     return None
 
 
