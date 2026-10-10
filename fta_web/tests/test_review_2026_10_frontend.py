@@ -461,6 +461,23 @@ def test_enter_and_escape_handlers_leave_composition_to_the_ime():
     _guard_before(shortcuts, ime, "event.key === 'Escape'")
 
 
+# ---- diagram.js: a new document is fitted, whatever the old view was -------------------
+#
+# Pan one document's diagram off the stage, then open another file: the new
+# diagram kept the old transform and none of it was on screen (Chromium:
+# visible fraction 0 after Open), so the panel looked empty.
+
+
+def test_diagram_refits_on_a_new_document():
+    src = _read(STATIC / "diagram.js")
+    assert "window.addEventListener('fta:document', onDocument);" in src
+    assert "window.removeEventListener('fta:document', onDocument);" in src
+    body = re.search(r"const onDocument = \(\) => \{(.*?)\n  \};", src, re.S).group(1)
+    for line in ("autoFit = true;", "resetView = true;", "schedule();"):
+        assert line in body, line
+    assert "if (resetView || autoFit ||" in src
+
+
 # ---- tree.js: New / Open drop the old document's multi-selection ----------------------
 #
 # Ctrl-click two rows, then the root (lead = root), then open a file: ids such

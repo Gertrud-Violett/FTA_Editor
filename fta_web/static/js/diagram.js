@@ -1229,6 +1229,15 @@ export function initDiagram(container) {
     if (id !== undefined && id !== null && id !== '') jumpTo(id);
   };
   window.addEventListener('fta:jump', onJump);
+  // A different document (New, Open): the zoom and pan of the old one mean
+  // nothing for it. Kept, a view panned off one tree left the next one
+  // entirely off the stage, which then looked empty.
+  const onDocument = () => {
+    autoFit = true;
+    resetView = true;
+    schedule();
+  };
+  window.addEventListener('fta:document', onDocument);
   const onSigFigs = () => schedule();
   window.addEventListener('fta:sigfigs', onSigFigs);
   const onHideZero = () => schedule();
@@ -1285,6 +1294,7 @@ export function initDiagram(container) {
       if (resizeFrame) cancelAnimationFrame(resizeFrame);
       window.removeEventListener('fta:hide-zero', onHideZero);
       window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:document', onDocument);
       window.removeEventListener('fta:sigfigs', onSigFigs);
       if (typeof unsubscribeHighlight === 'function') unsubscribeHighlight();
       if (typeof unsubscribeOverlay === 'function') unsubscribeOverlay();
