@@ -551,3 +551,16 @@ def test_b2b_keeps_any_other_mc_warning_difference_a_mismatch():
         assert out.status == "mismatch", (branch, release)
     row = _mc_row(("MC_EVENT_NOT_SAMPLED",), (), [("p95", 0.1, 0.2)])  # not FIX_MC's kind
     assert B.classify_release([row], set())[0].status == "mismatch"
+
+
+def test_run_b2b_counts_the_new_tag_under_its_own_name(capsys):
+    """"FIXED:MC" is a substring of the new tag, so the summary must try the
+    longer tag first or the rows land under FIXED:MC."""
+    from fta_web.tests.b2b import b2b_lib as B
+    from fta_web.tests.b2b import run_b2b
+
+    [row] = B.classify_release([_mc_row(("MC_EVENT_NOT_SAMPLED",), ())], set())
+    run_b2b.report([row], [row.tree], 0.0, 5)
+    summary = capsys.readouterr().out.split("DOCUMENTED DIVERGENCES", 1)[1]
+    keys = [line.split()[0] for line in summary.splitlines()[1:] if line.startswith("  ")]
+    assert keys == [B.FIX_MC_EVENT]
