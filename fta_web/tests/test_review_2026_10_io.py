@@ -364,6 +364,27 @@ def test_xlsx_sheet_failure_is_not_reported_as_missing_openpyxl(files_client, tm
     assert "not installed" not in error["message"]
 
 
+FMEA_TEXT = "ID,Item,Failure Mode,Rate\nF-1,Pumpe,Défaut d'étanchéité,1e-6\nF-2,弁,固着,2e-6\n"
+FMEA_ROWS = [["F-1", "Pumpe", "Défaut d'étanchéité", "1e-6"], ["F-2", "弁", "固着", "2e-6"]]
+
+
+@pytest.mark.parametrize("encoding, bom, delimiter", [
+    ("utf-16", b"", ","),             # Python's utf-16 writes the LE BOM
+    ("utf-16", b"", "\t"),            # Excel's "Unicode Text"
+    ("utf-16-be", b"\xfe\xff", ","),
+])
+def test_fmea_csv_in_utf16(tmp_path, encoding, bom, delimiter):
+    """A UTF-16 file (BOM) fell through to latin-1: headers like 'ÿþI\\x00D\\x00',
+    NULs in every value, and for tab-separated text a single column."""
+    from fta_web import fmea_import
+
+    path = tmp_path / "u16.csv"
+    path.write_bytes(bom + FMEA_TEXT.replace(",", delimiter).encode(encoding))
+    table = fmea_import.read_table(path)
+    assert table["columns"] == ["ID", "Item", "Failure Mode", "Rate"]
+    assert table["rows"] == FMEA_ROWS
+
+
 def test_docx_route_with_control_characters(files_client, tmp_path):
     pytest.importorskip("docx")
     open_doc(files_client, write_doc(tmp_path / "c.json", control_char_tree(), title="T\x02"))

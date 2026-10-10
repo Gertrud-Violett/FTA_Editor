@@ -57,6 +57,7 @@ Import rules
 """
 from __future__ import annotations
 
+import codecs
 import csv
 import datetime as _dt
 import io
@@ -179,7 +180,22 @@ def _tabulate(raw_rows: Iterable[Tuple[int, Sequence[Any]]]) -> Dict[str, Any]:
     return {"columns": header or [], "rows": rows, "rowNumbers": numbers}
 
 
+#: Byte-order marks of the wide encodings, UTF-32 first (its LE mark starts
+#: with UTF-16's). Excel's "Unicode Text" and Windows PowerShell write
+#: UTF-16 with a BOM; without this it decoded as latin-1, NULs and all.
+_WIDE_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32"),
+    (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16"),
+)
+
+
 def _decode(data: bytes) -> str:
+    for bom, encoding in _WIDE_BOMS:
+        if data.startswith(bom):
+            try:
+                return data.decode(encoding)  # the codec reads and drops the BOM
+            except UnicodeDecodeError:
+                break
     for encoding in CSV_ENCODINGS:
         try:
             return data.decode(encoding)
