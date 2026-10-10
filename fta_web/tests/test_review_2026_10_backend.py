@@ -876,3 +876,32 @@ class TestXlsxFailureIsNotMissingOpenpyxl:
             False, "Failed to export Excel: import of openpyxl halted; None in sys.modules"))
         missing = body(files_client.get("/api/export/xlsx"))
         assert missing["error"]["detail"]["package"] == "openpyxl", missing
+
+
+# --------------------------------------------------------------------------
+# B-16: a download name that cannot be encoded was a 500
+# --------------------------------------------------------------------------
+
+
+class TestDownloadNameIsEncodable:
+    """The download is named after the title when the document has no file.
+    A title holding a lone surrogate (accepted by POST /api/metadata from a
+    JSON escape, or read from a file) cannot be UTF-8 encoded, so
+    ``send_file`` raised building Content-Disposition: the XML export (and
+    the DOCX report) answered 500 although the file itself was built."""
+
+    def test_the_name_drops_what_cannot_be_encoded(self):
+        from fta_web.fsbrowser import safe_download_name
+
+        name = safe_download_name("Pump \ud83d", ".xml")
+        name.encode("utf-8")
+        assert name.startswith("Pump") and name.endswith(".xml")
+        assert safe_download_name("ポンプ \U0001f600", ".xml") == "ポンプ \U0001f600.xml"
+
+    def test_the_xml_export_downloads(self, files_client):
+        c = files_client
+        assert c.post("/api/metadata", data=json.dumps({"title": "Pump \ud83d"}),
+                      content_type="application/json").status_code == 200
+        exported = c.get("/api/export/xml")
+        assert exported.status_code == 200, exported.get_data()[:300]
+        assert "attachment" in exported.headers["Content-Disposition"]

@@ -486,9 +486,11 @@ def _isoformat(timestamp: float) -> Optional[str]:
 # ---- download names ------------------------------------------------------
 
 #: Anything that must not reach a ``Content-Disposition`` filename: path
-#: separators (a download named ``../../x`` is a client-side traversal) and
-#: control characters (which could split the header on a lax client).
-_UNSAFE_NAME_CHARS = re.compile(r"[\\/\x00-\x1f\x7f]+")
+#: separators (a download named ``../../x`` is a client-side traversal),
+#: control characters (which could split the header on a lax client) and
+#: lone surrogates (a title can hold one; it cannot be encoded, and the
+#: header build raised -- a 500 for an export that had been written).
+_UNSAFE_NAME_CHARS = re.compile("[\\\\/\x00-\x1f\x7f\ud800-\udfff]+")
 
 #: Filesystems stop caring long before this; the cap just keeps a pathological
 #: title out of a response header.
