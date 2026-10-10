@@ -31,7 +31,9 @@ import csv
 import glob
 import io
 import json
+import math
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -234,6 +236,9 @@ def cmd_cutsets(core, args):
     cut_sets = list(result.get("cutSets") or [])
     if getattr(args, "top", None):
         cut_sets = cut_sets[: max(1, args.top)]
+        # --json shows the same N (as importance does); total, mcub and the
+        # truncation flags still describe the whole list.
+        result = dict(result, cutSets=cut_sets)
     for c in cut_sets:
         rows.append({
             "rank": c.get("rank"), "order": c.get("order"),
@@ -316,6 +321,8 @@ def cmd_report(core, args, out_path: Path):
         unknown = [s for s in sections if s not in report_docx.SECTIONS]
         if unknown:
             raise UsageError("unknown section(s): %s" % ", ".join(unknown))
+        if args.uncertainty and "uncertainty" not in sections:
+            sections.append("uncertainty")  # "run Monte Carlo and include it"
     elif args.uncertainty:
         sections = list(report_docx.DEFAULT_SECTIONS) + ["uncertainty"]
     options = report_docx.normalize_options({
@@ -329,8 +336,11 @@ def cmd_report(core, args, out_path: Path):
             report_docx.diagram_dot_text(core, options["sigFigs"]))
     data = report_docx.collect_report_data(core, session_issues(core), options)
     blob = report_docx.build_report(data, options)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(blob)
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(blob)
+    except OSError as exc:  # this file fails; the batch goes on
+        raise AnalysisFailure("cannot write %s: %s" % (out_path, exc.strerror or exc))
     results = {"out": str(out_path), "bytes": len(blob),
                "unavailable": data.get("unavailable") or {},
                "diagram": bool(options.get("diagramPng"))}
@@ -353,6 +363,19 @@ _PROB_KEYS = {"q", "calculated", "probability", "share", "fv", "birnbaum", "raw"
               "mcub", "rareEvent"}
 
 
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
+
+
+def _printable(value: Any) -> str:
+    """``str(value)`` for the terminal: control characters as ``\\xNN``.
+
+    Names and titles come from the input files; raw, an ESC sequence in a
+    crafted file is run by the terminal (set the title, clear the screen,
+    fake the output). --json and --csv keep the data exactly.
+    """
+    return _CONTROL.sub(lambda m: "\\x%02x" % ord(m.group()), str(value))
+
+
 def _cell(key: str, value: Any, sf: int) -> str:
     if value is None:
         return "—"
@@ -360,7 +383,7 @@ def _cell(key: str, value: Any, sf: int) -> str:
         return format_prob(value, sf)
     if isinstance(value, bool):
         return "yes" if value else "no"
-    return str(value)
+    return _printable(value)
 
 
 def human_table(rows: List[Dict[str, Any]], sf: int) -> str:
@@ -393,9 +416,10 @@ def _looks_numeric(text: str) -> bool:
 
 
 def human_block(entry: Dict[str, Any], command: str, rows: List[Dict[str, Any]], sf: int) -> str:
-    lines = ["== %s  [%s] %s" % (entry["file"], entry.get("mode") or "", entry.get("title") or "")]
+    lines = ["== %s  [%s] %s" % (_printable(entry["file"]), _printable(entry.get("mode") or ""),
+                                 _printable(entry.get("title") or ""))]
     if "error" in entry:
-        lines.append("error: %s" % entry["error"])
+        lines.append("error: %s" % _printable(entry["error"]))
         return "\n".join(lines)
     res = entry.get("results") or {}
     if command == "quantify":
@@ -450,11 +474,29 @@ def _json_default(value: Any):
     return str(value)
 
 
-def render_output(fmt: str, command: str, entries, sf: int) -> str:
+def _finite(value: Any) -> Any:
+    """``value`` with every NaN/Infinity float replaced by None.
+
+    ``--json`` is strict JSON, like the API's responses (app.py's
+    FiniteJSONProvider): a document can hold ``NaN`` (Python's json reads
+    the bare literal) and the analyses then return it, but JSON.parse, jq
+    and every other strict parser reject the ``NaN`` token.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(item) for item in value]
+    return value
+
+
+def render_output(fmt: str, command: str, entries, sf: int, ascii_only: bool = False) -> str:
     if fmt == "json":
         payload = [e for e, _rows in entries]
         body = payload[0] if len(payload) == 1 else payload
-        return json.dumps(body, ensure_ascii=False, indent=2, default=_json_default) + "\n"
+        return json.dumps(_finite(body), ensure_ascii=ascii_only, indent=2,
+                          default=_json_default, allow_nan=False) + "\n"
     if fmt == "csv":
         return csv_text(entries)
     return "\n\n".join(human_block(e, command, rows, sf) for e, rows in entries) + "\n"
@@ -464,19 +506,102 @@ def render_output(fmt: str, command: str, entries, sf: int) -> str:
 
 
 def _force_utf8() -> None:
-    """cp932 / cp1252 consoles must not crash on λ, τ or Japanese names."""
-    if sys.platform != "win32":
-        return
+    """cp932 / cp1252 consoles must not crash on λ, τ or Japanese names.
+
+    Windows consoles are switched to UTF-8. Elsewhere the encoding is kept
+    (a non-UTF-8 locale, ``PYTHONIOENCODING=ascii``) and what it cannot hold
+    -- a name's 'ü' in cp932, the '—' of an empty cell in ASCII -- is written
+    as a backslash escape, as Python already does on stderr, instead of
+    aborting the run with a traceback and the wrong exit code. ``--json``
+    escapes non-ASCII itself there (:func:`_stdout_unicode`), so it stays
+    valid JSON.
+    """
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            if sys.platform == "win32":
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            else:
+                stream.reconfigure(errors="backslashreplace")
         except Exception:
             pass
 
 
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="")
+def _stdout_unicode() -> bool:
+    """Whether stdout takes every character (a UTF encoding)."""
+    encoding = str(getattr(sys.stdout, "encoding", None) or "").lower()
+    return encoding.replace("-", "").replace("_", "").startswith("utf")
+
+
+def _same_file(a: Any, b: Any) -> bool:
+    """Whether paths ``a`` and ``b`` name one file (any spelling or link)."""
+    try:
+        if os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b):
+            return True
+    except OSError:
+        pass
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def _report_target(path: str, out: Optional[Path], out_is_dir: bool) -> Path:
+    """Where ``report`` writes ``path``'s document."""
+    name = Path(path).stem + "_report.docx"
+    if out is None:
+        return Path(path).with_name(name)
+    return out / name if out_is_dir else out
+
+
+def _result_target(path: str, out: Path, command: str, ext: str) -> Path:
+    """``<stem>.<command><ext>`` in the --out directory."""
+    return out / ("%s.%s%s" % (Path(path).stem, command, ext))
+
+
+def _planned_outputs(command: str, files: List[str], out: Optional[Path], out_is_dir: bool,
+                     ext: str) -> List[Tuple[Optional[str], Path]]:
+    """``(input, path)`` for every file the run will write; input is None for
+    one combined output."""
+    if command == "report":
+        return [(path, _report_target(path, out, out_is_dir)) for path in files]
+    if out is None:
+        return []
+    if len(files) > 1 and out_is_dir:
+        return [(path, _result_target(path, out, command, ext)) for path in files]
+    return [(None, _result_target(files[0], out, command, ext) if out_is_dir else out)]
+
+
+def _output_problem(planned: List[Tuple[Optional[str], Path]], files: List[str]) -> Optional[str]:
+    """Why these outputs must not be written, or None.
+
+    An output must never replace an input (``quantify plant.json --json --out
+    plant.json`` replaced the analysis with its results), and two inputs
+    must not share one (a/plant.json and b/plant.json with ``--out dir/``
+    both became dir/plant.quantify.json: one result silently lost).
+    """
+    for _source, target in planned:
+        for path in files:
+            if _same_file(target, path):
+                return "writing %s would overwrite the input file %s" % (target, path)
+    writers: Dict[str, str] = {}
+    for source, target in planned:
+        if source is None:
+            continue
+        key = os.path.normcase(os.path.abspath(target))
+        first = writers.setdefault(key, source)
+        if not _same_file(first, source):
+            return ("%s and %s would both be written to %s; run them separately or give the "
+                    "files different names" % (first, source, target))
+    return None
+
+
+def _write(path: Path, text: str) -> bool:
+    """Write ``text`` to ``path``; False (and a message) when that fails --
+    ``--out`` under a regular file, no permission, a full disk."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="")
+    except OSError as exc:
+        print("error: cannot write %s: %s" % (path, exc.strerror or exc), file=sys.stderr)
+        return False
+    return True
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -514,6 +639,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if command == "report" and many and out is not None and not out_is_dir:
         print("error: --out must be a directory when several files are given", file=sys.stderr)
         return EXIT_USAGE
+    problem = _output_problem(_planned_outputs(command, files, out, out_is_dir, ext), files)
+    if problem:
+        print("error: %s" % problem, file=sys.stderr)
+        return EXIT_USAGE
 
     entries: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
     worst = EXIT_OK
@@ -535,14 +664,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         entry["title"], entry["mode"] = meta.get("title"), meta.get("mode")
         try:
             if command == "report":
-                stem = Path(path).stem
-                if out is None:
-                    target = Path(path).with_name(stem + "_report.docx")
-                elif out_is_dir:
-                    target = out / (stem + "_report.docx")
-                else:
-                    target = out
-                results, rows, status = cmd_report(core, args, target)
+                results, rows, status = cmd_report(core, args,
+                                                   _report_target(path, out, out_is_dir))
             else:
                 results, rows, status = HANDLERS[command](core, args)
             entry["results"] = results
@@ -559,13 +682,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if out is not None and command != "report":
         if many and out_is_dir:
             for entry, rows in entries:
-                target = out / ("%s.%s%s" % (Path(entry["file"]).stem, command, ext))
-                _write(target, render_output(fmt, command, [(entry, rows)], sf))
+                target = _result_target(entry["file"], out, command, ext)
+                if not _write(target, render_output(fmt, command, [(entry, rows)], sf)):
+                    worst = max(worst, EXIT_FAIL)
         else:
-            target = out / ("%s.%s%s" % (Path(files[0]).stem, command, ext)) if out_is_dir else out
-            _write(target, render_output(fmt, command, entries, sf))
+            target = _result_target(files[0], out, command, ext) if out_is_dir else out
+            if not _write(target, render_output(fmt, command, entries, sf)):
+                worst = max(worst, EXIT_FAIL)
     else:
-        sys.stdout.write(render_output(fmt, command, entries, sf))
+        sys.stdout.write(render_output(fmt, command, entries, sf,
+                                       ascii_only=not _stdout_unicode()))
     sys.stdout.flush()
     return worst
 

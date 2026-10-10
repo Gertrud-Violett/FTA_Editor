@@ -42,11 +42,30 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
     "AI_NOT_CONFIGURED": {
         "ja": "AIアシスタントが設定されていません。AI設定でプロバイダーとAPIキーを追加してください。",
     },
+    "AI_DOCUMENT_CHANGED": {
+        "ja": (
+            "AIが更新版を作成している間に解析が変更された（編集・元に戻す・別のファイルを開く など）ため、"
+            "更新は適用されず、何も変更されていません。もう一度「FTA更新」を実行してください。"
+        ),
+    },
     "RENDERER_UNAVAILABLE": {
         "ja": (
             "この操作にはシステムにインストールされたGraphvizが必要です。"
             "graphviz.org からインストールして再起動すると、自動的に使用されます。"
             "図はブラウザ内でも描画されているため、画面表示には影響ありません。"
+        ),
+    },
+    # "<code>:<detail.reason>": Graphviz is installed but the render failed.
+    "RENDERER_UNAVAILABLE:render_failed": {
+        "ja": (
+            "Graphvizで図を描画できませんでした。"
+            "ブラウザ内の描画は引き続き使用できます。"
+        ),
+    },
+    "RENDERER_UNAVAILABLE:timeout": {
+        "ja": (
+            "Graphvizの描画が制限時間内に終わりませんでした。ツリーが大きすぎる可能性があります。"
+            "ブラウザ内の描画は引き続き使用できます。"
         ),
     },
     "EXPORT_UNAVAILABLE": {
@@ -64,6 +83,14 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
             "DOCXレポートには 'python-docx' パッケージが必要ですが、"
             "このマシンにはインストールされていません。"
             "'uv sync --extra report' を実行してエディターを再起動してください。"
+        ),
+    },
+    # "<code>:<detail.reason>" -- the export ran and failed (routes/files.py);
+    # the bare code's text is about a missing openpyxl.
+    "EXPORT_UNAVAILABLE:build_failed": {
+        "ja": (
+            "エクスポートファイルを作成できませんでした。"
+            "ドキュメントに書き出せない文字や値が含まれている可能性があります。"
         ),
     },
     # "<code>:<detail.format>:<detail.feature>" -- the FMEA import reads .xlsx
@@ -104,6 +131,13 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
     "PATH_REJECTED": {
         "ja": "指定されたパスは許可されたフォルダーの外にあるか、無効です。",
     },
+    # "<code>:<detail.reason>" -- the OS refused the write (routes/files.py).
+    "PATH_REJECTED:unwritable": {
+        "ja": (
+            "そのファイルには保存できません（書き込み権限がないか、名前が長すぎます）。"
+            "別の場所か名前を選んでください。"
+        ),
+    },
     "NO_CURRENT_PATH": {
         "ja": "この分析はまだ保存されていません。「名前を付けて保存」を使用してください。",
     },
@@ -124,6 +158,13 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
     },
     "FORBIDDEN": {
         "ja": "セッショントークンがないか無効です。ターミナルからアプリを再起動してください。",
+    },
+    # "<code>:<detail.reason>" -- the Host/Origin checks (security.py).
+    "FORBIDDEN:host_not_allowed": {
+        "ja": "このアドレスからのリクエストは許可されていません。ターミナルに表示されたURLで開いてください。",
+    },
+    "FORBIDDEN:origin_not_allowed": {
+        "ja": "他のページからのリクエストは許可されていません。",
     },
     "NOT_FOUND": {
         "ja": "そのエンドポイントは存在しません。",

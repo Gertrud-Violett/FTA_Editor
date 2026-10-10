@@ -1151,7 +1151,22 @@ FIX_MC = "FIXED:MC"
 FIX_FMT = "FIXED:NUMFMT"     # numfmt.format_prob mirrors numfmt.js
 FIX_MCUB = "FIXED:MCUB"      # cutsets.mcub_of: union with + - * (was log1p/expm1)
 FIX_IMP = "FIXED:IMPORTANCE"  # importance: exponent differences summed directly
+#: uncertainty (2026-10 review): the cut-set method warns MC_EVENT_NOT_SAMPLED
+#: when an uncertain event is in none of the sampled cut sets (F14, O04). The
+#: release does not emit it; no number changes. ("FIXED:MC" is a substring.)
+FIX_MC_EVENT = "FIXED:MC-EVENT-NOT-SAMPLED"
+_NEW_MC_WARNINGS = ("MC_EVENT_NOT_SAMPLED",)
 _MCUB_KEYS = {"mcub", "headline", "MCUB", "Top event (headline)", "cs/mcub"}
+
+
+def _new_mc_warning(diff: Tuple[str, Any, Any]) -> bool:
+    """A Monte Carlo ``warnings`` difference ``(key, this branch, release)``
+    that is exactly the warning codes this branch added (norm_mc sorts the
+    codes, so dropping them leaves the release's tuple)."""
+    key, branch, release = diff
+    if key != "warnings" or not isinstance(branch, tuple) or not isinstance(release, tuple):
+        return False
+    return branch != release and tuple(c for c in branch if c not in _NEW_MC_WARNINGS) == release
 
 
 def or_affected(names: Iterable[str]) -> set:
@@ -1190,6 +1205,13 @@ def classify_release(rows: List[Row], or_trees: set) -> List[Row]:
         texts = [str(d[1]) + str(d[2]) for d in row.diffs]
         if row.tree in or_trees:
             row.status, row.note = "divergence", FIX_OR
+        elif row.metric == "mc" and len(row.diffs) < MAX_DIFFS and any(
+                _new_mc_warning(d) for d in row.diffs) and all(
+                _new_mc_warning(d) or d[0] in ("mean", "std") or tiny(d[1], d[2])
+                for d in row.diffs):
+            numeric = [d for d in row.diffs if not _new_mc_warning(d)]
+            row.status = "divergence"
+            row.note = FIX_MC_EVENT + (" " + FIX_MC if numeric else "")
         elif row.metric == "mc" and len(row.diffs) < MAX_DIFFS and all(
                 d[0] in ("mean", "std") or tiny(d[1], d[2]) for d in row.diffs):
             row.status, row.note = "divergence", FIX_MC

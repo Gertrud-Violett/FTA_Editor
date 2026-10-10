@@ -48,4 +48,5 @@ pytest>=7.0.0
 
 # Note: Graphviz is a system package (not a Python package)
 # It must be installed separately via apt, brew, or downloaded from graphviz.org
-# The Dockerfile handles this with: apt-get install graphviz
+# The desktop app needs it; the web app renders diagrams in the browser and
+# uses a native `dot` only when one is on PATH.

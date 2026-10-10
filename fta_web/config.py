@@ -54,6 +54,13 @@ TOKEN_HEADER = "X-FTA-Token"
 # ---- Limits --------------------------------------------------------------
 UNDO_DEPTH = 50
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+#: The deepest a node may sit below the root (the root is level 0). Every
+#: payload and undo snapshot deep-copies the tree, and copy.deepcopy recurses
+#: four Python frames per level: past ~245 levels a request died with
+#: RecursionError -- an open after it had already replaced the document.
+#: Far beyond any real fault or event tree; open, import, add and move
+#: refuse to go deeper with a 400.
+MAX_TREE_DEPTH = 200
 AI_TIMEOUT_SECONDS = 120
 RENDER_DEBOUNCE_MS = 150
 

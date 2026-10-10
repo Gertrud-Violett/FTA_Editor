@@ -40,7 +40,9 @@ app, which only reads ``probability``, still sees a meaningful number):
 A model whose parameters are missing or invalid keeps the previous
 ``probability`` and records ``QUANT_PARAM_MISSING``.
 
-Gate types (``gateType`` wins over ``logicGate`` when both are present):
+Gate types (``gateType`` wins over ``logicGate`` when both are present;
+without a valid ``gateType``, ``logicGate`` is read as AND or else OR, exactly
+as the core reads it, so an advanced name stored there is not a gate type):
 KOFN -- P(at least k of n) by Poisson-binomial DP; XOR -- a+b-2ab (parity for
 n != 2, flagged); INHIBIT -- AND over the input and its conditioning child;
 PAND -- Πp/n!, always flagged as an approximation; TRANSFER -- the value of
@@ -61,11 +63,15 @@ from typing import Any, Dict, List, Optional, Tuple
 try:  # normal package import: ``import fta_web.engine``
     from . import config  # noqa: F401  (puts fta_web/core on sys.path)
     from .node_schema import project_logic_gate  # noqa: F401  (re-exported)
-    from .node_schema import reconcile_gate_types
+    from .node_schema import (
+        canonical_mode, drop_duplicate_links, reconcile_gate_types, repair_unsavable_text,
+    )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]  # noqa: F401
     from node_schema import project_logic_gate  # type: ignore[no-redef]  # noqa: F401
-    from node_schema import reconcile_gate_types  # type: ignore[no-redef]
+    from node_schema import (  # type: ignore[no-redef]
+        canonical_mode, drop_duplicate_links, reconcile_gate_types, repair_unsavable_text,
+    )
 
 from FTA_Editor_core import FTACore, _tidy  # noqa: E402
 
@@ -124,7 +130,10 @@ class AnalysisError(ValueError):
 def _finite(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise AnalysisError(field, "'%s' must be a number." % field, value)
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range (a 400-digit literal)
+        number = math.inf
     if math.isnan(number) or math.isinf(number):
         raise AnalysisError(field, "'%s' must be a finite number." % field, value)
     return number
@@ -266,7 +275,10 @@ def _param(quant: Dict[str, Any], key: str) -> Optional[float]:
     value = quant.get(key)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    value = float(value)
+    try:
+        value = float(value)
+    except OverflowError:  # an int beyond the float range
+        return None
     if math.isnan(value) or math.isinf(value) or value < 0:
         return None
     return value
@@ -309,7 +321,10 @@ def derive_quant(node: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None
         params = {"q": q}
     elif model == "rate":
         t = _param(quant, "T")
-        from_mission = t is None
+        # Only an absent T defaults to the mission time. An own T that is
+        # invalid (a string, negative, NaN, inf) is a missing parameter: taking
+        # the mission time instead would quietly compute another event.
+        from_mission = quant.get("T") is None
         if from_mission:
             t = _param(analysis, "missionTime")
         params = {"lambda": lam, "T": t, "TFromMission": from_mission}
@@ -467,6 +482,8 @@ class WebCore(FTACore):
             if error == _CORE_ENCODING_ERROR:
                 error = _diagnose_unreadable(file_path) or error
             return ok, error
+        # "eta" was computed as a fault tree; recalculated below as stored.
+        self.mode = canonical_mode(self.mode)
         raw = _read_document(file_path)
         if isinstance(raw, dict) and "tree" in raw and "analysis" in raw:
             self.analysis, problems = coerce_analysis(raw.get("analysis"))
@@ -479,6 +496,10 @@ class WebCore(FTACore):
                     "message": "Invalid analysis setting(s) were reset to their "
                                "defaults: %s." % ", ".join(problems),
                 })
+        # Text that cannot be encoded (an unpaired surrogate) blocks every save.
+        self.last_load_warnings.extend(repair_unsavable_text(self))
+        # A repeated link would be counted twice.
+        self.last_load_warnings.extend(drop_duplicate_links(self.fta_data))
         # A desktop edit changes only logicGate: trust it over a stale gateType.
         self.last_load_warnings.extend(reconcile_gate_types(self.fta_data))
         self.recalculate_probabilities()
@@ -581,8 +602,12 @@ class WebCore(FTACore):
                 if gate_type is None or gate_type not in (
                     "AND", "OR", "KOFN", "XOR", "INHIBIT", "PAND"
                 ):
+                    # logicGate is read exactly as the 1.6 core reads it: AND,
+                    # else OR. An advanced name there (a hand-written "PAND")
+                    # is not a gate type, so such a file computes as in 1.6.
                     gate_value = node.get("logicGate", "OR")
                     gate = str(gate_value).strip().upper() if gate_value else "OR"
+                    gate = "AND" if gate == "AND" else "OR"
                 else:
                     gate = gate_type
 
