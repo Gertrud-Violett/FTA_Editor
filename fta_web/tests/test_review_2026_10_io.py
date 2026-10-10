@@ -470,6 +470,29 @@ def test_fmea_lambda_with_european_grouping_is_not_divided_by_1000(tmp_path):
     assert tree["children"][0]["quant"]["lambda"] == pytest.approx(1.2005e-6, rel=1e-12)
 
 
+@pytest.mark.parametrize("text, rows", [
+    # trailing delimiter on the data rows only (several exporters do this)
+    ("ID;Item;Rate\nA;Pump;1,5e-6;\nB;Valve;2e-6;\n",
+     [["A", "Pump", "1,5e-6"], ["B", "Valve", "2e-6"]]),
+    # ragged rows: trailing empty fields left out
+    ("ID;Item;Mode;Cause;Rate\nA;Pump;Leak;;1e-6\nB;Valve;Stuck\nC;Fan;Noise;Wear;3e-6\n",
+     [["A", "Pump", "Leak", None, "1e-6"], ["B", "Valve", "Stuck", None, None],
+      ["C", "Fan", "Noise", "Wear", "3e-6"]]),
+])
+def test_fmea_semicolon_csv_that_defeats_the_sniffer(tmp_path, text, rows):
+    """csv.Sniffer wants the same delimiter count on ~90 % of the lines; on a
+    short or ragged file it gives up, and the comma fallback made every line
+    one column ('ID;Item;Rate'), or split '1,5e-6' in two: nothing could be
+    mapped."""
+    from fta_web import fmea_import
+
+    path = tmp_path / "semi.csv"
+    path.write_text(text, encoding="utf-8")
+    table = fmea_import.read_table(path)
+    assert table["columns"] == text.splitlines()[0].split(";")
+    assert table["rows"] == rows
+
+
 def _xlsx_with_dimension(path, ref):
     """A workbook whose sheet XML declares ``<dimension ref=ref/>``, as some
     exporters write it regardless of the data."""

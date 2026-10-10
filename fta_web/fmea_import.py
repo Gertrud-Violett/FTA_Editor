@@ -204,14 +204,37 @@ def _decode(data: bytes) -> str:
     return data.decode("latin-1", errors="replace")  # pragma: no cover - latin-1 never fails
 
 
+CSV_DELIMITERS = ",;\t|"
+
+
+def _header_delimiter(sample: str) -> str:
+    """The candidate delimiter the first non-empty line uses most (outside
+    quotes); a comma when it uses none. Ties go to the comma."""
+    line = next((ln for ln in sample.splitlines() if ln.strip()), "")
+    counts = dict.fromkeys(CSV_DELIMITERS, 0)
+    quoted = False
+    for ch in line:
+        if ch == '"':
+            quoted = not quoted
+        elif not quoted and ch in counts:
+            counts[ch] += 1
+    best = max(CSV_DELIMITERS, key=lambda d: counts[d])
+    return best if counts[best] else ","
+
+
 def _read_csv(path: Path) -> Dict[str, Any]:
     text = _decode(path.read_bytes())
     sample = text[:65536]
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+        dialect = csv.Sniffer().sniff(sample, delimiters=CSV_DELIMITERS)
+        reader = csv.reader(io.StringIO(text, newline=""), dialect)
     except csv.Error:
-        dialect = csv.excel
-    reader = csv.reader(io.StringIO(text, newline=""), dialect)
+        # The sniffer wants the same count on ~90 % of the lines, so a short
+        # or ragged file (trailing ';' on the data rows, empty trailing
+        # fields left out) defeats it -- and a plain comma fallback read a
+        # ';' file as one column. The header line decides instead.
+        reader = csv.reader(io.StringIO(text, newline=""), csv.excel,
+                            delimiter=_header_delimiter(sample))
     try:
         table = _tabulate((index + 1, row) for index, row in enumerate(reader))
     except csv.Error as exc:
