@@ -177,7 +177,7 @@ Seen and left open:
 | In ETA mode the diagram prints `Gate: OR` on every branch node, and the DOCX report is titled "Fault Tree Analysis Report" | LOW | Display only |
 
 Found on the packaged 1.7.2 itself and fixed after the release
-(`CHANGELOG.md` → [Unreleased]): Enter on a path typed into the file dialog
+(`CHANGELOG.md` → [1.7.3]): Enter on a path typed into the file dialog
 was lost while the dialog was still reading its start folder (LOW; the
 release notes list it as a known issue), and three tests that watch the
 temp folder failed when two test runs overlapped.

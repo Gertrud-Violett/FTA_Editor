@@ -40,7 +40,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
 
 #: Shown on the title page. The frozen build has no pyproject to read, so the
 #: release number lives here; the integrator bumps it with the release.
-TOOL_VERSION = "1.7.2"
+TOOL_VERSION = "1.7.3"
 
 SECTIONS = (
     "metadata", "headline", "assumptions", "diagram", "events", "cutsets",
@@ -260,11 +260,15 @@ def collect_report_data(core, session_warnings: Optional[List[Dict[str, Any]]] =
     wanted = set(sections) - set(data["skippedEta"])
 
     summary = None
-    if not eta and wanted & {"headline", "assumptions"}:
+    if not eta and wanted & {"headline", "assumptions", "diagram"}:
         summary, reason = try_call("engine", "summary", tree, analysis)
         if summary is None:
             data["unavailable"]["headline"] = reason
     data["summary"] = summary
+    # The diagram's top box shows the MCUB headline, not the root's tree-walk
+    # value, when that is the headline: the caption under the picture says so.
+    root_headline, _reason = try_call("engine", "root_headline", summary)
+    data["rootHeadline"] = root_headline
 
     if "assumptions" in wanted:
         formulas = _formulas()
@@ -395,6 +399,9 @@ L10N: Dict[str, Dict[str, str]] = {
         "repeated.none": "No repeated events.",
         "cutLimits": "Cut-set limits: max order {o}, max count {c}, cutoff {x}.",
         "diagram": "Fault tree diagram", "diagram.none": "Diagram not available.",
+        "diagram.rootMcub": "The top box shows the top-event probability by MCUB ({v}), which "
+                            "counts each repeated event once, with its tree-walk value ({w}) "
+                            "beside it. Every other box shows its tree-walk value.",
         "eventTable": "Basic events",
         "cutsets": "Minimal cut sets",
         "cutsets.summary": "Showing {shown} of {total} cut sets.",
@@ -450,6 +457,8 @@ L10N: Dict[str, Dict[str, str]] = {
         "repeated.none": "重複事象はありません。",
         "cutLimits": "カットセットの制限: 最大次数 {o}、最大数 {c}、カットオフ {x}。",
         "diagram": "故障の木の図", "diagram.none": "図はありません。",
+        "diagram.rootMcub": "最上段の箱は、重複事象を1回だけ数える MCUB による頂上事象の発生確率 ({v}) と、"
+                            "その横にツリー計算値 ({w}) を示します。その他の箱はツリー計算値です。",
         "eventTable": "基本事象",
         "cutsets": "ミニマルカットセット",
         "cutsets.summary": "{total} 件中 {shown} 件を表示。",
@@ -700,6 +709,9 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
                 placed = False
         if not placed:
             _note(doc, t("diagram.none"))
+        elif doc_data.get("rootHeadline"):
+            head = doc_data["rootHeadline"]
+            _note(doc, t("diagram.rootMcub", v=fp(head.get("value")), w=fp(head.get("treeWalk"))))
 
     # ---- events ----
     if "events" in sections and doc_data.get("events") is not None:
@@ -814,10 +826,16 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
 
 
 def diagram_dot_text(core, sig_figs: int = 3) -> Optional[str]:
-    """Compact-style DOT for ``core`` (caller holds the lock), or None."""
+    """Compact-style DOT for ``core``, or None.
+
+    ``core`` is a document nobody else is changing: the caller's own (the
+    CLI) or a :class:`DocSnapshot`. The top box shows the MCUB headline when
+    that is the headline (``diagram_dot.document_dot``), which can take the
+    summary's 2 s -- so the route draws from its snapshot, outside the lock.
+    """
     try:
         dd = _module("diagram_dot")
-        dot, _id_map = dd.build_dot_text2(core, style="compact", sig_figs=sig_figs)
+        dot, _id_map, _headline = dd.document_dot(core, style="compact", sig_figs=sig_figs)
         return dot
     except Exception:
         return None

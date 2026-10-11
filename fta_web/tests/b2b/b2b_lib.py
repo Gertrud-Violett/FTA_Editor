@@ -489,12 +489,24 @@ def compare_results(tree: str, path: str, ref: Dict[str, Any], got: Dict[str, An
 
 
 def ref_dot(ref: Dict[str, Any]) -> Dict[str, str]:
-    return {nid: "P:%s|P_calc:%s" % (fmt(ref["prob"][nid]), fmt(ref["calc"][nid]))
-            for nid in ref["order"]["ids"]}
+    """What each box of the compact diagram must read. Every node shows its
+    tree-walk ``calculatedProbability``; the root shows the headline instead,
+    marked, with the tree-walk value beside it, when the headline is the MCUB
+    and the summary's own caps did not cut it short (1.7.3)."""
+    out = {nid: "P:%s|P_calc:%s" % (fmt(ref["prob"][nid]), fmt(ref["calc"][nid]))
+           for nid in ref["order"]["ids"]}
+    summary = ref.get("summary") or {}
+    ids = ref["order"]["ids"]
+    if (ids and summary.get("headlineMethod") == "mcub" and not summary.get("capped")
+            and summary.get("headline") is not None):
+        root = ids[0]
+        out[root] = "P:%s|P_calc:%s (MCUB)|tree walk %s" % (
+            fmt(ref["prob"][root]), fmt(summary["headline"]), fmt(ref["calc"][root]))
+    return out
 
 
 _DOT_NODE = re.compile(r"^  ([A-Za-z0-9_]+) \[label=<<TABLE", re.M)
-_DOT_META = re.compile(r"P:(\S+) \| P_calc:(\S+?)\s*</FONT>")
+_DOT_META = re.compile(r"P:(\S+) \| P_calc:(\S+?)(?: \(MCUB\) \| tree walk (\S+?))?\s*</FONT>")
 
 
 def parse_dot(dot: str, id_map: Dict[str, str]) -> Dict[str, str]:
@@ -505,7 +517,10 @@ def parse_dot(dot: str, id_map: Dict[str, str]) -> Dict[str, str]:
         block = dot[pos:end]
         meta = _DOT_META.search(block)
         if meta:
-            out[id_map.get(name, name)] = "P:%s|P_calc:%s" % (meta.group(1), meta.group(2))
+            text = "P:%s|P_calc:%s" % (meta.group(1), meta.group(2))
+            if meta.group(3) is not None:
+                text += " (MCUB)|tree walk %s" % meta.group(3)
+            out[id_map.get(name, name)] = text
     return out
 
 

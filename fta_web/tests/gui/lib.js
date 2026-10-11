@@ -255,6 +255,10 @@ function makeApp(page, context, errors, expected) {
         const spans = meta ? meta.querySelectorAll(':scope > span') : [];
         const id = spans[0] ? spans[0].querySelector('code').textContent : null;
         const calc = spans[1] ? spans[1].querySelector('b').textContent : null;
+        // 1.7.3: on the root of a tree whose headline is the MCUB, `calc` is the
+        // headline and this note carries "(MCUB) · tree walk <Q>".
+        const noteEl = spans[1] ? spans[1].querySelector('.fta-details-calc-note') : null;
+        const calcNote = noteEl && !noteEl.hidden ? noteEl.textContent.trim() : '';
         const form = root.querySelector('.fta-details-form');
         const inputs = form ? Array.from(form.querySelectorAll('.fta-field')) : [];
         const fields = {};
@@ -265,7 +269,7 @@ function makeApp(page, context, errors, expected) {
           fields[lab.textContent.trim()] = { value: c.value, readOnly: !!c.readOnly, disabled: !!c.disabled, hidden: !!f.closest('[hidden]') };
         }
         const zero = meta ? meta.querySelector('.fta-details-flag') : null;
-        return { id, calc, fields, zero: zero ? !zero.hidden : false, visible: root.offsetParent !== null };
+        return { id, calc, calcNote, fields, zero: zero ? !zero.hidden : false, visible: root.offsetParent !== null };
       });
     },
     /** Diagram labels: [{title, id, texts:[...]}] (resolved via the page's idMap logic). */

@@ -183,6 +183,75 @@ def _unknown_keys(value: Dict[str, Any], allowed, field: str) -> None:
 # ---- scalar keys ---------------------------------------------------------------
 
 
+#: The relations a link can have (``routes/tree.py`` re-exports them).
+VALID_RELATIONS = ("AND", "OR")
+
+
+def validate_links(value: Any) -> List[Dict[str, Any]]:
+    """Normalize links to the on-disk shape.
+
+    Accepts ``target_id`` or ``targetId`` on input and always stores
+    ``target_id``, which is what ``FTACore`` reads and writes. Targets are
+    deliberately not resolved: dangling and circular links are legal.
+
+    What ``PATCH /api/nodes`` and ``POST /api/nodes`` accept as ``links``.
+    The AI's suggested links go through it as well, and are then held to
+    more (``ai_bridge.proposed_links``: the target must exist and must not
+    be the node itself).
+    """
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ApiError(
+            INVALID_FIELD, "'links' must be a list.", 400, {"field": "links"}
+        )
+
+    links: List[Dict[str, Any]] = []
+    seen = set()
+    for position, raw in enumerate(value):
+        if not isinstance(raw, dict):
+            raise ApiError(
+                INVALID_FIELD,
+                "Each link must be an object with 'target_id' and 'relation'.",
+                400,
+                {"field": "links", "index": position},
+            )
+        target_id = raw.get("target_id", raw.get("targetId"))
+        if target_id is None or str(target_id).strip() == "":
+            raise ApiError(
+                INVALID_FIELD,
+                "Each link needs a non-empty 'target_id'.",
+                400,
+                {"field": "links", "index": position},
+            )
+        refuse_unsavable_text(str(target_id), "links")
+        relation = raw.get("relation") or "OR"
+        if not isinstance(relation, str):
+            relation = str(relation)
+        relation = relation.strip().upper()
+        if relation not in VALID_RELATIONS:
+            raise ApiError(
+                INVALID_FIELD,
+                "A link 'relation' must be 'AND' or 'OR'.",
+                400,
+                {"field": "links", "index": position, "value": raw.get("relation")},
+            )
+        # The engine applies every link, so a repeated one would be counted
+        # twice (an AND-link twice multiplies by q twice). Refused, as the
+        # UI's links editor refuses it.
+        if (str(target_id), relation) in seen:
+            raise ApiError(
+                INVALID_FIELD,
+                "'%s' is already linked with relation %s; a link may appear only once."
+                % (target_id, relation),
+                400,
+                {"field": "links", "index": position},
+            )
+        seen.add((str(target_id), relation))
+        links.append({"target_id": str(target_id), "relation": relation})
+    return links
+
+
 def validate_gate_type(value: Any) -> Optional[str]:
     """One of :data:`GATE_TYPES` (case-insensitive), or None/"" to remove it."""
     if value is None or value == "":

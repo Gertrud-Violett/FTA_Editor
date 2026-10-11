@@ -11,6 +11,35 @@ No AI logic is re-implemented. Prompts, response parsing, change application
 and JSON validation all belong to ``AI_agent_handler``; this module only calls
 it, off the request thread and under a timeout.
 
+Two things are added around the vendored handler rather than inside it (the
+core is hash-pinned, and both need this package's engine and validators):
+
+* **What the model is told about the numbers** (:func:`analysis_section`).
+  The handler's context gives every node's tree-walk value and calls the
+  root's the "Top-level Probability". For a tree with repeated events the
+  editor's headline is the MCUB, so the model would "find" the double
+  counting the tool already corrects. An "Analysis results" section with the
+  headline, its method, the repeated events and the top cut sets is appended
+  to the context (FTA mode only).
+* **Links in a suggestion** (:func:`apply_change`). The handler's add/edit
+  write name, type, probability, gate and notes and nothing else, while its
+  prompt invites link suggestions: a suggested link was dropped and the
+  change still reported as applied.
+
+What applying a suggestion promises
+-----------------------------------
+A suggestion is applied **as a whole or not at all**. Anything in it that is
+not valid -- a link whose target does not exist, a link to the node itself,
+the same link twice, a relation other than AND/OR, a probability outside
+[0, 1] -- rejects that one suggestion with the reason, and the tree is as it
+was before it; the other suggestions of the batch are still applied. Nothing
+is ever applied in part and reported as done.
+
+The one thing that is not an error: keys a suggestion can never change
+(``children`` on an added node -- each child is its own suggestion -- and the
+1.7 keys the model is not shown). They are returned per applied change as
+``ignored`` and the chat names them, so "applied" never claims them either.
+
 
 Threading: the network call never holds the document lock
 ---------------------------------------------------------
@@ -70,19 +99,30 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.ai_bridge``
     from . import config
-    from .engine import derive_quant
+    from .engine import derive_quant, summary_with_cut_sets
     from .errors import ApiError
-    from .node_schema import NODE_KEYS, VALIDATORS, drop_duplicate_links, refuse_unsavable_text
+    from .node_schema import (
+        NODE_KEYS,
+        VALIDATORS,
+        canonical_mode,
+        drop_duplicate_links,
+        refuse_unsavable_text,
+        validate_links,
+    )
+    from .tree_ops import all_ids
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
-    from engine import derive_quant  # type: ignore[no-redef]
+    from engine import derive_quant, summary_with_cut_sets  # type: ignore[no-redef]
     from errors import ApiError  # type: ignore[no-redef]
     from node_schema import (  # type: ignore[no-redef]
         NODE_KEYS,
         VALIDATORS,
+        canonical_mode,
         drop_duplicate_links,
         refuse_unsavable_text,
+        validate_links,
     )
+    from tree_ops import all_ids  # type: ignore[no-redef]
 
 # Importing config placed fta_web/core on sys.path, so the vendored modules
 # import under their bare names. See config.py for why that is mandatory.
@@ -131,6 +171,31 @@ class UnknownProvider(AiError):
 # mkdir's ~/.fta_editor as a side effect, and merely importing this module
 # should not touch the user's home directory.
 
+
+
+class WebAgentHandler(AIAgentHandler):
+    """The vendored handler, with the editor's own results in its context.
+
+    ``set_fta_context`` is where every path (chat, Analyze, Update FTA)
+    builds what the model is shown, two of them from inside the handler, so
+    this is the one place that reaches all three without editing the core.
+    """
+
+    #: The "Analysis results" text for the call in flight, set and cleared by
+    #: :func:`with_analysis` inside the call slot. Empty: the context is the
+    #: vendored handler's, byte for byte (ETA mode, cut sets unavailable).
+    analysis_section = ""
+
+    def set_fta_context(self, fta_data, mode="FTA", title=""):
+        super().set_fta_context(fta_data, mode, title)
+        if self.analysis_section:
+            # The summary's first line calls the root's tree-walk value the
+            # top-level probability; with the headline below it, say which.
+            self.current_fta_context = self.current_fta_context.replace(
+                "- Top-level Probability: ", "- Top-level Probability (tree walk): ", 1
+            ) + "\n\n" + self.analysis_section
+
+
 _handler: Optional[AIAgentHandler] = None
 _handler_lock = threading.Lock()
 
@@ -140,7 +205,7 @@ def get_handler() -> AIAgentHandler:
     global _handler
     with _handler_lock:
         if _handler is None:
-            _handler = AIAgentHandler()
+            _handler = WebAgentHandler()
         return _handler
 
 
@@ -153,7 +218,7 @@ def reset_handler() -> AIAgentHandler:
     """
     global _handler
     with _handler_lock:
-        _handler = AIAgentHandler()
+        _handler = WebAgentHandler()
         return _handler
 
 
@@ -608,21 +673,31 @@ def delete_credentials() -> Tuple[bool, Optional[str]]:
 # ---- proposed changes ----------------------------------------------------
 
 
-def change_view(change: AIProposedChange, index: Optional[int]) -> Dict[str, Any]:
+def change_view(change: AIProposedChange, index: Optional[int], tree: Any = None,
+                pending: Any = ()) -> Dict[str, Any]:
     """One proposed change, camelCased like the rest of the API.
 
     ``index`` is the change's position in the handler's pending list, which is
     what ``POST /api/ai/changes/apply`` takes. The client needs it because
     ``pending_changes`` accumulates across a conversation while each reply only
     reports the changes it just parsed.
+
+    With ``tree`` (the document the model was shown), a change that sets
+    ``links`` also carries ``linkChanges`` -- see :func:`link_changes` -- so
+    the chat card can show what approving it adds and removes.
     """
-    return {
+    view = {
         "index": index,
         "changeType": change.change_type,
         "targetId": change.target_id,
         "description": change.description,
         "data": copy.deepcopy(change.data or {}),
     }
+    if tree is not None:
+        preview = link_changes(change, tree, pending)
+        if preview is not None:
+            view["linkChanges"] = preview
+    return view
 
 
 def pending_index(handler: AIAgentHandler, change: AIProposedChange) -> Optional[int]:
@@ -639,10 +714,13 @@ def pending_index(handler: AIAgentHandler, change: AIProposedChange) -> Optional
 
 
 def changes_view(
-    handler: AIAgentHandler, changes: List[AIProposedChange]
+    handler: AIAgentHandler, changes: List[AIProposedChange], tree: Any = None
 ) -> List[Dict[str, Any]]:
-    """Serialize the changes one call proposed, with their pending indices."""
-    return [change_view(change, pending_index(handler, change)) for change in changes or []]
+    """Serialize the changes one call proposed, with their pending indices
+    (and, given the ``tree`` they were proposed for, their link changes)."""
+    pending = list(handler.pending_changes)
+    return [change_view(change, pending_index(handler, change), tree, pending)
+            for change in changes or []]
 
 
 def pending_changes_view(handler: AIAgentHandler) -> List[Dict[str, Any]]:
@@ -651,6 +729,160 @@ def pending_changes_view(handler: AIAgentHandler) -> List[Dict[str, Any]]:
         change_view(change, index)
         for index, change in enumerate(handler.pending_changes)
     ]
+
+
+# ---- what the model is told about the results ----------------------------
+#
+# Deterministic text, built from the same summary the top bar shows and the
+# cut sets it was derived from (one expansion, the summary's own caps and its
+# 2 s budget). Compact on purpose: it is sent with every message.
+
+#: How many minimal cut sets, and repeated events, the section lists.
+ANALYSIS_TOP_CUT_SETS = 10
+ANALYSIS_MAX_REPEATED = 20
+#: A node name in the section is cut to this many characters.
+ANALYSIS_NAME_CHARS = 48
+
+ANALYSIS_HEADER = "--- Analysis results (computed by FTA Editor; use these, do not recompute) ---"
+ANALYSIS_FOOTER = "--- End of analysis results ---"
+
+_APPROXIMATION_TEXT = {
+    "PAND_APPROX": "priority-AND gate %s is computed as product/n! (the sequence is not "
+                   "modelled; the cut sets treat it as AND)",
+    "XOR_ARITY": "XOR gate %s has other than two inputs and is computed as odd parity",
+    "STANDBY_LARGE_LT": "standby event %s has lambda*tau > 0.2, where the lambda*tau/2 "
+                        "approximation is inaccurate",
+}
+
+
+def _six(value: Any) -> str:
+    """A number at six significant figures; "n/a" when there is none."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return "n/a"
+    number = float(value)
+    if number != number or number in (float("inf"), float("-inf")):
+        return "n/a"
+    return "%.6g" % number
+
+
+def _named(node_id: Any, name: Any) -> str:
+    """``id "name"``, the name on one line and cut to ANALYSIS_NAME_CHARS."""
+    text = " ".join(str(name if name is not None else "").split())
+    if len(text) > ANALYSIS_NAME_CHARS:
+        text = text[: ANALYSIS_NAME_CHARS - 1] + "…"
+    return '%s "%s"' % (node_id, text)
+
+
+def analysis_section(tree: Any, mode: Any = "FTA", analysis: Any = None) -> str:
+    """The "Analysis results" text appended to the model's context, or "".
+
+    "" -- nothing is added, the context is the vendored handler's -- in ETA
+    mode (an event tree has no cut sets) and when the cut sets cannot be had
+    (a voting gate too large, the 2 s budget, any failure): the section must
+    never cost the user their AI call.
+
+    Otherwise, in this order: the headline and its method, with one sentence
+    saying that an MCUB headline already counts each repeated event once; the
+    tree-walk value; the other bound; the repeated events; the top
+    ``ANALYSIS_TOP_CUT_SETS`` minimal cut sets with probability and share;
+    approximations and truncation; the mission time. Numbers have six
+    significant figures. The same document always gives the same text.
+    """
+    if canonical_mode(mode) == "ETA" or not isinstance(tree, dict) or not tree:
+        return ""
+    try:
+        summary, cut = summary_with_cut_sets(tree, analysis)
+    except Exception:  # noqa: BLE001 -- see the docstring
+        return ""
+    if not isinstance(cut, dict) or not isinstance(summary, dict):
+        return ""
+
+    lines = [ANALYSIS_HEADER]
+    headline, walk = _six(summary.get("headline")), _six(summary.get("treeWalk"))
+    if summary.get("headlineMethod") == "mcub":
+        lines.append("Top event probability (headline): %s by MCUB (min-cut upper bound "
+                     "over the minimal cut sets)." % headline)
+        lines.append("The headline already counts each repeated event once, so the double "
+                     "counting in the tree-walk value is corrected in it.")
+        lines.append("Tree walk: %s (every branch taken as independent; the 'Top-level "
+                     "Probability' and every 'Calculated Probability' above are tree-walk "
+                     "values)." % walk)
+    else:
+        lines.append("Top event probability (headline): %s by tree walk (no event is "
+                     "repeated, so no branch is counted twice)." % headline)
+        lines.append("MCUB (min-cut upper bound) for comparison: %s." % _six(summary.get("mcub")))
+    lines.append("Rare-event approximation (sum of the cut sets): %s."
+                 % _six(summary.get("rareEvent")))
+
+    repeated = [e for e in summary.get("repeatedEvents") or [] if isinstance(e, dict)]
+    if repeated:
+        shown = "; ".join(_named(e.get("id"), e.get("name"))
+                          for e in repeated[:ANALYSIS_MAX_REPEATED])
+        more = len(repeated) - ANALYSIS_MAX_REPEATED
+        lines.append("Repeated events (%d), each reached by more than one branch: %s%s."
+                     % (len(repeated), shown, "; and %d more" % more if more > 0 else ""))
+    else:
+        lines.append("Repeated events: none.")
+
+    cut_sets = [c for c in cut.get("cutSets") or [] if isinstance(c, dict)]
+    total = cut.get("total", len(cut_sets))
+    top = cut_sets[:ANALYSIS_TOP_CUT_SETS]
+    if top:
+        lines.append("Minimal cut sets: %s; the top %d by probability, as probability "
+                     "(share of the rare-event sum): events" % (total, len(top)))
+        for position, cut_set in enumerate(top, start=1):
+            events = " AND ".join(_named(e.get("id"), e.get("name"))
+                                  for e in cut_set.get("events") or [] if isinstance(e, dict))
+            lines.append("%d. %s (%s%%): %s" % (
+                position, _six(cut_set.get("probability")),
+                "%.3g" % (100.0 * float(cut_set.get("share") or 0.0)), events))
+    else:
+        lines.append("Minimal cut sets: none.")
+
+    notes = []
+    for item in summary.get("approximations") or []:
+        if not isinstance(item, dict):
+            continue
+        text = _APPROXIMATION_TEXT.get(str(item.get("code")))
+        notes.append(text % item.get("nodeId") if text
+                     else "%s at %s" % (item.get("code"), item.get("nodeId")))
+    if summary.get("nonCoherent"):
+        notes.append("the tree has XOR gates and is non-coherent (the cut sets treat XOR as OR)")
+    lines.append("Approximations: %s." % ("; ".join(notes) if notes else "none"))
+
+    truncated_by = [str(b) for b in summary.get("truncatedBy") or []]
+    if summary.get("truncated"):
+        lines.append("Cut sets truncated by the document's limits (%s): the MCUB is from "
+                     "the sets kept." % (", ".join(truncated_by) or "limit"))
+    if summary.get("capped"):
+        lines.append("The headline is computed from the first %s cut sets only (the "
+                     "headline's own cap); the Cut Sets tab may list more." % total)
+
+    settings = analysis if isinstance(analysis, dict) else {}
+    lines.append("Mission time: %s h (shown to the user in %s)."
+                 % (_six(settings.get("missionTime")), settings.get("timeUnit") or "h"))
+    lines.append(ANALYSIS_FOOTER)
+    return "\n".join(lines)
+
+
+def with_analysis(handler: AIAgentHandler, section: str, func: Callable[..., Any]
+                  ) -> Callable[..., Any]:
+    """``func`` for :func:`run_ai_call`, with ``section`` appended to the
+    context the handler builds during it (:class:`WebAgentHandler`).
+
+    Set on the worker, inside the call slot, and cleared when the handler
+    returns: calls are serialised, so one call's section can never be read
+    by another -- also not by a call that timed out and is still running.
+    """
+
+    def call(*args: Any, **kwargs: Any) -> Any:
+        handler.analysis_section = section or ""
+        try:
+            return func(*args, **kwargs)
+        finally:
+            handler.analysis_section = ""
+
+    return call
 
 
 # ---- which document a proposal was made for -----------------------------
@@ -720,6 +952,10 @@ def _is_probability(value: Any) -> bool:
     return 0.0 <= number <= 1.0
 
 
+#: The node types a suggestion may give (``_parse_proposed_changes``).
+_NODE_TYPES = ("Event", "Gate", "Intermediate")
+
+
 def change_problem(change: AIProposedChange, document: Any = None) -> Optional[str]:
     """Why a proposed add/edit must not be applied to ``document``, or None."""
     if change.change_type not in ("add", "edit"):
@@ -730,6 +966,13 @@ def change_problem(change: AIProposedChange, document: Any = None) -> Optional[s
             "Not applied: the suggested probability %r is not a number between "
             "0 and 1." % (data["probability"],)
         )
+    # The parser drops a suggestion with either of these; the handler's edit
+    # would skip the field and report the rest as updated.
+    if "type" in data and data["type"] not in _NODE_TYPES:
+        return ("Not applied: the suggested type %r is not Event, Gate or Intermediate."
+                % (data["type"],))
+    if data.get("logicGate") not in (None, "", "AND", "OR"):
+        return "Not applied: the suggested gate %r is not AND or OR." % (data["logicGate"],)
     notes = data.get("notes")
     if notes is not None and not isinstance(notes, str):
         return "Not applied: the suggested notes are not text."
@@ -739,6 +982,185 @@ def change_problem(change: AIProposedChange, document: Any = None) -> Optional[s
     if change.change_type == "edit" and "probability" in data and document is not None:
         return derived_probability_reason(document.find_node_by_id(change.target_id), document)
     return None
+
+
+# ---- links in a suggestion ----------------------------------------------
+#
+# ``links`` in a suggestion's DATA is the node's complete new list, as the
+# schema the model is given describes a node: it replaces the links the node
+# has, ``[]`` removes them all, and leaving the key out keeps them. The
+# vendored add/edit ignore the key, so it is validated and written here.
+
+#: What the vendored handler answers to an edit none of whose fields it
+#: writes -- which is what an edit of the links alone looks like to it.
+NO_FIELDS_MESSAGE = "No valid fields to update"
+
+#: Keys of an add/edit DATA that are applied: the handler's own, and links.
+_APPLIED_KEYS = frozenset(("id", "name", "type", "probability", "logicGate", "notes", "links"))
+
+
+def _link_owner(change: AIProposedChange) -> Optional[str]:
+    """The id of the node whose links an add/edit sets."""
+    data = change.data if isinstance(change.data, dict) else {}
+    owner = data.get("id") if change.change_type == "add" else change.target_id
+    return None if owner is None else str(owner)
+
+
+def _suggested_links(change: AIProposedChange) -> Any:
+    """The raw ``links`` an add/edit carries, or None when it sets none
+    (the key is absent or null: the node's links stay as they are)."""
+    if change.change_type not in ("add", "edit"):
+        return None
+    data = change.data if isinstance(change.data, dict) else {}
+    return data.get("links")
+
+
+def _link_problem(raw: Any, owner: Optional[str], known_ids: Any
+                  ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """``(links, None)`` -- normalised as ``PATCH /api/nodes`` stores them --
+    or ``(None, why they cannot be applied)``.
+
+    ``node_schema.validate_links`` (a list of ``{target_id, relation}``,
+    relation AND or OR, no link twice), and then what a person's edit is not
+    held to but a model's is: every target exists and none is the node
+    itself. A dangling link is legal in a file; one the model invented is a
+    mistake, and it would silently change nothing in the numbers.
+    """
+    try:
+        links = validate_links(raw)
+    except ApiError as exc:
+        return None, "Not applied: the suggested links are not valid. %s" % exc.message
+    for link in links:
+        target = link["target_id"]
+        if owner is not None and target == owner:
+            return None, ("Not applied: the suggested link points from '%s' to itself."
+                          % owner)
+        if target not in known_ids:
+            return None, ("Not applied: the suggested link target '%s' does not exist "
+                          "in this analysis." % target)
+    return links, None
+
+
+def proposed_links(change: AIProposedChange, core: Any
+                   ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """``(links to store, None)``, ``(None, None)`` when the change sets no
+    links, or ``(None, reason)`` when its links must not be applied to the
+    document in ``core``. Caller holds the lock."""
+    raw = _suggested_links(change)
+    if raw is None:
+        return None, None
+    return _link_problem(raw, _link_owner(change), all_ids(core))
+
+
+def _link_key(link: Any) -> Optional[Tuple[str, str]]:
+    """``(target id, effective relation)`` of a stored link, as the engine
+    reads it ("AND" in any case is AND, anything else OR), or None."""
+    target = link.get("target_id") if isinstance(link, dict) else None
+    if target in (None, ""):
+        return None
+    relation = "AND" if str(link.get("relation") or "OR").strip().upper() == "AND" else "OR"
+    return str(target), relation
+
+
+def link_changes(change: AIProposedChange, tree: Any, pending: Any = ()
+                 ) -> Optional[Dict[str, Any]]:
+    """What a suggestion would do to its node's links, for the chat card:
+    ``{"added": [...], "removed": [...], "problem": str | None}``, or None
+    when it sets no links. Each entry is ``{targetId, targetName, relation}``.
+
+    Compared with ``tree``, the document the model was shown. A target that
+    an earlier ``add`` of ``pending`` creates counts as known -- suggestions
+    are applied in order -- so only a target nobody creates is a ``problem``
+    here; the same check runs again, against the live tree, on apply.
+    """
+    raw = _suggested_links(change)
+    if raw is None:
+        return None
+    nodes = _nodes_by_id(tree)
+    names = {node_id: node.get("name") for node_id, node in nodes.items()}
+    for other in pending or ():
+        data = other.data if isinstance(getattr(other, "data", None), dict) else {}
+        if getattr(other, "change_type", None) == "add" and data.get("id") is not None:
+            names.setdefault(str(data["id"]), data.get("name"))
+    owner = _link_owner(change)
+    wanted, problem = _link_problem(raw, owner, names)
+    if wanted is None:
+        try:  # still show what was asked for, beside why it will be refused
+            wanted = validate_links(raw)
+        except ApiError:
+            wanted = []
+    current: List[Tuple[str, str]] = []
+    if change.change_type == "edit" and owner in nodes:
+        for link in nodes[owner].get("links") or []:
+            key = _link_key(link)
+            if key is not None and key not in current:
+                current.append(key)
+    asked = [(link["target_id"], link["relation"]) for link in wanted]
+
+    def entry(key: Tuple[str, str]) -> Dict[str, Any]:
+        return {"targetId": key[0], "targetName": names.get(key[0]), "relation": key[1]}
+
+    return {
+        "added": [entry(key) for key in asked if key not in current],
+        "removed": [entry(key) for key in current if key not in asked],
+        "problem": problem,
+    }
+
+
+def ignored_fields(change: AIProposedChange) -> List[str]:
+    """Keys of an add/edit's DATA that applying it does not use, sorted.
+
+    ``children`` (non-empty: each child is its own suggestion), the 1.7 keys
+    and anything else the model made up. Not reported: an empty ``children``
+    and ``calculatedProbability``, which the schema the model is shown lists
+    on every node and which say nothing.
+    """
+    if change.change_type not in ("add", "edit"):
+        return []
+    data = change.data if isinstance(change.data, dict) else {}
+    ignored = []
+    for key, value in data.items():
+        if key in _APPLIED_KEYS or key == "calculatedProbability":
+            continue
+        if key == "children" and not value:
+            continue
+        ignored.append(str(key))
+    return sorted(ignored)
+
+
+def apply_change(handler: AIAgentHandler, core: Any, change: AIProposedChange
+                 ) -> Tuple[bool, str, List[str]]:
+    """Apply one proposed change to ``core``: ``(ok, message, ignored)``.
+
+    The vendored ``apply_change_to_fta`` does the work, as in the desktop
+    editor; this adds the suggestion's ``links``, which it ignores. They are
+    checked first (:func:`proposed_links`), so a suggestion with a bad link
+    is refused before anything of it is written -- see the module docstring
+    for the all-or-nothing rule. ``ignored`` is :func:`ignored_fields` for a
+    change that was applied. Caller holds the lock and recalculates.
+    """
+    links, problem = proposed_links(change, core)
+    if problem:
+        return False, problem, []
+    ok, message = handler.apply_change_to_fta(core, change)
+    if links is not None:
+        node = core.find_node_by_id(_link_owner(change))
+        links_only = (not ok and change.change_type == "edit" and node is not None
+                      and message == NO_FIELDS_MESSAGE)
+        if links_only:  # the links are the whole edit
+            ok, message = True, "✓ Updated '%s': links" % node.get("name")
+        elif ok and change.change_type == "edit":
+            message = "%s, links" % message
+        elif ok:
+            message = "%s, with %d link%s" % (message, len(links), "" if len(links) == 1 else "s")
+        if ok and node is not None:
+            node["links"] = links
+    if not ok:
+        return False, message, []
+    ignored = ignored_fields(change)
+    if ignored:
+        message = "%s. Not changed by a suggestion: %s" % (message, ", ".join(ignored))
+    return True, message, ignored
 
 
 def derived_probability_reason(node: Any, document: Any) -> Optional[str]:

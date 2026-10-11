@@ -230,11 +230,12 @@ def post_docx():
     with state.lock:
         snapshot = report_docx.DocSnapshot.of(state.core)
         warnings = list(state.session_warnings)
-        dot_text = (report_docx.diagram_dot_text(state.core, options["sigFigs"])
-                    if want_diagram else None)
         download_name = fsbrowser.safe_download_name(_stem(state) + "_report", ".docx")
     if want_diagram:
-        options["diagramPng"] = report_docx.render_png(dot_text)
+        # From the snapshot, outside the lock: the top box's MCUB headline
+        # may take the summary's 2 s, and it must be this document's.
+        options["diagramPng"] = report_docx.render_png(
+            report_docx.diagram_dot_text(snapshot, options["sigFigs"]))
 
     data = report_docx.collect_report_data(snapshot, warnings, options)
     try:

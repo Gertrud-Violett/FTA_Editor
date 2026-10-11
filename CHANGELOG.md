@@ -7,8 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-10-11
+
+Three fixes around trees with repeated events and the AI assistant. Each was
+confirmed in 1.7.2 first and has tests in
+`fta_web/tests/test_release_1_7_3_*.py`. It also carries the file-dialog fix
+made after 1.7.2.
+
 ### Fixed
 
+- **Applying an AI suggestion dropped its link changes and still said
+  "applied".** The assistant is invited to suggest links, but a suggested
+  add or edit wrote only the name, type, probability, gate and notes. A
+  suggestion that held a link did not even reach the list intact: its data
+  was cut at the first `}` and arrived empty (vendored core, divergence
+  D29).
+  - An applied add or edit now sets the node's links. The links in a
+    suggestion are the node's complete new list. They are checked like a
+    link edit in Node Details, and a target must also exist and must not be
+    the node itself.
+  - **A suggestion is applied as a whole or not at all.** One with a link
+    that is not valid is not applied, its new name included, and the chat
+    says *Suggestion rejected* with the reason. The rest of the set is still
+    applied, in one undo step.
+  - The suggestion card shows each link a suggestion adds and removes before
+    you approve it.
+  - What a suggestion can never change (the children of an added node, the
+    advanced fields) is named in the chat instead of being passed over.
+  - The assistant is told how to write a link change.
+- **The AI was not told the headline.** It was shown each node's tree-walk
+  value, the root's as the "top-level probability". For a tree with repeated
+  events the headline is the MCUB, so the assistant reported the double
+  counting that the editor already corrects. In FTA mode it now also gets
+  the editor's results: the headline and its method, the tree-walk value,
+  the repeated events, the ten most probable minimal cut sets,
+  approximations and truncation, and the mission time. Chat, Analyze FTA and
+  Update FTA all send it; ETA mode is unchanged.
+- **The diagram's top box disagreed with the top bar** on a tree with
+  repeated events or an XOR gate: the Challenger example showed 0.0349 in
+  the box and 0.0684 in the bar. When the headline is the MCUB, the top
+  event now shows it, marked, with its tree-walk value beside it
+  (`P_calc:0.0684 (MCUB) | tree walk 0.0349`; `Q=0.0684 (MCUB)` in the
+  symbols style). This holds in both styles, layouts and themes, in the SVG
+  and PNG exports, `POST /api/render` and the report's diagram. Node Details
+  shows both for the root, a line above the diagram explains the top box,
+  and the Excel export notes it on the root's cell. Every other node keeps
+  its tree-walk value, and a tree without repeated events is drawn exactly
+  as before (User Guide, "The top box").
 - **File dialog: a path entered while a folder is still being read is not
   lost.** Enter (or Go) on a path typed into the path box was ignored while
   the dialog's first listing was on its way: the path stayed in the box and
@@ -17,12 +62,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   folder. Both only showed when the start folder was slow to read; a script
   that opened Load and entered a path at once hit them. The path is now kept
   and acted on as soon as the list is idle; the last one entered wins. Found
-  while checking the packaged 1.7.2. The GUI suite checks it (721 checks).
+  while checking the packaged 1.7.2. The GUI suite checks it.
 - **Tests: three temp-folder checks no longer fail when two test runs
   overlap** (tests only). `test_export_leaves_no_temp_files_behind` and two
   more compared the machine's shared temp folder before and after a request,
   so a second run on the same machine made them fail. Each now has a temp
   folder of its own.
+
+### Changed
+
+- `GET /api/dot` adds `rootHeadline`; `POST /api/ai/changes/apply` adds
+  `ignored` to each applied change; `POST /api/ai/chat` and `/analyze` add
+  `linkChanges` to a suggestion that sets links (`docs/API_REFERENCE.md`).
+- The back-to-back suite and the GUI suite compare the root's label with the
+  headline and every other node with its calculated probability (GUI suite:
+  830 checks).
 
 ## [1.7.2] - 2026-10-10
 

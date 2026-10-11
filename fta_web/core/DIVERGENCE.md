@@ -37,7 +37,7 @@ hashes for both sides are recorded in [`BASELINE.json`](./BASELINE.json), whose
 
 Applied divergences: **D1**, **D5**, **D7**, **D8**, **D9**, **D11**, **D12**, **D13**,
 **D14**, **D15**, **D16**, **D17**, **D18**, **D19**, **D20**, **D21**, **D22**, **D23**,
-**D24**, **D25**, **D26**, **D27**, **D28**.
+**D24**, **D25**, **D26**, **D27**, **D28**, **D29**.
 Investigated and **not** applied: **D3** (see the closing section — it is recorded so the
 question is not re-opened, but it is deliberately absent from `BASELINE.json`).
 
@@ -860,6 +860,61 @@ parent, a move into its own subtree: D7). The prompt gains text and loses none.
 **Behavior change:** Suggested moves can be applied. A move that names no
 parent, or an empty one, answers `Move requires 'parent_id' in data` (an empty
 `parent_id` used to answer `New parent '' not found`).
+
+**Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
+
+**Files:** `fta_web/core/AI_agent_handler.py`
+
+---
+
+## D29 — A suggestion that carried a link arrived with no data
+
+**Defect:** `SYSTEM_PROMPT` invites the model to recommend "additional nodes,
+links, or structural changes", and `FTA_JSON_SCHEMA` shows a node's `links` as
+a list of objects. `_parse_proposed_changes` reads a suggestion's `DATA` with
+the lazy pattern `DATA:\s*(\{.+?\})`, which stops at the first `}`. A `DATA`
+object that holds another object, which is what a link is, was therefore cut
+off inside its first link; the cut text is not JSON, and the parser's answer to
+that is `data = {}`. The suggestion was still listed, with nothing in it: an
+`edit` was refused with `Edit requires data fields`, an `add` with `Add
+requires node data with 'id' and 'name' fields`. The prompt also never said
+how to write a link change, or what a `links` list in `DATA` means.
+
+The same reply through both copies (four suggestions; the third has no link,
+the fourth writes its `DATA` in a code fence, which a second pattern reads):
+
+| Suggestion | `src/` (baseline) | `fta_web/core/` with D29 |
+|---|---|---|
+| `edit`, one link in `DATA` | `data` is `{}` | `id`, `name`, `links` (1) |
+| `add`, two links in `DATA` | `data` is `{}` | all seven keys, `links` (2) |
+| `edit`, no link | `id`, `name` | `id`, `name` |
+| `edit`, one link, fenced `DATA` | `id`, `name`, `links` (1) | `id`, `name`, `links` (1) |
+
+**Fix:**
+
+- `_parse_proposed_changes`: when the text the lazy pattern captured is not
+  JSON, the object is read again from its opening brace with
+  `json.JSONDecoder().raw_decode`, which ends at the brace that closes it.
+- `SYSTEM_PROMPT` says how to change links: `"links"` in the `DATA` of an add
+  or an edit is the node's complete new list (`[]` removes them all, leaving
+  the key out keeps them), and a target is an existing node, not the node
+  itself, listed once. A worked example follows the worked move.
+
+Writing the links into the tree is not done here. `apply_change_to_fta` still
+writes the five fields it always wrote; `fta_web/ai_bridge.py`
+(`apply_change`) validates a suggestion's `links` with the validators of the
+tree API and stores them, and rejects the whole suggestion when one is not
+valid. Until 1.7.3 an applied suggestion lost its links and was reported as
+applied.
+
+**Why it is safe:** A `DATA` object without a nested object is captured whole
+by the lazy pattern and parsed by `json.loads`, as before; the second read
+runs only where the first raised and the suggestion was emptied. What it
+reads then goes through the same field checks as any other `DATA`. The prompt
+gains text and loses none.
+
+**Behavior change:** A suggestion whose `DATA` holds a link (or any other
+nested object) keeps its data. The model is told how to suggest a link change.
 
 **Desktop impact:** None. `desktop/src/` is frozen and keeps its own copy.
 

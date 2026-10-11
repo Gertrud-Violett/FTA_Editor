@@ -467,6 +467,10 @@ export function initDiagram(container) {
   clear(container);
 
   const status = el('div', { class: 'diagram__status', role: 'status', 'aria-live': 'polite' });
+  // Shown while the top box carries the MCUB headline instead of the root's
+  // tree-walk value (/api/dot `rootHeadline`): what the two numbers are.
+  const caption = el('div', { class: 'diagram__caption', hidden: true });
+  let captionOn = false;
   const stage = el('div', { class: 'diagram__stage', tabindex: '0' });
   const canvas = el('div', { class: 'diagram__canvas' });
   stage.appendChild(canvas);
@@ -745,8 +749,16 @@ export function initDiagram(container) {
   retitleToolbar();
 
   container.appendChild(toolbar);
+  container.appendChild(caption);
   container.appendChild(stage);
   container.appendChild(status);
+
+  function renderCaption() {
+    caption.hidden = !captionOn;
+    caption.textContent = captionOn
+      ? t('diagram17.rootMcub', 'Top box: top-event probability by MCUB (repeated events counted once), with its tree-walk value. Other boxes: tree-walk values.')
+      : '';
+  }
 
   /** The font/scale to actually send with this render -- the single place
    * both /api/dot and /api/render's native path read from, so the on-screen
@@ -1047,6 +1059,8 @@ export function initDiagram(container) {
       if (renderedStyle === 'symbols') replaceGateShapes(parsed, renderedRankdir);
       dotIdMap = idMap;
       fallbackIdMap = null;
+      captionOn = Boolean(payload.rootHeadline && payload.rootHeadline.method === 'mcub');
+      renderCaption();
       svgEl = document.importNode(parsed, true);
       // Give the SVG real intrinsic pixel size from its own viewBox rather
       // than stripping width/height outright. .diagram__canvas is
@@ -1097,6 +1111,8 @@ export function initDiagram(container) {
       svgEl = null;
       exportSvgText = '';
       clear(canvas);
+      captionOn = false;
+      renderCaption();
       const msg = err instanceof ApiError ? err.message : String((err && err.message) || err);
       setStatusMessage(t('diagram.error', 'Could not render the diagram: ') + msg, 'error');
       setMeta('');
@@ -1247,7 +1263,7 @@ export function initDiagram(container) {
   // screen-reader user switching mid-session would otherwise hear the old
   // language. Re-render on the next diagram update picks up the meta line for
   // free; the toolbar needs this.
-  const onLanguage = () => { retitleToolbar(); refreshFontNote(); relabelLayoutControls(); relabelPopover(); schedule(); };
+  const onLanguage = () => { retitleToolbar(); refreshFontNote(); relabelLayoutControls(); relabelPopover(); renderCaption(); schedule(); };
   window.addEventListener('fta:language', onLanguage);
 
   // Explicit light/dark from the theme toggle...
@@ -1350,6 +1366,9 @@ const STYLES = `
   background: linear-gradient(to right, rgb(255,244,229), rgb(230,85,13)); }
 .diagram__legendScale { display:flex; justify-content:space-between; gap:8px;
   color: var(--fta-muted-fg, #5d6a78); font-variant-numeric: tabular-nums; }
+.diagram__caption { flex:0 0 auto; padding:3px 8px; font-size:11px; line-height:1.35;
+  color: var(--fta-muted-fg, #5d6a78); border-bottom:1px solid var(--fta-border, #d7dde5); }
+.diagram__caption[hidden] { display:none; }
 .diagram__status { flex:0 0 auto; padding:4px 8px; font-size:12px; min-height:0;
   color: var(--fta-fg, #10151c); }
 .diagram__status--error { color: var(--fta-danger-fg, #a8321c); }

@@ -18,6 +18,7 @@ export default {
     'diagram17.fontAuto': 'Auto-detect',
     'diagram17.fontSystem': 'System default',
     'diagram17.pngNative': 'PNG export: system Graphviz',
+    'diagram17.rootMcub': 'Top box: top-event probability by MCUB (repeated events counted once), with its tree-walk value. Other boxes: tree-walk values.',
   },
   ja: {
     'diagram17.style': '表示形式',
@@ -33,5 +34,6 @@ export default {
     'diagram17.fontAuto': '自動検出',
     'diagram17.fontSystem': 'システムの既定',
     'diagram17.pngNative': 'PNG 出力: システムの Graphviz',
+    'diagram17.rootMcub': '最上段の箱: MCUB（重複事象を1回だけ数える）による頂上事象の確率と、そのツリー計算値。その他の箱: ツリー計算値。',
   },
 };
