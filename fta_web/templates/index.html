@@ -258,6 +258,13 @@
                   data-advanced-only data-i18n="tab.report">Report</button>
         </div>
         <span class="panel__meta" id="details-meta"></span>
+        <!-- All the height there is for a table, leaving a strip of diagram.
+             main.js sets the wording and the glyph (applyLayout). -->
+        <button type="button" class="btn btn--icon btn--ghost" id="btn-bottom-max" aria-pressed="false"
+                data-i18n-aria="bottom.maximise" aria-label="Enlarge this panel"
+                data-i18n-title="bottom.maximise" title="Enlarge this panel">
+          <span aria-hidden="true" id="bottom-max-glyph">&#9651;</span>
+        </button>
       </div>
       <div class="tabpanels">
         <div class="tabpanel tabpanel--details" id="tabpanel-details" role="tabpanel"

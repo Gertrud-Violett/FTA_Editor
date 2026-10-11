@@ -195,6 +195,24 @@ export function isImeKey(event) {
   return Boolean(event) && (event.isComposing === true || event.keyCode === 229);
 }
 
+/**
+ * The node types the editor and the AI assistant's validator know. Type is
+ * still free text (a file from the desktop editor may hold anything), but
+ * the field used to offer nothing, so the same type was spelled three ways.
+ */
+export const NODE_TYPES = Object.freeze(['Event', 'Gate', 'Intermediate']);
+const NODE_TYPE_LIST_ID = 'fta-node-types';
+
+/** The id of a `<datalist>` of NODE_TYPES, for an input's `list` attribute. */
+export function nodeTypeListId() {
+  if (!document.getElementById(NODE_TYPE_LIST_ID)) {
+    document.body.appendChild(
+      el('datalist', { id: NODE_TYPE_LIST_ID }, NODE_TYPES.map((value) => el('option', { value: value })))
+    );
+  }
+  return NODE_TYPE_LIST_ID;
+}
+
 /** Remove every child of `node`. */
 export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
@@ -1417,7 +1435,7 @@ export function openAddNodeDialog(parentId, options) {
   const parent = parentId === undefined || parentId === null ? null : String(parentId);
 
   const nameField = field(t('details.name'), el('input', { type: 'text', value: '' }));
-  const typeField = field(t('details.type'), el('input', { type: 'text', value: 'Event' }));
+  const typeField = field(t('details.type'), el('input', { type: 'text', value: 'Event', list: nodeTypeListId() }));
   const probabilityField = field(
     t('details.probability'),
     el('input', {

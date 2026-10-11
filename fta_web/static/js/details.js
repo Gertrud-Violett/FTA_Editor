@@ -50,6 +50,7 @@ import {
   showNotice,
   t,
   uid,
+  nodeTypeListId,
   validateGate,
 } from './dialogs.js';
 import { BASIC_GATES, EVENT_KINDS, GATE_TYPES, isAdvancedNode } from './schema.js';
@@ -298,6 +299,8 @@ export function initDetails(container) {
     // The probability is numeric: inputmode brings the numeric keyboard and
     // opts it into select-on-click (dialogs.js installSelectOnFocus).
     else if (spec.key === 'probability') control = el('input', { type: 'text', inputmode: 'decimal' });
+    // Type stays free text, with the usual values offered (dialogs.js NODE_TYPES).
+    else if (spec.key === 'type') control = el('input', { type: 'text', list: nodeTypeListId() });
     else control = el('input', { type: 'text' });
 
     const id = uid('fta-details');
