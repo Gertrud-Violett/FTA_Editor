@@ -231,8 +231,14 @@ def test_svg_sanitiser_strips_script_navigation_and_off_box_loads():
 
 def test_sanitiser_runs_before_the_svg_is_imported():
     src = _read(STATIC / "diagram.js")
-    body = _braced(src, src.index("async function render()"))
+    # Batch 3: the screen and the light-coloured export copy are both made by
+    # svgFromText(), the one place Graphviz output enters the document.
+    body = _braced(src, src.index("function svgFromText(svgText, style, rankdir)"))
     assert body.index("sanitizeSvg(parsed);") < body.index("document.importNode(parsed, true)")
+    assert src.count("document.importNode(") == 1 and src.count("new DOMParser()") == 1
+    render = _braced(src, src.index("async function render()"))
+    assert "svgFromText(svgText, renderedStyle, renderedRankdir)" in render
+    assert "svgFromText(await layoutSvg(payload.dot)" in _braced(src, src.index("async function lightSvg()"))
 
 
 # ---- main.js: Load and Undo/Redo wait for the edit their click started ----------------
@@ -566,6 +572,9 @@ function say() {}
 function t(key) { return key; }
 function fail(err) { throw err; }
 let destroyed = false;
+// Batch 3: a wider selection moves as a block; here only one row is selected.
+const selection = new Set();
+function moveSelectionByKeyboard() { throw new Error('one row is not a block'); }
 // The round trip: the tree the next press reads changes only when it ends.
 function requestMove(id, newParentId, index) {
   return new Promise((resolve) => setTimeout(() => {
@@ -776,7 +785,8 @@ def test_ctrl_s_in_a_modal_is_claimed():
 def test_symbols_render_without_a_drawing_says_so():
     src = _read(STATIC / "main.js")
     body = _braced(src, src.index("async function actionRenderImage()"))
-    branch = _braced(body, body.index("if (box && box.style === 'symbols'"))
+    # Batch 3: a diagram coloured by an overlay takes the same branch.
+    branch = _braced(body, body.index("if (box && (box.style === 'symbols' || coloured)"))
     assert branch.rstrip()[:-1].rstrip().endswith("return;"), "no fall-through to /render"
     assert "'diagram.nothingToExport'" in branch and "'diagram.pngFailed'" in branch
     assert "diagramPanel.hasDiagram()" in branch

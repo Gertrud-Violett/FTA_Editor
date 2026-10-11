@@ -528,7 +528,10 @@ def test_a_partial_apply_shows_what_was_rejected():
     ).group(1)
     assert "appliedCount(result, indices.length)" in body_src
     assert "Number(result.applied)" not in body_src
-    assert "showDiagnostics({ rejected: result.rejected })" in body_src
+    # Batch 3: each rejected suggestion is named with the server's reason
+    # (showRejected); the same records no longer follow as raw JSON.
+    assert "showRejected(result.rejected);" in body_src
+    assert "showDiagnostics({ rejected: result.rejected })" not in body_src
 
 
 # --------------------------------------------------------------------------

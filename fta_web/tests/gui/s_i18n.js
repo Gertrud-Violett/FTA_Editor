@@ -80,8 +80,8 @@ async function main(url, label, root) {
     report[id] = await englishLeft(page, user);
   }
   // the diagram popover
-  await page.locator('#diagram-root .diagram__btn', { hasText: 'Aa' }).click();
-  report.popover = (await englishLeft(page, user)).filter((s) => /Font|Style|Layout|Box|scale|Close|Detected/i.test(s));
+  await page.locator('#diagram-root [data-role="diagram-settings"]').click();
+  report.popover = (await englishLeft(page, user)).filter((s) => /Font|Style|Layout|Box|scale|padding|Settings|Close|Detected/i.test(s));
   await page.keyboard.press('Escape');
   const all = Object.entries(report).filter(([, v]) => v.length);
   for (const [k, v] of all) L.info('ja after live switch, English left in ' + k, v);

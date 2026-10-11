@@ -28,9 +28,11 @@ TWO GAPS THIS FILE DELIBERATELY RECORDS RATHER THAN FIXES
    and the guard can become a belt to the server's braces rather than the only
    defence.
 
-2. There is no batch delete. Removing N nodes is N requests and therefore N
-   undo steps: Ctrl+Z walks back one node at a time. The tree panel says so in
-   its confirmation message instead of implying a single reversible action.
+2. Removing N nodes with N ``DELETE`` requests is N undo steps: Ctrl+Z walks
+   back one node at a time. The tree panel used to do exactly that and say so;
+   it now sends one ``POST /api/batch/delete``, which is one step (see
+   ``test_ux_batch_3.py``). The accounting pinned here is still that of the
+   single-node endpoint.
 """
 import sys
 from pathlib import Path
