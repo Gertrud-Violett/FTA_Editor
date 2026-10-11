@@ -53,6 +53,8 @@ function registerCatalog() {
 registerCatalog();
 
 const DIAGRAM_STYLES = ['compact', 'symbols'];
+/** What the panel draws until the user picks a style in the Aa popover. */
+const DEFAULT_DIAGRAM_STYLE = 'symbols';
 const DIAGRAM_RANKDIRS = ['LR', 'TB'];
 
 const RENDER_DEBOUNCE_MS = 150; // config.RENDER_DEBOUNCE_MS
@@ -89,6 +91,43 @@ function getViz() {
       });
   }
   return vizPromise;
+}
+
+/**
+ * The symbols style asks for right-angle edges (`splines=ortho`). The
+ * WebAssembly build of Graphviz cannot route them for a large graph: above
+ * some 60 nodes it runs out of memory or fails an assertion, and nothing is
+ * drawn. Native `dot` has no such limit.
+ *
+ * So a graph with more edges than ORTHO_MAX_EDGES (two per node in that
+ * style, about 50 nodes) is laid out with straight segments from the start,
+ * and a smaller one that still fails is laid out again that way. A failed
+ * layout leaves the instance unusable, so it is dropped first.
+ */
+const ORTHO = /\bsplines=ortho\b/;
+const ORTHO_FALLBACK = 'splines=polyline';
+const ORTHO_MAX_EDGES = 100;
+
+export function withoutOrtho(dot) {
+  return String(dot).replace(ORTHO, ORTHO_FALLBACK);
+}
+
+export function wasmSafeDot(dot) {
+  const text = String(dot);
+  if (!ORTHO.test(text)) return text;
+  const edges = (text.match(/ -> /g) || []).length;
+  return edges > ORTHO_MAX_EDGES ? withoutOrtho(text) : text;
+}
+
+async function layoutSvg(dot) {
+  const safe = wasmSafeDot(dot);
+  try {
+    return (await getViz()).renderString(safe, { format: 'svg' });
+  } catch (err) {
+    vizPromise = null;
+    if (!ORTHO.test(safe)) throw err;
+    return (await getViz()).renderString(withoutOrtho(safe), { format: 'svg' });
+  }
 }
 
 function t(key, fallback) {
@@ -162,10 +201,11 @@ function readDiagramSettings() {
     raw = null;
   }
   // fontChoice '' means "auto-detect"; popoverLeft/Top null means "not moved
-  // yet, use the default lower-right pin".
+  // yet, use the default lower-right pin". A browser with nothing saved gets
+  // the gate symbols; a saved style, compact included, is kept as it is.
   const out = {
     fontChoice: '', scale: SCALE_DEFAULT, popoverLeft: null, popoverTop: null,
-    style: 'compact', rankdir: 'LR',
+    style: DEFAULT_DIAGRAM_STYLE, rankdir: 'LR',
   };
   if (!raw) return out;
   try {
@@ -1044,10 +1084,8 @@ export function initDiagram(container) {
       const renderedStyle = payload.style || box.style;
       const renderedRankdir = payload.rankdir || box.rankdir;
 
-      const viz = await getViz();
+      const svgText = await layoutSvg(payload.dot);
       if (mine !== generation || destroyed) return;
-
-      const svgText = viz.renderString(payload.dot, { format: 'svg' });
       lastSvgText = svgText;
 
       clear(canvas);

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The diagram opens with the gate symbols.** The Live Diagram Preview's
+  default style is now **Standard symbols** (IEC 61025 / NUREG-0492 gates
+  and events) instead of **Compact boxes**. The packaged app starts on a new
+  port each time, so its browser storage is new as well and it always opened
+  on the boxes: the symbols looked as if they had been removed. A style
+  already saved in a browser is kept, and **Aa** on the diagram toolbar
+  switches as before. `GET /api/dot`, `POST /api/render`, the CLI and the
+  Word report keep their own defaults.
+
+### Fixed
+
+- **Standard symbols: a tree of more than about 60 nodes drew nothing.**
+  That style asks Graphviz for right-angle lines, and the in-browser
+  (WebAssembly) Graphviz cannot route them for a large diagram: it ran out
+  of memory or failed an assertion, and the panel stayed empty. Present
+  since 1.7.0; found by the GUI suite's 300-node tree once the symbols
+  became the default. A diagram of more than about 50 nodes is now drawn
+  with straight-segment lines, and a smaller one whose layout still fails is
+  laid out again that way. Smaller diagrams keep their right-angle lines.
+  Native `dot` (the **Render** button, `POST /api/render`) was not affected.
+
 ### Added
 
 - **AI assistant: replies are shown as formatted Markdown, with a switch to

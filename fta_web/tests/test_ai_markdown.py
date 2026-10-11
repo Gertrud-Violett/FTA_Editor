@@ -282,3 +282,63 @@ def test_a_replys_lists_get_their_markers_back():
     assert ".panel__body .chat-msg__body--md ul { list-style: disc; }" in css
     assert ".panel__body .chat-msg__body--md ol { list-style: decimal; }" in css
     assert ".chat-msg__body--md { white-space: normal; }" in css
+
+
+# ---- the diagram's default style (same release) ---------------------------------------
+
+def test_the_diagram_opens_with_the_gate_symbols():
+    """A browser with nothing saved draws the symbols; a saved style is kept.
+
+    The packaged app listens on a new port at every start, so its browser
+    storage is always new: the default is what its users see.
+    """
+    src = (STATIC / "diagram.js").read_text(encoding="utf-8")
+    assert "const DEFAULT_DIAGRAM_STYLE = 'symbols';" in src
+    read = re.search(r"function readDiagramSettings\(.*?\n\}\n", src, re.S).group(0)
+    assert "style: DEFAULT_DIAGRAM_STYLE, rankdir: 'LR'," in read
+    assert "if (parsed && DIAGRAM_STYLES.indexOf(parsed.style) !== -1) out.style = parsed.style;" in read
+    # The GUI suite asks the API for the style the panel draws.
+    gui = (REPO / "fta_web" / "tests" / "gui" / "b2b.js").read_text(encoding="utf-8")
+    assert "const style = s.style || 'symbols';" in gui
+
+
+def _ortho_source() -> str:
+    src = (STATIC / "diagram.js").read_text(encoding="utf-8")
+    consts = "\n".join(re.search(r"^const %s = [^;]+;" % name, src, re.M).group(0)
+                       for name in ("ORTHO", "ORTHO_FALLBACK", "ORTHO_MAX_EDGES"))
+    functions = "\n".join(
+        re.search(r"^export function %s\(.*?\n\}\n" % name, src, re.S | re.M).group(0).replace("export ", "")
+        for name in ("withoutOrtho", "wasmSafeDot"))
+    return consts + "\n" + functions
+
+
+@needs_node
+def test_a_large_symbols_diagram_is_not_given_right_angle_edges():
+    """Graphviz in WebAssembly crashes routing ``splines=ortho`` above ~60 nodes.
+
+    Found when the symbols style became the default: the suite's 300-node
+    tree drew nothing. 59 nodes (117 edges) were laid out, 73 (145) were not.
+    """
+    def dot(edges, splines="splines=ortho"):
+        return "digraph G {\n  graph [nodesep=0.25, %s];\n%s}\n" % (
+            splines, "".join("  a%d -> b%d [weight=100];\n" % (i, i) for i in range(edges)))
+
+    cases = [dot(100), dot(101), dot(600), dot(600, "overlap=false"), dot(3)]
+    script = _ortho_source() + "\nconsole.log(JSON.stringify(%s.map((d) => wasmSafeDot(d))));" % json.dumps(cases)
+    # On stdin: 600 edges do not fit on a Windows command line.
+    out = json.loads(subprocess.run(["node", "-"], input=script, capture_output=True, text=True,
+                                    encoding="utf-8", check=True).stdout)
+    assert out[0] == cases[0], "a small diagram keeps its right-angle edges"
+    assert "splines=polyline" in out[1] and "splines=ortho" not in out[1]
+    assert "splines=polyline" in out[2]
+    assert out[3] == cases[3], "the compact style never asked for them"
+    assert out[4] == cases[4]
+
+
+def test_a_failed_layout_is_tried_again_without_right_angle_edges():
+    src = (STATIC / "diagram.js").read_text(encoding="utf-8")
+    layout = re.search(r"^async function layoutSvg\(.*?\n\}\n", src, re.S | re.M).group(0)
+    assert "vizPromise = null;" in layout, "a failed layout leaves the WASM instance unusable"
+    assert "renderString(withoutOrtho(safe)" in layout
+    assert "const svgText = await layoutSvg(payload.dot);" in src
+    assert src.count("renderString(") == 2, "every layout goes through layoutSvg()"

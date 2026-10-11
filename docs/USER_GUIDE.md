@@ -1158,18 +1158,22 @@ The **Aa** popover on the diagram toolbar has two display settings. They are
 remembered per browser (`fta.diagram.settings`) and are not saved in the file.
 
 - **Style**
-  - **Compact boxes** (default): the 1.6 two-row boxes. The meta row reads
+  - **Compact boxes**: the 1.6 two-row boxes. The meta row reads
     `Gate: <gate> | P:<q> | P_calc:<Q>` for a gate and `P:<q> | P_calc:<Q>`
     for a basic event (1.6 also showed a meaningless `Gate: OR` there). The
     1.7 gates appear as `2/3`, `XOR`, `INHIBIT`, `PAND` or
     `TRANSFER→<target>`. A non-basic leaf shows `House: ON|OFF`,
     `Undeveloped` or `Conditioning` in front of the probabilities.
-  - **Standard symbols**: a description rectangle for every node, with an
+  - **Standard symbols** (default): a description rectangle for every node, with an
     IEC 61025 / NUREG-0492 gate or event symbol under it. A transfer gate's
     ignored children are drawn dotted. A conditioning event is drawn as an
     ellipse hanging off its INHIBIT gate. Clicking a gate symbol selects its
     node.
 - **Layout**: *Left → right* (default, as in 1.6) or *Top → down*.
+
+In the symbols style the lines are right-angled up to about 50 nodes. A larger
+tree is drawn with straight-segment lines, because the in-browser Graphviz
+cannot route right-angle lines for it.
 
 **Export limitation.** Graphviz itself has only polygons, so the DOT the
 server produces uses *approximate* shapes:

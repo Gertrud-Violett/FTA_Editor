@@ -8,7 +8,7 @@ async function dotIdMap(app) {
     const { api } = await import('/static/js/api.js');
     let s = {};
     try { s = JSON.parse(localStorage.getItem('fta.diagram.settings') || '{}'); } catch (_e) { /* */ }
-    const style = s.style || 'compact';
+    const style = s.style || 'symbols';
     const rankdir = s.rankdir || 'LR';
     const res = await api.get('/dot?style=' + style + '&rankdir=' + rankdir + '&sigFigs=3');
     return { idMap: res.idMap || {}, style, rankdir };
