@@ -23,9 +23,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected one; with nothing selected (after New, Load or a reload) it goes
   under the top event, and the dialog now says so instead of doing it
   silently.
+- **Add keeps the parent selected, and can add several nodes in a row.**
+  After Add the new node was selected, so the next Add nested under it; three
+  siblings took a click back on the parent between each. The parent now stays
+  selected. The new node's row is opened to, scrolled into view and marked
+  for a moment, and the status line names it. The dialog has a second button,
+  **OK and add another** (Ctrl+Enter): it makes the node and clears the
+  dialog for the next one under the same parent, keeping Type and Logic Gate.
+  To add beneath the new node, select it first.
+- **The top event is selected at start-up.** After a launch or a reload
+  nothing was selected: Node Details was empty, and Add, Edit and Delete each
+  had to explain that. New and Open already selected the top event.
+- **A new node's probability has to be typed.** The Add dialog's Probability
+  started at `1.0`, and Enter in the Name box made a certain event of every
+  node. The box now starts empty and is required; Enter in Name moves to it.
+  For an event that will get children of its own, enter 1. The API is
+  unchanged: `POST /api/nodes` without a probability still stores 1.0.
+- **Probabilities can be typed as `5%`, `1/1000`, `0,05` or in full-width
+  characters.** The Add dialog and Node Details read a trailing percent sign,
+  a simple fraction, a decimal comma and full-width digits (`０．０５`,
+  `５％`), and show the value as a plain decimal. `1,000` is refused, because
+  it could be a thousand or one. The browser does the reading and sends a
+  number; the server accepts exactly what it did.
+- **The diagram's numbers are larger and bold, and an event shows its number
+  once.** In a fitted diagram of a real tree the probability row was about
+  4 px high. In the **Standard symbols** style it is now the largest row of
+  the box (14 pt, bold; the name is 12 pt). An event's box said
+  `q=0.01 | Q=0.01`; it now says `q=0.01`, a gate `Q=...` as before, and
+  only an event whose calculated value differs from its own (it has links)
+  shows both. In the **Compact boxes** style the text is unchanged and the
+  meta row is 11 pt instead of 9 pt. This applies to the preview, the SVG and
+  PNG exports, `GET /api/dot`, `POST /api/render`, the CLI and the report.
+- **The mouse wheel zooms the diagram.** A plain wheel over the diagram did
+  nothing; only Ctrl+wheel zoomed. Both now zoom about the pointer. A
+  trackpad zooms in proportion to the movement.
+- **The − and + buttons zoom about the selected node.** They zoomed about the
+  diagram's top-left corner, so a few presses slid the diagram out of view.
+  They now hold the selected node still, or the middle of the diagram when
+  the selected node is not in view. `Ctrl+=` and `Ctrl+-` do the same.
+- **Edit goes to the Name box.** The Edit button (Ctrl+E) showed a toast that
+  said to edit in Node Details. It now opens the Details tab with the caret
+  in Name and the name selected.
+- **Delete asks with a count, and with the focus on Cancel.** The
+  confirmation said "and everything beneath it" for a leaf as well, gave no
+  number, and opened with the focus on Delete. It now says how many nodes
+  go, for one node and for a multi-selection, and Enter cancels.
+- **Enter in the tree's search box goes to the first match.** It moved the
+  focus to the first row, which under a filter is the top event. Enter now
+  selects the first match, Enter again the next, Shift+Enter the one before;
+  the caret stays in the box.
+- **Enter in a Node Details field returns the focus to the tree.** The field
+  was saved and the focus dropped to the page, where the next key did
+  nothing. It now goes to the node's row. A value that is refused keeps the
+  caret.
+- **The status line shows the file name first; the browser tab shows it
+  too.** The status line cut the path off after 30 characters, which was
+  never as far as the file name. It now shows the file name in full, then the
+  folder. The tab title is the file name (`Untitled` before the first save),
+  with a `●` in front while there are unsaved changes.
+- **The "All features available" chip is a tick.** With nothing missing, the
+  chip in the top bar now shows the tick alone; its tooltip and the panel it
+  opens say the rest. A missing feature is still named on the chip.
 
 ### Fixed
 
+- **A node that got its first child lost its probability without a word.**
+  In an FTA a node with children is calculated from them and its own
+  probability is no longer used. After Add, a move or a drag that gives such
+  a node its first child, a warning now says so, with the value, and links to
+  the Validation tab. Node Details greys **Probability (base)** of a node
+  with children and says why. A probability of exactly 1, the default, is
+  not warned about.
+- **Double-click in the tree did nothing.** The first click selected the row
+  and redrew the list, so the browser never saw two clicks on one element.
+  A double-click on a name now renames, and elsewhere on a row opens or
+  closes the branch.
+- **Ctrl+Z did nothing after a change in a dropdown.** With the focus still
+  on Logic Gate (or any other dropdown), Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z were
+  ignored. They now undo and redo. Other shortcuts still leave a focused
+  dropdown alone.
+- **A branch collapsed in one file was collapsed in the next.** The tree's
+  open and closed state was one list for every file, and ids such as
+  `root_0` recur. It is now kept per file path (`fta.tree.expanded.v2`); a
+  new, unsaved document starts fully open.
+- **A click in the diagram did not scroll the tree.** The node was selected,
+  but its row could be far outside the visible part of a long tree. A
+  selection made anywhere now scrolls its row into view.
+- **Ctrl+Shift+Up on the first child said "already at the end".** Each end
+  now has its own sentence.
+- **Jumping to a node from a tab pushed a fitted diagram off the stage.** A
+  jump centred the node even when it was already in view, and switched
+  auto-fit off, so the diagram stayed off-centre through later edits. A jump
+  now moves the diagram only when the node is not fully in view.
+- **The top bar wrapped onto a second row on the first edit.** "Unsaved
+  changes" is wider than "Saved". The pill now has one width in both states.
+- **The Open dialog answered a mistyped path with "This dialog saves .json
+  files".** A path that does not exist is now reported as *Folder not found*
+  or *File not found*. A bare name or a relative path typed into the dialog
+  is read against the folder it shows (it was read against the sandbox
+  root), and `~` is the home folder. The sandbox is unchanged: `~` is
+  expanded and then confined like any other path.
+- **A refused entry in Node Details vanished on the next click.** Selecting
+  another node while a field held a value that had been refused dropped it
+  silently. A warning now names the field and the node and shows the text.
 - **Standard symbols: a tree of more than about 60 nodes drew nothing.**
   That style asks Graphviz for right-angle lines, and the in-browser
   (WebAssembly) Graphviz cannot route them for a large diagram: it ran out
@@ -55,6 +155,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `0.5*0.5*0.28` keep every character. Japanese needs no spaces around
     `**`.
   - Tests: `fta_web/tests/test_ai_markdown.py`.
+- **Tests for the editing flow.** `fta_web/tests/test_ux_batch_1.py`, and a
+  new section of the real-browser suite, `fta_web/tests/gui/s_ux1.js`
+  (63 checks). The suite now has 922 checks in 15 sections; 25 of
+  the added ones are existing Details and selection checks that now run in
+  more places, because a node is selected from the start.
+  Three existing checks were changed to the new behaviour: the selection
+  after Add (the suite's `addViaDialog` now finds the new node in the store,
+  not through the selection), the status line (file name and folder instead
+  of the whole path), and `parseProbability`, which accepts `0,5` and `50%`.
 
 ## [1.7.3] - 2026-10-11
 
