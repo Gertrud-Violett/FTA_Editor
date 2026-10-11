@@ -13,6 +13,7 @@ AI assistant endpoints -- the ``/api/ai`` blueprint.
 ``POST   /api/ai/update/apply``               install a previewed rewrite
 ``POST   /api/ai/update/discard``             drop a previewed rewrite
 ``POST   /api/ai/changes/apply``              apply selected proposals
+``GET    /api/ai/conversation``               the chat so far, for a reload
 ``DELETE /api/ai/conversation``               forget the chat history
 ============================================  ==============================
 
@@ -527,6 +528,82 @@ def post_analyze():
     )
 
 
+#: How the vendored handler's two built-in prompts begin (AI_agent_handler
+#: ``get_quick_analysis`` and ``generate_full_fta_update``). If the core's
+#: wording ever changes these stop matching and the turns are shown as typed
+#: text, which is ugly but not wrong; ``test_ux_batch_3.py`` pins both.
+_ANALYZE_PROMPT_START = "Please analyze this FTA/ETA and provide:"
+_UPDATE_PROMPT_START = "You are to generate a complete, updated FTA JSON object"
+
+
+@ai_bp.get("/conversation")
+def get_conversation():
+    """What a reloaded page repaints: this conversation, and what in it still
+    waits for an answer.
+
+    Returns ``{messages, changes, pendingUpdate}``. ``messages`` are the turns
+    the handler keeps, ``[{role: "user"|"assistant", kind, content}]`` -- what
+    the user typed and what the model answered, never the system prompt or
+    the tree that was sent with a message (the handler does not keep those in
+    its history). ``kind`` is ``"chat"``, ``"analyze"`` or ``"update"``; the
+    built-in request of an Analyze and both turns of an Update FTA carry no
+    ``content``. ``changes`` are the proposals still pending for the open
+    document, with their indices, as ``POST /api/ai/chat`` returns them.
+    ``pendingUpdate`` is the Update FTA preview still waiting for Apply or
+    Discard (``{updateId, updateSummary}``), or null.
+
+    Read-only, and it works unconfigured (everything empty): a page asks for
+    this on every load. No credential is in it -- there is no field for one,
+    and the text is scrubbed of the stored key like every other reply.
+    """
+    handler = ai_bridge.existing_handler()
+    if handler is None:
+        return ok_response(messages=[], changes=[], pendingUpdate=None)
+    secret = ai_bridge.call_secret()
+
+    messages = []
+    kind = "chat"
+    for entry in list(handler.conversation_history):
+        role = entry.get("role") if isinstance(entry, dict) else None
+        content = entry.get("content") if isinstance(entry, dict) else None
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        if role == "user":
+            # The two built-in requests are the handler's own long prompts,
+            # and the answer to the second is the whole tree as JSON. The
+            # page shows each in its own words, so they are named here and
+            # their text left out.
+            if content.startswith(_ANALYZE_PROMPT_START):
+                kind = "analyze"
+            elif content.startswith(_UPDATE_PROMPT_START):
+                kind = "update"
+            else:
+                kind = "chat"
+        message = {"role": role, "kind": kind}
+        if kind == "chat" or (kind == "analyze" and role == "assistant"):
+            message["content"] = ai_bridge.scrub(content, secret)
+        messages.append(message)
+
+    state = get_state()
+    with state.lock:
+        document = state.core
+        tree = copy.deepcopy(state.core.get_data())
+    # Only what was proposed for the open document: the rest cannot be applied.
+    pending = [change for change in list(handler.pending_changes)
+               if ai_bridge.made_for(change, document)]
+    changes = ai_bridge.scrub_deep(ai_bridge.changes_view(handler, pending, tree), secret)
+
+    with _pending_update_lock:
+        waiting = _pending_update
+    pending_update = None
+    if waiting is not None and waiting.get("document") is document:
+        pending_update = {
+            "updateId": waiting["id"],
+            "updateSummary": ai_bridge.scrub_deep(waiting.get("summary") or {}, secret),
+        }
+    return ok_response(messages=messages, changes=changes, pendingUpdate=pending_update)
+
+
 @ai_bp.delete("/conversation")
 def delete_conversation():
     """Forget the chat history and every pending proposal.
@@ -905,6 +982,8 @@ def post_update():
         _set_pending_update({
             "id": update_id, "updated": updated, "tree": tree, "mode": mode,
             "document": document,
+            # For GET /api/ai/conversation: a reloaded page shows the card again.
+            "summary": summary,
         })
         return ok_response(
             reply=reply,
