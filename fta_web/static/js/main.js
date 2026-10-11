@@ -2219,9 +2219,18 @@ async function actionEdit() {
     }
     return;
   }
-  // details.js edits in place, so this is a pointer rather than a failure.
+  // details.js edits in place: Edit opens that form with the caret in the
+  // Name box and the name selected, ready to be typed over. It used to show
+  // a toast that said where to click.
   openTab('details');
   const host = $('#details-root');
+  const name = host && host.querySelector('.fta-details-form input[type="text"]');
+  if (name && !name.disabled && name.offsetParent !== null) {
+    name.focus();
+    name.select();
+    name.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   if (host) {
     host.focus();
     host.scrollIntoView({ block: 'nearest' });
