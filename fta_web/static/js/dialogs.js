@@ -1129,6 +1129,11 @@ function createModal(config) {
  * Yes/no confirmation. Resolves true for OK, false for Cancel or Escape.
  * `confirmLabel` names the OK button; `okLabel` is accepted as an alias
  * because main.js's delete confirmation passes that spelling.
+ *
+ * `focusCancel` opens with the focus on Cancel, for a confirmation whose OK
+ * destroys something: Enter and Space then cancel, and deleting takes a
+ * deliberate Tab or click. (Enter on a focused button is that button's own
+ * click; see createModal.)
  */
 export function confirmDialog(message, options) {
   const opts = options || {};
@@ -1155,7 +1160,8 @@ export function confirmDialog(message, options) {
   });
   modal.footer.appendChild(cancel);
   modal.footer.appendChild(confirm);
-  confirm.focus();
+  if (opts.focusCancel) cancel.focus();
+  else confirm.focus();
 
   return modal.done.then((value) => value === true);
 }

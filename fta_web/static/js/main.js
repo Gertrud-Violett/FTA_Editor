@@ -265,7 +265,6 @@ const STRINGS = {
     'api.exportFailed': 'The export failed (HTTP {status}).',
     'store.panelFailed': 'A panel failed to update: {error}',
 
-    'confirm.delete': 'Delete "{name}" and everything beneath it?',
     'confirm.discard': 'Discard the unsaved changes and start a new analysis?',
     'confirm.discardOpen': 'Discard the unsaved changes and open another file?',
     'confirm.discardNewOk': 'Discard and start new',
@@ -709,7 +708,6 @@ const STRINGS = {
     'api.exportFailed': 'エクスポートに失敗しました (HTTP {status})。',
     'store.panelFailed': 'パネルを更新できませんでした: {error}',
 
-    'confirm.delete': '「{name}」と配下のノードを削除しますか？',
     'confirm.discard': '未保存の変更を破棄して新規作成しますか？',
     'confirm.discardOpen': '未保存の変更を破棄して別のファイルを開きますか？',
     'confirm.discardNewOk': '破棄して新規作成',
@@ -2262,10 +2260,20 @@ async function actionDelete() {
 
   const node = store.findNode(nodeId);
   const name = (node && node.name) || nodeId;
-  const proceed = await askConfirm(t('confirm.delete', { name }), {
+  // How much goes with it: the node and everything beneath it. Cancel has the
+  // focus, so a stray Enter keeps the subtree.
+  let total = 0;
+  const count = (n) => {
+    total += 1;
+    for (const child of (n && Array.isArray(n.children) ? n.children : [])) count(child);
+  };
+  count(node);
+  const question = total > 1 ? t('confirm.deleteTree', { name, n: total }) : t('confirm.deleteLeaf', { name });
+  const proceed = await askConfirm(question, {
     title: t('btn.delete'),
     okLabel: t('btn.delete'),
     danger: true,
+    focusCancel: true,
   });
   if (!proceed) return;
 
