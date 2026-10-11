@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already saved in a browser is kept, and **Aa** on the diagram toolbar
   switches as before. `GET /api/dot`, `POST /api/render`, the CLI and the
   Word report keep their own defaults.
+- **Add Node says where the node will go.** The dialog's title named the
+  parent by its id (`Add Node under root_0_0`), which read as "under root".
+  It now gives the parent's name. Add has always put the node under the
+  selected one; with nothing selected (after New, Load or a reload) it goes
+  under the top event, and the dialog now says so instead of doing it
+  silently.
 
 ### Fixed
 

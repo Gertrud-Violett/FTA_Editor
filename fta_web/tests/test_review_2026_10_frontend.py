@@ -720,8 +720,8 @@ def test_add_dialog_stays_open_until_the_node_is_made():
 
     main = _read(STATIC / "main.js")
     add = _braced(main, main.index("async function actionAdd()"))
-    assert "await fn(parentId, { submit })" in add
-    assert add.index("await fn(parentId, { submit })") < add.index("store.applyMutation(result);")
+    assert "await fn(parentId, { submit, parentName, noSelection })" in add
+    assert add.index("await fn(parentId, { submit, parentName, noSelection })") < add.index("store.applyMutation(result);")
     assert add.count("api.post('/nodes'") == 2, "the hook, and the fallback for a dialog without it"
 
 

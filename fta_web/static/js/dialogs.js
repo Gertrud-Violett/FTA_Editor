@@ -53,7 +53,9 @@ const FALLBACK = {
   'dialog.dismiss': 'Dismiss',
   'dialog.somethingWrong': 'Something went wrong.',
   'dialog.addNode': 'Add Node',
-  'dialog.addNodeUnder': 'Add Node under {id}',
+  'dialog.addNodeUnder': 'Add Node under "{name}"',
+  'dialog.addNoSelection':
+    'No node is selected, so the new node goes under the top event. To add it elsewhere, cancel and select a node first.',
   'dialog.nameRequired': 'Name is required.',
   'dialog.typeRequired': 'Type must not be empty.',
   'dialog.probabilityRange': 'Probability must be a number between 0.0 and 1.0.',
@@ -435,6 +437,14 @@ const CHROME_CSS = `
   color: var(--fta-danger-fg);
 }
 .fta-field-error[hidden] { display: none; }
+.fta-dialog-note {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--fta-border);
+  border-radius: var(--fta-radius);
+  background: var(--fta-surface);
+  font-size: 0.82rem;
+}
 .fta-field input[aria-invalid="true"],
 .fta-field select[aria-invalid="true"],
 .fta-field textarea[aria-invalid="true"] { border-color: var(--fta-danger-border); }
@@ -1233,6 +1243,14 @@ export function createGateSelect(opts) {
  * and stays open, with everything typed, until it resolves; a rejection is
  * shown at the field the server named (or under the form) for another try.
  */
+/** A dialog title names the parent as the user knows it; the id is the fallback. */
+const PARENT_LABEL_CHARS = 48;
+
+function parentLabel(id, name) {
+  const text = String(name === null || name === undefined ? '' : name).trim() || String(id);
+  return text.length > PARENT_LABEL_CHARS ? text.slice(0, PARENT_LABEL_CHARS - 1) + '…' : text;
+}
+
 export function openAddNodeDialog(parentId, options) {
   const opts = options && typeof options === 'object' ? options : {};
   const parent = parentId === undefined || parentId === null ? null : String(parentId);
@@ -1251,11 +1269,17 @@ export function openAddNodeDialog(parentId, options) {
   const formError = el('p', { class: 'fta-field-error', role: 'alert', hidden: true });
 
   const modal = createModal({
-    title: parent ? t('dialog.addNodeUnder', { id: parent }) : t('dialog.addNode'),
+    title: parent ? t('dialog.addNodeUnder', { name: parentLabel(parent, opts.parentName) }) : t('dialog.addNode'),
     cancelValue: null,
     onEnter: () => submit(),
   });
 
+  // Adding with nothing selected is allowed, but never silent: an id like
+  // root_0_0 in the title read as "root", and a node that went to the top
+  // event unasked looked like a bug.
+  if (opts.noSelection) {
+    modal.body.appendChild(el('p', { class: 'fta-dialog-note', text: t('dialog.addNoSelection') }));
+  }
   modal.body.appendChild(nameField.element);
   modal.body.appendChild(
     el('div', { class: 'fta-row-2' }, [typeField.element, probabilityField.element])

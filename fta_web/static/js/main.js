@@ -561,7 +561,9 @@ const STRINGS = {
     'dialog.dismiss': 'Dismiss',
     'dialog.somethingWrong': 'Something went wrong.',
     'dialog.addNode': 'Add Node',
-    'dialog.addNodeUnder': 'Add Node under {id}',
+    'dialog.addNodeUnder': 'Add Node under "{name}"',
+    'dialog.addNoSelection':
+      'No node is selected, so the new node goes under the top event. To add it elsewhere, cancel and select a node first.',
     'dialog.nameRequired': 'Name is required.',
     'dialog.typeRequired': 'Type must not be empty.',
     'dialog.probabilityRange': 'Probability must be a number between 0.0 and 1.0.',
@@ -994,7 +996,9 @@ const STRINGS = {
     'dialog.dismiss': '閉じる',
     'dialog.somethingWrong': '問題が発生しました。',
     'dialog.addNode': 'ノードを追加',
-    'dialog.addNodeUnder': '{id} の配下にノードを追加',
+    'dialog.addNodeUnder': '「{name}」の配下にノードを追加',
+    'dialog.addNoSelection':
+      'ノードが選択されていないため、頂上事象の配下に追加します。別の場所に追加する場合は、キャンセルしてからノードを選択してください。',
     'dialog.nameRequired': '名前は必須です。',
     'dialog.typeRequired': '種別は空にできません。',
     'dialog.probabilityRange': '確率は 0.0 から 1.0 の間の数値で入力してください。',
@@ -2098,7 +2102,12 @@ async function actionNew() {
 }
 
 async function actionAdd() {
+  // The new node goes under the selected one. With nothing selected (after
+  // New, Load or a reload) it goes under the top event, and the dialog says so.
+  const noSelection = !store.selectedId;
   const parentId = store.selectedId || rootId();
+  const parentNode = store.findNode(parentId);
+  const parentName = parentNode && parentNode.name ? String(parentNode.name) : '';
   if (dispatchAction('add', { parentId })) return;
   const fn = dialogFn('add');
   if (fn) {
@@ -2114,7 +2123,7 @@ async function actionAdd() {
         posting = api.post('/nodes', { parentId, ...values });
         return posting;
       };
-      const fields = await fn(parentId, { submit });
+      const fields = await fn(parentId, { submit, parentName, noSelection });
       let result = null;
       // Cancelled with the POST on the wire: the node may still have been made.
       if (posting) result = await posting.catch(() => null);

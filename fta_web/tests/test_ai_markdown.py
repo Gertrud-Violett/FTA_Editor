@@ -342,3 +342,20 @@ def test_a_failed_layout_is_tried_again_without_right_angle_edges():
     assert "renderString(withoutOrtho(safe)" in layout
     assert "const svgText = await layoutSvg(payload.dot);" in src
     assert src.count("renderString(") == 2, "every layout goes through layoutSvg()"
+
+
+# ---- Add Node says where the node goes (same release) ---------------------------------
+
+def test_the_add_dialog_names_its_parent_and_says_when_nothing_is_selected():
+    """``Add Node under root_0_0`` read as "under root"; a silent fallback looked like a bug."""
+    main = (STATIC / "main.js").read_text(encoding="utf-8")
+    add = re.search(r"^async function actionAdd\(\) \{.*?\n\}\n", main, re.S | re.M).group(0)
+    assert "const noSelection = !store.selectedId;" in add
+    assert "const parentId = store.selectedId || rootId();" in add, "the selected node is the parent"
+    assert "fn(parentId, { submit, parentName, noSelection })" in add
+    dialogs = (STATIC / "dialogs.js").read_text(encoding="utf-8")
+    assert "t('dialog.addNodeUnder', { name: parentLabel(parent, opts.parentName) })" in dialogs
+    assert "if (opts.noSelection) {" in dialogs
+    for source in (main, dialogs):
+        assert "'dialog.addNodeUnder': 'Add Node under \"{name}\"'," in source
+    assert main.count("'dialog.addNoSelection':") == 2, "English and Japanese"
