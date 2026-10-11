@@ -25,9 +25,11 @@ async function main(url, label, root) {
   await page.keyboard.press('Alt+N');
   const modal = page.locator('.fta-modal');
   await modal.waitFor({ state: 'visible', timeout: 4000 });
-  const okText = await modal.locator('.fta-btn.is-primary').textContent();
+  // The prompt has a third button since batch 2 ("Save and continue", the
+  // primary one); the button that discards is named by its role.
+  const okText = await modal.locator('[data-role="discard"]').textContent();
   L.check('Alt+N on a dirty doc asks, OK button says "Discard and start new"', okText.trim() === 'Discard and start new', okText);
-  await modal.locator('.fta-btn.is-primary').click();
+  await modal.locator('[data-role="discard"]').click();
   await page.waitForTimeout(600);
   let st = await app.api('get', '/state');
   L.check('Alt+N created a new document', (st.tree.children || []).length === 0 && !st.dirty, st.tree);
@@ -42,7 +44,7 @@ async function main(url, label, root) {
   // Open while dirty: consequence-named button
   await page.locator('.actionbar [data-action="load"]').click();
   await modal.waitFor({ state: 'visible', timeout: 4000 });
-  const openOk = (await modal.locator('.fta-btn.is-primary').textContent()).trim();
+  const openOk = (await modal.locator('[data-role="discard"]').textContent()).trim();
   L.check('Load on a dirty doc: OK button says "Discard and open"', openOk === 'Discard and open', openOk);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);

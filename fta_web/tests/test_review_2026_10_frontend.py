@@ -251,7 +251,9 @@ def test_load_waits_for_pending_commits_before_checking_dirty():
     body = _braced(src, src.index("async function actionLoad()"))
     assert "await flushPendingEdits();" in body
     assert body.index("await flushPendingEdits();") < body.index("store.state.dirty")
-    assert body.index("await flushPendingEdits();") < body.index("pickPath('open')")
+    # The picker is now asked for the document's other sources as well (the
+    # examples, a file on this computer), so the call carries an object.
+    assert body.index("await flushPendingEdits();") < body.index("pickPath({ mode: 'open'")
 
 
 def test_undo_redo_wait_for_pending_commits():

@@ -20,7 +20,7 @@ async function main(url, label) {
   // New through the button (confirm if the server says unsaved)
   await page.locator('.actionbar [data-action="new"]').click();
   await page.waitForTimeout(400);
-  if (await page.locator('.fta-modal').count()) await page.locator('.fta-modal .fta-btn.is-primary').click();
+  await L.discardIfAsked(page);
   await page.waitForTimeout(500);
   let st = await app.api('get', '/state');
   L.check('New: server tree has one node', (st.tree.children || []).length === 0, st.tree);
@@ -203,7 +203,7 @@ async function main(url, label) {
   // New (unsaved -> none, as it was just saved)
   await page.locator('.actionbar [data-action="new"]').click();
   await page.waitForTimeout(500);
-  if (await page.locator('.fta-modal').count()) await page.locator('.fta-modal .fta-btn.is-primary').click();
+  await L.discardIfAsked(page);
   await page.waitForTimeout(600);
   await cmp('New after save');
   // stale everywhere? headline must be root 1.00

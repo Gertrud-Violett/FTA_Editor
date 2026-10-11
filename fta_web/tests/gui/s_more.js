@@ -133,7 +133,7 @@ async function main(url, label, root) {
   await page.waitForTimeout(400);
   await page.keyboard.press('Alt+N');
   await page.waitForTimeout(400);
-  if (await page.locator('.fta-modal').count()) await page.locator('.fta-modal .fta-btn.is-primary').click();
+  await L.discardIfAsked(page);
   await page.waitForTimeout(1500);
   const after = await page.evaluate(async () => {
     const { store } = await import('/static/js/store.js');

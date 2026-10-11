@@ -433,6 +433,17 @@ function makeApp(page, context, errors, expected) {
   return app;
 }
 
+/**
+ * Answer the unsaved-changes prompt of New / Load with its "Discard and ..."
+ * button, if the prompt is up. The prompt has three buttons (Cancel, Discard,
+ * Save and continue) and the primary one saves, so the discard button is
+ * named by its role.
+ */
+async function discardIfAsked(page) {
+  const prompt = page.locator('.fta-modal[data-kind="choice"]');
+  if (await prompt.count()) await prompt.locator('.fta-modal-footer [data-role="discard"]').click();
+}
+
 function writeResults(file) {
   fs.writeFileSync(path.join(OUT, file), JSON.stringify({ fails, results }, null, 2));
 }
@@ -466,5 +477,5 @@ function runSection(name, fn) {
 
 module.exports = {
   HERE, REPO, OUT, check, info, setSection, fmt, parseNum, sameAtSf, openApp, waitBoot, closeBrowser, getBrowser,
-  writeResults, runSection, results, FMEA_CSV, writeFmeaCsv, coreFile, parseExports, get fails() { return fails; },
+  writeResults, runSection, results, discardIfAsked, FMEA_CSV, writeFmeaCsv, coreFile, parseExports, get fails() { return fails; },
 };

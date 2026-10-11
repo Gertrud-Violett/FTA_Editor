@@ -3,8 +3,8 @@
 A back-to-back check of the web GUI. Playwright drives a real browser with
 real mouse and keyboard input, reads what the GUI shows (headline, Node
 Details, every diagram label, every analysis tab, the downloaded reports) and
-compares it with what the API computes for the same document. It has 922
-checks in 15 sections and takes about 5 minutes.
+compares it with what the API computes for the same document. It has 994
+checks in 16 sections and takes about 6 minutes.
 
 It complements the numeric back-to-back suite in [`../b2b/`](../b2b/README.md),
 which compares the engine, API, CLI and exe paths without a browser.
@@ -18,6 +18,7 @@ which compares the engine, API, CLI and exe paths without a browser.
 | `treeclick` | 33 | The first real click on the bottom tree rows selects them, at three window sizes; the keyboard hint shows only for keyboard focus and never shifts rows. |
 | `fixes` | 22 | The 1.7.1 frontend fixes: Alt+N and consequence-named confirmations, numeric fields that select on click, Escape in the Aa popover, formatted Validation messages, the FMEA λ unit warning, the live language switch of the AI panel and action bar. |
 | `ux1` | 63 | The editing flow: the top event selected at start-up; the Add dialog (probability required, Enter moving from Name to it, `5%` / full-width digits / `1/1000` / `0,25`, **OK and add another** with Ctrl+Enter, four siblings from four Adds); the top bar keeping its height on the first edit and the tab title; the first-child warning after Add and after a keyboard move, with **Show in Validation**; first / last sibling messages; double-click to rename and to collapse; Ctrl+Z from the gate dropdown; Edit; Enter in a Details field; the warning for a dropped invalid entry; delete confirmations (count, focus on Cancel); Enter in the search box; the tree's open / closed state per file; a diagram click scrolling the tree; jumps, the + and − buttons and the plain wheel; the bold number row; *Folder not found* in the Open dialog. |
+| `ux2` | 72 | Protecting work: the first-run hint and its two buttons; the AI panel folded and remembered by the server across a reload; **Open an example** (the list, an untitled copy, Save going to Save As, the bundled files byte-identical afterwards); the Load dialog's two other sources and its wording for a path outside the root; the unsaved-changes prompt (three buttons, focus on **Save and continue**, a cancelled save stopping the action); the remembered folder; a file from this computer through the picker and by drop on the tree panel, and a drop elsewhere doing nothing; export wording and the **Export:** group; undo / redo toasts and selection; a tab behind another tab (reload on focus, not under an open dialog, a save elsewhere, another document, no false notice for its own edits); the Cut Sets wording when a limit leaves nothing, **This run only** and **Reset**; the Update FTA confirmation, preview card, Discard and Apply (the three routes are answered by the script: no provider is called); the server-stopped banner, the rescue copy and its round trip through the import endpoint; the "not connected" screen and its rescue offer; the Japanese strings. |
 | `tabs` | 84 | Quantification (rate model through the form, derived q and formula), Cut Sets (rows, summary, highlight, sig figs), Importance (every measure, sort, FV overlay), Uncertainty (fixed seed against an API run with the same seed), Validation (list, chips, badge, after undo), tabs refreshed after an edit made while hidden, Traceability cell edits, ETA mode. |
 | `files` | 21 | FMEA CSV import through the file dialog; the DOCX report, Excel and CSV exports, parsed back with `parse_exports.py` and compared with the API; the "Save … again" link; a path entered in the file dialog while its first listing is held back. |
 | `diagram` | 85 | compact / symbols × LR / TB show the API's numbers and each other's; with the root selected, its box, Node Details and the caption give the MCUB headline and the root's tree-walk value; a real-mouse click on every shape selects its node; zoom, Ctrl+wheel, pan, fit; dark theme. |
@@ -58,7 +59,7 @@ DOCX / XLSX / CSV, `server.log` and `summary.txt`.
 
 | Option | Meaning |
 |---|---|
-| `node run.mjs tabs view` | Only these sections. `core` is added first when a section opens its file (all but `fit`, `treeclick`, `fixes`, `ux1`, `big`). |
+| `node run.mjs tabs view` | Only these sections. `core` is added first when a section opens its file (all but `fit`, `treeclick`, `fixes`, `ux1`, `ux2`, `big`). |
 | `node run.mjs --list` | The sections in run order. |
 | `FTA_GUI_CHANNEL=chrome` | Use the installed Google Chrome instead of the bundled Chromium (`msedge` works too). Playwright launches it with a fresh temporary profile, never your own. |
 | `FTA_GUI_HEADFUL=1` | Show the browser window. |
