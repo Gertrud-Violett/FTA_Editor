@@ -653,10 +653,13 @@ def test_tree_finds_rows_whose_ids_hold_backslashes_or_newlines():
 
 
 def _parse_probability_source() -> str:
+    """parseProbability (dialogs.js) with the number reader it calls
+    (numfmt.js parseNumberText and what that needs), as one script."""
+    numfmt = _read(STATIC / "numfmt.js")
+    reader = numfmt[numfmt.index("export const DECIMAL_TEXT"):numfmt.index("export default formatProb;")]
     src = _read(STATIC / "dialogs.js")
-    decl = re.search(r"^const DECIMAL_TEXT = .*;$", src, re.M)
     fn = re.search(r"export function parseProbability\(raw\) \{.*?\n\}", src, re.S).group(0)
-    return (decl.group(0) + "\n" if decl else "") + fn.replace("export ", "")
+    return (reader + "\n" + fn).replace("export ", "")
 
 
 @needs_node
@@ -673,7 +676,11 @@ def test_parse_probability_accepts_decimal_text_only():
         "1e-6": 1e-6, "1E-6": 1e-6, " 0.5 ": 0.5, ".5": 0.5, "+0.5": 0.5, "-0": 0, "1": 1, "0": 0,
         "1e-400": 0,
         "0x1": "REJECT", "0x0": "REJECT", "0b1": "REJECT", "0o1": "REJECT", "0x10": "REJECT",
-        "0,5": "REJECT", "50%": "REJECT", "5.": "REJECT", "Infinity": "REJECT", "NaN": "REJECT",
+        # Read as the decimal they mean since the usability batch (both were
+        # REJECT): a decimal comma and a percentage. The server is still sent
+        # a plain number. test_ux_batch_1.py covers the reader itself.
+        "0,5": 0.5, "50%": 0.5,
+        "5.": "REJECT", "Infinity": "REJECT", "NaN": "REJECT",
         "": "REJECT", "  ": "REJECT", "1_0": "REJECT",
     }
 

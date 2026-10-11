@@ -23,7 +23,7 @@
  * imports from them.
  */
 import { api, ApiError } from './api.js';
-import { formatProb, getSigFigs } from './numfmt.js';
+import { formatProb, getSigFigs, parseNumberText } from './numfmt.js';
 import { BASIC_GATES, GATE_TYPES, projectLogicGate } from './schema.js';
 import gateCatalog from './i18n/gate.js';
 
@@ -667,21 +667,18 @@ export function fillGateOptions(select, value, advanced) {
 }
 
 /**
- * A plain decimal: digits, an optional fraction and exponent. Number() alone
- * also reads 0x1, 0b1 and 0o1 as 1 (and 0x0 as 0), which the server's float()
- * refuses and nobody means as a probability.
+ * Mirror of `routes/tree.py::_validate_probability`, after numfmt.js has read
+ * what was typed: "5%", "0,05", "1/1000" and full-width digits are the plain
+ * decimal they mean (parseNumberText). The server is sent the number and
+ * accepts what it always did. `text` is that decimal as text, for the field
+ * to show; `changed` says it is not what was typed.
  */
-const DECIMAL_TEXT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
-
-/** Mirror of `routes/tree.py::_validate_probability`. */
 export function parseProbability(raw) {
-  const text = String(raw === null || raw === undefined ? '' : raw).trim();
   const bad = () => ({ ok: false, message: t('dialog.probabilityRange') });
-  if (!DECIMAL_TEXT.test(text)) return bad();
-  const value = Number(text);
-  if (!Number.isFinite(value)) return bad();
-  if (value < 0 || value > 1) return bad();
-  return { ok: true, value: value };
+  const read = parseNumberText(raw);
+  if (!read.ok) return bad();
+  if (read.value < 0 || read.value > 1) return bad();
+  return { ok: true, value: read.value, text: read.text, changed: read.changed };
 }
 
 /** Trim to the shape `sanitize_name` produces, so the field shows what will be stored. */
