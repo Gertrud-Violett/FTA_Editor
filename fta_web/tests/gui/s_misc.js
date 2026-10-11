@@ -24,8 +24,19 @@ async function main(url, label, root) {
   await page.waitForTimeout(1000);
   st = await app.api('get', '/state');
   L.check('Save As "noext" writes noext.json', /noext_[^\\/]*\.json$/.test(st.currentPath || '') && fs.existsSync(path.join(root, 'noext_' + label + '.json')), st.currentPath);
-  const pathShown = await page.locator('#statusline-path').textContent();
-  L.check('status line shows the saved path', pathShown === st.currentPath, { pathShown, cp: st.currentPath });
+  // The status line names the file first, never cut off, then its folder;
+  // the whole path is the tooltip of both. (It used to be one 30-character
+  // box that cut the file name off.)
+  const line = await page.evaluate(() => {
+    const file = document.getElementById('statusline-file');
+    const dir = document.getElementById('statusline-path');
+    return { file: file.textContent, dir: dir.textContent, title: file.title, dirTitle: dir.title, clipped: file.scrollWidth > file.clientWidth };
+  });
+  const sep = st.currentPath.includes('\\') ? '\\' : '/';
+  L.check('status line shows the saved file name, whole, and its folder',
+    line.file === 'noext_' + label + '.json' && !line.clipped && line.dir + sep + line.file === st.currentPath, { line, cp: st.currentPath });
+  L.check('status line: the full path is the tooltip', line.title === st.currentPath && line.dirTitle === st.currentPath, line);
+  L.check('tab title names the saved file', (await page.title()) === 'noext_' + label + '.json - FTA Editor', await page.title());
 
   // splitter keyboard: ArrowRight widens the tree panel
   const w0 = (await page.locator('#tree-panel').boundingBox()).width;

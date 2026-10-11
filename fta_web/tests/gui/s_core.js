@@ -55,15 +55,19 @@ async function main(url, label) {
   const rootId = String(st.tree.id);
   await app.selectTreeNode(rootId);
   ids.pumps = await app.addViaDialog({ name: 'Pumps fail', probability: '1.0', gate: 'AND' });
+  // The parent keeps the selection (it used to move to the new node, so the
+  // next Add nested under it); the new row is opened to and tinted instead.
+  L.check('Add: the selection stays on the parent', (await app.selectedId()) === rootId, await app.selectedId());
+  L.check('Add: the new row is shown, marked as new', await page.locator('#tree-root li.fta-tree-item[data-id="' + ids.pumps + '"] > .fta-tree-row.is-new').count() === 1);
   await cmp('add Pumps fail');
-  ids.pa = await app.addViaDialog({ name: 'Pump A fails', probability: '0.01' });
   await app.selectTreeNode(ids.pumps);
+  ids.pa = await app.addViaDialog({ name: 'Pump A fails', probability: '0.01' });
   ids.pb = await app.addViaDialog({ name: 'Pump B fails', probability: '0.02', useKeyboard: true });
   await cmp('add Pump B (keyboard Ctrl+A / Enter)');
   await app.selectTreeNode(rootId);
   ids.power = await app.addViaDialog({ name: 'Power loss', probability: '1' });
-  ids.grid = await app.addViaDialog({ name: 'Grid failure', probability: '1e-3' });
   await app.selectTreeNode(ids.power);
+  ids.grid = await app.addViaDialog({ name: 'Grid failure', probability: '1e-3' });
   ids.diesel = await app.addViaDialog({ name: 'Diesel fails', probability: '0.05' });
   await app.selectTreeNode(rootId);
   ids.op = await app.addViaDialog({ name: 'Operator error', probability: '3e-3', notes: 'HEP from THERP' });
