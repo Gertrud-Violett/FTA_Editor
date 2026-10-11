@@ -595,6 +595,12 @@ class TestAppState:
             # 1.7
             "analysis",
             "sessionWarnings",
+            # Usability batch 2: what a second tab compares to know that the
+            # document changed elsewhere, and what the page remembers between
+            # launches.
+            "revision",
+            "documentSerial",
+            "prefs",
         }
         assert set(payload["metadata"]) == {"title", "date", "mode"}
         assert payload["metadata"]["mode"] == "FTA"

@@ -78,9 +78,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 try:  # normal package import: ``import fta_web.fsbrowser``
-    from . import config
+    from . import config, runtime_paths
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
+    import runtime_paths  # type: ignore[no-redef]
 
 # ---- knobs ---------------------------------------------------------------
 
@@ -111,18 +112,52 @@ class PathRejected(ValueError):
     error detail; ``status`` is the HTTP status the route should use (400 for
     a malformed or out-of-bounds path, 404 for a legal path that is not there,
     403 for one the OS will not let us read, 413 for one that is too big).
+
+    ``detail`` holds further fields for the API error detail (beside
+    ``reason``). Like the message, it may say nothing about the filesystem
+    outside the root.
     """
 
     reason = "rejected"
     status = 400
 
     def __init__(self, message: str, reason: Optional[str] = None,
-                 status: Optional[int] = None):
+                 status: Optional[int] = None,
+                 detail: Optional[Dict[str, Any]] = None):
         super().__init__(message)
         if reason is not None:
             self.reason = reason
         if status is not None:
             self.status = status
+        self.detail: Dict[str, Any] = dict(detail or {})
+
+
+def relaunch_with_root() -> str:
+    """The command that starts the editor on another folder, with
+    ``<folder>`` for the user to fill in: the packaged app's own file name,
+    or the command for a source checkout (``runtime_paths.launch_command``).
+    """
+    return '%s --root "<folder>"' % runtime_paths.launch_command()
+
+
+def outside_root(root: Path) -> PathRejected:
+    """The refusal of a path outside the sandbox root.
+
+    The root is a security boundary and stays one: nothing here widens it.
+    But "Relaunch with --root" told a user of the packaged app nothing they
+    could act on, so the refusal now carries the command to type. It names
+    the root (which the client knows from ``/api/fs/home``) and the app's own
+    command, and nothing about the path that was refused.
+    """
+    command = relaunch_with_root()
+    return PathRejected(
+        "That path is outside %s, which is the only folder this editor may "
+        "read or write. To work in another folder or on another drive, close "
+        "the editor and start it with that folder as its root: %s"
+        % (root, command),
+        reason="outside_root",
+        detail={"root": str(root), "relaunch": command},
+    )
 
 
 # ---- the root ------------------------------------------------------------
@@ -230,11 +265,7 @@ def resolve_in_root(raw: Any, root: Path) -> Path:
         # Device-namespace forms (\\?\, \\.\) land here too: they are never
         # how the picker names a file.
         if candidate.drive.lower() != root.drive.lower():
-            raise PathRejected(
-                "That path is outside %s, which is the only folder this editor "
-                "may read or write. Relaunch with --root to change it." % root,
-                reason="outside_root",
-            )
+            raise outside_root(root)
         # 3b. No NTFS alternate data streams: 'notes.txt:x.json' passes a
         # '.json' allow-list but names a hidden stream of notes.txt.
         if ":" in str(candidate)[len(candidate.drive):]:
@@ -252,11 +283,7 @@ def resolve_in_root(raw: Any, root: Path) -> Path:
             "That path could not be resolved.", reason="unresolvable"
         ) from exc
     if not is_within(root, resolved):
-        raise PathRejected(
-            "That path is outside %s, which is the only folder this editor "
-            "may read or write. Relaunch with --root to change it." % root,
-            reason="outside_root",
-        )
+        raise outside_root(root)
     return resolved
 
 

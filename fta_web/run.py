@@ -15,6 +15,7 @@ It is also the entry script of the frozen build (build/fta_editor.spec), where
 the same flags are spelled ``./fta_editor --port 8765``.
 """
 import argparse
+import logging
 import socket
 import sys
 import threading
@@ -45,6 +46,26 @@ from app import create_app  # noqa: E402
 #: before giving up and opening the URL anyway.
 _STARTUP_TIMEOUT_S = 10.0
 _STARTUP_POLL_S = 0.05
+
+
+class QuietPing(logging.Filter):
+    """Keep the page's "are you there" request out of the request log.
+
+    A visible tab asks ``GET /api/revision`` every few seconds (main.js), and
+    the development server prints a line for every request. Left alone that
+    is some seven hundred lines an hour, and it scrolls the start-up lines
+    out of the terminal -- the URL among them, which is the only copy the
+    user has when the browser did not open. Only the answered ping is
+    dropped: a refused or failed one is still printed, like every other
+    request.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # a record that cannot be formatted is not ours to judge
+            return True
+        return not ("GET /api/revision " in message and '" 200 ' in message)
 
 
 def _free_port() -> int:
@@ -184,6 +205,8 @@ def main(argv=None) -> int:
           % config.TOKEN_HEADER)
     print("Press Ctrl-C to stop.")
     sys.stdout.flush()
+
+    logging.getLogger("werkzeug").addFilter(QuietPing())
 
     if not args.no_browser:
         _open_browser_when_ready(url, port)

@@ -216,6 +216,7 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "canRedo": state.can_redo,
         "analysis": copy.deepcopy(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
+        **state.revision_fields(),
     }
 
 

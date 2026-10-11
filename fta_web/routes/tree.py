@@ -59,7 +59,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         api_error_response,
         ok_response,
     )
-    from .. import node_schema
+    from .. import node_schema, user_prefs
     from ..config import MAX_TREE_DEPTH
     from ..engine import derive_quant
     from ..state import get_state, removed_link_issues
@@ -92,6 +92,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ok_response,
     )
     import node_schema  # type: ignore[no-redef]
+    import user_prefs  # type: ignore[no-redef]
     from config import MAX_TREE_DEPTH  # type: ignore[no-redef]
     from engine import derive_quant  # type: ignore[no-redef]
     from state import get_state, removed_link_issues  # type: ignore[no-redef]
@@ -337,6 +338,7 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "canRedo": state.can_redo,
         "analysis": copy.deepcopy(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
+        **state.revision_fields(),
     }
 
 
@@ -400,6 +402,46 @@ def _node_view(core, node: Dict[str, Any]) -> Dict[str, Any]:
 def get_full_state():
     """Everything the client needs to render from cold."""
     return ok_response(**get_state().to_dict())
+
+
+@tree_bp.get("/revision")
+def get_revision():
+    """Which document this is and how often it has changed, without the tree.
+
+    Two uses, both cheap enough to ask often. A tab that comes back to the
+    foreground compares ``revision`` with its own and reads ``/api/state``
+    again only when another tab has changed the document
+    (``AppState.revision_fields``). And the page asks every few seconds while
+    it is visible: when the answer stops coming the server has been closed,
+    and the page offers to download the work it still holds.
+    """
+    state = get_state()
+    with state.lock:
+        return ok_response(
+            dirty=state.dirty,
+            currentPath=str(state.current_path) if state.current_path else None,
+            **state.revision_fields(),
+        )
+
+
+@tree_bp.post("/prefs")
+def set_prefs():
+    """Remember a display preference between launches. Body: any of
+    ``{aiPanelCollapsed: bool}``. Answers all of them (``prefs``).
+
+    Not part of the document: no undo step, no revision, not saved in a file.
+    """
+    payload = _body()
+    try:
+        prefs = user_prefs.set_client_prefs(payload)
+    except ValueError as exc:
+        raise ApiError(
+            INVALID_FIELD,
+            "'%s' is not a preference this editor stores, or has the wrong type." % exc,
+            400,
+            {"field": str(exc)},
+        )
+    return ok_response(prefs=prefs)
 
 
 @tree_bp.post("/metadata")

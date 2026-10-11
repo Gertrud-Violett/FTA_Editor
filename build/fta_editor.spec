@@ -162,6 +162,8 @@ hiddenimports = [
     "fmea_import",
     "cli",
     "i18n",
+    # What the editor remembers between launches (last folder, AI panel).
+    "user_prefs",
 ]
 
 # ---------------------------------------------------------------------------

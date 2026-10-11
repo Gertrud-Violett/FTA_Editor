@@ -12,6 +12,8 @@ Endpoints
 ---------
 ==============================  ==========================================
 ``GET  /api/fs/home``           where the picker should start
+``GET  /api/examples``          the analyses that ship with the app
+``POST /api/examples/open``     open one of them as an untitled copy
 ``GET  /api/fs/list``           one directory, filtered to openable files
 ``POST /api/file/open``         replace the document from a file on disk
 ``POST /api/file/save``         write back to the current path
@@ -42,6 +44,22 @@ nothing to Save to; the next Save answers 409 ``NO_CURRENT_PATH`` and the
 frontend sends the user to Save As. Marking it dirty is what makes
 ``POST /api/new`` warn before throwing the import away.
 
+**An example opens as an untitled copy.** The bundled examples live in the
+app's own folder (``config.EXAMPLES_DIR``), which is normally outside the
+sandbox root and, in the packaged app, inside the installation. Opened
+through ``/api/file/open`` (when the root happened to include them) an example
+kept its path, and the next Save wrote over the file that ships with the app.
+``POST /api/examples/open`` takes a *name from the listing*, never a path,
+installs the document with ``currentPath`` null and clears the core's own
+record of where it was read from, so Save answers 409 ``NO_CURRENT_PATH`` and
+the frontend goes to Save As. Nothing can be written into the examples folder
+through these two endpoints, and nothing outside it can be read.
+
+**The last folder is remembered, as a suggestion.** A successful open or
+Save As stores the file's folder (``user_prefs``); ``/api/fs/home`` offers it
+as ``cwd`` when the document has no path of its own. It is confined to the
+sandbox root when it is read back, like any client path.
+
 **Saves are atomic.** The document is written to a temp file beside the target
 and then ``os.replace``d onto it. ``save_to_json`` opens the target with
 ``'w'``, which truncates before writing, so a full disk part-way through a
@@ -71,6 +89,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import io
+import json
 import os
 import shutil
 import tempfile
@@ -80,7 +99,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from flask import Blueprint, request, send_file
 
 try:  # normal package import: ``import fta_web.routes.files``
-    from .. import fsbrowser
+    from .. import config, fsbrowser, user_prefs
     from ..config import ALLOWED_OPEN_EXTENSIONS, MAX_TREE_DEPTH, MAX_UPLOAD_BYTES
     from ..errors import (
         INVALID_FIELD,
@@ -97,7 +116,9 @@ try:  # normal package import: ``import fta_web.routes.files``
     from ..state import get_state, load_warning_issues
     from ..tree_ops import tree_height
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import config  # type: ignore[no-redef]
     import fsbrowser  # type: ignore[no-redef]
+    import user_prefs  # type: ignore[no-redef]
     from config import (  # type: ignore[no-redef]
         ALLOWED_OPEN_EXTENSIONS,
         MAX_TREE_DEPTH,
@@ -188,9 +209,11 @@ def _handle_path_rejected(exc: fsbrowser.PathRejected):
     which check fired. ``detail.reason`` carries that distinction for the log
     and for the frontend's wording; it never names anything outside the root.
     """
-    return api_error_response(
-        ApiError(PATH_REJECTED, str(exc), exc.status, {"reason": exc.reason})
-    )
+    detail = {"reason": exc.reason}
+    # What a refusal adds for the page's own wording (the root and the
+    # relaunch command of an outside_root); never the refused path.
+    detail.update(getattr(exc, "detail", None) or {})
+    return api_error_response(ApiError(PATH_REJECTED, str(exc), exc.status, detail))
 
 
 @files_bp.record_once
@@ -253,6 +276,7 @@ def _document_payload(state) -> Dict[str, Any]:
         "canRedo": state.can_redo,
         "analysis": copy.deepcopy(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
+        **state.revision_fields(),
     }
 
 
@@ -286,10 +310,12 @@ def fs_home():
     """Where the file picker should open.
 
     ``cwd`` is the folder of the open document when there is one, so Save As
-    lands next to the file the user is editing; the root otherwise. A
-    ``current_path`` that no longer resolves inside the root (the sandbox
-    moved, the file was moved out) falls back to the root rather than
-    reporting a folder the picker would then refuse to list.
+    lands next to the file the user is editing. A document with no path (new,
+    imported, an example) starts in the folder last opened from or saved to;
+    the dialog used to go back to the root every time. A ``current_path`` or
+    a remembered folder that no longer resolves inside the root (the sandbox
+    moved, the folder is gone) falls back to the root rather than reporting a
+    folder the picker would then refuse to list.
     """
     state = get_state()
     root = _fs_root()
@@ -304,7 +330,26 @@ def fs_home():
                 cwd = resolved.parent
         except fsbrowser.PathRejected:
             cwd = root
+    else:
+        cwd = _remembered_folder(root) or root
     return ok_response(root=str(root), cwd=str(cwd))
+
+
+def _remembered_folder(root: Path) -> Optional[Path]:
+    """The folder last used, if it is still a folder inside ``root``.
+
+    The stored text is treated as a client path: it goes through
+    ``resolve_in_root`` (a file anybody can edit must not be able to point
+    the picker outside the sandbox), and a refusal means "nothing remembered".
+    """
+    remembered = user_prefs.last_folder()
+    if not remembered:
+        return None
+    try:
+        folder = fsbrowser.resolve_in_root(remembered, root)
+    except fsbrowser.PathRejected:
+        return None
+    return folder if os.path.isdir(folder) else None
 
 
 @files_bp.get("/fs/list")
@@ -324,6 +369,111 @@ def fs_list():
     return ok_response(
         **fsbrowser.list_directory(request.args.get("path"), root, extensions)
     )
+
+
+# ---- bundled examples ----------------------------------------------------
+
+
+def _example_files() -> Dict[str, Path]:
+    """``{file name: path}`` for the examples that ship with the app.
+
+    This listing is the allow-list of ``POST /api/examples/open``: a name is
+    looked up here and nothing else is opened, so client text never becomes
+    part of a path. Only regular ``.json`` files directly in the folder; a
+    symbolic link is skipped, so nothing placed there can lead a read out of
+    it.
+    """
+    found: Dict[str, Path] = {}
+    try:
+        with os.scandir(config.EXAMPLES_DIR) as entries:
+            for entry in entries:
+                try:
+                    if entry.name.startswith(".") or entry.is_symlink():
+                        continue
+                    if not entry.is_file(follow_symlinks=False):
+                        continue
+                except OSError:
+                    continue
+                if Path(entry.name).suffix.lower() != ".json":
+                    continue
+                found[entry.name] = Path(entry.path)
+    except OSError:
+        # No examples folder (a damaged installation): an empty list, not a 500.
+        return {}
+    return dict(sorted(found.items(), key=lambda item: item[0].lower()))
+
+
+def _example_summary(name: str, path: Path) -> Dict[str, Any]:
+    """``{name, title, mode}`` for the list. A file that cannot be read keeps
+    its place with a null title; opening it then says what is wrong."""
+    title = None
+    mode = None
+    try:
+        if path.stat().st_size <= fsbrowser.MAX_OPEN_BYTES:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                data = json.load(handle)
+            if isinstance(data, dict):
+                if isinstance(data.get("title"), str) and data["title"].strip():
+                    title = data["title"].strip()
+                if isinstance(data.get("mode"), str) and data["mode"].strip().upper() in ("FTA", "ETA"):
+                    mode = data["mode"].strip().upper()
+    except (OSError, ValueError, RecursionError):
+        pass
+    return {"name": name, "title": title, "mode": mode}
+
+
+@files_bp.get("/examples")
+def list_examples():
+    """The analyses that ship with the app: ``examples: [{name, title, mode}]``."""
+    return ok_response(
+        examples=[_example_summary(name, path) for name, path in _example_files().items()]
+    )
+
+
+@files_bp.post("/examples/open")
+def open_example():
+    """Replace the document with a copy of a bundled example. Body: ``{name}``.
+
+    ``name`` is one of the names ``GET /api/examples`` lists. The document is
+    installed untitled (``currentPath`` null) and unmodified: Save goes to
+    Save As, so the bundled file is never written. Like ``/api/file/open``
+    this does not refuse to discard unsaved changes; the page asks first.
+    """
+    payload = _body()
+    name = payload.get("name")
+    if not isinstance(name, str) or not name:
+        raise ApiError(INVALID_FIELD, "'name' is required.", 400, {"field": "name"})
+    target = _example_files().get(name)
+    if target is None:
+        # Never echoed back: the value may be a path somebody hoped to read.
+        raise ApiError(
+            INVALID_FIELD,
+            "There is no example with that name.",
+            404,
+            {"field": "name"},
+        )
+
+    loaded = WebCore()
+    ok, error = loaded.load_from_json(str(target))
+    if not ok:
+        raise ApiError(
+            INVALID_JSON,
+            "'%s' could not be read as an FTA analysis: %s"
+            % (target.name, error or "unrecognised format"),
+            400,
+            {"reason": "load_failed"},
+        )
+    # load_from_json() remembers the file it read. Cleared, as for an import:
+    # nothing may later write the user's analysis over the bundled example.
+    loaded.last_saved_file = None
+    _refuse_too_deep(loaded, target.name)
+
+    state = get_state()
+    with state.lock:
+        _install_document(state, loaded, None, dirty=False)
+        return ok_response(
+            example=name, warnings=_load_warnings(loaded), **_document_payload(state)
+        )
 
 
 # ---- open / save ---------------------------------------------------------
@@ -356,7 +506,11 @@ def file_open():
 
     with state.lock:
         _install_document(state, loaded, target, dirty=False)
-        return ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
+        response = ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
+    # After the lock: this writes a small file, and no request should wait
+    # for the disk behind it.
+    user_prefs.remember_folder(target.parent)
+    return response
 
 
 def _refuse_too_deep(core: FTACore, label: str) -> None:
@@ -429,7 +583,9 @@ def file_save_as():
         _save_document(state.core, target)
         state.current_path = target
         state.mark_saved()
-        return ok_response(currentPath=str(target), dirty=state.dirty)
+        response = ok_response(currentPath=str(target), dirty=state.dirty)
+    user_prefs.remember_folder(target.parent)
+    return response
 
 
 def _save_document(core: FTACore, target: Path) -> None:
