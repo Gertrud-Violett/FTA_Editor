@@ -151,6 +151,24 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+const FV_PREF = 'fta.report.fvDiagram';
+
+function readFvPref() {
+  try {
+    return window.localStorage.getItem(FV_PREF) === '1';
+  } catch (_err) {
+    return false;
+  }
+}
+
+function writeFvPref(on) {
+  try {
+    window.localStorage.setItem(FV_PREF, on ? '1' : '0');
+  } catch (_err) {
+    /* not persisted */
+  }
+}
+
 export function mount(panel, ctx) {
   ensureStyle();
   const t = (key, vars) => (ctx && typeof ctx.t === 'function' ? ctx.t(key, vars) : key);
@@ -202,6 +220,12 @@ export function mount(panel, ctx) {
       boxes.uncertainty.dispatchEvent(new Event('change'));
     }
   });
+  // The diagram in the report coloured by Fussell-Vesely importance, with
+  // its legend: what "Colour diagram by FV" shows on screen, which had no
+  // way into a file. Remembered per browser, like the sections.
+  const fvBox = el('input', { type: 'checkbox', 'data-report-fv': '' });
+  fvBox.checked = readFvPref();
+  fvBox.addEventListener('change', () => writeFvPref(fvBox.checked));
   const langSelect = el('select', { 'data-report-lang': '' });
   const langEn = el('option', { value: 'en' });
   const langJa = el('option', { value: 'ja' });
@@ -213,8 +237,24 @@ export function mount(panel, ctx) {
   langSelect.addEventListener('change', () => { langTouched = true; });
   const options = el('div', { class: 'report-tab__row' }, [
     el('label', {}, [mcBox, label(el('span'), 'report.runUncertainty')]),
+    el('label', {}, [fvBox, label(el('span'), 'report.fvDiagram')]),
     el('label', {}, [label(el('span'), 'report.language'), langSelect]),
   ]);
+
+  /** {kind: 'fv', values} from a fresh importance run, or null when there is none. */
+  async function fvOverlay() {
+    if (ctx?.store?.metadata?.().mode === 'ETA') return null;
+    try {
+      const res = await ctx.api.post('/analysis/importance', {});
+      const values = {};
+      for (const row of (res && res.events) || []) {
+        if (row.fv !== null && row.fv !== undefined) values[row.id] = row.fv;
+      }
+      return Object.keys(values).length ? { kind: 'fv', values } : null;
+    } catch (_err) {
+      return null;
+    }
+  }
 
   const generate = el('button', { type: 'button', class: 'btn btn--primary', 'data-report-generate': '' });
   label(generate, 'report.generate');
@@ -289,7 +329,14 @@ export function mount(panel, ctx) {
         runUncertainty: Boolean(mcBox.checked && chosen.has('uncertainty')),
       };
       if (sections.includes('diagram') && typeof ctx.diagramPng === 'function') {
-        const png = await ctx.diagramPng();
+        // Plain unless asked: whatever overlay happens to be on screen does
+        // not leak into the report.
+        let overlay = null;
+        if (fvBox.checked) {
+          overlay = await fvOverlay();
+          if (!overlay) ctx.toast(t('report.fvUnavailable'), 'warn');
+        }
+        const png = await ctx.diagramPng({ overlay });
         if (png) body.diagramPng = await blobToBase64(png);
       }
       const { blob, filename } = await ctx.api.download('POST', '/report/docx', body);

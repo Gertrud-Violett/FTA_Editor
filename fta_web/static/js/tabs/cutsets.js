@@ -313,6 +313,22 @@ export function mount(panel, ctx) {
     return el('span', { class: 'anl-stat' }, [label + ' ', el('b', { text: value })]);
   }
 
+  /**
+   * The rare-event figure is the SUM of the cut-set probabilities. It is an
+   * upper bound and not a probability: "Rare-event 2.90" stood in a row of
+   * probabilities with nothing to say so. The tooltip says what it is, and
+   * above 1 a note says it outright.
+   */
+  function rareStat() {
+    const node = stat(t('cutsets.rare'), fmt(result.rareEvent));
+    node.title = t('cutsets.rareTitle');
+    node.dataset.stat = 'rare';
+    if (Number(result.rareEvent) > 1) {
+      node.appendChild(el('span', { class: 'anl-stat__note', dataset: { role: 'rare-over' }, text: ' ' + t('cutsets.rareOver') }));
+    }
+    return node;
+  }
+
   function paintSummary() {
     clear(summary);
     if (!result) return;
@@ -324,7 +340,7 @@ export function mount(panel, ctx) {
     } else {
       summary.append(
         stat(t('cutsets.mcub'), fmt(result.mcub)),
-        stat(t('cutsets.rare'), fmt(result.rareEvent)),
+        rareStat(),
         stat(t('cutsets.treeWalk'), fmt(result.treeWalk)),
         el('span', { class: 'anl-stat', text: t('cutsets.count', { shown: result.returned, total: result.total }) })
       );
