@@ -80,6 +80,21 @@ When you first launch the application, you'll see:
 5. **Node Details** - Bottom panel showing selected node information
 6. **Action Buttons** - Bottom toolbar for all operations
 
+In the web app a new analysis shows a **Start here** hint in the tree panel,
+with two buttons:
+
+- **Name your top event** puts the caret in the top event's Name box, with
+  the name selected. Type the failure you want to analyse and press Enter,
+  then add its causes with **Add**.
+- **Open an example** lists the analyses that come with the editor. See
+  [Example files](#example-files).
+
+The hint goes with the first edit, and the **×** in its corner closes it.
+
+The **»** button in the AI Assistant's header folds that panel to a strip at
+the right edge; **«** opens it again. The editor remembers the choice for the
+next launch.
+
 ## Understanding FTA vs ETA
 
 ### FTA (Fault Tree Analysis) - Bottom-Up
@@ -160,6 +175,47 @@ hover over either for the full path.
 type a path and press Enter. A bare name or a relative path is read against
 the folder shown in the dialog, and `~` is your home folder. A path that does
 not exist is reported as *Folder not found* or *File not found*.
+
+**Where the dialog starts** (web app): in the folder of the open file. For an
+analysis with no file yet (new, an example, a file from this computer) it
+starts in the folder of the last file you opened or saved.
+
+**Other places to open from** (web app): the Load dialog has two buttons at
+the left of its footer.
+
+- **Open an example…** lists the analyses that come with the editor.
+- **A file on this computer…** opens the browser's own file picker, which can
+  reach any folder. You can also drop a `.json` file on the tree panel.
+
+Both open the analysis as an **untitled copy**: the status line says
+*No file*, and **Save** asks where to put it. The file you chose is not
+changed.
+
+**Unsaved changes** (web app): New, Load, an example and a dropped file ask
+first when the analysis has unsaved changes. **Save and continue** saves and
+then goes on (an analysis with no file yet asks where to save; if you close
+that dialog, nothing else happens). **Discard and …** goes on without
+saving. **Cancel** does nothing.
+
+**Two tabs** (web app): the editor holds one analysis, and each browser tab
+shows a copy of it. A tab you come back to checks whether the analysis was
+changed in another tab and shows the current version; a message says so. It
+waits while a dialog is open or something you typed has not been entered.
+
+**If the editor stops** (web app): when the editor has been closed, or the
+computer slept and it is gone, a red banner appears at the top of the page
+within a few seconds and stays until the editor answers again. The tree you
+see is still in the tab. **Download a rescue copy (JSON)** saves it through
+the browser, unsaved changes included, as a file named
+`<name>-rescue-<date>-<time>.json`. Start the editor again and open that
+file with **Load** (*A file on this computer…* if it is outside the root
+folder). Text you were still typing in a field is not in the copy: press
+Enter in the field first if the editor is still running.
+
+A tab whose editor was closed and started again shows *This tab is not
+connected to the editor* and the command that starts the editor. If that tab
+still holds an analysis, the same **Download a rescue copy (JSON)** button is
+on that screen.
 
 ### Tree View
 
@@ -348,7 +404,7 @@ is shown as text, and links are made for http, https and mailto only.
 
 **Quick Actions**:
 - **Analyze FTA**: Posts analysis and suggestions to chat only (no changes applied).
-- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed (the first five of each). One Ctrl+Z undoes the whole update, so review the tree before saving. Detailed error logs are shown if the AI output is invalid.
+- **Update FTA**: The AI is asked to rewrite the whole tree, keeping the existing nodes and adding to them. In the web app the button asks first, because the tree is sent to the AI provider. The answer does not change anything: a card in the chat, **Proposed update (not applied yet)**, lists the nodes the rewrite would add, change and remove (the first twelve of each by name). **Apply update** replaces the tree with the AI's version in one step, and one Ctrl+Z undoes it. **Discard** drops it. If you edit the tree before you press Apply, the update is refused and nothing is changed: run Update FTA again. Detailed error logs are shown if the AI output is invalid. (The desktop app applies the update at once.)
 - **Clear Chat**: Reset conversation history
 
 **What the AI is told about the numbers**: with every request the AI gets the
@@ -851,6 +907,19 @@ How to read them:
 - A k-out-of-n gate whose expansion would exceed 20,000 combinations is
   refused (`422 ANALYSIS_TOO_LARGE`). So is an analysis that runs past its
   time budget (30 s for the tab).
+
+**Limits.** **Max order**, **Max count** and **Cutoff** start from the
+limits saved in the document. A value you type applies to this tab's runs
+only, and the tab marks it **This run only**: the headline, Importance and
+the report go on using the document's limits. **Save as document defaults**
+stores what you typed; **Reset** goes back to the document's limits and runs
+again.
+
+When the limits leave no cut set at all (Max order 1 on a tree whose
+smallest cut set has two events), the tab says *No cut sets within these
+limits* and names the limit. That is not a statement about the tree: the
+top event can still occur. The min-cut upper bound and the rare-event sum
+are not shown then, because with no cut sets both would read 0.
 
 ### Importance measures
 
@@ -1397,8 +1466,12 @@ AND/OR and fixed probabilities only.
 
 ### JSON Export
 
-**Save** / **Save As** in the action bar (**JSON** downloads a copy; desktop
-app: **(S)ave JSON As**)
+**Save** / **Save As** in the action bar (desktop app: **(S)ave JSON As**).
+
+The buttons after **Export:** (**JSON**, **XML**, **Excel**, **Render**) are
+downloads. Each hands a copy to the browser, which puts it in its own
+download folder; the editor is not told where. The open file is not changed
+and the analysis does not count as saved. Use **Save** for that.
 
 Saves complete analysis including:
 - Metadata (title, date, mode)
@@ -1468,7 +1541,7 @@ analysis itself is not changed.
 | `Ctrl+D` / `Delete` | Delete the selected node (`Delete` only from the tree) |
 | `Ctrl+S` | Save (also with the caret still in a field) |
 | `Ctrl+Shift+S` | Save As |
-| `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / Redo |
+| `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / Redo. A message names the step (*Undid: deleting "Seal leak"*), and the node concerned is selected, or its former parent when it is gone. |
 | `Ctrl+F` | Search the tree |
 | `Escape` | Discard what was typed in a field; close a dialog or the diagram's Aa popover; dismiss a toast |
 
@@ -1506,14 +1579,18 @@ analysis: only the names, the notes and the title differ.
 | `tmi2_eta_en.json`, `tmi2_eta_ja.json` | ETA | Accident at Three Mile Island Unit 2, 28 March 1979 |
 | `sampleFTA.json` | FTA | The small AND/OR tree of the 1.x releases |
 
-They are in `fta_web/examples/` in a source checkout and in
-`fta_editor\_internal\examples\` in the standalone build. To open one, click
-**Load**, go to that folder (or type its path into the dialog) and pick the
-file. The dialog only reaches inside the editor's root folder, which is your
-home folder unless you started the editor with `--root`. If the editor is
-installed somewhere else, copy the `examples` folder into your home folder, or
-start the editor with `--root <that folder>`. **Save** writes back to the file
-you opened; use **Save As** to keep the example as it was.
+To open one in the web app, click **Open an example** in the hint of a new
+analysis, or **Load** and then **Open an example…**, and pick it from the
+list. It opens as an untitled copy: **Save** asks where to put your version,
+and the example itself is never changed.
+
+The files are in `fta_web/examples/` in a source checkout and in
+`fta_editor\_internal\examples\` in the standalone build. The Load dialog's
+file list can open them from there too, when that folder is inside the
+editor's root folder (your home folder unless you started the editor with
+`--root`). An example opened that way keeps its path, so **Save** writes back
+to the file that came with the editor: use **Save As**, or open it from the
+list instead.
 
 Each node's notes (the **Details** tab) say what happened and cite the
 accident report with the finding or page: the *Report of the Presidential
@@ -1623,8 +1700,28 @@ backup.
 A: The web app only reads and writes inside its root folder. On Windows a
 path on another drive, a network (UNC) path, or a drive letter created with
 `subst` is refused even if it points at the same folder, and a `:` in a file
-name (an NTFS alternate data stream) is refused. Relaunch with `--root` to
-use another folder.
+name (an NTFS alternate data stream) is refused. To open one file from
+outside the root folder, use **Load** and then **A file on this computer…**:
+it opens as an untitled copy. To work in another folder, close the editor
+and start it with `--root`; the message gives the command for your
+installation (`fta_editor.exe --root "<folder>"`, or
+`uv run python fta_web/run.py --root "<folder>"` from source).
+
+**Q: The page says "The editor is not answering"**
+A: The editor (the program the page talks to) has been closed or has
+stopped. Press **Download a rescue copy (JSON)** to keep the analysis in the
+tab, then start the editor again and open that file with **Load**. See
+[Top Bar](#top-bar), *If the editor stops*.
+
+**Q: The page says "This tab is not connected to the editor"**
+A: The editor only works in the tab it opens itself. A tab opened from a
+bookmark or the history, or left over from an earlier run, cannot reach it.
+Close the tab and use the one the editor opened, or start the editor again
+with the command the screen shows.
+
+**Q: The tree changed by itself and a message says "changed in another tab"**
+A: The same editor is open in two tabs or windows, and the other one edited
+the analysis. Both tabs show the same analysis; work in one of them.
 
 **Q: Legacy JSON files don't load properly**
 A: Old format is supported, but defaults to FTA mode. Set mode manually after loading.

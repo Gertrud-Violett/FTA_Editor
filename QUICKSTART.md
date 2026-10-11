@@ -115,7 +115,7 @@ See the [CLI reference](docs/USER_GUIDE.md#command-line-interface).
 
 ### AI Quick Actions (optional)
 - **Analyze FTA**: Reads the current tree and posts analysis/suggestions to chat only (no changes applied).
-- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed. One Ctrl+Z undoes it; review the tree before saving.
+- **Update FTA**: The AI is asked to rewrite the whole tree, keeping the existing nodes and adding to them. The button asks first; the answer is then listed (nodes added, changed and removed) and nothing changes until you press **Apply update**. One Ctrl+Z undoes it.
 
 ## AI Assistant Setup (Optional)
 
@@ -181,14 +181,13 @@ Desktop app:
 
 ## Need Help?
 
-- Load a worked example from `fta_web/examples/` (in the standalone build:
-  `fta_editor\_internal\examples\`), in English or Japanese:
-  `challenger_fta_en.json` / `challenger_fta_ja.json`, a fault tree of the
-  Challenger accident with a common cause, and `tmi2_eta_en.json` /
-  `tmi2_eta_ja.json`, an event tree of Three Mile Island Unit 2. Their
-  probabilities are illustrative. See
-  [Example analyses](README.md#example-analyses) for what to look at and how
-  to open them.
+- Open a worked example: **Open an example** in the hint of a new analysis,
+  or **Load** and then **Open an example…**. It opens as an untitled copy, in
+  English or Japanese: `challenger_fta_en.json` / `challenger_fta_ja.json`, a
+  fault tree of the Challenger accident with a common cause, and
+  `tmi2_eta_en.json` / `tmi2_eta_ja.json`, an event tree of Three Mile Island
+  Unit 2. Their probabilities are illustrative. See
+  [Example analyses](README.md#example-analyses) for what to look at.
 - The small `fta_web/examples/sampleFTA.json` is the 1.x sample (the legacy
   desktop app has the same tree at `desktop/data/examples/sampleFTA.json`)
 - Documentation: `docs/USER_GUIDE.md`
