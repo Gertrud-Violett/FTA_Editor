@@ -43,6 +43,20 @@
 <body>
   <a class="skip-link" href="#tree-root" data-i18n="a11y.skip">Skip to the fault tree</a>
 
+  <!-- Shown by main.js while the server does not answer (it was closed, or
+       the machine slept). It stays up until the server is back, and the
+       download is built in this page from the document it still holds. -->
+  <div class="banner" id="server-banner" hidden role="alert">
+    <span class="banner__glyph" aria-hidden="true">&#9888;</span>
+    <span class="banner__text" id="server-banner-text" data-i18n="rescue.banner">The editor is not
+      answering. It may have been closed. What you see is still in this tab, but nothing can be
+      saved until the editor answers again.</span>
+    <button type="button" class="btn btn--primary" id="server-banner-rescue"
+            data-i18n="rescue.download">Download a rescue copy (JSON)</button>
+    <button type="button" class="btn" id="server-banner-retry"
+            data-i18n="rescue.retry">Try again</button>
+  </div>
+
   <!-- ==================================================================== -->
   <!-- Top bar: document metadata, view options, session chrome             -->
   <!-- ==================================================================== -->
@@ -159,7 +173,27 @@
         <span class="panel__spacer"></span>
         <span class="panel__meta" id="tree-count"></span>
       </div>
+      <!-- For a new analysis nobody has touched yet: the two ways to begin.
+           main.js shows it (renderShell) and it goes with the first edit. -->
+      <div class="firstrun" id="first-run" hidden>
+        <button type="button" class="firstrun__close" id="first-run-dismiss"
+                data-i18n-aria="firstrun.dismiss" aria-label="Hide this hint"
+                data-i18n-title="firstrun.dismiss" title="Hide this hint">&#215;</button>
+        <p class="firstrun__title" data-i18n="firstrun.title">Start here</p>
+        <p class="firstrun__text" data-i18n="firstrun.text">This is a new, empty analysis. Name the
+          top event (the failure you want to analyse), then add its causes beneath it with Add.</p>
+        <div class="firstrun__actions">
+          <button type="button" class="btn btn--primary" id="first-run-name"
+                  data-i18n="firstrun.name">Name your top event</button>
+          <button type="button" class="btn" id="first-run-example"
+                  data-i18n="firstrun.example">Open an example</button>
+        </div>
+      </div>
       <div class="panel__body panel__body--flush" id="tree-root" tabindex="-1"></div>
+      <!-- What a .json dragged over the tree panel says it will do. -->
+      <div class="dropzone" id="tree-dropzone" hidden aria-hidden="true">
+        <span data-i18n="import.dropHint">Drop a .json analysis here to open a copy of it</span>
+      </div>
     </section>
 
     <div class="splitter splitter--v" data-splitter="tree" role="separator"
@@ -251,6 +285,14 @@
 
     <section class="panel" id="ai-panel" aria-labelledby="ai-panel-title">
       <div class="panel__head">
+        <!-- Folds the panel to a strip at the right edge. The choice is kept
+             on the server (POST /api/prefs), so it survives a new launch. -->
+        <button type="button" class="btn btn--icon btn--ghost" id="btn-ai-collapse"
+                aria-expanded="true" aria-controls="ai-root"
+                data-i18n-aria="ai.panel.collapse" aria-label="Hide the AI Assistant panel"
+                data-i18n-title="ai.panel.collapse" title="Hide the AI Assistant panel">
+          <span aria-hidden="true" id="ai-collapse-glyph">&#187;</span>
+        </button>
         <h2 class="panel__title" id="ai-panel-title" data-i18n="panel.ai">AI Assistant</h2>
         <span class="status-dot" id="ai-status" data-on="false" aria-hidden="true">&#9679;</span>
         <span class="panel__spacer"></span>
@@ -304,18 +346,25 @@
          header and hand the bytes to the browser. Excel and Render carry
          data-capability when the server reports the dependency missing; the
          button stays visible and says what to install (spec 6.8). -->
-    <button type="button" class="btn" data-action="json"
-            data-i18n="btn.json" data-i18n-title="tip.json"
-            title="Download a copy as JSON">JSON</button>
-    <button type="button" class="btn" data-action="xml"
-            data-i18n="btn.xml" data-i18n-title="tip.xml"
-            title="Download a copy as XML">XML</button>
-    <button type="button" class="btn" data-action="excel"
-            data-i18n="btn.excel" data-i18n-title="tip.excel"
-            title="Download a copy as an Excel workbook">Excel</button>
-    <button type="button" class="btn" data-action="render"
-            data-i18n="btn.render" data-i18n-title="tip.render"
-            title="Download the diagram as a PNG image">Render</button>
+    <!-- Labelled as a group: a button that says only "JSON", beside Save,
+         read as another way to save the file. -->
+    <div class="actionbar__group" role="group" aria-labelledby="export-label">
+      <span class="actionbar__label" id="export-label" data-i18n="bar.exportGroup"
+            data-i18n-title="bar.exportGroupTitle"
+            title="Each of these downloads a copy through the browser. The open file is not changed; use Save for that.">Export:</span>
+      <button type="button" class="btn" data-action="json"
+              data-i18n="btn.json" data-i18n-title="tip.json"
+              title="Download a copy as JSON">JSON</button>
+      <button type="button" class="btn" data-action="xml"
+              data-i18n="btn.xml" data-i18n-title="tip.xml"
+              title="Download a copy as XML">XML</button>
+      <button type="button" class="btn" data-action="excel"
+              data-i18n="btn.excel" data-i18n-title="tip.excel"
+              title="Download a copy as an Excel workbook">Excel</button>
+      <button type="button" class="btn" data-action="render"
+              data-i18n="btn.render" data-i18n-title="tip.render"
+              title="Download the diagram as a PNG image">Render</button>
+    </div>
 
     <div class="statusline">
       <!-- The file name, never cut off, then its folder, which may be. -->
@@ -325,29 +374,50 @@
     </div>
   </footer>
 
+  <!-- "A file on this computer" in the Load dialog, and a .json dropped on
+       the tree panel, go to POST /api/import/json. The browser's own picker
+       is the one way to reach a file outside the sandbox root. -->
+  <input type="file" id="import-file" accept=".json,application/json" hidden tabindex="-1"
+         aria-hidden="true">
+
   <!-- Toasts. aria-live so an error is announced, not just drawn. -->
   <div class="toasts" id="toasts" role="log" aria-live="polite" aria-relevant="additions"></div>
 
   <!-- Blocking screen for a tab with no session, or a boot that failed. -->
+  <!-- The command is filled in by the server (app.py): the packaged app's
+       own file name, or the command for a source checkout. data-packaged
+       picks the wording of the hint in main.js. -->
   <div class="overlay" id="blocking-overlay" hidden role="alertdialog"
-       aria-modal="true" aria-labelledby="overlay-title" aria-describedby="overlay-body">
+       aria-modal="true" aria-labelledby="overlay-title" aria-describedby="overlay-body"
+       data-packaged="{{ '1' if packaged else '0' }}">
     <div class="overlay__card">
       <div class="overlay__glyph" aria-hidden="true">&#128274;</div>
       <h1 class="overlay__title" id="overlay-title" data-i18n="session.title">
-        This tab has no session
+        This tab is not connected to the editor
       </h1>
       <div class="overlay__body" id="overlay-body">
         <p data-i18n="session.body">
-          The editor hands each tab a one-time session key in the address it was
-          launched with, and that key lives only in this tab. A tab opened by
-          hand, restored by the browser, or left over from an earlier run has no
-          key, so the server will refuse everything it asks for.
+          The editor only works in the tab it opens itself when it starts. This
+          tab was opened another way (typed in, from a bookmark or the history,
+          or restored by the browser), or the editor has been closed and
+          started again since.
         </p>
         <p data-i18n="session.hint">
-          Close this tab and open the address the launcher printed in your
-          terminal. If the server is no longer running, start it again:
+          Close this tab. If the editor is still running, use the tab it
+          opened. If not, start it again:
         </p>
-        <code class="overlay__cmd">python3 fta_web/run.py</code>
+        <code class="overlay__cmd" id="overlay-cmd">{{ relaunch_command }}</code>
+        <!-- Shown by main.js when this tab still holds a document: the
+             server is gone or restarted, the tree in this tab is not. -->
+        <div class="overlay__rescue" id="overlay-rescue" hidden>
+          <p data-i18n="rescue.overlayNote">
+            The analysis in this tab is still here. Download a copy before you
+            close the tab; you can open it again with Load.
+          </p>
+          <button type="button" class="btn btn--primary" id="overlay-rescue-btn"
+                  data-i18n="rescue.download">Download a rescue copy (JSON)</button>
+          <p id="overlay-rescue-done" role="status" aria-live="polite"></p>
+        </div>
       </div>
     </div>
   </div>

@@ -987,6 +987,126 @@ html[data-hide-zero="1"] .fta-tree-item.is-zero { display: none; }
   white-space: pre;
 }
 
+.overlay__rescue {
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--border);
+}
+.overlay__rescue[hidden] { display: none; }
+.overlay__rescue .btn { margin-top: var(--s-2); }
+
+/* ---- the server-stopped banner -------------------------------------------
+   Its own row above the top bar. The rows are placed by name because the
+   banner is display:none most of the time: left to auto-placement the top
+   bar would move into its row and every row after it would shift. */
+body { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.banner { grid-row: 1; }
+.topbar { grid-row: 2; }
+.workspace { grid-row: 3; }
+.actionbar { grid-row: 4; }
+
+.banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--danger-soft);
+  border-bottom: 2px solid var(--danger);
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+.banner[hidden] { display: none; }
+.banner__glyph { color: var(--danger); font-size: var(--fs-lg); line-height: 1; }
+.banner__text { flex: 1 1 28ch; min-width: 0; font-weight: 600; }
+
+/* ---- the first-run hint (tree panel) ------------------------------------- */
+.firstrun {
+  position: relative;
+  flex: 0 0 auto;
+  margin: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.firstrun[hidden] { display: none; }
+.firstrun__title { margin: 0 var(--s-5) var(--s-1) 0; font-weight: 700; font-size: var(--fs-lg); }
+.firstrun__text { margin: 0; font-size: var(--fs-sm); color: var(--text); }
+.firstrun__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.firstrun__close {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+}
+.firstrun__close:hover { background: var(--surface-hover); color: var(--text); }
+
+/* ---- a .json dragged over the tree panel --------------------------------- */
+#tree-panel { position: relative; }
+.dropzone {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  text-align: center;
+  font-weight: 700;
+  color: var(--accent-hover, var(--accent));
+  background: var(--accent-soft);
+  border: 2px dashed var(--accent);
+  border-radius: var(--r-md);
+  /* The panel under it stays the drop target; the zone is only a sign. */
+  pointer-events: none;
+  opacity: .94;
+}
+.dropzone[hidden] { display: none; }
+
+/* ---- the action bar's export group --------------------------------------- */
+.actionbar__group { display: inline-flex; align-items: center; gap: var(--s-1); }
+.actionbar__label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-right: 2px;
+  cursor: help;
+}
+
+/* ---- the AI panel, folded -------------------------------------------------
+   A strip as wide as its one button. The column is set here, over the width
+   the splitter stored, so unfolding gives back the width the user chose. */
+@media (min-width: 901px) {
+  .workspace[data-ai-collapsed="1"] {
+    grid-template-columns:
+      var(--tree-w, 320px) var(--splitter) minmax(0, 1fr) var(--splitter) calc(var(--ctl-h) + 10px);
+  }
+  .workspace[data-ai-collapsed="1"] #ai-panel > .panel__head {
+    flex-direction: column;
+    flex: 1 1 auto;
+    padding: 5px 0;
+    border-bottom: 0;
+  }
+  .workspace[data-ai-collapsed="1"] #ai-panel-title {
+    display: block;
+    writing-mode: vertical-rl;
+    font-size: var(--fs-sm);
+    color: var(--text-dim);
+  }
+  .workspace[data-ai-collapsed="1"] [data-splitter="ai"] { visibility: hidden; pointer-events: none; }
+}
+.workspace[data-ai-collapsed="1"] #ai-root,
+.workspace[data-ai-collapsed="1"] #ai-panel .panel__spacer,
+.workspace[data-ai-collapsed="1"] #btn-ai-settings { display: none; }
+
 /* ---- narrow viewports ---------------------------------------------------- */
 
 @media (max-width: 900px) {
