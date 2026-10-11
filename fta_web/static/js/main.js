@@ -3026,6 +3026,22 @@ function isTextEntry(el) {
   return false;
 }
 
+/**
+ * Where a shortcut must stand aside for the control's own keys. A text field
+ * has its own Ctrl+A and Ctrl+Z. A <select> has neither: after a gate was
+ * changed in the Details dropdown the focus is still on it, and Ctrl+Z did
+ * nothing at all. So the document's Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z work from
+ * a <select>; every other shortcut still leaves it alone (a letter there is
+ * type-ahead, Delete is not ours).
+ */
+function blocksShortcut(el, event) {
+  if (!isTextEntry(el)) return false;
+  if (el.tagName !== 'SELECT') return true;
+  const key = (event.key || '').toLowerCase();
+  const history = (event.ctrlKey || event.metaKey) && !event.altKey && (key === 'z' || key === 'y');
+  return !history;
+}
+
 function modalOpen() {
   // The first two are the documented convention; .fta-modal-overlay is what
   // dialogs.js actually puts on its backdrop, so a modal there suppresses the
@@ -3085,7 +3101,7 @@ function onKeyDown(event) {
 
   // Typing must never trigger an action, and Ctrl+A/Ctrl+Z inside a field must
   // keep meaning select-all and undo-my-typing.
-  if (isTextEntry(event.target)) return;
+  if (blocksShortcut(event.target, event)) return;
 
   // Alt+N is New. Chrome and Edge keep Ctrl+N for themselves (a new browser
   // window; the page never sees the key), so the documented shortcut is the
