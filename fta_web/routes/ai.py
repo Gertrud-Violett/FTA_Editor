@@ -10,6 +10,8 @@ AI assistant endpoints -- the ``/api/ai`` blueprint.
 ``POST   /api/ai/chat``                       one turn of conversation
 ``POST   /api/ai/analyze``                    one-shot analysis, read-only
 ``POST   /api/ai/update``                     full-JSON rewrite of the tree
+``POST   /api/ai/update/apply``               install a previewed rewrite
+``POST   /api/ai/update/discard``             drop a previewed rewrite
 ``POST   /api/ai/changes/apply``              apply selected proposals
 ``DELETE /api/ai/conversation``               forget the chat history
 ============================================  ==============================
@@ -71,6 +73,8 @@ from __future__ import annotations
 import contextlib
 import copy
 import logging
+import secrets
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, request
@@ -85,6 +89,7 @@ try:  # normal package import: ``import fta_web.routes.ai``
         api_error_response,
         ok_response,
     )
+    from ..engine import WebCore
     from ..node_schema import merge_back_node_keys, reconcile_gate_types
     from ..state import get_state, load_warning_issues, removed_link_issues
     from ..tree_ops import all_ids, strip_references_to
@@ -98,6 +103,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         api_error_response,
         ok_response,
     )
+    from engine import WebCore  # type: ignore[no-redef]
     from node_schema import merge_back_node_keys, reconcile_gate_types  # type: ignore[no-redef]
     from state import get_state, load_warning_issues, removed_link_issues  # type: ignore[no-redef]
     from tree_ops import all_ids, strip_references_to  # type: ignore[no-redef]
@@ -122,6 +128,7 @@ AI_INVALID_JSON = "AI_INVALID_JSON"
 AI_UPDATE_REJECTED = "AI_UPDATE_REJECTED"
 AI_CHANGE_REJECTED = "AI_CHANGE_REJECTED"
 AI_DOCUMENT_CHANGED = "AI_DOCUMENT_CHANGED"
+AI_UPDATE_EXPIRED = "AI_UPDATE_EXPIRED"
 
 #: Says where to go, not just what is wrong. This is the one error a new user
 #: is guaranteed to hit, so it is the one that has to teach.
@@ -311,6 +318,7 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "canRedo": state.can_redo,
         "analysis": copy.deepcopy(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
+        **state.revision_fields(),
     }
 
 
@@ -530,6 +538,8 @@ def delete_conversation():
     """
     _require_configured()
     ai_bridge.get_handler().clear_conversation()
+    # A rewrite waiting for Apply belongs to the conversation that made it.
+    _drop_pending_update()
     return ok_response(cleared=True, changes=[])
 
 
@@ -682,9 +692,117 @@ def post_apply_changes():
 # ---- full-JSON update ----------------------------------------------------
 
 
+#: The one rewrite that has been previewed and not yet applied or discarded:
+#: ``{id, updated, tree, mode, document}``. One slot, because one AI call runs
+#: at a time and a second preview replaces the first. Its own lock: it is
+#: read and written outside the document lock.
+_pending_update: Optional[Dict[str, Any]] = None
+_pending_update_lock = threading.Lock()
+
+
+def _set_pending_update(entry: Optional[Dict[str, Any]]) -> None:
+    global _pending_update
+    with _pending_update_lock:
+        _pending_update = entry
+
+
+def _drop_pending_update(update_id: Optional[str] = None) -> bool:
+    """Forget the waiting rewrite (only the one named, when an id is given).
+    True when one was dropped."""
+    global _pending_update
+    with _pending_update_lock:
+        if _pending_update is None:
+            return False
+        if update_id is not None and _pending_update["id"] != update_id:
+            return False
+        _pending_update = None
+        return True
+
+
+def _take_pending_update(update_id: Any) -> Dict[str, Any]:
+    """Remove and return the waiting rewrite ``update_id`` names; 409
+    ``AI_UPDATE_EXPIRED`` when it is not the one waiting."""
+    global _pending_update
+    with _pending_update_lock:
+        entry = _pending_update
+        if entry is None or not isinstance(update_id, str) or entry["id"] != update_id:
+            raise ApiError(
+                AI_UPDATE_EXPIRED,
+                "That update is no longer waiting: it was applied, discarded "
+                "or replaced by a newer one. Nothing was changed. Run Update "
+                "FTA again.",
+                409,
+            )
+        _pending_update = None
+        return entry
+
+
+class _Scratch:
+    """What :func:`_install_update` needs of the app state, around a core
+    that is not the live document: a preview is worked out on one."""
+
+    def __init__(self, core: Any):
+        self.core = core
+
+    def add_edit_warnings(self, issues: Any) -> None:
+        """A preview raises no notices; the real install will."""
+
+
+def _install_update(target, old_tree: Any, updated: Any) -> Tuple[Any, Dict[str, Any]]:
+    """Put the model's rewrite into ``target.core`` and say what it did.
+
+    ``target`` is the app state (caller holds the lock and has pushed the undo
+    step) or a :class:`_Scratch` for a preview: one function, so the summary a
+    preview shows is worked out exactly as the install it is a preview of.
+    Returns ``(mergedFields, updateSummary)``.
+    """
+    core = target.core
+    # Deep-copied on the way in: set_data stores the reference it is given
+    # (FTA_Editor_core.py:53), and the parsed object is also about to be
+    # walked for the response payload. Normalised exactly as a loaded file
+    # is: the validator accepts anything float() accepts, so a model that
+    # writes "probability": "0.5" would otherwise leave a string in the
+    # tree and node_label's numeric formatting would 500 on /api/dot.
+    new_tree = core._normalize_node(copy.deepcopy(updated))
+    # The model is shown (and returns) only the fields the AI validator
+    # knows, so a rewrite would silently drop every 1.7 key. Restore them
+    # by node id from the tree being replaced, and say how many.
+    merged = merge_back_node_keys(old_tree, new_tree)
+    # A gateType the model kept while changing logicGate is stale: the
+    # AND/OR the model wrote wins (as on load), and the Validation tab
+    # says so.
+    resets = reconcile_gate_types(new_tree, cause="ai")
+    core.set_data(new_tree)
+    if resets:
+        # An edit notice, not a session one: undoing the update removes it.
+        target.add_edit_warnings(load_warning_issues(resets))
+    _strip_references_to_removed(target, old_tree)
+    core.recalculate_probabilities()
+    # Both trees recalculated: a value the engine derives is not a change.
+    summary = ai_bridge.update_summary(old_tree, core.get_data())
+    return merged, summary
+
+
+def _document_changed() -> ApiError:
+    return ApiError(
+        AI_DOCUMENT_CHANGED,
+        "The analysis changed while the AI was writing its update (an "
+        "edit, an undo, or another file opened), so the update was not "
+        "applied and nothing was changed. Run Update FTA again.",
+        409,
+    )
+
+
 @ai_bp.post("/update")
 def post_update():
     """Ask the AI to rewrite the whole tree, then verify it and install it.
+
+    With ``{"preview": true}`` in the body the verified rewrite is **not**
+    installed. The answer says what it would do (``updateSummary``,
+    ``mergedFields``) and carries an ``updateId``; ``POST
+    /api/ai/update/apply`` with that id installs it, ``.../discard`` drops it.
+    The page uses this: one click used to replace the whole tree. Without
+    ``preview`` the call behaves as it always did.
 
     Three outcomes, and the two failures are where the value is:
 
@@ -716,10 +834,18 @@ def post_update():
     and ``changed`` nodes by id and name (see ``ai_bridge.update_summary``).
     """
     _require_configured()
+    preview = _body().get("preview", False)
+    if not isinstance(preview, bool):
+        raise ApiError(
+            INVALID_FIELD, "'preview' must be true or false.", 400,
+            {"field": "preview", "value": preview},
+        )
 
     handler = ai_bridge.get_handler()
     tree, mode, title, document, analysis = _document_snapshot()
     secret = ai_bridge.call_secret()
+    # A new request replaces whatever was waiting from the one before.
+    _drop_pending_update()
 
     with _ai_failures(secret):
         # The handler parses proposals out of this reply too; they are pending
@@ -765,41 +891,35 @@ def post_update():
         )
 
     state = get_state()
+    if preview:
+        with state.lock:
+            if not _unchanged_since(state, tree, mode, document):
+                raise _document_changed()
+        # Worked out on a core of its own, from the copy this request took:
+        # the live document is not touched, and no lock is needed for it.
+        scratch = WebCore()
+        scratch.mode = mode
+        scratch.analysis = copy.deepcopy(analysis)
+        merged, summary = _install_update(_Scratch(scratch), tree, updated)
+        update_id = secrets.token_urlsafe(9)
+        _set_pending_update({
+            "id": update_id, "updated": updated, "tree": tree, "mode": mode,
+            "document": document,
+        })
+        return ok_response(
+            reply=reply,
+            preview=True,
+            updateId=update_id,
+            mergedFields=merged,
+            updateSummary=ai_bridge.scrub_deep(summary, secret),
+        )
+
     with state.lock:
         if not _unchanged_since(state, tree, mode, document):
-            raise ApiError(
-                AI_DOCUMENT_CHANGED,
-                "The analysis changed while the AI was writing its update (an "
-                "edit, an undo, or another file opened), so the update was not "
-                "applied and nothing was changed. Run Update FTA again.",
-                409,
-            )
+            raise _document_changed()
         state.push_undo()
-        # Deep-copied on the way in: set_data stores the reference it is given
-        # (FTA_Editor_core.py:53), and the parsed object is also about to be
-        # walked for the response payload. Normalised exactly as a loaded file
-        # is: the validator accepts anything float() accepts, so a model that
-        # writes "probability": "0.5" would otherwise leave a string in the
-        # tree and node_label's numeric formatting would 500 on /api/dot.
-        new_tree = state.core._normalize_node(copy.deepcopy(updated))
-        # The model is shown (and returns) only the fields the AI validator
-        # knows, so a rewrite would silently drop every 1.7 key. Restore them
-        # by node id from the tree being replaced, and say how many.
-        merged = merge_back_node_keys(state.core.get_data(), new_tree)
-        # A gateType the model kept while changing logicGate is stale: the
-        # AND/OR the model wrote wins (as on load), and the Validation tab
-        # says so.
-        resets = reconcile_gate_types(new_tree, cause="ai")
-        old_tree = state.core.get_data()
-        state.core.set_data(new_tree)
-        if resets:
-            # An edit notice, not a session one: undoing the update removes it.
-            state.add_edit_warnings(load_warning_issues(resets))
-        _strip_references_to_removed(state, old_tree)
-        state.core.recalculate_probabilities()
+        merged, summary = _install_update(state, state.core.get_data(), updated)
         state.mark_dirty()
-        # Both trees recalculated: a value the engine derives is not a change.
-        summary = ai_bridge.update_summary(old_tree, state.core.get_data())
 
         return ok_response(
             reply=reply,
@@ -807,3 +927,44 @@ def post_update():
             updateSummary=ai_bridge.scrub_deep(summary, secret),
             **_mutation_payload(state),
         )
+
+
+@ai_bp.post("/update/apply")
+def post_update_apply():
+    """Install the rewrite a preview showed. Body: ``{id}`` (the preview's
+    ``updateId``).
+
+    The same guard as the one-step update, applied again here: the user had
+    time to edit between the preview and the click, and installing the
+    rewrite of an older tree would undo those edits without a word. Then 409
+    ``AI_DOCUMENT_CHANGED``, nothing is changed and the rewrite is dropped.
+    An id that is not the one waiting is 409 ``AI_UPDATE_EXPIRED``.
+
+    One undo step, as before: Ctrl+Z puts the previous tree back.
+    """
+    _require_configured()
+    entry = _take_pending_update(_body().get("id"))
+    secret = ai_bridge.call_secret()
+    state = get_state()
+    with state.lock:
+        if not _unchanged_since(state, entry["tree"], entry["mode"], entry["document"]):
+            raise _document_changed()
+        state.push_undo()
+        merged, summary = _install_update(state, state.core.get_data(), entry["updated"])
+        state.mark_dirty()
+        return ok_response(
+            mergedFields=merged,
+            updateSummary=ai_bridge.scrub_deep(summary, secret),
+            **_mutation_payload(state),
+        )
+
+
+@ai_bp.post("/update/discard")
+def post_update_discard():
+    """Drop the rewrite a preview showed. Body: ``{id}``, or nothing for
+    whichever is waiting. Never an error: ``discarded`` says whether there
+    was one. Needs no provider, so it works unconfigured."""
+    update_id = _body().get("id")
+    if update_id is not None and not isinstance(update_id, str):
+        raise ApiError(INVALID_FIELD, "'id' must be a string.", 400, {"field": "id"})
+    return ok_response(discarded=_drop_pending_update(update_id))
