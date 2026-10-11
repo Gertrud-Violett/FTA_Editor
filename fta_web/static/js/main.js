@@ -2994,6 +2994,11 @@ function renderShell(state) {
   const badge = $('#dirty');
   badge.dataset.dirty = String(dirty);
   $('#dirty-text').textContent = dirty ? t('status.unsaved') : t('status.saved');
+  // Both wordings, for the two invisible sizers in app.css: the pill is as
+  // wide as the longer one in either state, so the first edit ("Saved" ->
+  // "Unsaved changes") no longer pushed the top bar onto a second row.
+  badge.dataset.saved = t('status.saved');
+  badge.dataset.unsaved = t('status.unsaved');
 
   $('#btn-undo').disabled = !state.canUndo;
   $('#btn-redo').disabled = !state.canRedo;
@@ -3013,9 +3018,24 @@ function renderShell(state) {
   const aiDot = $('#ai-status');
   aiDot.dataset.on = String(Boolean(state.aiConfigured));
 
+  // The file NAME, then its folder. The whole path in 30 characters showed
+  // "K:\Dropbox\NHI\GitHub\FTA_Edi…" for every file in the project; the
+  // name is what tells two of them apart, so it is never the part cut off.
+  const fileName = state.currentPath ? pathBaseName(state.currentPath) : '';
+  const fileDir = state.currentPath ? pathDirName(state.currentPath) || '' : '';
+  $('#statusline-file').textContent = fileName || t('status.noFile');
   const path = $('#statusline-path');
-  path.textContent = state.currentPath || t('status.noFile');
-  path.title = state.currentPath || '';
+  path.textContent = fileDir;
+  path.hidden = !fileDir;
+  const pathTitle = state.currentPath || '';
+  path.title = pathTitle;
+  $('#statusline-file').title = pathTitle;
+
+  // The browser tab: which file, and whether it has unsaved changes, readable
+  // from the tab strip and the task bar with the window in the background.
+  const docName = fileName || t('status.untitled');
+  const tabTitle = (dirty ? '● ' : '') + docName + ' - ' + APP_NAME;
+  if (document.title !== tabTitle) document.title = tabTitle;
 
   // Runs on every state change, so a capability that only arrives with the
   // first /api/state is applied the moment it does.
@@ -3025,6 +3045,9 @@ function renderShell(state) {
 // ---------------------------------------------------------------------------
 // keyboard shortcuts
 // ---------------------------------------------------------------------------
+
+/** The product name, as index.html's <title> has it. Not translated. */
+const APP_NAME = 'FTA Editor';
 
 const NON_TEXT_INPUTS = new Set([
   'checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'range', 'color', 'image',

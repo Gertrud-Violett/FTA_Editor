@@ -138,6 +138,8 @@
         <span aria-hidden="true" id="theme-glyph">&#9680;</span>
       </button>
 
+      <!-- data-saved / data-unsaved (set by main.js renderShell) feed two
+           invisible sizers in app.css, so the pill has one width in both states. -->
       <span class="dirty" id="dirty" data-dirty="false" aria-live="polite">
         <span class="dirty__dot" aria-hidden="true">&#9679;</span>
         <span id="dirty-text" data-i18n="status.saved">Saved</span>
@@ -316,6 +318,8 @@
             title="Download the diagram as a PNG image">Render</button>
 
     <div class="statusline">
+      <!-- The file name, never cut off, then its folder, which may be. -->
+      <span class="statusline__file" id="statusline-file"></span>
       <span class="statusline__path" id="statusline-path"></span>
       <span class="statusline__msg" id="statusline-msg" role="status" aria-live="polite"></span>
     </div>
