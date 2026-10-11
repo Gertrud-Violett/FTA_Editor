@@ -31,7 +31,11 @@
  * BACKEND (fta_web/routes/ai.py)
  *   POST   /api/ai/chat            {message} -> {reply, changes:[...]}
  *   POST   /api/ai/analyze         -> {reply}          (never mutates)
- *   POST   /api/ai/update          -> generate, verify, apply
+ *   POST   /api/ai/update          -> generate and verify; with {preview:
+ *                                     true} (what this panel sends) nothing
+ *                                     is applied and the answer is a summary
+ *   POST   /api/ai/update/apply    -> install the previewed rewrite
+ *   POST   /api/ai/update/discard  -> drop it
  *   POST   /api/ai/changes/apply   {indices:[...]}
  *   DELETE /api/ai/conversation    clear the history
  * Any of them answers 400 AI_NOT_CONFIGURED while no key is stored.
@@ -41,7 +45,7 @@
  */
 import { api, ApiError } from './api.js';
 import { store } from './store.js';
-import { clear, el } from './dialogs.js';
+import { choiceDialog, clear, el } from './dialogs.js';
 import { renderMarkdown } from './markdown.js';
 
 /* ------------------------------------------------------------- shell glue -- */
@@ -190,6 +194,19 @@ function updateSummaryMessage(summary) {
   return { key, vars };
 }
 
+/** A preview names at most this many nodes per line, then says how many more. */
+const PREVIEW_NAMES = 12;
+
+/** "A, B, C … and 4 more" from a list of {id, name}, for the preview card. */
+function previewNames(list) {
+  const names = (Array.isArray(list) ? list : [])
+    .map((entry) => String((entry && (entry.name || entry.id)) || '').trim())
+    .filter(Boolean)
+    .map((name) => (name.length > SUMMARY_NAME_CHARS ? name.slice(0, SUMMARY_NAME_CHARS - 1) + '…' : name));
+  if (names.length <= PREVIEW_NAMES) return names.join(', ');
+  return names.slice(0, PREVIEW_NAMES).join(', ') + ' ' + t('ai.update.more', { n: names.length - PREVIEW_NAMES });
+}
+
 /* ------------------------------------------------------------ the panel ---- */
 
 const ROLE_KEY = {
@@ -289,6 +306,7 @@ export function initChat(host) {
   let welcomed = false;
   let lastConfigured = undefined;
   let openChanges = null; // the newest, still-applicable suggestion card
+  let openUpdate = null; // the Update FTA preview still waiting for Apply or Discard
   let markdownOn = readMarkdownPref();
 
   /* ---- labels (re-applied on every EN/JA switch) ---- */
@@ -741,6 +759,104 @@ export function initChat(host) {
     }
   }
 
+  /* ---- Update FTA: what it would do, then Apply or Discard ---- */
+
+  /** Freeze a preview card so it can no longer be applied, and say why. */
+  function retireUpdate(handle, message) {
+    handle.card.dataset.retired = 'true';
+    for (const button of handle.buttons) button.disabled = true;
+    handle.status.textContent = message;
+    if (openUpdate === handle) openUpdate = null;
+  }
+
+  /** Tell the server to forget a preview. Nothing depends on the answer. */
+  function forgetUpdate(handle) {
+    api.post('/ai/update/discard', { id: handle.id }).catch(() => {});
+  }
+
+  /**
+   * The answer to a preview request: what the rewrite adds, changes and
+   * removes, by name, with Apply and Discard. The tree is untouched until
+   * Apply. One click on Update FTA used to replace the whole tree, and the
+   * summary came after the fact.
+   */
+  function renderUpdatePreview(result) {
+    const summary = (result && result.updateSummary) || {};
+    const lines = [
+      ['added', 'ai.update.lineAdded'],
+      ['changed', 'ai.update.lineChanged'],
+      ['removed', 'ai.update.lineRemoved'],
+    ].filter(([key]) => Array.isArray(summary[key]) && summary[key].length);
+    const id = result && typeof result.updateId === 'string' ? result.updateId : null;
+
+    if (openUpdate) retireUpdate(openUpdate, t('ai.update.superseded'));
+    if (!lines.length || !id) {
+      // The model handed the tree back as it was: nothing to decide.
+      if (id) api.post('/ai/update/discard', { id }).catch(() => {});
+      say('system', 'ai.update.nothing');
+      return;
+    }
+
+    const list = el('ul', { class: 'chat-changes__list' });
+    for (const [key, label] of lines) {
+      list.appendChild(el('li', {
+        class: 'chat-changes__item chat-update__line',
+        dataset: { kind: key },
+        text: t(label, { n: summary[key].length, names: previewNames(summary[key]) }),
+      }));
+    }
+    const status = el('p', { class: 'chat-changes__status', role: 'status', 'aria-live': 'polite' });
+    const applyBtn = el('button', {
+      type: 'button', class: 'btn btn--primary', dataset: { role: 'apply-update' }, text: t('ai.update.apply'),
+    });
+    const discardBtn = el('button', {
+      type: 'button', class: 'btn', dataset: { role: 'discard-update' }, text: t('ai.update.discard'),
+    });
+    const card = el('section', { class: 'chat-changes chat-update' }, [
+      el('h3', { class: 'chat-changes__title', text: t('ai.update.previewTitle') }),
+      el('p', { class: 'chat-changes__hint', text: t('ai.update.previewHint') }),
+      list,
+      el('div', { class: 'chat-changes__foot' }, [applyBtn, discardBtn]),
+      status,
+    ]);
+    const handle = { id, card, status, buttons: [applyBtn, discardBtn] };
+    applyBtn.addEventListener('click', () => applyUpdate(handle));
+    discardBtn.addEventListener('click', () => {
+      forgetUpdate(handle);
+      retireUpdate(handle, t('ai.update.discardedStatus'));
+      say('system', 'ai.update.discarded');
+    });
+    openUpdate = handle;
+    log.appendChild(card);
+    scrollToEnd();
+  }
+
+  async function applyUpdate(handle) {
+    if (busy) {
+      handle.status.textContent = t('ai.msg.busy');
+      return;
+    }
+    setBusy(true, t('ai.update.applying'));
+    handle.status.textContent = t('ai.update.applying');
+    try {
+      const result = await api.post('/ai/update/apply', { id: handle.id });
+      if (destroyed) return;
+      await refreshDocument(result);
+      retireUpdate(handle, t('ai.update.appliedStatus'));
+      const summary = updateSummaryMessage(result && result.updateSummary);
+      if (summary) say('system', summary.key, summary.vars);
+      else say('system', 'ai.msg.updated');
+    } catch (err) {
+      if (destroyed) return;
+      // Refused (the tree was edited since the preview, or the preview is
+      // gone): the server has dropped it, so the card cannot be tried again.
+      retireUpdate(handle, t('ai.update.notApplied'));
+      handleError(err);
+    } finally {
+      if (!destroyed) setBusy(false);
+    }
+  }
+
   /* ---- the four actions ---- */
 
   /**
@@ -808,18 +924,36 @@ export function initChat(host) {
     });
   }
 
+  /**
+   * Asked first, then previewed. The request sends the whole tree to the AI
+   * provider and can take a minute, so one stray click should not start it;
+   * and its answer is shown as a summary to accept or refuse (see
+   * renderUpdatePreview), not installed.
+   */
   function actionUpdate() {
     if (blocked()) return;
-    say('user', 'ai.msg.updatePrompt');
-    run(t('ai.msg.updating'), async () => {
-      const result = await api.post('/ai/update', {});
-      if (destroyed) return;
-      const reply = replyFrom(result);
-      if (reply) addMessage('assistant', reply, { reply: true });
-      await refreshDocument(result);
-      const summary = updateSummaryMessage(result && result.updateSummary);
-      if (summary) say('system', summary.key, summary.vars);
-      else say('system', 'ai.msg.updated');
+    choiceDialog(t('ai.update.confirm'), {
+      title: t('ai.update.confirmTitle'),
+      cancelValue: false,
+      buttons: [{ value: true, role: 'ask', label: t('ai.update.confirmOk'), primary: true, focus: true }],
+    }).then((go) => {
+      if (!go || destroyed || blocked()) return;
+      say('user', 'ai.msg.updatePrompt');
+      run(t('ai.msg.updating'), async () => {
+        const result = await api.post('/ai/update', { preview: true });
+        if (destroyed) return;
+        const reply = replyFrom(result);
+        if (reply) addMessage('assistant', reply, { reply: true });
+        if (result && result.preview) {
+          renderUpdatePreview(result);
+          return;
+        }
+        // A server that applied at once (one older than the preview flag).
+        await refreshDocument(result);
+        const summary = updateSummaryMessage(result && result.updateSummary);
+        if (summary) say('system', summary.key, summary.vars);
+        else say('system', 'ai.msg.updated');
+      });
     });
   }
 
@@ -845,6 +979,7 @@ export function initChat(host) {
     if (destroyed) return;
     clear(log);
     openChanges = null;
+    openUpdate = null; // DELETE /api/ai/conversation dropped it on the server
     welcomed = false;
     greet();
     if (failure) handleError(failure);
@@ -896,6 +1031,15 @@ export function initChat(host) {
   };
   window.addEventListener('fta:language', onLanguage);
 
+  // New / Open: a preview made for the previous document cannot be applied
+  // to this one (the server would refuse it), so the card says so now.
+  const onDocument = () => {
+    if (!openUpdate) return;
+    forgetUpdate(openUpdate);
+    retireUpdate(openUpdate, t('ai.update.otherDocument'));
+  };
+  window.addEventListener('fta:document', onDocument);
+
   applyLabels();
   const unsubscribe = store.subscribe(render);
   render();
@@ -906,6 +1050,7 @@ export function initChat(host) {
       destroyed = true;
       if (typeof unsubscribe === 'function') unsubscribe();
       window.removeEventListener('fta:language', onLanguage);
+      window.removeEventListener('fta:document', onDocument);
       clear(host);
     },
   };
