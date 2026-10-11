@@ -460,6 +460,10 @@ const STRINGS = {
       'Ask for an updated fault tree. It is verified before it replaces this one.',
     'ai.chat.clear': 'Clear Chat',
     'ai.chat.clearTitle': 'Forget this conversation, here and on the server.',
+    'ai.chat.markdown': 'MD',
+    'ai.chat.markdownLabel': 'Show replies as formatted Markdown',
+    'ai.chat.markdownOnTitle': 'Replies are shown as formatted Markdown. Click for the raw text.',
+    'ai.chat.markdownOffTitle': 'Replies are shown as raw text. Click for formatted Markdown.',
 
     'ai.role.user': 'You',
     'ai.role.assistant': 'Assistant',
@@ -894,6 +898,10 @@ const STRINGS = {
       '更新版のフォールトツリーを依頼します。置き換える前に検証されます。',
     'ai.chat.clear': '会話を消去',
     'ai.chat.clearTitle': 'この会話を画面とサーバーの両方から消去します。',
+    'ai.chat.markdown': 'MD',
+    'ai.chat.markdownLabel': '回答をMarkdownで整形して表示',
+    'ai.chat.markdownOnTitle': '回答をMarkdownで整形して表示しています。クリックすると元のテキストを表示します。',
+    'ai.chat.markdownOffTitle': '回答を元のテキストのまま表示しています。クリックするとMarkdownで整形します。',
 
     'ai.role.user': 'あなた',
     'ai.role.assistant': 'アシスタント',

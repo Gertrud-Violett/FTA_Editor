@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **AI assistant: replies are shown as formatted Markdown, with a switch to
+  the raw text.** A reply's headings, lists, tables, code and bold were shown
+  as the characters the model typed (`## Review`, `**0.0684**`, `| A | B |`).
+  They are now drawn as what they mean. The **MD** button beside Clear Chat
+  switches every reply in the conversation between the formatted view and
+  the raw text; the choice is remembered in the browser (`fta.aiMarkdown`,
+  on by default).
+  - Only the model's replies are formatted. What you typed and what the
+    editor says stay plain.
+  - The renderer is the editor's own (`static/js/markdown.js`, no new
+    dependency). It builds elements and text nodes and never HTML, so HTML
+    in a reply is shown as text. A link is made for http, https and mailto
+    only, and opens in a new tab.
+  - Emphasis never opens inside a Latin word or a number: `root_0_0` and
+    `0.5*0.5*0.28` keep every character. Japanese needs no spaces around
+    `**`.
+  - Tests: `fta_web/tests/test_ai_markdown.py`.
+
 ## [1.7.3] - 2026-10-11
 
 Three fixes around trees with repeated events and the AI assistant. Each was

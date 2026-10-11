@@ -295,6 +295,13 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 
 ### Features
 
+**Formatted replies (MD)**: the assistant's replies are shown as formatted
+Markdown: headings, lists, tables, code and bold. The **MD** button beside
+**Clear Chat** switches every reply between that view and the raw text the
+model sent; use the raw text to copy a reply exactly. The choice is remembered
+in this browser. Only the assistant's replies are formatted. HTML in a reply
+is shown as text, and links are made for http, https and mailto only.
+
 **Quick Actions**:
 - **Analyze FTA**: Posts analysis and suggestions to chat only (no changes applied).
 - **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed (the first five of each). One Ctrl+Z undoes the whole update, so review the tree before saving. Detailed error logs are shown if the AI output is invalid.
