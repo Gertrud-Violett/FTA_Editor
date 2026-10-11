@@ -25,13 +25,18 @@
  *
  * CONTRACT
  * ========
- *   openFileDialog({mode, startDir?, filename?, extensions?, title?})
+ *   openFileDialog({mode, startDir?, filename?, extensions?, title?, sources?})
  *       mode        'open' | 'save'
  *       startDir    directory to open in; falls back to /api/fs/home
  *       filename    save mode: the name the box starts with
  *       extensions  ['.json'] by default; folders plus these are listed
  *       title       overrides the default heading
- *     -> Promise<string|null>   an absolute path, or null if cancelled.
+ *       sources     [{id, label, title?}]: other places to open from, as
+ *                   buttons at the left of the footer (the bundled
+ *                   examples, a file on this computer). Choosing one
+ *                   resolves {source: id} instead of a path.
+ *     -> Promise<string|{source: string}|null>   an absolute path, a
+ *        source, or null if cancelled.
  *
  * Nothing here talks to the store or writes a file. It answers one question --
  * "which path?" -- and the caller does the rest, so the same dialog serves
@@ -180,8 +185,21 @@ function formatModified(value) {
 
 /* ------------------------------------------------------------------ errors -- */
 
-/** The server's own words when there are any; otherwise something honest. */
-function errorText(err, fallbackKey) {
+/**
+ * The server's own words when there are any; otherwise something honest.
+ *
+ * One refusal is worded here instead: a path outside the folder the editor
+ * may use. The server names that folder and the command that starts the
+ * editor on another one (detail.root, detail.relaunch); the sentence around
+ * them is in the catalog, so it is in the editor's language. `sources` adds
+ * the way round that needs no restart, when this dialog offers one.
+ */
+function errorText(err, fallbackKey, sources) {
+  const detail = err && err.detail && typeof err.detail === 'object' ? err.detail : {};
+  if (err && err.code === 'PATH_REJECTED' && detail.reason === 'outside_root' && detail.relaunch) {
+    const text = t('file.errOutsideRoot', { root: detail.root || '', command: detail.relaunch });
+    return sources ? text + ' ' + t('file.errOutsideRootImport') : text;
+  }
   if (err && typeof err.message === 'string' && err.message) return err.message;
   return t(fallbackKey);
 }
@@ -252,6 +270,9 @@ export function openFileDialog(options) {
   const mode = opts.mode === 'save' ? 'save' : 'open';
   const extensions = normaliseExtensions(opts.extensions);
   const extensionLabel = extensions.join(', ');
+  const sources = (Array.isArray(opts.sources) ? opts.sources : []).filter((s) => s && s.id && s.label);
+  // Whether a refusal can point at "A file on this computer".
+  const canImport = sources.some((s) => s.id === 'import');
 
   const trigger = document.activeElement;
 
@@ -357,7 +378,23 @@ export function openFileDialog(options) {
     message,
   ]);
 
-  const footer = el('div', { class: 'fta-modal-footer' }, [cancelButton, acceptButton]);
+  // The other places a document can come from. Each closes this dialog and
+  // hands its id back; the caller opens what belongs to it.
+  const sourceButtons = sources.map((source) =>
+    el('button', {
+      type: 'button',
+      class: 'fta-btn',
+      dataset: { source: String(source.id) },
+      text: String(source.label),
+      title: source.title ? String(source.title) : null,
+      onclick: () => close({ source: String(source.id) }),
+    })
+  );
+  const footer = el('div', { class: 'fta-modal-footer' }, [
+    sourceButtons.length ? el('div', { class: 'fdlg-sources' }, sourceButtons) : null,
+    cancelButton,
+    acceptButton,
+  ]);
 
   const dialog = el(
     'div',
@@ -574,7 +611,7 @@ export function openFileDialog(options) {
         // PATH_REJECTED lands here, and it is not a crash: the sandbox
         // refused a directory. Say what the server said and leave the
         // dialog open.
-        setMessage(errorText(err, 'file.errList'), 'error');
+        setMessage(errorText(err, 'file.errList', canImport), 'error');
       }
       return false;
     } finally {
@@ -621,7 +658,7 @@ export function openFileDialog(options) {
     const isFileNotDir =
       err && err.code === 'PATH_REJECTED' && err.detail && err.detail.reason === 'not_a_directory';
     if (!isFileNotDir) {
-      setMessage(errorText(err, 'file.errList'), 'error');
+      setMessage(errorText(err, 'file.errList', canImport), 'error');
       pathInput.focus();
       return;
     }
@@ -967,6 +1004,9 @@ export function openFileDialog(options) {
 
 const STYLES = `
 .fta-filedialog { width: min(44rem, 100%); }
+/* "Open an example", "A file on this computer": at the left, away from the
+   two buttons that answer the dialog. */
+.fta-filedialog .fdlg-sources { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-right: auto; }
 .fta-filedialog .fdlg-body { gap: 0.5rem; }
 
 .fdlg-toolbar { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }

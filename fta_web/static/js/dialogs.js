@@ -395,8 +395,24 @@ const CHROME_CSS = `
 .fta-modal.is-small { width: min(28rem, 100%); }
 .fta-modal-title { margin: 0; font-size: 1.05rem; }
 .fta-modal-body { overflow: auto; display: flex; flex-direction: column; gap: 0.6rem; }
-.fta-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.fta-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap; }
 .fta-modal-message { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.fta-modal-details { margin: 0; padding-left: 1.2rem; line-height: 1.45; overflow-wrap: anywhere; }
+/* A button that throws work away, beside one that keeps it. */
+.fta-btn.is-danger { color: var(--fta-danger-fg); border-color: var(--fta-danger-border); }
+.fta-btn.is-danger:hover { background: var(--fta-danger-bg); }
+/* choiceList: one row per thing to pick. */
+.fta-choice-list { display: flex; flex-direction: column; gap: 0.3rem; margin: 0; padding: 0; list-style: none; }
+.fta-choice {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
+  width: 100%; padding: 0.45rem 0.6rem; text-align: left;
+  border: 1px solid var(--fta-border); border-radius: var(--fta-radius);
+  background: var(--fta-surface); color: var(--fta-fg); font: inherit; cursor: pointer;
+}
+.fta-choice:hover { border-color: var(--fta-accent); background: var(--fta-surface-hover); }
+.fta-choice:focus-visible { outline: 2px solid var(--fta-focus-ring); outline-offset: 1px; }
+.fta-choice__label { font-weight: 600; overflow-wrap: anywhere; }
+.fta-choice__note { font-size: 0.8rem; color: var(--fta-muted-fg); overflow-wrap: anywhere; }
 
 .fta-btn {
   padding: 0.35rem 0.8rem;
@@ -1164,6 +1180,118 @@ export function confirmDialog(message, options) {
   else confirm.focus();
 
   return modal.done.then((value) => value === true);
+}
+
+/**
+ * A question with more than two answers. Resolves with the `value` of the
+ * button pressed; Cancel and Escape resolve `cancelValue` (null by default).
+ *
+ *   choiceDialog(message, {
+ *     title, cancelLabel, cancelValue,
+ *     details: ['line', ...],          // a list under the message
+ *     buttons: [{value, label, role?, primary?, danger?, focus?}],
+ *   })
+ *
+ * Cancel comes first and the buttons follow in the order given. The one
+ * marked `focus` opens with the focus (Cancel when none is), so Enter does
+ * that and nothing else: the unsaved-changes prompts put it on "Save and
+ * continue", where a stray Enter keeps the work. Each button carries
+ * data-role (`role`, else its value) so a test can name it.
+ */
+export function choiceDialog(message, options) {
+  const opts = options || {};
+  const cancelValue = opts.cancelValue === undefined ? null : opts.cancelValue;
+  const modal = createModal({
+    title: opts.title || t('dialog.confirmTitle'),
+    small: !opts.wide,
+    cancelValue: cancelValue,
+  });
+  modal.dialog.dataset.kind = 'choice';
+
+  modal.body.appendChild(el('p', { class: 'fta-modal-message', text: String(message) }));
+  const details = Array.isArray(opts.details) ? opts.details.filter(Boolean) : [];
+  if (details.length) {
+    modal.body.appendChild(
+      el('ul', { class: 'fta-modal-details' }, details.map((line) => el('li', { text: String(line) })))
+    );
+  }
+
+  const cancel = el('button', {
+    type: 'button',
+    class: 'fta-btn',
+    dataset: { role: 'cancel' },
+    text: opts.cancelLabel || t('dialog.cancel'),
+    onclick: () => modal.close(cancelValue),
+  });
+  modal.footer.appendChild(cancel);
+  let first = cancel;
+  for (const spec of Array.isArray(opts.buttons) ? opts.buttons : []) {
+    const button = el('button', {
+      type: 'button',
+      class: 'fta-btn' + (spec.primary ? ' is-primary' : '') + (spec.danger ? ' is-danger' : ''),
+      dataset: { role: String(spec.role || spec.value) },
+      text: String(spec.label),
+      onclick: () => modal.close(spec.value),
+    });
+    modal.footer.appendChild(button);
+    if (spec.focus) first = button;
+  }
+  first.focus();
+  return modal.done;
+}
+
+/**
+ * Pick one of a list. Resolves with the chosen item's `value`, or null for
+ * Cancel and Escape.
+ *
+ *   choiceList({title, message, empty, items: [{value, label, note?}]})
+ *
+ * Arrow keys move between the rows; Enter and Space choose (they are
+ * buttons).
+ */
+export function choiceList(options) {
+  const opts = options || {};
+  const items = Array.isArray(opts.items) ? opts.items : [];
+  const modal = createModal({ title: opts.title || t('dialog.title'), small: false, cancelValue: null });
+  modal.dialog.dataset.kind = 'list';
+
+  if (opts.message) modal.body.appendChild(el('p', { class: 'fta-modal-message', text: String(opts.message) }));
+  const rows = items.map((item) =>
+    el('button', {
+      type: 'button',
+      class: 'fta-choice',
+      dataset: { value: String(item.value) },
+      onclick: () => modal.close(item.value),
+    }, [
+      el('span', { class: 'fta-choice__label', text: String(item.label) }),
+      item.note ? el('span', { class: 'fta-choice__note', text: String(item.note) }) : null,
+    ])
+  );
+  if (rows.length) {
+    const list = el('ul', { class: 'fta-choice-list' }, rows.map((row) => el('li', null, [row])));
+    list.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      const at = rows.indexOf(document.activeElement);
+      if (at < 0) return;
+      event.preventDefault();
+      const next = rows[Math.min(rows.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))];
+      next.focus();
+    });
+    modal.body.appendChild(list);
+  } else if (opts.empty) {
+    modal.body.appendChild(el('p', { class: 'fta-modal-message', text: String(opts.empty) }));
+  }
+
+  const cancel = el('button', {
+    type: 'button',
+    class: 'fta-btn',
+    dataset: { role: 'cancel' },
+    text: opts.cancelLabel || t('dialog.cancel'),
+    onclick: () => modal.close(null),
+  });
+  modal.footer.appendChild(cancel);
+  (rows[0] || cancel).focus();
+  return modal.done;
 }
 
 /* ------------------------------------------------- numeric field focusing ---- */

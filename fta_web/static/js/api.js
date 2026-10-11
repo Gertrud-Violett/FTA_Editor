@@ -15,6 +15,10 @@
  *   api.download(method, path, body)  -> {blob, filename, contentType}
  *                                    for binary responses (DOCX, XLSX...);
  *                                    filename from Content-Disposition.
+ *   api.upload(path, file, field?)   POST one File/Blob as multipart
+ *                                    (POST /api/import/json).
+ *   pendingWrites()                  how many POST/PATCH/DELETE calls are on
+ *                                    the wire right now.
  *
  * Every method resolves to the UNWRAPPED payload: the server's
  * `{"ok": true, ...}` body with the `ok` key removed. So
@@ -255,15 +259,41 @@ function buildInit(method, body, accept) {
   return init;
 }
 
+/** Fired on window when a request could not reach the server at all. */
+export const SERVER_UNREACHABLE_EVENT = 'fta:server-unreachable';
+
+/**
+ * Requests that change something (everything but GET) and have not been
+ * answered yet. main.js reads it before it replaces the document with the
+ * server's copy: an edit on the wire is about to answer with a newer one.
+ */
+let writesInFlight = 0;
+
+export function pendingWrites() {
+  return writesInFlight;
+}
+
 async function send(method, url, init) {
+  const writes = String(method).toUpperCase() !== 'GET';
+  if (writes) writesInFlight += 1;
   try {
     return await fetch(url, init);
   } catch (cause) {
+    // The shell shows a banner that stays up, with a way to download the
+    // document this tab still holds (main.js). A toast alone was gone in ten
+    // seconds and offered nothing.
+    try {
+      window.dispatchEvent(new CustomEvent(SERVER_UNREACHABLE_EVENT, { detail: { method, path: url } }));
+    } catch (_err) {
+      /* no window (tests) */
+    }
     throw new ApiError(
       'NETWORK_ERROR',
       message('api.network', 'Could not reach the editor server. It may have been stopped in the terminal.'),
       { method, path: url, cause: String(cause && cause.message ? cause.message : cause) }
     );
+  } finally {
+    if (writes) writesInFlight -= 1;
   }
 }
 
@@ -298,8 +328,26 @@ function envelopeError(response, payload) {
 async function request(method, path, body) {
   const url = toApiPath(path);
   const init = buildInit(method, body, 'application/json');
-  const response = await send(method, url, init);
+  return readEnvelope(method, url, await send(method, url, init));
+}
 
+/**
+ * POST one file as multipart/form-data and read the JSON answer.
+ *
+ * The body is a FormData, so the browser writes the Content-Type itself
+ * (it carries the multipart boundary); buildInit() is asked for a request
+ * with no body and the form is attached afterwards.
+ */
+async function upload(path, file, field) {
+  const url = toApiPath(path);
+  const init = buildInit('POST', undefined, 'application/json');
+  const form = new FormData();
+  form.append(field || 'file', file, file && file.name ? file.name : 'upload.json');
+  init.body = form;
+  return readEnvelope('POST', url, await send('POST', url, init));
+}
+
+async function readEnvelope(method, url, response) {
   const text = await response.text().catch(() => '');
   const payload = parseJson(text);
 
@@ -404,6 +452,10 @@ export const api = {
    */
   download(method, path, body) {
     return download(method, path, body);
+  },
+  /** POST a File/Blob as multipart. @returns {Promise<object>} the payload. */
+  upload(path, file, field) {
+    return upload(path, file, field);
   },
 };
 
