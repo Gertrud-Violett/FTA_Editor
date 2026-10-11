@@ -3231,6 +3231,10 @@ async function boot() {
   }
 
   store.setState(state);
+  // Start with the top event selected, as New and Open do. With nothing
+  // selected the Details panel was empty and Add, Edit and Delete each had to
+  // explain that there was nothing to act on.
+  if (!store.selectedId) store.select(rootId());
 
   // Subscribing after setState is safe: store.subscribe fires immediately with
   // the current state, so the shell paints once here and on every change after.
