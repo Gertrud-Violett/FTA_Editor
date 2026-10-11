@@ -1128,7 +1128,11 @@ def _file_dialog_start(scenario):
     """Run the dialog's own start-up, listing and typed-path code against a
     server that answers one request at a time, with the user acting in between."""
     src = _read(STATIC / "filedialog.js")
-    starts = ["function setBusy(next)", "async function navigate(target, quiet)",
+    # separatorFor / joinPath / isAbsolutePath: a typed relative path is read
+    # against the folder on screen, with the module's own path helpers.
+    starts = ["function separatorFor(dir)", "function joinPath(dir, name)",
+              "function isAbsolutePath(path)",
+              "function setBusy(next)", "async function navigate(target, quiet)",
               "async function goToPath(raw)"]
     if "function flushPendingPath()" in src:
         starts.append("function flushPendingPath()")

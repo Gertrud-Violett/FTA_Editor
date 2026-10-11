@@ -31,6 +31,9 @@ Applied in this order by :func:`resolve_in_root`:
    message.
 
 3. **A relative path is joined to the root, never to the process CWD.**
+   (A leading ``~`` -- ``~`` or ``~/x``, as typed into the picker's path
+   box -- is expanded to the home folder first. It is then an absolute path
+   like any other and step 4 confines it.)
    ``Path("sub/x.json").resolve()`` silently resolves against whatever
    directory the server happens to have been started in, which is not a
    sandbox at all. Joining to the root makes a relative path mean what the
@@ -201,6 +204,18 @@ def resolve_in_root(raw: Any, root: Path) -> Path:
             % root,
             reason="traversal",
         )
+
+    # "~" and "~/x" name the home folder, as a shell or a file manager's
+    # address bar reads them. Only the bare forms: "~name" stays a file name.
+    # Nothing is granted by this: rule 4 confines the expanded path exactly
+    # as it does one typed out in full.
+    if text == "~" or text[:2] in ("~/", "~\\"):
+        try:
+            text = str(Path.home() / text[2:].lstrip("/\\"))
+        except (RuntimeError, OSError) as exc:  # no home directory is known
+            raise PathRejected(
+                "That path could not be resolved.", reason="unresolvable"
+            ) from exc
 
     # Rule 3: relative means relative to the root, never to the server's CWD.
     candidate = Path(text)
