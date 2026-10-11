@@ -33,7 +33,8 @@ function rootShowsHeadline(summary, mode) {
 }
 
 /**
- * Parse the numbers a diagram label shows. compact: P / P_calc; symbols: q / Q.
+ * Parse the numbers a diagram label shows. compact: P / P_calc; symbols: Q on a
+ * gate, q on an event (q and Q only where an event's two values differ).
  * On a root that shows the headline, `calc` is the headline, `mcub` is true
  * and `walk` is the tree-walk value printed beside it.
  */
@@ -50,7 +51,12 @@ function labelNumbers(texts) {
   m = /(?:^|[\s|])Q=\s*([^\s|]+)/.exec(joined);
   if (m) out.calc = m[1];
   m = /(?:^|[\s|])q=\s*([^\s|]+)/.exec(joined);
-  if (m) out.base = m[1];
+  if (m) {
+    out.base = m[1];
+    // symbols: an event whose calculated value is its own shows "q=" alone
+    // (the box used to say "q=0.01 | Q=0.01"). That one number is both.
+    if (out.calc === undefined) out.calc = m[1];
+  }
   return out;
 }
 

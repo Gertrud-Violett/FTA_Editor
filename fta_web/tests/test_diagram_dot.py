@@ -22,7 +22,7 @@ import pytest
 from FTA_Editor_core import FTACore  # noqa: E402  (conftest puts core on sys.path)
 from json_viewer import sanitize_id  # noqa: E402
 
-from fta_web.diagram_dot import GATE_SHAPES, EVENT_SHAPES, build_dot_text2
+from fta_web.diagram_dot import COMPACT_META_PT, GATE_SHAPES, EVENT_SHAPES, build_dot_text2
 from fta_web.engine import WebCore
 from fta_web.rendering import build_dot_text
 
@@ -121,9 +121,9 @@ def _without_leaf_gate_text(dot, leaf_names):
 
 
 def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
-    """Apart from the sig-fig probabilities, the padding and -- deliberately,
-    since 1.7.1 -- the gate text on leaf events (a leaf has no gate; 1.6
-    showed its default "Gate: OR")."""
+    """Apart from the sig-fig probabilities, the padding, the size of the
+    meta row's type and -- deliberately, since 1.7.1 -- the gate text on leaf
+    events (a leaf has no gate; 1.6 showed its default "Gate: OR")."""
     old = build_dot_text(legacy)
     new, _ = build_dot_text2(legacy, sig_figs=2)
     strip = re.compile(r"P:[^ |<]+ \| P_calc:[^ <]+")
@@ -135,6 +135,14 @@ def test_compact_legacy_is_identical_apart_from_the_probability_text(legacy):
 
     leaves = {sanitize_id(n["id"]) for n in legacy.get_data()["children"][0:1]
               + legacy.get_data()["children"][1]["children"]}
+    # The meta row's type size, and the row height that follows from it, grew
+    # on purpose (9 pt -> COMPACT_META_PT: it was about 4 px in a fitted
+    # diagram). Exactly one such row per node, and nothing else differs.
+    meta_16 = '<TD HEIGHT="18"><FONT POINT-SIZE="9">'
+    meta_now = '<TD HEIGHT="%d"><FONT POINT-SIZE="%d">' % (
+        round(COMPACT_META_PT * 2.0), COMPACT_META_PT)
+    assert new.count(meta_now) == old.count(meta_16) == len(_node_names(old))
+    new = new.replace(meta_now, meta_16)
     assert unpad(strip.sub("P", new)) == unpad(strip.sub("P", _without_leaf_gate_text(old, leaves)))
 
 
@@ -160,8 +168,9 @@ def test_padding_is_proportional_and_split_evenly_around_the_text(legacy):
     """Each row: box-scale spaces + one per two characters, centred."""
     for scale in (0, 4, 8):
         dot, _ = build_dot_text2(legacy, sig_figs=3, scale=scale)
-        rows = re.findall(r'POINT-SIZE="(?:9|12|14)">( *)([^<]*?)( *)</FONT>', dot)
-        assert rows
+        rows = re.findall(r'POINT-SIZE="\d+">( *)([^<]*?)( *)</FONT>', dot)
+        # every row of every label: the name and the meta row of each node
+        assert len(rows) == 2 * len(_node_names(dot))
         for lead, text, trail in rows:
             total = len(lead) + len(trail)
             plain = html.unescape(text)
