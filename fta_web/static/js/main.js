@@ -1119,6 +1119,7 @@ function registerStrings(table) {
  */
 const CATALOGS = [
   './i18n/shell17.js',
+  './i18n/ux1.js',
   './i18n/val.js',
   './i18n/gate.js',
   './i18n/diagram.js',
@@ -2101,9 +2102,41 @@ async function actionNew() {
   }
 }
 
+/**
+ * A node that has no children is about to get its first (Add here; a move or
+ * a drag in tree.js, through ftaShell.firstChildWarning). In FTA mode a node
+ * with children is calculated from them and its own probability is no longer
+ * used. A value somebody typed must not go quiet without a word; exactly 1 is
+ * the untouched default and is not worth a warning.
+ *
+ * Call it BEFORE the change, with the parent as it still is. The answer is
+ * the warning to show once the change went through, or null.
+ *
+ * @returns {(() => void)|null}
+ */
+function firstChildWarning(parentId) {
+  if (isEtaMode()) return null; // an event tree uses every node's probability
+  const parent = store.findNode(parentId);
+  if (!parent || (Array.isArray(parent.children) && parent.children.length)) return null;
+  const own = Number(parent.probability);
+  if (!Number.isFinite(own) || own === 1) return null;
+  const message = t('msg.firstChild', {
+    name: parent.name ? String(parent.name) : String(parentId),
+    p: formatProb(own, getSigFigs()),
+  });
+  return () => toast(message, 'warn', null, showInValidation());
+}
+
+/** Show a node just made: tree.js opens the way to its row and tints it. */
+function revealNode(id) {
+  if (id === null || id === undefined || id === '') return;
+  window.dispatchEvent(new CustomEvent('fta:reveal', { detail: { id: String(id) } }));
+}
+
 async function actionAdd() {
-  // The new node goes under the selected one. With nothing selected (after
-  // New, Load or a reload) it goes under the top event, and the dialog says so.
+  // The new node goes under the selected one. With nothing selected (rare,
+  // now that the top event is selected at start-up) it goes under the top
+  // event, and the dialog says so.
   const noSelection = !store.selectedId;
   const parentId = store.selectedId || rootId();
   const parentNode = store.findNode(parentId);
@@ -2118,19 +2151,50 @@ async function actionAdd() {
       // without the hook hands the fields back to be posted here. The store
       // is updated only once the dialog is gone, so its focus restore still
       // lands on the row that opened it.
+      //
+      // The PARENT stays selected. Selecting the new node made the next Add
+      // nest under it, so three siblings took a click back on the parent
+      // between each one. The new child is shown instead: its row is opened
+      // to and tinted (fta:reveal), and the status line names it.
       let posting = null;
-      const submit = (values) => {
-        posting = api.post('/nodes', { parentId, ...values });
-        return posting;
+      const adopt = (result, name, quiet) => {
+        const warn = firstChildWarning(parentId);
+        store.applyMutation(result);
+        if (!store.selectedId) store.select(parentId);
+        revealNode(result.nodeId);
+        const message = t('msg.added', { name, parent: parentName || parentId });
+        // With the dialog still open it says "Added" itself; a toast per node
+        // would pile up beside it.
+        if (quiet) setStatus(message, 'ok');
+        else toast(message, 'ok');
+        if (warn) warn();
+      };
+      // "OK and add another" leaves the dialog open, so that node is adopted
+      // at once: the next one has to find it in the tree and the links list.
+      const submit = (values, how) => {
+        const request = api.post('/nodes', { parentId, ...values });
+        const mine = { request, name: values.name };
+        posting = mine;
+        if (!how || !how.another) return request;
+        return request.then((result) => {
+          if (posting === mine) posting = null;
+          adopt(result, values.name, true);
+          return result;
+        });
       };
       const fields = await fn(parentId, { submit, parentName, noSelection });
-      let result = null;
-      // Cancelled with the POST on the wire: the node may still have been made.
-      if (posting) result = await posting.catch(() => null);
-      else if (fields) result = await api.post('/nodes', { parentId, ...fields });
-      if (!result) return;
-      store.applyMutation(result);
-      if (result.nodeId) store.select(result.nodeId);
+      if (posting) {
+        // Closed by OK, or cancelled with the POST on the wire: the node may
+        // still have been made. An add-another request adopts its own answer
+        // and clears `posting`, so it is never adopted twice.
+        const last = posting;
+        const result = await last.request.catch(() => null);
+        if (result && posting === last) adopt(result, last.name, false);
+      } else if (fields) {
+        // A dialog without the submit hook hands the fields back instead.
+        const result = await api.post('/nodes', { parentId, ...fields });
+        if (result) adopt(result, fields.name, false);
+      }
     } catch (err) {
       showError(err);
     }
@@ -3231,6 +3295,8 @@ window.ftaShell = {
   rootHeadline,
   /** Show a bottom-panel tab by id. @returns {boolean} false if hidden/unknown. */
   openTab,
+  /** Before a node gets its first child: the warning to show after, or null (see firstChildWarning). */
+  firstChildWarning,
 };
 
 boot().catch((err) => {

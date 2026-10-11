@@ -482,7 +482,8 @@ def _guard_before(body: str, guard: str, *keys: str) -> None:
 def test_enter_and_escape_handlers_leave_composition_to_the_ime():
     dialogs = _read(STATIC / "dialogs.js")
     modal = _braced(dialogs, dialogs.index("function onKeydown(event)"))
-    _guard_before(modal, "if (isImeKey(event)) return;", "event.key === 'Escape'", "cfg.onEnter()")
+    _guard_before(modal, "if (isImeKey(event)) return;", "event.key === 'Escape'",
+                  "cfg.onEnter(event)", "cfg.onCtrlEnter(event)")
     assert "if (event.key === 'Enter' && !isImeKey(event)) event.preventDefault();" in dialogs
 
     details = _read(STATIC / "details.js")
@@ -716,19 +717,32 @@ def test_add_dialog_stays_open_until_the_node_is_made():
     dialogs = _read(STATIC / "dialogs.js")
     header = "export function openAddNodeDialog(parentId, options)"
     assert header in dialogs
-    submit = _braced(dialogs, dialogs.index("function submit()", dialogs.index(header)))
+    submit = _braced(dialogs, dialogs.index("function submit(another)", dialogs.index(header)))
     assert "if (submitting) return;" in submit, "no second POST while the first is on the wire"
-    hook = submit[submit.index(".then(() => opts.submit(result))"):]
-    assert submit.index("okButton.disabled = true;") < submit.index(".then(() => opts.submit(result))")
-    assert "() => modal.close(result)," in hook
+    call = ".then(() => opts.submit(result, { another: !!another }))"
+    hook = submit[submit.index(call):]
+    # setBusy(true) disables OK and "OK and add another" before the POST
+    busy = _braced(dialogs, dialogs.index("function setBusy(on)", dialogs.index(header)))
+    assert "okButton.disabled = on;" in busy and "anotherButton.disabled = on;" in busy
+    assert submit.index("setBusy(true);") < submit.index(call)
+    made = hook[:hook.index("(err) => {")]
+    assert "modal.close(result);" in made, "OK closes once the node is made"
     refused = hook[hook.index("(err) => {"):]
     assert "modal.close(" not in refused, "a refused POST keeps the dialog open"
+    assert "setBusy(false);" in refused
     assert "target.setError(message);" in refused and "setFormError(message);" in refused
 
     main = _read(STATIC / "main.js")
     add = _braced(main, main.index("async function actionAdd()"))
-    assert "await fn(parentId, { submit, parentName, noSelection })" in add
-    assert add.index("await fn(parentId, { submit, parentName, noSelection })") < add.index("store.applyMutation(result);")
+    opened = "await fn(parentId, { submit, parentName, noSelection })"
+    assert opened in add
+    # OK: the store is updated only once the dialog is gone (its focus
+    # restore still finds the row that opened it). Only "OK and add another",
+    # which leaves the dialog open, adopts its node from inside the hook.
+    assert add.index(opened) < add.index("adopt(result, last.name, false);")
+    hook_adopts = add[add.index("const submit = (values, how) => {"):add.index(opened)]
+    assert hook_adopts.index("if (!how || !how.another) return request;") < hook_adopts.index("adopt(result")
+    assert add.count("store.applyMutation(result);") == 1
     assert add.count("api.post('/nodes'") == 2, "the hook, and the fallback for a dialog without it"
 
 
