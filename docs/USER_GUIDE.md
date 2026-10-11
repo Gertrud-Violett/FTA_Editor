@@ -291,8 +291,9 @@ does on screen.
 
 #### Box Sizing (font detection and scale)
 
-If text crowds or spills outside its node box, open the **Aa** popover on the
-diagram panel's toolbar. (The popover can be dragged to a new position if it
+If text crowds or spills outside its node box, open **Settings** on the
+diagram panel's toolbar (the **Diagram settings** popover; the button was
+**Aa** up to 1.7.3). (The popover can be dragged to a new position if it
 covers something you need to see; it stays where you put it.)
 
 **Why this exists:** the diagram is laid out by Graphviz, which sizes each box
@@ -309,11 +310,32 @@ Hiragino, Noto Sans CJK JP and others, ending in a generic fallback. Both sides
 then agree on a font that really exists on your machine, which closes most of
 the gap. You can also pick a specific font if you prefer one.
 
-**Box scale**: the escape hatch for whatever mismatch is left. It accepts
-**0–30** and defaults to **4**. Raising it inflates font size and padding
-together, which is what grows the box — a box has no size of its own beyond
-what its label needs. Raise it a step at a time until the text sits
-comfortably.
+**Box padding (0-30)**: the escape hatch for whatever mismatch is left (it
+was labelled **Box scale**). It accepts **0–30** and defaults to **4**. It is
+blank space added around the text of every box, which is what grows the box —
+a box has no size of its own beyond what its label needs. Raise it a step at
+a time until the text sits comfortably.
+
+#### Zoom, and finding a node
+
+The wheel zooms about the cursor, **−** and **+** about the selected node,
+**⤢** fits the whole diagram, **1:1** sets 100 %, and **◎** puts the selected
+node in the middle of the panel at 100 % (or at the current zoom, if that is
+larger). Selecting a node anywhere (a row of the tree, a row of an analysis
+table) moves a zoomed diagram by the least that brings that node wholly into
+view; the zoom is left alone.
+
+#### Exporting the picture
+
+**SVG** and **PNG** on the diagram toolbar, and **Render** in the action bar,
+download the diagram under the document's name (`pump.json` gives
+`pump.png`; an unsaved analysis uses its title), and a message says so.
+
+- The file is always in the **light colours**, whatever theme the editor is
+  in: a picture goes onto a white page.
+- With **Colour diagram by FV** on (Importance tab), the file has the same
+  colours and the legend under the diagram. The selection outline is never
+  in the file.
 
 > If the diagram looks right in the browser but wrong in an exported PNG, see
 > [CJK_RENDERING.md](CJK_RENDERING.md): a native Graphviz install renders the
@@ -395,8 +417,9 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 
 ### Features
 
-**Formatted replies (MD)**: the assistant's replies are shown as formatted
-Markdown: headings, lists, tables, code and bold. The **MD** button beside
+**Formatted replies**: the assistant's replies are shown as formatted
+Markdown: headings, lists, tables, code and bold. The **Formatted** button
+(it was **MD**) beside
 **Clear Chat** switches every reply between that view and the raw text the
 model sent; use the raw text to copy a reply exactly. The choice is remembered
 in this browser. Only the assistant's replies are formatted. HTML in a reply
@@ -1289,8 +1312,14 @@ does not repeat it.
 
 ### Diagram styles and layout
 
-The **Aa** popover on the diagram toolbar has two display settings. They are
-remembered per browser (`fta.diagram.settings`) and are not saved in the file.
+**Settings** on the diagram toolbar opens the **Diagram settings** popover,
+which has two display settings. They are remembered per browser
+(`fta.diagram.settings`) and are not saved in the file.
+
+In **ETA mode** neither style draws a gate: an event tree has branch points,
+not gates. The compact boxes leave out `Gate: ...`, and the symbols style
+draws the description boxes only, joined directly, each with its own
+probability and that of the path down to it (`q=<q> | Q=<Q>`).
 
 - **Style**
   - **Compact boxes**: the 1.6 two-row boxes. The meta row reads
@@ -1334,6 +1363,96 @@ In the browser, these shapes are replaced by the true symbol paths
   `POST /api/render`) shows the **approximate** shapes.
 
 For a document you send to a reviewer, export from the browser.
+
+### Working in the tree, the bottom panel and ETA mode (after 1.7.3)
+
+**What a tree row shows.** At the right of the name, a node with inputs has
+its gate (`AND`, `OR`, `2/3`, `XOR`, ...) and every row has a probability:
+the calculated one for a gate, its own for an event. Hover either for what
+it is. A row is bold red only for an **event** whose probability is exactly
+1; a gate is never red for its unused base value.
+
+**Several nodes at once.** Ctrl-click or Shift-click rows to select several.
+The right end of the bottom panel's tab strip then says **N selected**
+instead of naming one node. What acts on all of them, each as **one undo
+step**:
+
+| Action | Result |
+|---|---|
+| `Delete` / `Ctrl+D` / **Delete** | Deletes every selected node with what is beneath it, after one confirmation that gives the total. |
+| Drag one of the selected rows | Moves them all: onto a node (they become its last children) or between two rows. |
+| `Ctrl+Shift+Up` / `Down` | Moves the block past the next sibling. The nodes must share a parent. |
+| `Ctrl+Shift+Right` / `Left` | Moves the block under the sibling above it, or out to follow its parent. |
+
+A selected node inside another selected node goes with that node. The root
+is never moved or deleted. Details still shows the node clicked last.
+
+**The bottom panel's height.** Details keeps the height you give it. Every
+other tab has a height of its own, about 45 % of the window until you drag
+the splitter while one is shown (double-click the splitter to go back). The
+**△** button at the right of the tab strip enlarges the panel to all the
+height there is, leaving a strip of the diagram; **▽** puts it back.
+
+**ETA mode.**
+
+- The headline in the top bar reads **Initiating event** (in FTA: **Top
+  event**).
+- **Quantification**, **Cut Sets**, **Importance** and **Uncertainty** work
+  on the gates of a fault tree. In ETA mode their tabs are greyed and struck
+  through, and the tooltip says why; opening one shows the same notice.
+- The diagram draws no gate or event symbols, and the tree rows no gate.
+- The assistant's buttons read **Analyze ETA** and **Update ETA**.
+- Switching the mode says what it did (*Switched to ETA (event tree)...*).
+  Changing the title or the date no longer shows *Metadata updated.*
+
+**Importance: Copy CSV.** Copies the table as shown (its sort order, the
+numbers in full) to the clipboard, as on the Cut Sets tab.
+
+**Uncertainty for every event.** **Lognormal EF=3 for all events without
+one** gives each basic event that has no uncertainty distribution a
+lognormal one with error factor 3 around its own value, in one undo step.
+Events that have one, house events, undeveloped and conditioning events are
+left alone. When no event the top event depends on has a distribution, every
+sample is the same value: the tab then says so and draws no chart.
+
+**Rare-event.** The Cut Sets figure labelled *Rare-event* is the sum of the
+cut-set probabilities: an upper bound, not a probability. Above 1 the tab
+marks it as such.
+
+**Report.** **Colour the diagram by Fussell-Vesely importance** puts the
+coloured diagram and its legend into the Word report. Without it the
+report's diagram is plain, whatever is on screen.
+
+**Type.** The Type box of a node offers **Event**, **Gate** and
+**Intermediate**; any other text is still accepted.
+
+**Messages.** A notice no longer carries a code such as `ROOT_PROTECTED`
+(an error still does), and messages appear beside the AI panel instead of
+over its **Send** button.
+
+### The assistant (after 1.7.3)
+
+- **What is sent.** The setup dialog says it in one line: the analysis open
+  in the editor (the whole tree with its names, probabilities and notes) and
+  what you type go to the provider you choose. Nothing is sent before you
+  press Send, Analyze or Update.
+- **First choice.** With nothing configured the dialog opens on **Google
+  Gemini**, which has a free tier. A saved choice is never changed.
+  **Microsoft Copilot** says what it needs: an Azure OpenAI resource of your
+  own.
+- **Stop.** While the assistant is working, **Stop** gives the panel back.
+  The request cannot be taken back from the provider, so until it answers a
+  new request can be refused as busy. What you had typed returns to the box.
+- **A message that did not get through** (the request failed, or the
+  provider reported an error) is put back in the box to send again. A reply
+  that is the provider's error is drawn as an error.
+- **After a reload** the conversation is shown again, with the suggestions
+  and the Update preview that still wait for an answer. The editor keeps it
+  while it is running; **Clear Chat** empties it.
+- **Suggested changes** name the node as a link (click it to select the
+  node), and list what would change in words: `probability: 0.05 → 0.5`.
+  A card made for another analysis is switched off when you press New or
+  open a file.
 
 ## Command-line interface
 
@@ -1543,7 +1662,7 @@ analysis itself is not changed.
 | `Ctrl+Shift+S` | Save As |
 | `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / Redo. A message names the step (*Undid: deleting "Seal leak"*), and the node concerned is selected, or its former parent when it is gone. |
 | `Ctrl+F` | Search the tree |
-| `Escape` | Discard what was typed in a field; close a dialog or the diagram's Aa popover; dismiss a toast |
+| `Escape` | Discard what was typed in a field; close a dialog or the Diagram settings popover; dismiss a toast |
 
 Inside a text field `Ctrl+A` and `Ctrl+Z` keep their usual meaning (select
 all, undo typing). With the focus on a dropdown, such as **Logic Gate**
