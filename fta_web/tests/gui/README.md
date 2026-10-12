@@ -3,8 +3,8 @@
 A back-to-back check of the web GUI. Playwright drives a real browser with
 real mouse and keyboard input, reads what the GUI shows (headline, Node
 Details, every diagram label, every analysis tab, the downloaded reports) and
-compares it with what the API computes for the same document. It has 1073
-checks in 17 sections and takes about 7 minutes.
+compares it with what the API computes for the same document. It has 1119
+checks in 18 sections and takes about 7 minutes.
 
 It complements the numeric back-to-back suite in [`../b2b/`](../b2b/README.md),
 which compares the engine, API, CLI and exe paths without a browser.
@@ -20,6 +20,7 @@ which compares the engine, API, CLI and exe paths without a browser.
 | `ux1` | 63 | The editing flow: the top event selected at start-up; the Add dialog (probability required, Enter moving from Name to it, `5%` / full-width digits / `1/1000` / `0,25`, **OK and add another** with Ctrl+Enter, four siblings from four Adds); the top bar keeping its height on the first edit and the tab title; the first-child warning after Add and after a keyboard move, with **Show in Validation**; first / last sibling messages; double-click to rename and to collapse; Ctrl+Z from the gate dropdown; Edit; Enter in a Details field; the warning for a dropped invalid entry; delete confirmations (count, focus on Cancel); Enter in the search box; the tree's open / closed state per file; a diagram click scrolling the tree; jumps, the + and − buttons and the plain wheel; the bold number row; *Folder not found* in the Open dialog. |
 | `ux2` | 72 | Protecting work: the first-run hint and its two buttons; the AI panel folded and remembered by the server across a reload; **Open an example** (the list, an untitled copy, Save going to Save As, the bundled files byte-identical afterwards); the Load dialog's two other sources and its wording for a path outside the root; the unsaved-changes prompt (three buttons, focus on **Save and continue**, a cancelled save stopping the action); the remembered folder; a file from this computer through the picker and by drop on the tree panel, and a drop elsewhere doing nothing; export wording and the **Export:** group; undo / redo toasts and selection; a tab behind another tab (reload on focus, not under an open dialog, a save elsewhere, another document, no false notice for its own edits); the Cut Sets wording when a limit leaves nothing, **This run only** and **Reset**; the Update FTA confirmation, preview card, Discard and Apply (the three routes are answered by the script: no provider is called); the server-stopped banner, the rescue copy and its round trip through the import endpoint; the "not connected" screen and its rescue offer; the Japanese strings. |
 | `ux3` | 79 | Analysis, diagram and AI: the gate and probability on tree rows, and red only for a certain event; a multi-selection (the header count, Ctrl+Shift+Down, a drag, Delete, each one undo step); a notice without a raw code, placed beside the AI panel; the **Settings** button and the **Diagram settings** popover; a selected node brought into view in a zoomed diagram, **1:1** and **◎**; the bottom panel's height per tab and its enlarge button; **Copy CSV** on Importance; the exports (the document's name, the toast, the importance colours and legend in the SVG, Render's name, a white PNG from the dark theme); the report's coloured diagram (the request is answered by the script); the rare-event note; uncertainty for all events and the chart only with a spread; ETA mode (headline, greyed tabs, no gate symbols, the assistant's wording); the assistant not set up (the line said once) and the setup dialog (Gemini ticked, the disclosure, the Copilot hint); **Stop**, a failed message given back, an error reply, a suggestion card with names, links and readable changes, the conversation after a reload, a card retired by New (every `/api/ai/*` request is answered by the script: no provider is called); the Japanese strings. |
+| `ki` | 46 | The known issues of 1.8.0, fixed: `1e-400` refused and `-0` shown as 0 in the Add dialog; the unsaved-changes prompt raised by the server when another tab changed the document (Cancel keeps it, **Discard and open** sends the request again with the flag); the recovery copy (a copy planted in the server's home is offered above **Start here**, **Restore** opens it untitled and modified with Save going to Save As, the original file untouched, **Discard it** asks and deletes); **Change folder…** in the file dialog where no chooser can be opened (the command) and where one can (the waiting message, a closed chooser, a chosen folder, a document that becomes untitled, a 501), with the request carrying no path; **Stop** asking the editor to abandon exactly the request it stopped; the Japanese strings. `/api/ai/*`, `/api/fs/home` and `/api/fs/root/choose` are answered by the script where the page is shown another state than the server's: no provider is called and no folder chooser is opened. |
 | `tabs` | 84 | Quantification (rate model through the form, derived q and formula), Cut Sets (rows, summary, highlight, sig figs), Importance (every measure, sort, FV overlay), Uncertainty (fixed seed against an API run with the same seed), Validation (list, chips, badge, after undo), tabs refreshed after an edit made while hidden, Traceability cell edits, ETA mode. |
 | `files` | 21 | FMEA CSV import through the file dialog; the DOCX report, Excel and CSV exports, parsed back with `parse_exports.py` and compared with the API; the "Save … again" link; a path entered in the file dialog while its first listing is held back. |
 | `diagram` | 85 | compact / symbols × LR / TB show the API's numbers and each other's; with the root selected, its box, Node Details and the caption give the MCUB headline and the root's tree-walk value; a real-mouse click on every shape selects its node; zoom, Ctrl+wheel, pan, fit; dark theme. |
@@ -50,7 +51,8 @@ node run.mjs                         # every section, ~5 minutes
 `run.mjs` starts its own dev server,
 `uv run --frozen --extra all --extra test python fta_web/run.py --port <free> --no-browser --root <temp>/root`,
 with `HOME` and `USERPROFILE` pointed at an empty temporary folder so no AI
-credentials are picked up. It runs the sections in order (`core` first),
+credentials are picked up, and with `FTA_EDITOR_NO_FOLDER_PICKER=1` so that
+the editor cannot open a native folder chooser during a run. It runs the sections in order (`core` first),
 prints a summary, exits 1 on any failure, and always stops the server it
 started and removes the temporary folder.
 
@@ -60,9 +62,10 @@ DOCX / XLSX / CSV, `server.log` and `summary.txt`.
 
 | Option | Meaning |
 |---|---|
-| `node run.mjs tabs view` | Only these sections. `core` is added first when a section opens its file (all but `fit`, `treeclick`, `fixes`, `ux1`, `ux2`, `ux3`, `big`). |
+| `node run.mjs tabs view` | Only these sections. `core` is added first when a section opens its file (all but `fit`, `treeclick`, `fixes`, `ux1`, `ux2`, `ux3`, `ki`, `big`). |
 | `node run.mjs --list` | The sections in run order. |
 | `FTA_GUI_CHANNEL=chrome` | Use the installed Google Chrome instead of the bundled Chromium (`msedge` works too). Playwright launches it with a fresh temporary profile, never your own. |
+| `FTA_GUI_BROWSER=firefox` | Drive Firefox or WebKit (`webkit`) instead of Chromium. See [Firefox and WebKit](#firefox-and-webkit). |
 | `FTA_GUI_HEADFUL=1` | Show the browser window. |
 | `FTA_GUI_EXE=<path>` | Start this packaged `fta_editor` executable instead of the dev server, with the same isolation (label `exe`). |
 | `FTA_GUI_URL=<token URL>` | Use an already-running server (label `url`); see below. |

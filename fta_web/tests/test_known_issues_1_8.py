@@ -1790,3 +1790,127 @@ def test_6_the_file_dialog_has_the_button_and_keeps_the_command_when_there_is_no
         assert catalog.count("'%s':" % key) == 2, key
     main = _read(STATIC / "main.js")
     assert "'fta:root-changed'" in main and "'fta:root-changed'" in src
+
+
+# =============================================================================================
+# the new endpoints are behind the session token, and documented
+# =============================================================================================
+
+NEW_ENDPOINTS = [
+    ("post", "/api/ai/cancel", {}),
+    ("get", "/api/recovery", None),
+    ("post", "/api/recovery/restore", {"id": "0123456789abcdef"}),
+    ("post", "/api/recovery/discard", {"id": "0123456789abcdef"}),
+    ("post", "/api/fs/root/choose", None),
+]
+
+#: The requests that got a guard in this release are refused without the
+#: token as they always were (the guard must not have opened another way in).
+GUARDED_AGAIN = [
+    ("post", "/api/file/open", {"path": "sample.json", "force": True}),
+    ("post", "/api/examples/open", {"name": "sampleFTA.json", "force": True}),
+]
+
+
+@pytest.fixture
+def guarded(app, other, monkeypatch, per_user_home):
+    """The same blueprints behind the real guard (security.init_app), with a
+    recovery copy to restore, a person who would pick a folder, and an AI
+    request that could be abandoned -- so that a request that got through
+    would leave a mark."""
+    sys.path.insert(0, str(REPO / "fta_web"))
+    import security  # the launcher's own module name
+
+    security.init_app(app, TOKEN, PORT)
+    client = app.test_client()
+    return client
+
+
+@pytest.mark.parametrize("method,path,payload", NEW_ENDPOINTS + GUARDED_AGAIN)
+def test_the_new_endpoints_refuse_a_request_without_the_token(
+        guarded, sandbox, other, per_user_home, monkeypatch, method, path, payload):
+    _sample(sandbox)
+    picker = FakePicker(str(other))
+    monkeypatch.setattr(folder_picker, "pick", picker)
+    # a copy that a restore or a discard would act on
+    folder = per_user_home / "recovery"
+    folder.mkdir(parents=True)
+    (folder / "0123456789abcdef.json").write_bytes((EXAMPLES / "sampleFTA.json").read_bytes())
+    (folder / "0123456789abcdef.meta.json").write_text(
+        json.dumps({"title": "Left behind", "savedAt": "2026-10-11T09:30:00", "originalPath": None}),
+        encoding="utf-8")
+    # an AI call in flight that a cancel would abandon
+    call = ai_bridge._Call("chat", None)
+    monkeypatch.setattr(ai_bridge, "_active", call)
+
+    def send(headers, base_url=BASE_URL):
+        kwargs = {"base_url": base_url, "headers": headers}
+        if payload is not None:
+            kwargs["json"] = payload
+        return getattr(guarded, method)(path, **kwargs)
+
+    before = get_state().revision_fields()
+    for headers, reason in (
+        ({}, "missing_token"),
+        ({config.TOKEN_HEADER: "wrong"}, "invalid_token"),
+        ({config.TOKEN_HEADER: TOKEN, "Origin": "http://evil.example"}, "origin_not_allowed"),
+        ({config.TOKEN_HEADER: TOKEN, "Origin": "http://127.0.0.1:%d" % (PORT + 1)}, "origin_not_allowed"),
+    ):
+        refused = send(headers)
+        assert refused.status_code == 403, (path, headers)
+        assert error(refused)["code"] == "FORBIDDEN" and error(refused)["detail"] == {"reason": reason}
+    rebound = send({config.TOKEN_HEADER: TOKEN}, base_url="http://evil.example:%d" % PORT)
+    assert rebound.status_code == 403 and error(rebound)["detail"] == {"reason": "host_not_allowed"}
+
+    # nothing happened: no document replaced, no dialog opened, the root, the
+    # recovery copy and the AI call as they were
+    assert get_state().revision_fields() == before
+    assert picker.started_in == [] and Path(get_state().fs_root) == sandbox
+    assert sorted(p.name for p in folder.iterdir()) == ["0123456789abcdef.json", "0123456789abcdef.meta.json"]
+    assert ai_bridge._active is call and call.abandoned is False
+
+    allowed = send({config.TOKEN_HEADER: TOKEN})
+    assert allowed.status_code == 200, (path, body(allowed))
+    assert allowed.headers["Cache-Control"] == "no-store"
+    monkeypatch.setattr(ai_bridge, "_active", None)
+
+
+def test_the_new_endpoints_are_in_the_api_reference_and_the_changelog():
+    reference = _read(DOCS / "API_REFERENCE.md")
+    changelog = _read(REPO / "CHANGELOG.md")
+    unreleased = changelog[changelog.index("## [Unreleased]"):changelog.index("## [1.8.0]")]
+    for _method, path, _payload in NEW_ENDPOINTS:
+        assert path in reference, path
+        assert path in unreleased, path
+    for code in ("AI_CANCELLED", "PICKER_UNAVAILABLE", "PICKER_BUSY", "UNSAVED_CHANGES"):
+        assert "`%s`" % code in reference, code
+    assert "force: true" in reference and "canChooseRoot" in reference and "requestId" in reference
+    # the 1.8.0 section, which test_ux_batch_2 and _3 read, is not where this went
+    released = changelog[changelog.index("## [1.8.0]"):]
+    assert "/api/recovery" not in released and "/api/fs/root/choose" not in released
+
+
+def test_the_user_guide_says_where_the_recovery_folder_is_and_how_the_folder_is_changed():
+    guide = _read(DOCS / "USER_GUIDE.md")
+    section = guide[guide.index("### Keeping your work (after 1.8.0)"):guide.index("### The assistant (after 1.7.3)")]
+    assert "~/.fta_editor/recovery/" in section and "\\.fta_editor\\recovery\\" in section
+    for phrase in ("Restore unsaved work from", "Discard it", "Change folder…", "30", "untitled",
+                   "Ctrl-C", "At most five copies"):
+        assert phrase in section, phrase
+    assert "[Keeping your work](#keeping-your-work-after-180)" in guide
+    assert "abandon the request" in guide
+    readme = _read(REPO / "fta_web" / "tests" / "gui" / "README.md")
+    assert "FTA_GUI_BROWSER" in readme and "| `ki` |" in readme and "FTA_EDITOR_NO_FOLDER_PICKER" in readme
+
+
+def test_the_new_modules_are_in_the_packaged_app():
+    spec = _read(REPO / "build" / "fta_editor.spec")
+    hidden = spec[spec.index("hiddenimports = ["):]
+    for module in ("recovery", "folder_picker"):
+        assert '"%s",' % module in hidden
+        assert (REPO / "fta_web" / (module + ".py")).is_file()
+    # and they import under the launcher's bare names, as in the frozen app
+    code = ("import sys; sys.path.insert(0, %r); import run, recovery, folder_picker; "
+            "print(recovery.__name__, folder_picker.__name__)" % str(REPO / "fta_web"))
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0 and out.stdout.split() == ["recovery", "folder_picker"], out.stderr

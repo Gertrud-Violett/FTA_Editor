@@ -1441,6 +1441,69 @@ report's diagram is plain, whatever is on screen.
 (an error still does), and messages appear beside the AI panel instead of
 over its **Send** button.
 
+### Keeping your work (after 1.8.0)
+
+**A recovery copy.** While an analysis has unsaved changes, the editor keeps
+a copy of it on disk. If the editor then ends without your saving (a crash,
+a power cut, its terminal window closed), the next start shows **Unsaved
+work found** above the tree:
+
+- **Restore unsaved work from <date> (<title>)** opens the copy as an
+  untitled analysis marked as modified. **Save** then asks where to put it.
+  The file the work had been opened from is not changed; the message names
+  it, so you can compare the two and decide which to keep.
+- **Discard it** deletes the copy after asking once.
+
+The offer stays until you choose one of the two. Details:
+
+- The copies are in the `recovery` folder of the editor's per-user folder:
+  `~/.fta_editor/recovery/`, which on Windows is
+  `C:\Users\<you>\.fta_editor\recovery\`. This is the folder that also
+  holds the AI settings. It does not depend on the folder the editor works
+  in.
+- A copy is written 2 seconds after you stop editing, and at the latest 30
+  seconds after a change while you keep editing. At most that much work can
+  be lost.
+- The copy is the same JSON that **Save** writes, with a small file beside it
+  that holds the title, the original file's path and the time. It contains
+  no API key.
+- The copy is deleted when you save, when you start a new analysis or load
+  another one (after you chose to save or to discard), and when the editor
+  is stopped with Ctrl-C. Stopping the editor with Ctrl-C while an analysis
+  is unsaved therefore discards it, as closing a document without saving
+  does.
+- A second copy of the editor that is running at the same time keeps its own
+  recovery copy; neither offers the other's.
+- At most five copies of ended sessions are kept. Older ones are removed
+  when the editor starts.
+- An analysis larger than 10 MB is not copied.
+
+**Two tabs.** If the editor is open in two browser tabs and you load a file
+in one while the other has unsaved changes, the editor now asks before it
+replaces them, whichever tab the changes were made in.
+
+**Changing the folder the editor works in.** The editor reads and writes
+inside one folder (your home folder unless it was started with `--root`).
+To work somewhere else you no longer have to restart it:
+
+1. Open **Load** or **Save As** and press **Change folder…**. The same
+   button appears under the message that refuses a path outside the folder.
+2. The editor opens your operating system's folder chooser. It may open
+   behind the browser window.
+3. Pick the folder. The file dialog then shows it, and it stays the editor's
+   folder until the editor is closed. Closing the chooser changes nothing.
+
+If the analysis that is open was saved outside the folder you picked, it
+becomes untitled: nothing in it changes, and **Save** asks where to put it.
+The choice is not remembered for the next start; use `--root` for that.
+
+The folder chooser belongs to the editor program, not to the browser page.
+A page cannot choose the folder for you, which is what keeps the folder a
+limit on what the page can reach. Where the editor cannot open a chooser
+(a computer without a display, or the packaged app on Linux or macOS),
+**Change folder…** shows the command that starts the editor on another
+folder instead.
+
 ### The assistant (after 1.7.3)
 
 - **What is sent.** The setup dialog says it in one line: the analysis open
@@ -1451,9 +1514,13 @@ over its **Send** button.
   Gemini**, which has a free tier. A saved choice is never changed.
   **Microsoft Copilot** says what it needs: an Azure OpenAI resource of your
   own.
-- **Stop.** While the assistant is working, **Stop** gives the panel back.
-  The request cannot be taken back from the provider, so until it answers a
-  new request can be refused as busy. What you had typed returns to the box.
+- **Stop.** While the assistant is working, **Stop** gives the panel back
+  and tells the editor to abandon the request. You can send a new one at
+  once. The request cannot be taken back from the provider, but its answer
+  is ignored when it arrives: it is not shown, not added to the
+  conversation and never applied. What you had typed returns to the box.
+  (Up to 1.8.0 a new request was refused as busy until the provider had
+  answered.)
 - **A message that did not get through** (the request failed, or the
   provider reported an error) is put back in the box to send again. A reply
   that is the provider's error is drawn as an error.
@@ -1832,10 +1899,24 @@ path on another drive, a network (UNC) path, or a drive letter created with
 `subst` is refused even if it points at the same folder, and a `:` in a file
 name (an NTFS alternate data stream) is refused. To open one file from
 outside the root folder, use **Load** and then **A file on this computer…**:
-it opens as an untitled copy. To work in another folder, close the editor
-and start it with `--root`; the message gives the command for your
-installation (`fta_editor.exe --root "<folder>"`, or
+it opens as an untitled copy. To work in another folder, press **Change
+folder…** in the file dialog and pick it (see
+[Keeping your work](#keeping-your-work-after-180)). Where that button cannot
+open a folder chooser, close the editor and start it with `--root`; the
+message gives the command for your installation
+(`fta_editor.exe --root "<folder>"`, or
 `uv run python fta_web/run.py --root "<folder>"` from source).
+
+**Q: My settings (Advanced, language, theme) are gone after a restart**
+A: The browser keeps them per address. The editor uses `127.0.0.1:8765`
+unless that port is taken or you start it with `--port`. If its terminal
+window shows a line beginning with `Note`, another program (often a second
+copy of the editor) was using the port; close it and start the editor again.
+
+**Q: The editor closed and I had not saved**
+A: Start it again. If it had ended without a clean stop, **Unsaved work
+found** appears above the tree. See
+[Keeping your work](#keeping-your-work-after-180).
 
 **Q: The page says "The editor is not answering"**
 A: The editor (the program the page talks to) has been closed or has

@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The known issues of 1.8.0.
+
+### Added
+
+- **A recovery copy of unsaved work.** While an analysis has unsaved changes
+  the editor keeps a copy of it in `~/.fta_editor/recovery/` (on Windows
+  `C:\Users\<you>\.fta_editor\recovery\`): written 2 seconds after you stop
+  editing and at the latest 30 seconds after a change. The copy is removed
+  on Save, on New and Load, and when the editor is stopped with Ctrl-C. If
+  the editor ends in any other way (a crash, a power cut, its window
+  closed), the next start shows **Unsaved work found** above the tree, with
+  **Restore unsaved work from <date> (<title>)** and **Discard it**.
+  Restore opens the copy as an untitled, modified analysis, so **Save** asks
+  where to put it; the file it had been opened from is never written. At
+  most five copies are kept. New endpoints: `GET /api/recovery`,
+  `POST /api/recovery/restore`, `POST /api/recovery/discard`.
+- **Change folder… in the file dialog.** The folder the editor may read and
+  write could only be set when it was started (`--root`). The file dialog
+  now has **Change folder…**, also under the message that refuses a path
+  outside the folder. The editor itself opens the operating system's folder
+  chooser on your computer, and the folder you pick there becomes the
+  allowed folder for this session. The browser page cannot name a folder:
+  `POST /api/fs/root/choose` takes no input and refuses a request that
+  carries any. An open analysis whose file is outside the new folder becomes
+  untitled and is otherwise unchanged. Where no chooser can be opened (no
+  display, the packaged app on Linux or macOS) the button shows the command
+  to start the editor on another folder, as before.
+
+### Fixed
+
+- **Preferences were lost at every start.** The editor listened on a new
+  port each time, and a browser keeps a page's settings per address. It now
+  listens on port **8765** unless `--port` says otherwise, so Advanced, the
+  language, the theme, significant figures, the Formatted switch and the
+  diagram style are kept. If 8765 is in use, for example by a second copy
+  of the editor, it starts on a free port and prints a `Note` line.
+  `--port 0` asks for any free port.
+- **Load, Open an example and a file from this computer could replace the
+  unsaved work of another tab without asking.** Only New refused on the
+  server. `POST /api/file/open`, `/api/examples/open` and `/api/import/json`
+  now answer `409 UNSAVED_CHANGES` unless the request says `force`, and the
+  page shows the unsaved-changes prompt when that happens. **API change:** a
+  client that opens a file over unsaved changes must send `force: true` (a
+  form field `force=true` for the import).
+- **Moving or deleting several thousand nodes at once held the editor for
+  seconds.** 4,800 nodes of a 4,860-node tree took 9.4 s to move and 4.1 s
+  to delete, with every other request waiting. Both now take well under a
+  second. The answers and the refusals are unchanged.
+- **Stop in the assistant did not free the editor.** It only stopped the
+  page from waiting; a new request was refused as busy until the provider
+  answered, up to two minutes. Stop now tells the editor to abandon the
+  request (`POST /api/ai/cancel`): a new request is accepted at once, and
+  the late answer is dropped. It is not added to the conversation, proposes
+  nothing and is never applied. A request that timed out can be abandoned
+  the same way, which used to need a restart.
+- **`1e-400` was accepted as a probability** and stored as 0 while the box
+  kept the text. A number too small to be represented is now refused, and
+  `-0` is read as `0`.
+
+### Changed
+
+- The GUI test suite can drive Firefox and WebKit
+  (`FTA_GUI_BROWSER=firefox|webkit`); see `fta_web/tests/gui/README.md`.
+
 ## [1.8.0] - 2026-10-12
 
 ### Changed
