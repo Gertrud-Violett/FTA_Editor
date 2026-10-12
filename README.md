@@ -5,7 +5,7 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 [![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.7.3-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.8.0-green.svg)](CHANGELOG.md)
 
 There are two ways to run it:
 

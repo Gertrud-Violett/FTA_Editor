@@ -40,7 +40,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
 
 #: Shown on the title page. The frozen build has no pyproject to read, so the
 #: release number lives here; the integrator bumps it with the release.
-TOOL_VERSION = "1.7.3"
+TOOL_VERSION = "1.8.0"
 
 SECTIONS = (
     "metadata", "headline", "assumptions", "diagram", "events", "cutsets",
