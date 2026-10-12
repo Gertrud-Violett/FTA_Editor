@@ -480,9 +480,11 @@ export function openFileDialog(options) {
   }
 
   /** After a refusal was shown: offer "Change folder..." under it when the
-   * refusal was a place outside the allowed folder. */
+   * refusal was a place outside the allowed folder -- and the editor can
+   * open a chooser. Where it cannot, the refusal itself names the command,
+   * and a button that only repeated it would promise more than it does. */
   function offerChangeRoot(err) {
-    messageAction.hidden = !isOutsideRoot(err);
+    messageAction.hidden = !(canChooseRoot && isOutsideRoot(err));
   }
 
   /**

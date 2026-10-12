@@ -609,7 +609,9 @@ def test_2_the_page_sends_the_flag_only_after_discard_and_asks_on_a_409():
     # leaveDocument() means the user chose Discard
     assert "let force = Boolean(store.state && store.state.dirty);" in replace
     assert "err.code !== 'UNSAVED_CHANGES'" in replace
-    assert replace.index("store.applyMutation({ dirty: true });") < replace.index("leaveDocument('open')")
+    # the other tab's work is read and shown before the question is asked
+    assert (replace.index("await reloadFromServer();") < replace.index("store.applyMutation({ dirty: true });")
+            < replace.index("leaveDocument('open')"))
     assert "return null;" in replace
     for header, call in (
         ("async function actionLoad()", "api.post('/file/open', force ? { path, force: true } : { path })"),

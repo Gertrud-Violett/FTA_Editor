@@ -2467,9 +2467,11 @@ async function replaceDocument(send) {
       return await send(force);
     } catch (err) {
       if (force || attempt > 0 || !(err instanceof ApiError) || err.code !== 'UNSAVED_CHANGES') throw err;
-      // The server knew of changes this tab did not: show them as unsaved
-      // (which they are) and ask.
-      store.applyMutation({ dirty: true });
+      // The server knew of changes this tab did not. Read the document
+      // again, so that what the question is about (the other tab's work) is
+      // on screen behind it; mark it unsaved in any case, and ask.
+      await reloadFromServer();
+      if (!(store.state && store.state.dirty)) store.applyMutation({ dirty: true });
       if (!(await leaveDocument('open'))) return null;
       force = Boolean(store.state && store.state.dirty);
     }

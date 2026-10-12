@@ -99,6 +99,8 @@ async function run(url, label, root) {
   L.check('guard: the server refused, and the unsaved-changes prompt is shown after all',
     JSON.stringify(asked.buttons) === JSON.stringify(['Cancel', 'Discard and open', 'Save and continue']) && asked.dirty === 'Unsaved changes', asked);
   L.check('guard: the other tab\'s work is still there while the prompt is up', JSON.stringify(asked.names) === JSON.stringify(['Typed in the other tab']), asked.names);
+  L.check('guard: and it is shown behind the prompt (the tree was read again)',
+    (await rows()) === 2 && (await page.locator('#tree-root li.fta-tree-item', { hasText: 'Typed in the other tab' }).count()) === 1, await rows());
   await app.shot('ki_guard_prompt_' + label);
   await prompt.locator('.fta-modal-footer [data-role="cancel"]').click();
   await page.waitForTimeout(300);
