@@ -252,10 +252,23 @@ async function run(url, label, root) {
   await clearToasts();
   await page.locator('#tabpanel-importance [data-role="copy"]').click();
   await page.waitForTimeout(300);
-  const csv = await page.evaluate(() => navigator.clipboard.readText());
-  const csvLines = csv.trim().split('\r\n');
+  // Reading the clipboard back is the test's doing, not the page's. Chromium
+  // grants it (lib.js asks for the permission) and Firefox allows it; WebKit
+  // refuses a script that reads it (NotAllowedError) and has no permission
+  // to grant. There the content is not checked; the next check still is.
+  let csv = null;
+  try {
+    csv = await page.evaluate(() => navigator.clipboard.readText());
+  } catch (e) {
+    if (L.BROWSER === 'chromium' || !/NotAllowedError/.test(String(e))) throw e;
+  }
   const shownRows = await page.locator('#tabpanel-importance .anl-table tbody tr').count();
-  L.check('importance: Copy CSV puts the table on the clipboard', csvLines[0] === 'Event,id,q,FV,Birnbaum,RAW,RRW,Cut sets' && csvLines.length === shownRows + 1 && /^Operator error,root_2,1,/.test(csvLines[1]), csvLines.slice(0, 2));
+  if (csv === null) {
+    L.skip('importance: Copy CSV puts the table on the clipboard', L.BROWSER + ': a script may not read the clipboard in this engine, so the test cannot see what was copied');
+  } else {
+    const csvLines = csv.trim().split('\r\n');
+    L.check('importance: Copy CSV puts the table on the clipboard', csvLines[0] === 'Event,id,q,FV,Birnbaum,RAW,RRW,Cut sets' && csvLines.length === shownRows + 1 && /^Operator error,root_2,1,/.test(csvLines[1]), csvLines.slice(0, 2));
+  }
   L.check('importance: and says so', (await toasts()).some((t) => new RegExp('Copied ' + shownRows + ' rows').test(t)), await toasts());
 
   // ---- 13 + 39: the overlay is in the export, with a legend, under the document's name ------------
