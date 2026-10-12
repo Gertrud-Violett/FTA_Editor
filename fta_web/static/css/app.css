@@ -1031,6 +1031,9 @@ body { grid-template-rows: auto auto minmax(0, 1fr) auto; }
   background: var(--accent-soft);
 }
 .firstrun[hidden] { display: none; }
+/* The offer of a recovery copy: the same box, in the colour of a warning. */
+.firstrun--recovery { border-color: var(--warn, #b26a00); background: var(--warn-soft, var(--accent-soft)); }
+.firstrun--recovery .btn { white-space: normal; text-align: left; }
 .firstrun__title { margin: 0 var(--s-5) var(--s-1) 0; font-weight: 700; font-size: var(--fs-lg); }
 .firstrun__text { margin: 0; font-size: var(--fs-sm); color: var(--text); }
 .firstrun__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }

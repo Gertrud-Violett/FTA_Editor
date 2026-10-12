@@ -41,6 +41,7 @@ if _FTA_WEB_DIR not in sys.path:
     sys.path.insert(0, _FTA_WEB_DIR)
 
 import config  # noqa: E402
+import recovery  # noqa: E402
 import security  # noqa: E402
 from app import create_app  # noqa: E402
 
@@ -259,6 +260,10 @@ def main(argv=None) -> int:
 
     logging.getLogger("werkzeug").addFilter(QuietPing())
 
+    # From here on unsaved work is copied to the per-user folder, and a copy
+    # an earlier run left behind is offered by the page (recovery.py).
+    recovery.start()
+
     if not args.no_browser:
         _open_browser_when_ready(url, port)
 
@@ -278,6 +283,9 @@ def main(argv=None) -> int:
         )
     except KeyboardInterrupt:  # pragma: no cover - interactive
         print("\nStopped.")
+    finally:
+        # A clean exit: this session leaves no recovery copy behind.
+        recovery.end_session()
     return 0
 
 

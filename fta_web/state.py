@@ -192,6 +192,36 @@ def _ai_configured() -> bool:
         return False
 
 
+# ---- document events -------------------------------------------------------
+#
+# Who wants to know that the document changed, was saved or was replaced:
+# the recovery copy (recovery.py). A listener is called with "dirty", "saved"
+# or "reset", possibly with ``AppState.lock`` held, so it must only take note
+# and return: no file, no lock of its own that a request could be holding.
+# Module-level, not per AppState: reset_state() makes a new AppState and the
+# listeners are about "the document of this process".
+
+_document_listeners: List[Any] = []
+
+
+def add_document_listener(listener) -> None:
+    if listener not in _document_listeners:
+        _document_listeners.append(listener)
+
+
+def remove_document_listener(listener) -> None:
+    if listener in _document_listeners:
+        _document_listeners.remove(listener)
+
+
+def _emit(kind: str) -> None:
+    for listener in list(_document_listeners):
+        try:
+            listener(kind)
+        except Exception:  # a listener must never fail the edit it hears of
+            pass
+
+
 class AppState:
     """The single open document, plus its undo history and session facts."""
 
@@ -306,10 +336,12 @@ class AppState:
         with self.lock:
             self.dirty = True
             self.revision += 1
+        _emit("dirty")
 
     def mark_saved(self) -> None:
         with self.lock:
             self.dirty = False
+        _emit("saved")
 
     def reset(self) -> None:
         """Start a new, empty document. Clears history, path and dirty flag."""
@@ -324,6 +356,7 @@ class AppState:
             self.revision += 1
             self.document_serial += 1
             self.core.recalculate_probabilities()
+        _emit("reset")
 
     def revision_fields(self) -> Dict[str, int]:
         """``{revision, documentSerial}``, sent with every payload that

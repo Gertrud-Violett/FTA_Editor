@@ -20,6 +20,9 @@ Endpoints
 ``POST /api/file/save-as``      write to a new path and adopt it
 ``GET  /api/export/{json,xml,xlsx}``  download a rendering of the document
 ``POST /api/import/json``       replace the document from an upload
+``GET  /api/recovery``          unsaved work left by an editor that crashed
+``POST /api/recovery/restore``  open one of those copies, untitled
+``POST /api/recovery/discard``  remove one of those copies
 ==============================  ==========================================
 
 Decisions a reviewer should know about
@@ -118,6 +121,8 @@ try:  # normal package import: ``import fta_web.routes.files``
     from ..engine import WebCore
     from ..excel_events import export_view, export_xlsx
     from ..numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs
+    from .. import recovery
+    from ..state import _emit as notify_document_event
     from ..state import get_state, load_warning_issues
     from ..tree_ops import tree_height
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
@@ -142,6 +147,8 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from engine import WebCore  # type: ignore[no-redef]
     from excel_events import export_view, export_xlsx  # type: ignore[no-redef]
     from numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs  # type: ignore[no-redef]
+    import recovery  # type: ignore[no-redef]
+    from state import _emit as notify_document_event  # type: ignore[no-redef]
     from state import get_state, load_warning_issues  # type: ignore[no-redef]
     from tree_ops import tree_height  # type: ignore[no-redef]
 
@@ -339,6 +346,11 @@ def _install_document(state, core: FTACore, path: Optional[Path],
     state.core = core
     state.current_path = path
     state.dirty = dirty
+    if dirty:
+        # Not through mark_dirty() (the revision went up in reset()), so the
+        # recovery copy is told here: an imported document exists only in
+        # memory until it is saved.
+        notify_document_event("dirty")
     # reset() emptied the session warnings; the new document's own load
     # repairs are the first entries of its session.
     state.add_session_warnings(
@@ -980,3 +992,95 @@ def import_json():
         _refuse_unsaved(state, force)
         _install_document(state, loaded, None, dirty=True)
         return ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
+
+
+# ---- the recovery copy ------------------------------------------------------
+#
+# recovery.py keeps a copy of the document while it has unsaved changes and
+# says which copies were left by an editor that ended without saving. These
+# three endpoints are how the page offers one back. An id here is a name from
+# the server's own listing (``recovery.abandoned``), exactly as an example's
+# name is: it is looked up, never joined onto a path.
+
+
+@files_bp.get("/recovery")
+def recovery_list():
+    """Unsaved work left by a session that did not end cleanly:
+    ``copies: [{id, title, savedAt, originalPath}]``, newest first. Empty in
+    the usual case. ``originalPath`` is where that document had been opened
+    from (null for one never saved); it is shown, never written to."""
+    return ok_response(copies=recovery.listing())
+
+
+def _recovery_copy(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """The listed copy ``payload["id"]`` names; 400 / 404 otherwise."""
+    copy_id = payload.get("id")
+    if not isinstance(copy_id, str) or not copy_id:
+        raise ApiError(INVALID_FIELD, "'id' is required.", 400, {"field": "id"})
+    found = recovery.abandoned().get(copy_id)
+    if found is None:
+        # Never echoed back: the value may be a path somebody hoped to read.
+        raise ApiError(INVALID_FIELD, "There is no recovery copy with that id.", 404,
+                       {"field": "id"})
+    return found
+
+
+@files_bp.post("/recovery/restore")
+def recovery_restore():
+    """Open a recovery copy. Body: ``{id, force?}``.
+
+    The copy opens as an **untitled, modified** document: ``currentPath`` is
+    null and ``dirty`` true, so Save goes to Save As and the user chooses
+    where it goes. It is never written over the file the work was opened
+    from; that file may be newer, or somebody else's by now. The answer
+    carries ``restoredFrom: {title, savedAt, originalPath}`` for the page's
+    message.
+
+    Like every request that replaces the document it answers 409
+    ``UNSAVED_CHANGES`` over unsaved work unless ``force`` is true. The copy
+    is removed once it has been opened; from then on the restored document
+    is this session's unsaved work and has a recovery copy of its own.
+    """
+    payload = _body()
+    force = _force_flag(payload.get("force"))
+    found = _recovery_copy(payload)
+    source = found["path"]
+
+    loaded = WebCore()
+    ok, error = loaded.load_from_json(str(source))
+    if not ok:
+        raise ApiError(
+            INVALID_JSON,
+            "The recovery copy could not be read as an FTA analysis: %s"
+            % (error or "unrecognised format"),
+            400,
+            {"reason": "load_failed"},
+        )
+    # load_from_json() remembers the file it read; nothing may later write
+    # the analysis back into the recovery folder as if it were its home.
+    loaded.last_saved_file = None
+    _refuse_too_deep(loaded, "the recovery copy")
+
+    state = get_state()
+    with state.lock:
+        _refuse_unsaved(state, force)
+        _install_document(state, loaded, None, dirty=True)
+        response = ok_response(
+            restoredFrom={key: found[key] for key in ("title", "savedAt", "originalPath")},
+            warnings=_load_warnings(loaded),
+            **_document_payload(state),
+        )
+    # Outside the lock (recovery.flush takes it itself): this session's own
+    # copy first, and only then the one it was read from, so the work is on
+    # disk at every moment in between.
+    if recovery.flush() or recovery.session_id() is None:
+        recovery.discard(found["id"])
+    return response
+
+
+@files_bp.post("/recovery/discard")
+def recovery_discard():
+    """Remove a recovery copy. Body: ``{id}``. ``discarded`` says whether it
+    was there; an id that is not in the listing is 404 and removes nothing."""
+    found = _recovery_copy(_body())
+    return ok_response(discarded=recovery.discard(found["id"]))

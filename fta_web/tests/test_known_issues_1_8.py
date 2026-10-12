@@ -906,3 +906,413 @@ def test_4_the_page_sends_the_cancel_with_the_request_it_stopped():
         text = _read(STATIC / "i18n" / catalog)
         assert text.count("'%s':" % key) == 2, "en and ja"
     assert "may be refused as busy" not in _read(STATIC / "i18n" / "ux3.js")
+
+
+# =============================================================================================
+# 5: the recovery copy
+# =============================================================================================
+#
+# The folder is tmp_path/fta_editor_home/recovery (see per_user_home). No
+# test here depends on the writer thread's timing except the one that is
+# about that thread, and it shortens the two delays.
+
+import os  # noqa: E402
+import re  # noqa: E402
+
+from fta_web import recovery  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_recovery_session_is_left():
+    """Whatever a test does, the next one starts without a session."""
+    yield
+    recovery.end_session()
+
+
+@pytest.fixture
+def recovering(app, per_user_home):
+    """Recovery started for this test without the background thread: the
+    copy is written by recovery.flush()."""
+    assert recovery.session_id() is None
+    session = recovery.start(background=False)
+    assert session and recovery.directory() == per_user_home / "recovery"
+    yield session
+    recovery.end_session()
+
+
+def _copy_files(folder, session):
+    return sorted(p.name for p in folder.iterdir() if p.name.startswith(session))
+
+
+def _leave_a_copy(client, per_user_home, title="Pump station", save_to=None):
+    """Run a session that ends without saving, as a crash does: its copy
+    and sidecar stay, and its lock is gone. Returns the session id."""
+    session = recovery.start(background=False)
+    client.post("/api/new", json={"force": True})
+    client.post("/api/metadata", json={"title": title})
+    add(client, name="unsaved event", probability=0.25)
+    if save_to is not None:
+        assert client.post("/api/file/save-as", json={"path": str(save_to)}).status_code == 200
+        add(client, name="after the save", probability=0.5)
+    assert recovery.flush() is True
+    # the crash: no end_session(). The process is gone, and with it the lock.
+    current = recovery._session
+    recovery._unlock_handle(current.lock_file)
+    current.lock_file.close()
+    recovery.state_module.remove_document_listener(recovery._on_document_event)
+    recovery._session = None
+    client.post("/api/new", json={"force": True})
+    return session
+
+
+def test_5_nothing_is_written_unless_the_launcher_started_it(client, per_user_home):
+    add(client, name="unsaved")
+    assert recovery.session_id() is None and recovery.flush() is False
+    assert not (per_user_home / "recovery").exists()
+    assert body(client.get("/api/recovery")) == {"ok": True, "copies": []}
+    # the launcher is what starts it, and it ends it on the way out
+    launcher = _read(REPO / "fta_web" / "run.py")
+    assert launcher.index("recovery.start()") < launcher.index("app.run(")
+    assert "finally:" in launcher and "recovery.end_session()" in launcher
+    assert '"recovery",' in _read(REPO / "build" / "fta_editor.spec")
+
+
+def test_5_the_copy_is_what_save_writes_with_a_sidecar_and_never_a_credential(
+        client, sandbox, per_user_home, recovering):
+    folder = per_user_home / "recovery"
+    assert _copy_files(folder, recovering) == [recovering + ".lock"], "nothing unsaved yet"
+
+    client.post("/api/metadata", json={"title": "Pump station"})
+    add(client, name="Seal leaks", probability=0.02)
+    assert recovery.flush() is True
+    assert _copy_files(folder, recovering) == [
+        recovering + ".json", recovering + ".lock", recovering + ".meta.json"]
+
+    # byte for byte the file Save writes
+    saved = sandbox / "saved.json"
+    document = (folder / (recovering + ".json")).read_bytes()
+    assert client.post("/api/file/save-as", json={"path": str(saved)}).status_code == 200
+    assert document == saved.read_bytes()
+
+
+def test_5_the_sidecar_names_the_title_the_original_path_and_the_time(
+        client, sandbox, per_user_home, recovering):
+    folder = per_user_home / "recovery"
+    saved = sandbox / "station.json"
+    client.post("/api/metadata", json={"title": "Pump station"})
+    assert client.post("/api/file/save-as", json={"path": str(saved)}).status_code == 200
+    add(client, name="after the save")
+    assert recovery.flush() is True
+    meta = json.loads((folder / (recovering + ".meta.json")).read_text("utf-8"))
+    assert set(meta) == {"version", "session", "title", "originalPath", "savedAt"}
+    assert meta["title"] == "Pump station" and meta["session"] == recovering
+    assert meta["originalPath"] == str(saved.resolve())
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d", meta["savedAt"])
+    # the copy did not become the document's file, and did not touch its date
+    assert state_of(client)["currentPath"] == str(saved.resolve())
+    assert get_state().core.last_saved_file == str(saved.resolve())
+    # no credential anywhere in the folder (one is saved in this home)
+    AICredentialManager().save_credentials(API_KEY, "https://api.openai.com/v1", "gpt-4o", "OpenAI")
+    assert (per_user_home / "ai_credentials.json").exists()
+    add(client, name="once more")
+    recovery.flush()
+    for path in folder.iterdir():
+        if path.suffix != ".lock":  # held locked by the session; one NUL byte
+            assert API_KEY not in path.read_text("utf-8", errors="replace"), path.name
+
+
+def test_5_the_copy_goes_with_save_new_and_open(client, sandbox, per_user_home, recovering):
+    folder = per_user_home / "recovery"
+    copy_file = folder / (recovering + ".json")
+
+    def dirty_copy():
+        add(client, name="unsaved")
+        assert recovery.flush() is True and copy_file.exists()
+
+    dirty_copy()
+    assert client.post("/api/file/save-as", json={"path": str(sandbox / "a.json")}).status_code == 200
+    assert recovery.flush() is False and not copy_file.exists(), "Save As"
+
+    dirty_copy()
+    assert client.post("/api/file/save", json={}).status_code == 200
+    assert recovery.flush() is False and not copy_file.exists(), "Save"
+
+    dirty_copy()
+    # refused: the work is still unsaved, and so the copy stays
+    assert client.post("/api/new", json={}).status_code == 409
+    assert recovery.flush() is True and copy_file.exists()
+    assert client.post("/api/new", json={"force": True}).status_code == 200
+    assert recovery.flush() is False and not copy_file.exists(), "New, after Discard"
+
+    dirty_copy()
+    opened = client.post("/api/file/open", json={"path": str(sandbox / "a.json"), "force": True})
+    assert opened.status_code == 200
+    assert recovery.flush() is False and not copy_file.exists(), "Open, after Discard"
+
+    dirty_copy()
+    client.post("/api/examples/open", json={"name": "sampleFTA.json", "force": True})
+    assert recovery.flush() is False and not copy_file.exists(), "an example"
+    assert not (folder / (recovering + ".meta.json")).exists()
+
+
+def test_5_an_imported_document_is_unsaved_work_and_is_copied(client, per_user_home, recovering):
+    import io
+
+    upload = {"file": (io.BytesIO((EXAMPLES / "sampleFTA.json").read_bytes()), "mine.json")}
+    assert client.post("/api/import/json", data=upload,
+                       content_type="multipart/form-data").status_code == 200
+    assert recovery._session.first_change is not None, "the writer was told"
+    assert recovery.flush() is True
+    meta = json.loads((per_user_home / "recovery" / (recovering + ".meta.json")).read_text("utf-8"))
+    assert meta["originalPath"] is None
+
+
+def test_5_a_clean_exit_leaves_nothing(client, per_user_home):
+    session = recovery.start(background=False)
+    add(client, name="unsaved")
+    assert recovery.flush() is True
+    recovery.end_session()
+    assert list((per_user_home / "recovery").iterdir()) == []
+    assert recovery.session_id() is None
+    # and edits after it write nothing
+    add(client, name="later")
+    assert recovery.flush() is False and list((per_user_home / "recovery").iterdir()) == []
+    assert session
+
+
+def test_5_a_copy_from_a_session_that_did_not_end_cleanly_is_offered(client, sandbox, per_user_home):
+    original = sandbox / "station.json"
+    crashed = _leave_a_copy(client, per_user_home, save_to=original)
+    on_disk = original.read_bytes()
+
+    # the next start
+    recovery.start(background=False)
+    try:
+        listed = body(client.get("/api/recovery"))["copies"]
+        assert [c["id"] for c in listed] == [crashed]
+        assert listed[0]["title"] == "Pump station"
+        assert listed[0]["originalPath"] == str(original.resolve())
+        assert set(listed[0]) == {"id", "title", "savedAt", "originalPath"}, "no server path of the copy"
+
+        restored = client.post("/api/recovery/restore", json={"id": crashed})
+        assert restored.status_code == 200, body(restored)
+        answer = body(restored)
+        # untitled and modified: Save goes to Save As, never over the original
+        assert answer["currentPath"] is None and answer["dirty"] is True
+        assert answer["restoredFrom"]["title"] == "Pump station"
+        names = [c["name"] for c in answer["tree"]["children"]]
+        assert names == ["unsaved event", "after the save"]
+        assert client.post("/api/file/save", json={}).status_code == 409
+        assert error(client.post("/api/file/save", json={}))["code"] == "NO_CURRENT_PATH"
+        assert original.read_bytes() == on_disk, "the original file is untouched"
+        assert get_state().core.last_saved_file is None
+
+        # the copy that was restored is gone, and this session has its own
+        assert body(client.get("/api/recovery"))["copies"] == []
+        own = recovery.session_id()
+        assert _copy_files(per_user_home / "recovery", crashed) == []
+        assert (per_user_home / "recovery" / (own + ".json")).exists()
+    finally:
+        recovery.end_session()
+
+
+def test_5_discard_removes_the_copy_and_nothing_else(client, per_user_home):
+    first = _leave_a_copy(client, per_user_home, title="First")
+    second = _leave_a_copy(client, per_user_home, title="Second")
+    listed = body(client.get("/api/recovery"))["copies"]
+    assert {c["id"] for c in listed} == {first, second}
+
+    before = state_of(client)
+    gone = client.post("/api/recovery/discard", json={"id": first})
+    assert gone.status_code == 200 and body(gone)["discarded"] is True
+    assert [c["id"] for c in body(client.get("/api/recovery"))["copies"]] == [second]
+    assert _copy_files(per_user_home / "recovery", first) == []
+    assert state_of(client)["revision"] == before["revision"], "the document is not touched"
+    # twice is 404, not an error that removes something else
+    assert client.post("/api/recovery/discard", json={"id": first}).status_code == 404
+    assert [c["id"] for c in body(client.get("/api/recovery"))["copies"]] == [second]
+
+
+def test_5_restore_does_not_replace_unsaved_work_without_the_flag(client, per_user_home):
+    crashed = _leave_a_copy(client, per_user_home)
+    add(client, name="typed since the start")
+    refused = client.post("/api/recovery/restore", json={"id": crashed})
+    assert refused.status_code == 409 and error(refused)["code"] == "UNSAVED_CHANGES"
+    assert [c["id"] for c in body(client.get("/api/recovery"))["copies"]] == [crashed], "the copy stays"
+    assert client.post("/api/recovery/restore", json={"id": crashed, "force": "true"}).status_code == 400
+    assert client.post("/api/recovery/restore", json={"id": crashed, "force": True}).status_code == 200
+
+
+def test_5_the_id_is_looked_up_in_the_listing_and_is_never_a_path(client, sandbox, per_user_home):
+    crashed = _leave_a_copy(client, per_user_home)
+    folder = per_user_home / "recovery"
+    secret = sandbox / "secret.json"
+    secret.write_bytes((EXAMPLES / "sampleFTA.json").read_bytes())
+    planted = folder / "notes.json"            # a .json in the folder that is not a copy
+    planted.write_bytes(secret.read_bytes())
+    (folder / "notes.meta.json").write_text('{"title": "x"}', encoding="utf-8")
+    before = state_of(client)
+
+    hostile = [
+        str(secret), str(folder / (crashed + ".json")), crashed + ".json", "../" + crashed,
+        "..\\" + crashed, crashed + "/", "notes", "notes.json", crashed.upper(), crashed + "\x00",
+        "0" * 16, "", " " + crashed, str(per_user_home / "ai_credentials.json"),
+    ]
+    for value in hostile:
+        for route in ("/api/recovery/restore", "/api/recovery/discard"):
+            answer = client.post(route, json={"id": value, "force": True})
+            assert answer.status_code in (400, 404), (route, value)
+            assert value == "" or value not in answer.get_data(as_text=True), "never echoed"
+    for value in (None, 5, ["a"], {"id": crashed}):
+        assert client.post("/api/recovery/restore", json={"id": value}).status_code == 400
+    assert client.post("/api/recovery/restore", json={}).status_code == 400
+    # a path in the body is not an id and opens nothing
+    assert client.post("/api/recovery/restore", json={"path": str(secret)}).status_code == 400
+
+    assert state_of(client)["revision"] == before["revision"]
+    assert planted.exists() and secret.exists() and (folder / (crashed + ".json")).exists()
+    assert [c["id"] for c in body(client.get("/api/recovery"))["copies"]] == [crashed]
+
+
+def test_5_the_copy_of_an_editor_that_is_still_running_is_not_offered(client, per_user_home):
+    """A second copy of the editor must not offer, restore, discard or prune
+    the unsaved work of the first."""
+    recovery.start(background=False)
+    try:
+        add(client, name="in the first editor")
+        assert recovery.flush() is True
+        first = recovery.session_id()
+        # What a second process sees: the same folder, and a lock it does
+        # not hold. (Its own session is another one, or none.)
+        current, recovery._session = recovery._session, None
+        try:
+            assert recovery._session_is_live(first) is True
+            assert recovery.abandoned() == {}
+            assert body(client.get("/api/recovery"))["copies"] == []
+            assert client.post("/api/recovery/restore", json={"id": first, "force": True}).status_code == 404
+            assert client.post("/api/recovery/discard", json={"id": first}).status_code == 404
+            recovery.prune()
+        finally:
+            recovery._session = current
+        assert len(_copy_files(per_user_home / "recovery", first)) == 3
+    finally:
+        recovery.end_session()
+
+
+def test_5_only_a_few_copies_are_kept(client, per_user_home, monkeypatch):
+    monkeypatch.setattr(recovery, "MAX_COPIES", 3)
+    made = []
+    for n in range(5):
+        made.append(_leave_a_copy(client, per_user_home, title="Copy %d" % n))
+        # distinct, increasing times (the listing is newest first)
+        for path in (per_user_home / "recovery").glob(made[-1] + ".*"):
+            os.utime(path, (1_700_000_000 + n * 100, 1_700_000_000 + n * 100))
+    # each start pruned what was there before it; the last one is still to come
+    assert len(recovery.abandoned()) == 4
+    recovery.start(background=False)   # start-up prunes
+    try:
+        kept = [c["title"] for c in body(client.get("/api/recovery"))["copies"]]
+        assert kept == ["Copy 4", "Copy 3", "Copy 2"]
+        for gone in made[:2]:
+            assert _copy_files(per_user_home / "recovery", gone) == []
+    finally:
+        recovery.end_session()
+
+
+def test_5_a_document_over_the_size_cap_is_not_copied(client, per_user_home, recovering, monkeypatch):
+    add(client, name="unsaved")
+    assert recovery.flush() is True
+    monkeypatch.setattr(recovery, "MAX_COPY_BYTES", 10)
+    add(client, name="more")
+    assert recovery.flush() is False
+    assert _copy_files(per_user_home / "recovery", recovering) == [recovering + ".lock"]
+    # ... and a file of that size left in the folder is not offered either
+    monkeypatch.setattr(recovery, "MAX_COPY_BYTES", config.MAX_UPLOAD_BYTES)
+
+
+def test_5_the_folder_is_the_per_user_one_whatever_the_root_is(client, sandbox, per_user_home, recovering):
+    """Fixed: not derived from the sandbox root or from the document."""
+    saved = sandbox / "deep.json"
+    client.post("/api/file/save-as", json={"path": str(saved)})
+    add(client, name="unsaved")
+    assert recovery.flush() is True
+    assert recovery.directory() == per_user_home / "recovery"
+    assert [p.name for p in sandbox.iterdir()] == ["deep.json"], "nothing beside the document"
+    # in this test's layout it is outside the root, and no file endpoint reaches it
+    copy_path = per_user_home / "recovery" / (recovering + ".json")
+    assert not fsbrowser_within(sandbox, copy_path)
+    refused = client.post("/api/file/open", json={"path": str(copy_path), "force": True})
+    assert error(refused)["detail"]["reason"] == "outside_root"
+
+
+def fsbrowser_within(root, path):
+    from fta_web import fsbrowser
+
+    return fsbrowser.is_within(Path(root).resolve(), Path(path).resolve())
+
+
+def test_5_the_writer_waits_for_quiet_but_not_for_ever(client, per_user_home, monkeypatch):
+    """The background thread: a burst of edits is one write after the quiet
+    period; edits that never stop are written at the latest after the
+    maximum wait; a save removes the copy without waiting."""
+    monkeypatch.setattr(recovery, "DEBOUNCE_SECONDS", 0.25)
+    monkeypatch.setattr(recovery, "MAX_WAIT_SECONDS", 1.0)
+    writes = []
+    real = recovery._sync
+    monkeypatch.setattr(recovery, "_sync", lambda session: writes.append(time.monotonic()) or real(session))
+    session = recovery.start()
+    copy_file = per_user_home / "recovery" / (session + ".json")
+    try:
+        def wait_for(condition, seconds=5.0):
+            deadline = time.monotonic() + seconds
+            while time.monotonic() < deadline:
+                if condition():
+                    return True
+                time.sleep(0.02)
+            return False
+
+        # a burst: three edits within the quiet period are one write
+        for n in range(3):
+            add(client, name="burst %d" % n)
+        assert not copy_file.exists(), "not written while the edits are coming"
+        assert wait_for(copy_file.exists)
+        time.sleep(0.4)
+        assert len(writes) == 1, writes
+        assert "burst 2" in copy_file.read_text("utf-8")
+
+        # edits that never stop: written anyway, about every MAX_WAIT_SECONDS
+        writes.clear()
+        started = time.monotonic()
+        while time.monotonic() - started < 1.6:
+            client.post("/api/metadata", json={"title": "t %f" % time.monotonic()})
+            time.sleep(0.05)
+        assert 1 <= len(writes) <= 2, writes
+        assert writes[0] - started >= 0.9, "not before the maximum wait"
+
+        # a save removes the copy at once
+        assert wait_for(copy_file.exists)
+        client.post("/api/file/save-as", json={"path": str(get_state().fs_root / "s.json")})
+        assert wait_for(lambda: not copy_file.exists(), 2.0)
+    finally:
+        recovery.end_session()
+    assert list((per_user_home / "recovery").iterdir()) == []
+    assert not any(t.name == "recovery-writer" and t.is_alive() for t in threading.enumerate())
+
+
+def test_5_the_page_offers_the_copy_on_the_first_run_screen():
+    html = _read(REPO / "fta_web" / "templates" / "index.html")
+    assert 'id="recovery-offer"' in html and 'id="recovery-restore"' in html and 'id="recovery-discard"' in html
+    assert html.index('id="recovery-offer"') < html.index('id="first-run"'), "above the Start here hint"
+    src = _read(STATIC / "main.js")
+    offer = _function(src, "async function refreshRecoveryOffer()")
+    assert "api.get('/recovery')" in offer
+    restore = _function(src, "async function actionRestoreRecovery()")
+    assert restore.index("leaveDocument('open')") < restore.index("await replaceDocument(")
+    assert "api.post('/recovery/restore', force ? { id, force: true } : { id })" in restore
+    discard = _function(src, "async function actionDiscardRecovery()")
+    assert "askConfirm(" in discard and "api.post('/recovery/discard', { id })" in discard
+    catalog = _read(STATIC / "i18n" / "fix181.js")
+    for key in ("recovery.offer", "recovery.restore", "recovery.discard", "recovery.restored",
+                "recovery.discardConfirm"):
+        assert catalog.count("'%s':" % key) == 2, key
+    assert "Restore unsaved work from {date} ({title})" in catalog and "Discard it" in catalog

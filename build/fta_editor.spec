@@ -164,6 +164,7 @@ hiddenimports = [
     "i18n",
     # What the editor remembers between launches (last folder, AI panel).
     "user_prefs",
+    "recovery",
 ]
 
 # ---------------------------------------------------------------------------

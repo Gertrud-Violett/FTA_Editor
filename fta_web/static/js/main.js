@@ -1086,6 +1086,7 @@ function applyLanguage() {
   renderHeadline();
   // applyLanguage rewrote the tab label's textContent, dropping the badge.
   renderValidationBadge();
+  renderRecoveryOffer(); // its button and text are written with values
   if (store.state) renderShell(store.state);
 }
 
@@ -3499,6 +3500,110 @@ function isUntouchedDocument(state) {
   return Boolean(tree) && !(Array.isArray(tree.children) && tree.children.length);
 }
 
+/**
+ * The recovery copy an earlier run left behind (GET /api/recovery), offered
+ * above the tree until it is restored or discarded. The server keeps a copy
+ * of the document while it has unsaved changes and removes it on Save, on
+ * New / Load and on a clean exit; what it lists here is the work of an
+ * editor that ended without any of those. Newest first; one is shown at a
+ * time.
+ */
+let recoveryCopy = null;
+
+function recoveryWhen(copy) {
+  const stamp = copy && copy.savedAt ? new Date(copy.savedAt) : null;
+  if (!stamp || Number.isNaN(stamp.getTime())) return (copy && copy.savedAt) || '';
+  try {
+    return stamp.toLocaleString(language === 'ja' ? 'ja-JP' : 'en-GB', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  } catch (_err) {
+    return copy.savedAt;
+  }
+}
+
+function renderRecoveryOffer() {
+  const box = $('#recovery-offer');
+  if (!box) return;
+  box.hidden = !recoveryCopy;
+  if (!recoveryCopy) return;
+  const vars = {
+    date: recoveryWhen(recoveryCopy),
+    title: recoveryCopy.title || t('recovery.untitled'),
+  };
+  const restore = $('#recovery-restore');
+  if (restore) restore.textContent = t('recovery.restore', vars);
+  const text = $('#recovery-text');
+  if (text) {
+    text.textContent = recoveryCopy.originalPath
+      ? t('recovery.offerFile', { path: recoveryCopy.originalPath })
+      : t('recovery.offer');
+  }
+}
+
+async function refreshRecoveryOffer() {
+  try {
+    const listed = await api.get('/recovery');
+    const copies = Array.isArray(listed.copies) ? listed.copies : [];
+    recoveryCopy = copies.length ? copies[0] : null;
+  } catch (_err) {
+    // An editor older than this page, or one that is not answering: no offer.
+    recoveryCopy = null;
+  }
+  renderRecoveryOffer();
+}
+
+/**
+ * Open the recovery copy. It replaces the document like Load does, so the
+ * same question is asked first when this document has unsaved changes. It
+ * opens untitled and modified: Save goes to Save As, and the file the work
+ * was opened from is not written.
+ */
+async function actionRestoreRecovery() {
+  if (isBooting() || !recoveryCopy) return;
+  const copy = recoveryCopy;
+  const id = copy.id;
+  await flushPendingEdits();
+  if (!(await leaveDocument('open'))) return;
+  try {
+    const payload = await replaceDocument(
+      (force) => api.post('/recovery/restore', force ? { id, force: true } : { id })
+    );
+    if (!payload) return;
+    await adoptDocument(payload);
+    toast(t('recovery.restored', { title: copy.title || t('recovery.untitled') }), 'ok');
+    showLoadWarnings(payload);
+  } catch (err) {
+    showError(err);
+  }
+  await refreshRecoveryOffer();
+}
+
+async function actionDiscardRecovery() {
+  if (isBooting() || !recoveryCopy) return;
+  const copy = recoveryCopy;
+  const id = copy.id;
+  const sure = await askConfirm(
+    t('recovery.discardConfirm', { date: recoveryWhen(copy), title: copy.title || t('recovery.untitled') }),
+    { title: t('recovery.title'), confirmLabel: t('recovery.discardOk'), danger: true }
+  );
+  if (!sure) return;
+  try {
+    await api.post('/recovery/discard', { id });
+    toast(t('recovery.discarded'), 'info');
+  } catch (err) {
+    showError(err);
+  }
+  await refreshRecoveryOffer();
+}
+
+function wireRecoveryOffer() {
+  const restore = $('#recovery-restore');
+  if (restore) restore.addEventListener('click', () => actionRestoreRecovery());
+  const discard = $('#recovery-discard');
+  if (discard) discard.addEventListener('click', () => actionDiscardRecovery());
+}
+
 function wireFirstRun() {
   const name = $('#first-run-name');
   if (name) {
@@ -4029,6 +4134,7 @@ async function boot() {
   wireTopbar();
   wireActionBar();
   wireFirstRun();
+  wireRecoveryOffer();
   wireFileDrop();
 
   // The bottom panel: its height follows the tab, and can be enlarged.
@@ -4134,6 +4240,9 @@ async function boot() {
   } finally {
     endBoot();
   }
+  // Unsaved work an earlier run left behind, if there is any. Not awaited:
+  // the editor is usable while this is asked.
+  refreshRecoveryOffer();
 
   // From here on the page watches the server. A request that could not reach
   // it is confirmed by one more before the banner goes up: a single aborted
