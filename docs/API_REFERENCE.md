@@ -813,7 +813,10 @@ listed. The server's path of a copy is never reported.
 Recovery copies are written only by an editor started through the launcher
 (`fta_web/run.py`, or the packaged app); an app built with `create_app()`
 in a test writes none. They are kept in `recovery/` in the per-user folder
-(`~/.fta_editor`).
+(`~/.fta_editor`). The file endpoints never reach into that folder, also
+when the sandbox root contains it (the default root is the home folder): a
+path into it is `400 PATH_REJECTED` with `detail.reason: "reserved"` for
+open, save and listing.
 
 **`POST /api/fs/root/choose`** lets the person at the computer choose
 another sandbox root. **It takes no input.** A JSON body other than `{}`, a

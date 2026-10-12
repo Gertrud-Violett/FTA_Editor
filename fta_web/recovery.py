@@ -25,6 +25,12 @@ through ``fsbrowser``: a recovery copy is not a file the user chose, and its
 endpoints take an id from the server's own listing, never a path (the
 allow-list approach of ``POST /api/examples/open``).
 
+With the default sandbox root -- the home directory -- the per-user folder is
+*inside* the root, so "outside the root" cannot be what keeps the file
+endpoints away from the copies. The folder is registered with
+``fsbrowser.reserve`` instead: a client path into it is refused
+(``PATH_REJECTED``, reason ``reserved``) for open, save and listing alike.
+
 No credential is ever written: the copy is the document (what Save writes),
 and the sidecar holds the title, the path the document was opened from and a
 time.
@@ -76,10 +82,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:  # normal package import: ``import fta_web.recovery``
-    from . import config
+    from . import config, fsbrowser
     from . import state as state_module
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]
+    import fsbrowser  # type: ignore[no-redef]
     import state as state_module  # type: ignore[no-redef]
 
 # Importing config placed fta_web/core on sys.path (see config.py).
@@ -113,6 +120,11 @@ _SIDECAR_VERSION = 1
 def directory() -> Path:
     """Where the copies are kept (not created by asking)."""
     return Path(AICredentialManager.CREDENTIALS_DIR) / DIRECTORY_NAME
+
+
+# The file endpoints never reach into this folder, wherever the sandbox root
+# is (with the default root, the home directory, it is inside it).
+fsbrowser.reserve(directory)
 
 
 def _paths(session: str) -> Dict[str, Path]:

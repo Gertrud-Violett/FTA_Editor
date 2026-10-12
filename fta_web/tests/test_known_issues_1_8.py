@@ -1916,3 +1916,36 @@ def test_the_new_modules_are_in_the_packaged_app():
             "print(recovery.__name__, folder_picker.__name__)" % str(REPO / "fta_web"))
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
     assert out.returncode == 0 and out.stdout.split() == ["recovery", "folder_picker"], out.stderr
+
+
+def test_5_with_the_home_folder_as_root_the_recovery_folder_is_still_out_of_reach(
+        client, tmp_path, per_user_home, recovering):
+    """The default root is the home directory, and the per-user folder is in
+    it. The file endpoints refuse the recovery folder by name."""
+    get_state().fs_root = tmp_path            # as if tmp_path were the home directory
+    folder = per_user_home / "recovery"
+    add(client, name="unsaved")
+    assert recovery.flush() is True
+    copy_file = folder / (recovering + ".json")
+    assert fsbrowser_within(tmp_path, copy_file), "inside the root this time"
+    before = copy_file.read_bytes()
+
+    for answer in (
+        client.post("/api/file/open", json={"path": str(copy_file), "force": True}),
+        client.post("/api/file/save-as", json={"path": str(copy_file)}),
+        client.post("/api/file/save-as", json={"path": str(folder / "new.json")}),
+        client.get("/api/fs/list", query_string={"path": str(folder)}),
+        client.post("/api/file/open", json={"path": "fta_editor_home/recovery/%s.json" % recovering,
+                                            "force": True}),
+    ):
+        assert answer.status_code == 400, body(answer)
+        assert error(answer)["code"] == "PATH_REJECTED" and error(answer)["detail"]["reason"] == "reserved"
+    assert copy_file.read_bytes() == before and not (folder / "new.json").exists()
+    assert state_of(client)["currentPath"] is None
+    # the folder beside it is an ordinary one
+    beside = per_user_home / "notes.json"
+    assert client.post("/api/file/save-as", json={"path": str(beside)}).status_code == 200
+    # and the listing of the per-user folder does not show the recovery folder's files
+    listed = body(client.get("/api/fs/list", query_string={"path": str(per_user_home)}))
+    assert "notes.json" in [f["name"] for f in listed["files"]]
+    assert not any(recovering in f["name"] for f in listed["files"])

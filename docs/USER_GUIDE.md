@@ -1476,6 +1476,8 @@ The offer stays until you choose one of the two. Details:
   recovery copy; neither offers the other's.
 - At most five copies of ended sessions are kept. Older ones are removed
   when the editor starts.
+- The file dialog cannot open or save in the `recovery` folder. A copy is
+  only reached through **Restore**.
 - An analysis larger than 10 MB is not copied.
 
 **Two tabs.** If the editor is open in two browser tabs and you load a file
