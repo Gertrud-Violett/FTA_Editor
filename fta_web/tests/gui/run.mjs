@@ -8,6 +8,8 @@
 // Environment:
 //   FTA_GUI_CHANNEL=chrome       drive an installed Google Chrome (default: Playwright's
 //                                bundled Chromium; "msedge" works too)
+//   FTA_GUI_BROWSER=firefox      drive Firefox or WebKit (Playwright's builds) instead of
+//                                Chromium; checks that only Chromium can make are skipped
 //   FTA_GUI_HEADFUL=1            show the browser window
 //   FTA_GUI_URL=<token URL>      use an already-running server instead of starting one
 //                                (its --root must be a scratch folder on this machine)
@@ -22,7 +24,8 @@
 //
 // The dev server is `uv run --frozen --extra all --extra test python fta_web/run.py
 // --port <free> --no-browser --root <temp>/root`, with HOME and USERPROFILE pointed
-// at an empty <temp>/home so no AI credentials (~/.fta_editor) are picked up.
+// at an empty <temp>/home so no AI credentials (~/.fta_editor) are picked up, and
+// with FTA_EDITOR_NO_FOLDER_PICKER=1 so that no native folder dialog can open.
 // Exit code: 0 when every check passed, 1 otherwise. A server this script
 // started is always stopped, also on Ctrl-C.
 import { spawn, spawnSync } from 'node:child_process';
@@ -38,11 +41,16 @@ const REPO = path.resolve(HERE, '..', '..', '..');
 
 // Run order. core builds a tree through the GUI and saves it as
 // b2b_core_<label>.json in the sandbox root; the sections in NEEDS_CORE open it.
-const SECTIONS = ['core', 'fit', 'treeclick', 'fixes', 'ux1', 'ux2', 'ux3', 'tabs', 'files', 'diagram', 'more',
+const SECTIONS = ['core', 'fit', 'treeclick', 'fixes', 'ux1', 'ux2', 'ux3', 'ki', 'tabs', 'files', 'diagram', 'more',
   'stale', 'race', 'view', 'big', 'i18n', 'misc'];
 const NEEDS_CORE = new Set(['tabs', 'files', 'diagram', 'more', 'stale', 'race', 'view', 'i18n', 'misc']);
 
 const env = process.env;
+const BROWSER = (env.FTA_GUI_BROWSER || 'chromium').toLowerCase();
+if (!['chromium', 'firefox', 'webkit'].includes(BROWSER)) {
+  console.error('run.mjs: FTA_GUI_BROWSER must be chromium, firefox or webkit');
+  process.exit(2);
+}
 const SECTION_TIMEOUT_MS = Number(env.FTA_GUI_TIMEOUT || 1200) * 1000;
 const SERVER_START_TIMEOUT_MS = 300 * 1000; // a first `uv run` may have to build the venv
 
@@ -145,7 +153,11 @@ async function startServer(tmp, logFile) {
     cmd = 'uv';
     args = ['run', '--frozen', '--extra', 'all', '--extra', 'test', 'python', 'fta_web/run.py', ...serverArgs];
   }
-  const serverEnv = Object.assign({}, env, { HOME: home, USERPROFILE: home, PYTHONUTF8: '1' });
+  // No native folder dialog from a server nobody is sitting at: the endpoint
+  // answers 501, as on a machine without a display (folder_picker.py).
+  const serverEnv = Object.assign({}, env, {
+    HOME: home, USERPROFILE: home, PYTHONUTF8: '1', FTA_EDITOR_NO_FOLDER_PICKER: '1',
+  });
   console.log(`starting ${path.basename(cmd)} ${args.join(' ')}`);
   const log = fs.createWriteStream(logFile);
   const child = spawnGroup(cmd, args, { cwd: REPO, env: serverEnv, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -183,17 +195,19 @@ async function askRoot(url) {
   return j.root;
 }
 
-function runSection(name, url, label, root, out) {
+function runSection(name, url, label, root, out, home) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     const logFile = fs.createWriteStream(path.join(out, name + '.log'));
     const child = spawnGroup(process.execPath, [path.join(HERE, 's_' + name + '.js'), url, label, root], {
       cwd: HERE,
-      env: Object.assign({}, env, { FTA_GUI_OUT: out }),
+      // FTA_GUI_HOME: the isolated home of a server this script started, for
+      // the section that plants a recovery copy there (unset in url mode).
+      env: Object.assign({}, env, { FTA_GUI_OUT: out, FTA_GUI_BROWSER: BROWSER }, home ? { FTA_GUI_HOME: home } : {}),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     current = child;
-    const counts = { pass: 0, fail: 0, finished: false };
+    const counts = { pass: 0, fail: 0, skip: 0, finished: false };
     let pending = '';
     const onText = (buf) => {
       logFile.write(buf);
@@ -203,6 +217,7 @@ function runSection(name, url, label, root, out) {
       for (const line of lines) {
         if (line.startsWith('PASS ')) counts.pass += 1;
         else if (line.startsWith('FAIL ')) counts.fail += 1;
+        else if (line.startsWith('SKIP ')) counts.skip += 1;
         else if (/^FAILS \d+$/.test(line)) counts.finished = true;
         console.log(line);
       }
@@ -293,7 +308,7 @@ async function main() {
     run = ['core'].concat(run);
   }
 
-  const browser = env.FTA_GUI_CHANNEL || 'chromium (bundled)';
+  const browser = BROWSER !== 'chromium' ? BROWSER + ' (Playwright build)' : env.FTA_GUI_CHANNEL || 'chromium (bundled)';
   console.log(`GUI suite: ${run.length} section(s) against ${new URL(url).origin} (${mode}), browser ${browser}${env.FTA_GUI_HEADFUL === '1' ? ', headful' : ''}`);
   console.log(`sandbox root ${root}\noutput       ${out}`);
 
@@ -301,10 +316,10 @@ async function main() {
   let coreMissing = false;
   for (const name of run) {
     if (coreMissing && NEEDS_CORE.has(name)) {
-      rows.push({ name, pass: 0, fail: 1, code: null, secs: 0, skipped: true });
+      rows.push({ name, pass: 0, fail: 1, skip: 0, code: null, secs: 0, skipped: true });
       continue;
     }
-    rows.push(await runSection(name, url, label, root, out));
+    rows.push(await runSection(name, url, label, root, out, server ? server.home : ''));
     if (name === 'core' && !fs.existsSync(coreFile)) {
       coreMissing = true;
       console.log('FAIL core did not save ' + path.basename(coreFile) + '; the sections that open it are not run');
@@ -315,11 +330,12 @@ async function main() {
   lines.push('');
   lines.push(`GUI suite summary (${mode}, ${browser}, label ${label})`);
   for (const r of rows) {
-    lines.push(`${r.name.padEnd(10)} PASS ${String(r.pass).padStart(4)}  FAIL ${String(r.fail).padStart(3)}  ${r.skipped ? 'not run' : r.secs.toFixed(0).padStart(4) + ' s'}`);
+    lines.push(`${r.name.padEnd(10)} PASS ${String(r.pass).padStart(4)}  FAIL ${String(r.fail).padStart(3)}  SKIP ${String(r.skip || 0).padStart(3)}  ${r.skipped ? 'not run' : r.secs.toFixed(0).padStart(4) + ' s'}`);
   }
   const pass = rows.reduce((a, r) => a + r.pass, 0);
   const fail = rows.reduce((a, r) => a + r.fail, 0);
-  lines.push(`${'TOTAL'.padEnd(10)} PASS ${String(pass).padStart(4)}  FAIL ${String(fail).padStart(3)}`);
+  const skipped = rows.reduce((a, r) => a + (r.skip || 0), 0);
+  lines.push(`${'TOTAL'.padEnd(10)} PASS ${String(pass).padStart(4)}  FAIL ${String(fail).padStart(3)}  SKIP ${String(skipped).padStart(3)}`);
   lines.push(fail ? 'FAILED' : 'ALL CHECKS PASSED');
   console.log(lines.join('\n'));
   fs.writeFileSync(path.join(out, 'summary.txt'), lines.join('\n').trimStart() + '\n');

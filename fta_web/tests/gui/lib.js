@@ -14,7 +14,18 @@
 const path = require('path');
 const fs = require('fs');
 const { execFileSync } = require('child_process');
-const { chromium } = require('playwright');
+const playwright = require('playwright');
+
+/**
+ * FTA_GUI_BROWSER: the engine the suite drives. "chromium" (the default, and
+ * the one CI runs), "firefox" or "webkit". A check that only means something
+ * in Chromium is skipped for the other two with its reason (chromiumOnly).
+ */
+const BROWSER = (process.env.FTA_GUI_BROWSER || 'chromium').toLowerCase();
+if (!['chromium', 'firefox', 'webkit'].includes(BROWSER)) {
+  console.error('FTA_GUI_BROWSER must be chromium, firefox or webkit, not "' + BROWSER + '"');
+  process.exit(2);
+}
 
 const HERE = __dirname;
 const REPO = path.resolve(HERE, '..', '..', '..');
@@ -36,6 +47,28 @@ function check(name, ok, extra) {
   results.push({ name: full, ok: Boolean(ok), extra: ok ? undefined : extra });
   console.log((ok ? 'PASS ' : 'FAIL ') + full + (extra !== undefined && !ok ? '  ' + JSON.stringify(extra).slice(0, 900) : ''));
   return Boolean(ok);
+}
+
+/**
+ * A check that was not made, with the reason. Counted apart from PASS and
+ * FAIL (run.mjs), so a browser's total says how much of the suite it ran.
+ */
+function skip(name, reason) {
+  const full = (section ? section + ': ' : '') + name;
+  results.push({ name: full, ok: true, skipped: reason });
+  console.log('SKIP ' + full + '  (' + reason + ')');
+}
+
+/**
+ * True in Chromium. Elsewhere it records `name` as skipped with `reason`
+ * and answers false: `if (L.chromiumOnly('...', 'why')) L.check('...', ...)`.
+ * For what the other engines cannot do in a test (not for what they do
+ * differently: that is a finding).
+ */
+function chromiumOnly(name, reason) {
+  if (BROWSER === 'chromium') return true;
+  skip(name, BROWSER + ': ' + reason);
+  return false;
 }
 
 function info(msg, extra) {
@@ -117,10 +150,17 @@ let browser = null;
  */
 async function getBrowser() {
   if (browser) return browser;
+  const headless = process.env.FTA_GUI_HEADFUL !== '1';
+  if (BROWSER !== 'chromium') {
+    // Playwright's own build of the engine; channels and Chromium's switches
+    // do not apply.
+    browser = await playwright[BROWSER].launch({ headless });
+    return browser;
+  }
   const channel = process.env.FTA_GUI_CHANNEL || 'chromium';
-  browser = await chromium.launch({
+  browser = await playwright.chromium.launch({
     channel,
-    headless: process.env.FTA_GUI_HEADFUL !== '1',
+    headless,
     args: ['--no-first-run', '--no-default-browser-check', '--disable-features=Translate'],
   });
   return browser;
@@ -142,7 +182,9 @@ async function openApp(url, { prefs, viewport, colorScheme, locale } = {}) {
     acceptDownloads: true,
     colorScheme: colorScheme || 'light',
     locale: locale || 'en-US',
-    permissions: ['clipboard-read', 'clipboard-write'],
+    // Chromium asks for these; Firefox and WebKit do not know the names
+    // (newContext throws) and have no permission to grant for the clipboard.
+    permissions: BROWSER === 'chromium' ? ['clipboard-read', 'clipboard-write'] : [],
   });
   const page = await context.newPage();
   const errors = [];
@@ -476,6 +518,6 @@ function runSection(name, fn) {
 }
 
 module.exports = {
-  HERE, REPO, OUT, check, info, setSection, fmt, parseNum, sameAtSf, openApp, waitBoot, closeBrowser, getBrowser,
+  HERE, REPO, OUT, BROWSER, check, skip, chromiumOnly, info, setSection, fmt, parseNum, sameAtSf, openApp, waitBoot, closeBrowser, getBrowser,
   writeResults, runSection, results, discardIfAsked, FMEA_CSV, writeFmeaCsv, coreFile, parseExports, get fails() { return fails; },
 };
