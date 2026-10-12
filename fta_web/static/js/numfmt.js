@@ -173,6 +173,19 @@ export function parseNumberText(raw) {
     value = Number(shown);
   }
   if (!Number.isFinite(value)) return { ok: false };
+  if (value === 0) {
+    // "1e-400" is not zero, but it is too small for a double and reads as 0:
+    // the field kept the text while the document got 0. Refused, like a text
+    // that is not a number. A zero that was typed as one is "0", also when
+    // it came with a minus sign ("-0" was sent, and shown, as negative zero).
+    // (Of a fraction only the part above the line decides: "0/5" is zero.)
+    const mantissa = text.split('/')[0].replace(/e[+-]?\d+/gi, '');
+    if (/[1-9]/.test(mantissa)) return { ok: false };
+    if (Object.is(value, -0)) {
+      value = 0;
+      shown = '0';
+    }
+  }
   return { ok: true, value: value, text: shown, changed: shown !== typed };
 }
 
