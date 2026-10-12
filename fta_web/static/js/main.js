@@ -2015,7 +2015,9 @@ async function reloadFromServer() {
     return;
   }
   const now = store.state || {};
-  if (next.revision === now.revision && next.documentSerial === now.documentSerial) return;
+  // Not newer than what this tab holds: an answer taken before this tab's own
+  // later edit must not put the older tree back.
+  if (next.documentSerial === now.documentSerial && !(next.revision > now.revision)) return;
   const replaced = next.documentSerial !== (held && held.documentSerial);
   store.setState(next);
   if (replaced) {
