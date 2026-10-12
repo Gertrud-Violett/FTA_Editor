@@ -480,6 +480,29 @@ def test_38_a_bad_request_is_refused_before_anything_changes(client, tree, paylo
     assert state_of(client)["tree"] == before["tree"]
 
 
+def test_38_a_null_error_factor_means_the_default(client, tree):
+    answer = body(client.post("/api/batch/uncertainty", json={"ef": None}))
+    assert len(answer["updatedIds"]) == 5
+    assert find(answer["tree"], tree["A"])["quant"] == {"unc": {"dist": "lognormal", "ef": 3}}
+
+
+def test_38_an_error_factor_typed_without_a_distribution_is_kept(client, tree):
+    client.patch("/api/nodes/%s" % tree["A"], json={"quant": {"unc": {"ef": 10}}})
+    answer = body(client.post("/api/batch/uncertainty", json={}))
+    assert tree["A"] in answer["updatedIds"]
+    assert find(answer["tree"], tree["A"])["quant"]["unc"] == {"dist": "lognormal", "ef": 10}
+    assert find(answer["tree"], tree["B"])["quant"]["unc"] == {"dist": "lognormal", "ef": 3}
+
+
+def test_38_an_event_tree_is_refused_and_left_alone(client, tree):
+    assert client.post("/api/metadata", json={"mode": "ETA"}).status_code == 200
+    before = state_of(client)
+    response = client.post("/api/batch/uncertainty", json={})
+    assert response.status_code == 409 and error(response)["code"] == "MODE_UNSUPPORTED", body(response)
+    after = state_of(client)
+    assert after["tree"] == before["tree"] and after["revision"] == before["revision"]
+
+
 def test_38_the_monte_carlo_then_has_a_spread(client, tree):
     flat = body(client.post("/api/analysis/uncertainty", json={"n": 500, "seed": 3}))
     assert flat["std"] == 0 and flat["uncertainEvents"] == []

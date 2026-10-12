@@ -49,6 +49,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         CYCLE_REJECTED,
         INVALID_FIELD,
         INVALID_JSON,
+        MODE_UNSUPPORTED,
         NODE_NOT_FOUND,
         NOTHING_TO_REDO,
         NOTHING_TO_UNDO,
@@ -81,6 +82,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         CYCLE_REJECTED,
         INVALID_FIELD,
         INVALID_JSON,
+        MODE_UNSUPPORTED,
         NODE_NOT_FOUND,
         NOTHING_TO_REDO,
         NOTHING_TO_UNDO,
@@ -1016,12 +1018,24 @@ def apply_default_uncertainty():
     if unknown:
         raise ApiError(INVALID_FIELD, "Unsupported field(s): " + ", ".join(sorted(unknown)) + ".",
                        400, {"fields": sorted(unknown)})
-    ef = payload.get("ef", DEFAULT_ERROR_FACTOR)
+    ef = payload.get("ef")
+    if ef is None:  # an explicit null means "the default", not "no error factor"
+        ef = DEFAULT_ERROR_FACTOR
     patch = node_schema.validate_quant({"unc": {"dist": "lognormal", "ef": ef}})
     state = get_state()
 
     with state.lock:
         core = state.core
+        # Uncertainty is a fault-tree analysis (/api/analysis/uncertainty
+        # refuses an event tree), so nothing is written into one either.
+        if str(core.mode).upper() == "ETA":
+            raise ApiError(
+                MODE_UNSUPPORTED,
+                "Uncertainty is only available for fault trees (FTA mode); "
+                "the document is an event tree (ETA mode).",
+                409,
+                {"mode": "ETA"},
+            )
         root = core.get_data()
         targets: List[Dict[str, Any]] = []
         stack = [root] if isinstance(root, dict) else []
@@ -1036,7 +1050,14 @@ def apply_default_uncertainty():
         updated = [str(node.get("id")) for node in targets]
         state.push_undo()
         for node in targets:
-            node["quant"] = node_schema.merge_partial(node.get("quant"), patch)
+            quant = node.get("quant")
+            unc = quant.get("unc") if isinstance(quant, dict) else None
+            own = dict(patch)
+            if isinstance(unc, dict) and unc.get("ef") is not None:
+                # An error factor typed for this event is kept; only the
+                # distribution is added.
+                own["unc"] = {k: v for k, v in patch["unc"].items() if k != "ef"}
+            node["quant"] = node_schema.merge_partial(quant, own)
         core.recalculate_probabilities()
         state.mark_dirty()
 
