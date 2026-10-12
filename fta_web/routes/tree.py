@@ -68,7 +68,9 @@ try:  # normal package import: ``import fta_web.routes.tree``
         ROOT_ID,
         collect_flat,
         depth_of,
+        detach_nodes,
         find_parent_id,
+        index_tree,
         move_node,
         next_child_id,
         strip_references_to,
@@ -102,7 +104,9 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ROOT_ID,
         collect_flat,
         depth_of,
+        detach_nodes,
         find_parent_id,
+        index_tree,
         move_node,
         next_child_id,
         strip_references_to,
@@ -853,6 +857,15 @@ def _batch_ids(payload: Dict[str, Any]) -> List[str]:
     return out
 
 
+def _require_listed(core, lookup, node_id: str, code: str = NODE_NOT_FOUND,
+                    label: str = "Node") -> Dict[str, Any]:
+    """:func:`_require_node` for a batch: read from ``lookup`` when there is
+    one, with the same refusal for an id that is not in the tree."""
+    if lookup is None or node_id not in lookup.nodes:
+        return _require_node(core, node_id, code, label)
+    return lookup.nodes[node_id]
+
+
 def _document_order(core) -> Dict[str, int]:
     """Every node id -> its position reading the tree top to bottom."""
     order: Dict[str, int] = {}
@@ -889,16 +902,24 @@ def delete_nodes():
 
     with state.lock:
         core = state.core
+        # One walk for every id (tree_ops.TreeIndex); None for a tree that is
+        # not in the editor's own shape, which keeps the walk per id.
+        lookup = index_tree(core)
         for node_id in ids:
             _refuse_root(core, node_id, "deleted")
-            _require_node(core, node_id)
-        targets = _top_most(core, ids)
+            _require_listed(core, lookup, node_id)
+        targets = lookup.top_most(ids) if lookup else _top_most(core, ids)
 
         state.push_undo()
         doomed: set = set()
-        for node_id in targets:
-            doomed |= subtree_ids(core, node_id)
-            core.delete_node_from_data(node_id)
+        if lookup:
+            for node_id in targets:
+                doomed |= lookup.subtree_ids(node_id)
+            detach_nodes(lookup, targets)
+        else:
+            for node_id in targets:
+                doomed |= subtree_ids(core, node_id)
+                core.delete_node_from_data(node_id)
         removed_links = strip_references_to(core, doomed)
         issues: List[Dict[str, Any]] = []
         for entry in removed_links:
@@ -939,14 +960,26 @@ def move_nodes():
 
     with state.lock:
         core = state.core
+        lookup = index_tree(core)  # as in delete_nodes
         for node_id in ids:
             _refuse_root(core, node_id, "moved")
-            _require_node(core, node_id)
-        parent = _require_node(core, new_parent_id, PARENT_NOT_FOUND, "New parent node")
-        targets = _top_most(core, ids)
-        parent_depth = depth_of(core, new_parent_id)
+            _require_listed(core, lookup, node_id)
+        parent = _require_listed(core, lookup, new_parent_id, PARENT_NOT_FOUND,
+                                 "New parent node")
+        if lookup:
+            targets = lookup.top_most(ids)
+            above_parent = lookup.ancestors(new_parent_id)
+            parent_depth = len(above_parent)
+            # A move into its own subtree: the node is the new parent or one
+            # of the nodes above it.
+            looping = set(above_parent) | {new_parent_id}
+            heights = lookup.heights()
+        else:
+            targets = _top_most(core, ids)
+            parent_depth = depth_of(core, new_parent_id)
         for node_id in targets:
-            if would_create_cycle(core, node_id, new_parent_id):
+            if (node_id in looping if lookup
+                    else would_create_cycle(core, node_id, new_parent_id)):
                 raise ApiError(
                     CYCLE_REJECTED,
                     f"Cannot move '{node_id}' into itself or one of its descendants.",
@@ -954,7 +987,9 @@ def move_nodes():
                     {"nodeId": str(node_id), "newParentId": new_parent_id},
                 )
             _refuse_too_deep(
-                parent_depth + 1 + tree_height(core.find_node_by_id(node_id)), "newParentId"
+                parent_depth + 1 + (heights[node_id] if lookup
+                                    else tree_height(core.find_node_by_id(node_id))),
+                "newParentId",
             )
 
         chosen = set(targets)
@@ -967,17 +1002,24 @@ def move_nodes():
                                **_mutation_payload(state))
 
         state.push_undo()
-        for node_id in targets:
-            moved, reason = move_node(core, node_id, new_parent_id, None)
-            if not moved:  # pragma: no cover - every cause is pre-checked above
-                raise ApiError(INVALID_FIELD, reason or "Move rejected.", 400)
-        # move_node appended them in order; put the block where it was asked.
-        # Re-read: delete_node_from_data rebinds every `children` list.
-        parent = core.find_node_by_id(new_parent_id)
-        children = list(parent.get("children") or [])
-        block = [child for child in children if str(child.get("id")) in chosen]
-        others = [child for child in children if str(child.get("id")) not in chosen]
-        parent["children"] = others[:position] + block + others[position:]
+        if lookup:
+            # Out of their parents, then into the new one as one block.
+            block = [lookup.nodes[node_id] for node_id in targets]
+            detach_nodes(lookup, targets)
+            others = parent["children"]
+            parent["children"] = others[:position] + block + others[position:]
+        else:
+            for node_id in targets:
+                moved, reason = move_node(core, node_id, new_parent_id, None)
+                if not moved:  # pragma: no cover - every cause is pre-checked above
+                    raise ApiError(INVALID_FIELD, reason or "Move rejected.", 400)
+            # move_node appended them in order; put the block where it was asked.
+            # Re-read: delete_node_from_data rebinds every `children` list.
+            parent = core.find_node_by_id(new_parent_id)
+            children = list(parent.get("children") or [])
+            block = [child for child in children if str(child.get("id")) in chosen]
+            others = [child for child in children if str(child.get("id")) not in chosen]
+            parent["children"] = others[:position] + block + others[position:]
         core.recalculate_probabilities()
         state.mark_dirty()
 
