@@ -625,3 +625,284 @@ def test_2_the_page_sends_the_flag_only_after_discard_and_asks_on_a_409():
     # nothing else in the page posts to these three
     for path in ("'/file/open'", "'/examples/open'", "'/import/json'"):
         assert src.count("api.post(" + path) + src.count("api.upload(" + path) == 1, path
+
+
+# =============================================================================================
+# 4: Stop frees the AI slot
+# =============================================================================================
+#
+# The provider is a fake that waits on a threading.Event, patched onto the
+# provider singleton as test_api_ai.py does. Nothing here reaches a network.
+
+import threading  # noqa: E402
+
+from ai_providers import AIProviderFactory  # noqa: E402
+
+API_KEY = "sk-testkeyDONOTLEAK0123456789abcdefAB12"
+PROVIDER_NAME = "OpenAI"
+
+
+class Blocked:
+    """A provider call that waits, so the test can act while it is out."""
+
+    def __init__(self, text):
+        self.text = text
+        self.inside = threading.Event()
+        self.release = threading.Event()
+        self.returned = threading.Event()
+        self.calls = 0
+
+    def __call__(self, api_key, endpoint, model, messages, max_tokens=2000):
+        self.calls += 1
+        self.inside.set()
+        self.release.wait(10)
+        self.returned.set()
+        return self.text, None
+
+
+def _replies(text):
+    def send_message(api_key, endpoint, model, messages, max_tokens=2000):
+        return text, None
+
+    return send_message
+
+
+def _in_background(app, url, payload=None):
+    outcome = {}
+
+    def run():
+        with app.test_client() as other:
+            outcome["response"] = other.post(url, json=payload)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread, outcome
+
+
+def _settled(blocked, timeout=5.0):
+    """Wait until the abandoned worker has run to its end: the provider
+    returned and the handler has written down whatever it writes down."""
+    assert blocked.returned.wait(timeout)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not any(t.name.startswith("ai-") and t.is_alive() for t in threading.enumerate()):
+            return
+        time.sleep(0.01)
+    raise AssertionError("the abandoned worker never finished")
+
+
+SUGGESTION = (
+    "SUGGESTION: Add corrosion\nDESCRIPTION: missing root cause.\n"
+    "ACTION: add\nTARGET: root\n"
+    'DATA: {"id": "corrosion", "name": "Corrosion", "type": "Event", '
+    '"probability": 0.05, "notes": "late"}\n'
+)
+
+
+@pytest.fixture
+def provider():
+    return AIProviderFactory.get_provider(PROVIDER_NAME)
+
+
+@pytest.fixture
+def ai(app, client, provider, monkeypatch):
+    """The client, with credentials saved through the real save path (into
+    tmp_path: see per_user_home) and a fresh handler."""
+    ai_bridge.reset_handler()
+    monkeypatch.setattr(provider, "test_connection", lambda *a, **k: (True, "ok"))
+    saved = client.post("/api/ai/credentials", json={"provider": PROVIDER_NAME, "apiKey": API_KEY})
+    assert saved.status_code == 200, body(saved)
+    yield client
+    deadline = time.monotonic() + 5.0
+    while ai_bridge._call_slot.locked() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not ai_bridge._call_slot.locked(), "an AI call slot was left held"
+
+
+def _conversation(client):
+    return body(client.get("/api/ai/conversation"))
+
+
+def test_4_stop_frees_the_slot_and_the_late_answer_is_dropped(app, ai, provider, monkeypatch):
+    # an earlier turn, which must survive the cancel
+    monkeypatch.setattr(provider, "send_message", _replies("First answer."))
+    assert ai.post("/api/ai/chat", json={"message": "first"}).status_code == 200
+    before = _conversation(ai)
+    assert [m["content"] for m in before["messages"]] == ["first", "First answer."]
+    tree_before = state_of(ai)
+
+    blocked = Blocked("Too late. " + SUGGESTION)
+    monkeypatch.setattr(provider, "send_message", blocked)
+    thread, outcome = _in_background(app, "/api/ai/chat", {"message": "second", "requestId": "req-2"})
+    try:
+        assert blocked.inside.wait(5), "the provider was never reached"
+        # the slot is taken: as before, a second request is refused
+        busy = ai.post("/api/ai/chat", json={"message": "impatient"})
+        assert busy.status_code == 409 and error(busy)["code"] == "AI_BUSY"
+
+        cancelled = ai.post("/api/ai/cancel", json={"requestId": "req-2"})
+        assert cancelled.status_code == 200 and body(cancelled)["cancelled"] is True
+
+        # the request that was waiting is answered now, with its own refusal
+        thread.join(5)
+        assert not thread.is_alive(), "the abandoned request kept waiting"
+        assert outcome["response"].status_code == 409
+        assert error(outcome["response"])["code"] == "AI_CANCELLED"
+
+        # and the next one is accepted at once, while the provider still has
+        # not answered the abandoned one
+        assert not blocked.returned.is_set()
+        monkeypatch.setattr(provider, "send_message", _replies("Third answer."))
+        third = ai.post("/api/ai/chat", json={"message": "third"})
+        assert third.status_code == 200 and body(third)["reply"] == "Third answer."
+    finally:
+        blocked.release.set()
+    _settled(blocked)
+
+    # the late answer is nowhere: not in the conversation, not a suggestion
+    after = _conversation(ai)
+    assert [m["content"] for m in after["messages"]] == ["first", "First answer.", "third", "Third answer."]
+    assert after["changes"] == [] and after["pendingUpdate"] is None
+    assert "Too late" not in json.dumps(after)
+    # and the document is as it was
+    now = state_of(ai)
+    assert now["tree"] == tree_before["tree"] and now["revision"] == tree_before["revision"]
+    assert now["dirty"] is False
+
+
+def test_4_a_late_update_is_never_installed_and_leaves_no_preview(app, ai, provider, monkeypatch):
+    add(ai, name="Pump fails", probability=0.01)
+    held = state_of(ai)
+    rewritten = copy.deepcopy(held["tree"])
+    rewritten["children"][0]["name"] = "REWRITTEN BY THE MODEL"
+    for preview in (True, False):
+        blocked = Blocked(json.dumps(rewritten))
+        monkeypatch.setattr(provider, "send_message", blocked)
+        payload = {"preview": preview, "requestId": "upd"} if preview else {"requestId": "upd"}
+        thread, outcome = _in_background(app, "/api/ai/update", payload)
+        try:
+            assert blocked.inside.wait(5)
+            assert body(ai.post("/api/ai/cancel", json={"requestId": "upd"}))["cancelled"] is True
+            thread.join(5)
+            assert error(outcome["response"])["code"] == "AI_CANCELLED"
+        finally:
+            blocked.release.set()
+        _settled(blocked)
+        now = state_of(ai)
+        assert now["tree"] == held["tree"] and now["revision"] == held["revision"], preview
+        assert "REWRITTEN" not in json.dumps(now)
+        assert _conversation(ai)["pendingUpdate"] is None
+        assert _conversation(ai)["messages"] == []
+        # nothing is waiting to be applied
+        assert error(ai.post("/api/ai/update/apply", json={"id": "x"}))["code"] == "AI_UPDATE_EXPIRED"
+
+
+def test_4_suggestions_and_the_conversation_from_before_are_kept(app, ai, provider, monkeypatch):
+    pump = add(ai, name="Pump fails", probability=0.01)
+    monkeypatch.setattr(provider, "send_message", _replies(
+        "SUGGESTION: Revise\nDESCRIPTION: field data.\nACTION: edit\nTARGET: %s\n"
+        'DATA: {"id": "%s", "name": "Pump fails", "probability": 0.2}\n' % (pump, pump)))
+    first = body(ai.post("/api/ai/chat", json={"message": "review"}))
+    assert len(first["changes"]) == 1
+    index = first["changes"][0]["index"]
+
+    blocked = Blocked(SUGGESTION)
+    monkeypatch.setattr(provider, "send_message", blocked)
+    thread, _outcome = _in_background(app, "/api/ai/analyze", {"requestId": "a"})
+    try:
+        assert blocked.inside.wait(5)
+        assert body(ai.post("/api/ai/cancel", json={}))["cancelled"] is True
+        thread.join(5)
+    finally:
+        blocked.release.set()
+    _settled(blocked)
+
+    kept = _conversation(ai)
+    assert [c["index"] for c in kept["changes"]] == [index], "the earlier suggestion still waits"
+    assert "corrosion" not in json.dumps(kept).lower()
+    # ... and can still be applied, to the document it was made for
+    applied = ai.post("/api/ai/changes/apply", json={"indices": [index]})
+    assert applied.status_code == 200 and len(body(applied)["applied"]) == 1
+    assert body(applied)["tree"]["children"][0]["probability"] == 0.2
+
+
+def test_4_cancel_names_its_request(app, ai, provider, monkeypatch):
+    blocked = Blocked("Answer.")
+    monkeypatch.setattr(provider, "send_message", blocked)
+    thread, outcome = _in_background(app, "/api/ai/chat", {"message": "hello", "requestId": "mine"})
+    try:
+        assert blocked.inside.wait(5)
+        # Stop for another request (a tab whose own request has finished)
+        other = ai.post("/api/ai/cancel", json={"requestId": "somebody-else"})
+        assert other.status_code == 200 and body(other)["cancelled"] is False
+        assert ai_bridge._call_slot.locked()
+    finally:
+        blocked.release.set()
+    thread.join(5)
+    # the request went through untouched
+    assert outcome["response"].status_code == 200 and body(outcome["response"])["reply"] == "Answer."
+    assert [m["content"] for m in _conversation(ai)["messages"]] == ["hello", "Answer."]
+
+
+def test_4_cancel_with_nothing_in_flight_is_not_an_error(client):
+    """Also unconfigured: no credentials, no handler, nothing created."""
+    answer = client.post("/api/ai/cancel", json={})
+    assert answer.status_code == 200 and body(answer) == {"ok": True, "cancelled": False}
+    assert client.post("/api/ai/cancel").status_code == 200
+    assert ai_bridge.existing_handler() is None
+    for bad in (5, "", "x" * 65, ["a"]):
+        refused = client.post("/api/ai/cancel", json={"requestId": bad})
+        assert refused.status_code == 400 and error(refused)["detail"] == {"field": "requestId"}
+
+
+def test_4_a_request_that_timed_out_can_be_abandoned_too(app, ai, provider, monkeypatch):
+    """Before: after a timeout the slot stayed taken until the provider
+    answered, and the only way out was to restart the editor."""
+    blocked = Blocked("Too late.")
+    monkeypatch.setattr(provider, "send_message", blocked)
+    monkeypatch.setattr(config, "AI_TIMEOUT_SECONDS", 0.2, raising=False)
+    try:
+        timed_out = ai.post("/api/ai/chat", json={"message": "slow"})
+        assert timed_out.status_code == 504 and error(timed_out)["code"] == "AI_TIMEOUT"
+        assert error(ai.post("/api/ai/chat", json={"message": "again"}))["code"] == "AI_BUSY"
+        assert body(ai.post("/api/ai/cancel", json={}))["cancelled"] is True
+        monkeypatch.setattr(provider, "send_message", _replies("Here."))
+        assert body(ai.post("/api/ai/chat", json={"message": "again"}))["reply"] == "Here."
+    finally:
+        blocked.release.set()
+    _settled(blocked)
+    assert [m["content"] for m in _conversation(ai)["messages"]] == ["again", "Here."]
+
+
+def test_4_a_conversation_cleared_during_the_request_stays_cleared(app, ai, provider, monkeypatch):
+    monkeypatch.setattr(provider, "send_message", _replies("First answer."))
+    ai.post("/api/ai/chat", json={"message": "first"})
+    blocked = Blocked("Too late.")
+    monkeypatch.setattr(provider, "send_message", blocked)
+    thread, _outcome = _in_background(app, "/api/ai/chat", {"message": "second"})
+    try:
+        assert blocked.inside.wait(5)
+        assert ai.delete("/api/ai/conversation").status_code == 200
+        assert body(ai.post("/api/ai/cancel", json={}))["cancelled"] is True
+        thread.join(5)
+    finally:
+        blocked.release.set()
+    _settled(blocked)
+    assert _conversation(ai)["messages"] == []
+
+
+def test_4_the_page_sends_the_cancel_with_the_request_it_stopped():
+    src = _read(STATIC / "chat.js")
+    stop = _function(src, "function actionStop()")
+    assert stop.index("say('system', 'ai.msg.stopped')") < stop.index("api.post('/ai/cancel', { requestId: job.id })")
+    assert "say('system', 'ai.msg.stopNotFreed')" in stop
+    run = _function(src, "async function run(statusText, work, hooks)")
+    assert "id: newRequestId()" in run
+    for call in ("api.post('/ai/chat', { message: text, requestId: job.id })",
+                 "api.post('/ai/analyze', { requestId: job.id })",
+                 "api.post('/ai/update', { preview: true, requestId: job.id })"):
+        assert call in src, call
+    for catalog, key in (("ux3.js", "ai.msg.stopped"), ("fix181.js", "ai.msg.stopNotFreed")):
+        text = _read(STATIC / "i18n" / catalog)
+        assert text.count("'%s':" % key) == 2, "en and ja"
+    assert "may be refused as busy" not in _read(STATIC / "i18n" / "ux3.js")

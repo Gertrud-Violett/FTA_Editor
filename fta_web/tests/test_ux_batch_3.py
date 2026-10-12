@@ -702,7 +702,9 @@ def test_45_the_panel_repaints_stops_and_gives_a_failed_message_back():
     assert "if (busy || log.querySelector('.chat-msg--user, .chat-changes')) return;" in restore
     stop = _function(src, "function actionStop()")
     assert "job.stopped = true;" in stop and "setBusy(false);" in stop and "say('system', 'ai.msg.stopped')" in stop
-    assert "api." not in stop, "Stop is the page giving up waiting; nothing is sent"
+    # Since 1.8.1 Stop also tells the editor to abandon the request (it sent
+    # nothing before, and the AI slot stayed taken): test_known_issues_1_8.py.
+    assert stop.count("api.") == 1 and "api.post('/ai/cancel', { requestId: job.id })" in stop
     send = _function(src, "function actionSend()")
     assert "if (input.value.trim() === '') input.value = typed;" in send
     assert "{ onFail: giveBack }" in send and "if (!showReply(result)) giveBack();" in send

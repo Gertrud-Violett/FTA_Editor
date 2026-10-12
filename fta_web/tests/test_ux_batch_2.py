@@ -645,7 +645,7 @@ def test_20_the_key_is_not_in_a_preview(seeded, provider, monkeypatch):
 def test_20_the_panel_asks_then_previews_then_applies():
     src = _read(STATIC / "chat.js")
     action = re.search(r"  function actionUpdate\(\) \{(.*?)\n  \}\n", src, re.S).group(1)
-    assert action.index("choiceDialog(t('ai.update.confirm')") < action.index("api.post('/ai/update', { preview: true })")
+    assert action.index("choiceDialog(t('ai.update.confirm')") < action.index("api.post('/ai/update', { preview: true, requestId: job.id })")
     assert "if (!go || destroyed || blocked()) return;" in action
     assert "renderUpdatePreview(result);" in action
     preview = _function(src, "function renderUpdatePreview(result)")

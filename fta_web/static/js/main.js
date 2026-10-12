@@ -1130,6 +1130,7 @@ const CATALOGS = [
   './i18n/ux1.js',
   './i18n/ux2.js',
   './i18n/ux3.js',
+  './i18n/fix181.js',
   './i18n/val.js',
   './i18n/gate.js',
   './i18n/diagram.js',
