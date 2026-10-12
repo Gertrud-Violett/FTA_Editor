@@ -759,7 +759,7 @@ def test_the_new_endpoints_are_in_the_api_reference_and_the_changelog():
         assert "`%s %s`" % (method.upper(), path) in reference, path
     for key in ("deletedIds", "movedIds", "updatedIds", "pendingUpdate"):
         assert "`%s`" % key in reference, key
-    unreleased = _read(REPO / "CHANGELOG.md").split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    unreleased = _read(REPO / "CHANGELOG.md").split("## [1.8.0]", 1)[1].split("\n## [", 1)[0]
     unreleased = " ".join(unreleased.split())  # a phrase may be wrapped over two lines
     for phrase in ("Diagram settings", "Copy CSV", "Initiating event", "one undo step", "Formatted",
                    "light colours", "Stop", "Google Gemini", "legend"):

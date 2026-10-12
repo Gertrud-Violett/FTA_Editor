@@ -1437,6 +1437,6 @@ def test_the_new_endpoints_are_in_the_api_reference_and_the_changelog():
     assert '"preview": true' in reference
     for key in ("revision", "documentSerial", "prefs"):
         assert "`%s`" % key in reference, key
-    unreleased = _read(REPO / "CHANGELOG.md").split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    unreleased = _read(REPO / "CHANGELOG.md").split("## [1.8.0]", 1)[1].split("\n## [", 1)[0]
     for phrase in ("rescue copy", "Save and continue", "Open an example", "another tab", "This run only"):
         assert phrase in unreleased, phrase
