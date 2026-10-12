@@ -462,7 +462,9 @@ async function run(url, label, root) {
   const card = page.locator('#ai-root .chat-update').last();
   await card.waitFor({ state: 'visible' });
   const lines = await card.locator('.chat-update__line').allTextContents();
-  L.check('Update FTA: the request asks for a preview', JSON.stringify(calls.update) === '[{"preview":true}]', calls.update);
+  // Since 1.8.1 the request also names itself (requestId), for Stop.
+  L.check('Update FTA: the request asks for a preview', calls.update.length === 1 && calls.update[0].preview === true
+    && typeof calls.update[0].requestId === 'string' && Object.keys(calls.update[0]).sort().join() === 'preview,requestId', calls.update);
   L.check('Update FTA: the card lists what would be added, changed and removed, by name',
     JSON.stringify(lines) === JSON.stringify(['Added (1): Common-cause failure', 'Changed (1): Pump A', 'Removed (1): Pump B']), lines);
   L.check('Update FTA: nothing is applied yet', (await state()).revision === revBefore && (await rows()) === 3 && /not applied yet/.test(await card.textContent()));
