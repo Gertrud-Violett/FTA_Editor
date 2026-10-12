@@ -129,7 +129,7 @@ if the browser does not open by itself, paste that URL in. Press `Ctrl-C` to
 stop; quitting the server invalidates the token and every page holding it.
 
 ```bash
-python3 fta_web/run.py --port 8765     # fixed port instead of a free one
+python3 fta_web/run.py --port 8800     # another port than the default 8765 (0: any free port)
 python3 fta_web/run.py --no-browser    # just print the URL
 python3 fta_web/run.py --root ~/trees  # restrict the file browser to a directory
 ```

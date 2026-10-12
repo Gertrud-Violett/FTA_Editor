@@ -95,6 +95,17 @@ The **»** button in the AI Assistant's header folds that panel to a strip at
 the right edge; **«** opens it again. The editor remembers the choice for the
 next launch.
 
+**The address is the same at every start.** The editor listens on
+`127.0.0.1:8765` unless you start it with `--port`. A browser keeps what a
+page stores per address, port included, so your display settings (Advanced,
+the language, the theme, significant figures, the Formatted switch, the
+diagram style) are there again at the next start. Up to 1.8.0 the port was a
+new one each time and they were lost. If port 8765 is in use, for example
+because a second copy of the editor is running, the editor starts on a free
+port and its terminal window says so in a line beginning with `Note`; that
+copy starts with the default settings. `--port 8800` chooses another fixed
+port and `--port 0` any free one.
+
 ## Understanding FTA vs ETA
 
 ### FTA (Fault Tree Analysis) - Bottom-Up

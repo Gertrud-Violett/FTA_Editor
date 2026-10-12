@@ -280,7 +280,16 @@ renders from the fallback HTML in `app.py`, or every `/static/` URL 404s, or the
 API blueprints are quietly absent because `importlib.import_module("routes.…")`
 found nothing. Check all four.
 
-Start it on a spare port without opening a browser:
+Without `--port` the executable listens on **8765**, the same port at every
+start. That is what lets the browser keep the page's display settings
+(Advanced, language, theme, significant figures, the Formatted switch, the
+diagram style): a browser stores them per origin, and the port is part of the
+origin. When 8765 is taken (a second copy, another program) it starts on a
+free port instead and prints one `Note` line saying that the settings will
+not carry over. `--port <n>` fixes another port and `--port 0` asks for any
+free port, as every start did up to 1.8.0.
+
+To verify a build, start it on a spare port without opening a browser:
 
 ```
 ./build/dist/fta_editor/fta_editor --port 8791 --no-browser

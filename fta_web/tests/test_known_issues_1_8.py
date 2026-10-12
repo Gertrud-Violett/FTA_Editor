@@ -342,3 +342,121 @@ def _walk(node):
     yield node
     for child in node["children"]:
         yield from _walk(child)
+
+
+# =============================================================================================
+# 1: the launcher's default port
+# =============================================================================================
+
+
+@pytest.fixture
+def launcher():
+    sys.path.insert(0, str(REPO / "fta_web"))
+    import run  # the launcher's own module name
+
+    return run
+
+
+def _listening(launcher):
+    """A socket listening on a free loopback port, bound the way Werkzeug's
+    server binds (with address reuse)."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((launcher.config.HOST, 0))
+    sock.listen(1)
+    return sock
+
+
+def test_1_the_default_port_is_8765_and_is_used_when_it_is_free(launcher, monkeypatch):
+    assert launcher.config.DEFAULT_PORT == 8765
+    # On a port known to be free, so that an editor running on this machine
+    # does not decide the test.
+    free = launcher._free_port()
+    monkeypatch.setattr(launcher.config, "DEFAULT_PORT", free)
+    assert launcher._port_is_free(free)
+    assert launcher.choose_port(None) == (free, False)
+
+
+def test_1_a_second_copy_starts_on_a_free_port_and_says_so(launcher, monkeypatch):
+    taken = _listening(launcher)
+    try:
+        port = taken.getsockname()[1]
+        monkeypatch.setattr(launcher.config, "DEFAULT_PORT", port)
+        assert launcher._port_is_free(port) is False
+        chosen, fell_back = launcher.choose_port(None)
+        assert fell_back is True and chosen != port and 1024 < chosen < 65536
+        assert launcher._port_is_free(chosen)
+    finally:
+        taken.close()
+
+
+def test_1_port_0_is_any_free_port_and_a_given_port_is_taken_as_given(launcher, monkeypatch):
+    assert launcher.parse_args(["--port", "0"]).port == 0
+    assert launcher.parse_args([]).port is None
+    for bad in ("-1", "65536", "x"):
+        with pytest.raises(SystemExit):
+            launcher.parse_args(["--port", bad])
+
+    monkeypatch.setattr(launcher.config, "DEFAULT_PORT", launcher._free_port())
+    chosen, fell_back = launcher.choose_port(0)
+    assert fell_back is False and chosen != launcher.config.DEFAULT_PORT and chosen > 1024
+    # an explicit port is never replaced, also when it is taken: the server
+    # then fails to start with "address in use", as it always did
+    taken = _listening(launcher)
+    try:
+        port = taken.getsockname()[1]
+        assert launcher.choose_port(port) == (port, False)
+    finally:
+        taken.close()
+
+
+class _FakeApp:
+    def __init__(self):
+        self.ran = None
+
+    def run(self, **kwargs):
+        self.ran = kwargs
+
+
+def _launch(launcher, monkeypatch, capsys, argv):
+    built = {}
+
+    def create_app(token, port, fs_root):
+        built.update(token=token, port=port, fs_root=fs_root, app=_FakeApp())
+        return built["app"]
+
+    monkeypatch.setattr(launcher, "create_app", create_app)
+    assert launcher.main(argv + ["--no-browser"]) == 0
+    return built, capsys.readouterr().out
+
+
+def test_1_the_launcher_serves_the_port_it_printed_and_pins_the_guard_to_it(
+        launcher, monkeypatch, capsys, tmp_path):
+    free = launcher._free_port()
+    monkeypatch.setattr(launcher.config, "DEFAULT_PORT", free)
+    built, out = _launch(launcher, monkeypatch, capsys, ["--root", str(tmp_path)])
+    assert built["port"] == free and built["app"].ran["port"] == free
+    assert built["app"].ran["host"] == "127.0.0.1"
+    assert "http://127.0.0.1:%d/?t=%s" % (free, built["token"]) in out
+    assert "Note" not in out
+
+    taken = _listening(launcher)
+    try:
+        port = taken.getsockname()[1]
+        monkeypatch.setattr(launcher.config, "DEFAULT_PORT", port)
+        built, out = _launch(launcher, monkeypatch, capsys, ["--root", str(tmp_path)])
+        assert built["port"] != port and built["app"].ran["port"] == built["port"]
+        note = [line for line in out.splitlines() if "Note" in line]
+        assert len(note) == 1
+        assert "port %d is in use" % port in note[0] and str(built["port"]) in note[0]
+        assert "preferences kept by the browser will not carry over" in note[0]
+    finally:
+        taken.close()
+
+
+def test_1_the_port_is_documented():
+    for path in (REPO / "build" / "README.md", REPO / "QUICKSTART.md", DOCS / "USER_GUIDE.md"):
+        text = _read(path)
+        assert "8765" in text and "--port 0" in text, path.name

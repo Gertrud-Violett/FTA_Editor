@@ -435,9 +435,9 @@ class AppState:
                 "sessionWarnings": copy.deepcopy(self.session_warnings),
                 "revision": self.revision,
                 "documentSerial": self.document_serial,
-                # What the page remembers between launches. The packaged app
-                # starts on a new port each time, so the browser's own
-                # storage is new each time as well.
+                # What the page remembers between launches whatever port
+                # it is served from (the browser's own storage is per port,
+                # and the port is another one when the default is taken).
                 "prefs": user_prefs.client_prefs(),
             }
 

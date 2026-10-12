@@ -3412,8 +3412,8 @@ async function actionAiSettings() {
 
 /**
  * The AI panel folded to a strip, or open. Kept on the server (`prefs` in
- * /api/state, POST /api/prefs) and not in localStorage: the packaged app
- * starts on a new port each time, so the browser's storage starts empty.
+ * /api/state, POST /api/prefs) and not in localStorage: the browser's storage
+ * is per port, and up to 1.8.0 the app started on a new port each time.
  */
 let aiCollapsed = false;
 
