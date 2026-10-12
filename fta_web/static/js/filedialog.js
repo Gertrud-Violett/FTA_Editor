@@ -192,12 +192,21 @@ function formatModified(value) {
  * may use. The server names that folder and the command that starts the
  * editor on another one (detail.root, detail.relaunch); the sentence around
  * them is in the catalog, so it is in the editor's language. `sources` adds
- * the way round that needs no restart, when this dialog offers one.
+ * the way round that needs no restart, when this dialog offers one. When the
+ * folder can be changed from here (`canChoose`), the sentence points at the
+ * "Change folder..." button instead of at the command.
  */
-function errorText(err, fallbackKey, sources) {
+function isOutsideRoot(err) {
   const detail = err && err.detail && typeof err.detail === 'object' ? err.detail : {};
-  if (err && err.code === 'PATH_REJECTED' && detail.reason === 'outside_root' && detail.relaunch) {
-    const text = t('file.errOutsideRoot', { root: detail.root || '', command: detail.relaunch });
+  return !!err && err.code === 'PATH_REJECTED' && detail.reason === 'outside_root';
+}
+
+function errorText(err, fallbackKey, sources, canChoose) {
+  const detail = err && err.detail && typeof err.detail === 'object' ? err.detail : {};
+  if (isOutsideRoot(err) && detail.relaunch) {
+    const text = canChoose
+      ? t('file.errOutsideRootChoose', { root: detail.root || '' })
+      : t('file.errOutsideRoot', { root: detail.root || '', command: detail.relaunch });
     return sources ? text + ' ' + t('file.errOutsideRootImport') : text;
   }
   if (err && typeof err.message === 'string' && err.message) return err.message;
@@ -290,6 +299,11 @@ export function openFileDialog(options) {
   let closed = false;
   let typeBuffer = '';
   let typeTimer = 0;
+  // Whether the editor can open a folder chooser on this computer, and the
+  // command that starts it on another folder when it cannot (/api/fs/home).
+  let canChooseRoot = false;
+  let relaunchCommand = '';
+  let choosingRoot = false;
 
   /* ---- chrome ---- */
   const titleId = 'fta-filedialog-title';
@@ -310,6 +324,27 @@ export function openFileDialog(options) {
   });
 
   const locationLine = el('p', { class: 'fdlg-location', 'aria-live': 'polite' });
+
+  // The folder this dialog can browse is the only one the editor may read
+  // and write. It used to be fixed when the editor started; this asks the
+  // editor to let the person choose another (see changeRoot).
+  const changeRootButton = el('button', {
+    type: 'button',
+    class: 'fta-btn is-tiny fdlg-changeroot',
+    dataset: { role: 'change-root' },
+    text: t('file.changeRoot'),
+    title: t('file.changeRootTitle'),
+    onclick: () => changeRoot(),
+  });
+  // The same offer, right under the refusal of a place outside that folder.
+  const messageAction = el('button', {
+    type: 'button',
+    class: 'fta-btn is-tiny fdlg-message-action',
+    dataset: { role: 'change-root-here' },
+    text: t('file.changeRoot'),
+    hidden: true,
+    onclick: () => changeRoot(),
+  });
 
   // A pasted/typed path, in addition to clicking through the list -- see
   // goToPath() for why it accepts either a folder or a file.
@@ -370,12 +405,13 @@ export function openFileDialog(options) {
   });
 
   const body = el('div', { class: 'fta-modal-body fdlg-body' }, [
-    el('div', { class: 'fdlg-toolbar' }, [upButton, locationLine]),
+    el('div', { class: 'fdlg-toolbar' }, [upButton, locationLine, changeRootButton]),
     pathRow,
     list,
     hint,
     mode === 'save' ? nameField : null,
     message,
+    messageAction,
   ]);
 
   // The other places a document can come from. Each closes this dialog and
@@ -440,6 +476,78 @@ export function openFileDialog(options) {
     message.classList.toggle('is-error', kind === 'error');
     message.classList.toggle('is-warn', kind === 'warn');
     message.classList.toggle('is-busy', kind === 'busy');
+    messageAction.hidden = true; // only beside the refusal it belongs to
+  }
+
+  /** After a refusal was shown: offer "Change folder..." under it when the
+   * refusal was a place outside the allowed folder. */
+  function offerChangeRoot(err) {
+    messageAction.hidden = !isOutsideRoot(err);
+  }
+
+  /**
+   * Ask the editor to let the person choose another allowed folder.
+   *
+   * Nothing is sent but the request itself: the editor opens the operating
+   * system's own folder chooser on this computer, and what is picked there
+   * becomes the folder. This page cannot name one (the editor refuses a
+   * request that carries anything), which is what keeps the folder a
+   * boundary. The request waits for as long as the chooser is open.
+   *
+   * Where no chooser can be opened (no display, a packaged build without
+   * one), the message is the command that starts the editor on another
+   * folder, as it always was.
+   */
+  async function changeRoot() {
+    if (choosingRoot) return;
+    if (!canChooseRoot) {
+      setMessage(t('file.changeRootUnavailable', { command: relaunchCommand }), 'warn');
+      return;
+    }
+    choosingRoot = true;
+    changeRootButton.disabled = true;
+    setMessage(t('file.changeRootWaiting'), 'busy');
+    let result = null;
+    let failure = null;
+    try {
+      result = await api.post('/fs/root/choose');
+    } catch (err) {
+      failure = err;
+    }
+    choosingRoot = false;
+    changeRootButton.disabled = false;
+    if (result) {
+      // The shell hears of it also when this dialog was closed meanwhile:
+      // the document may have become untitled.
+      window.dispatchEvent(new CustomEvent('fta:root-changed', { detail: result }));
+    }
+    if (closed) return;
+    if (failure) {
+      if (isSessionError(failure)) {
+        close(null);
+        return;
+      }
+      const detail = failure.detail && typeof failure.detail === 'object' ? failure.detail : {};
+      if (failure.code === 'PICKER_UNAVAILABLE') {
+        canChooseRoot = false;
+        if (detail.relaunch) relaunchCommand = String(detail.relaunch);
+        setMessage(t('file.changeRootUnavailable', { command: relaunchCommand }), 'warn');
+      } else if (failure.code === 'PICKER_BUSY') {
+        setMessage(t('file.changeRootBusy'), 'warn');
+      } else {
+        setMessage(errorText(failure, 'file.errList'), 'error');
+      }
+      return;
+    }
+    if (!result.changed) {
+      setMessage(t('file.changeRootCancelled'));
+      return;
+    }
+    await navigate(result.root, true);
+    if (closed) return;
+    pathInput.value = cwd;
+    setMessage(t(result.documentUntitled ? 'file.changeRootUntitled' : 'file.changeRootDone',
+      { root: result.root }), result.documentUntitled ? 'warn' : null);
   }
 
   function setBusy(next) {
@@ -611,7 +719,8 @@ export function openFileDialog(options) {
         // PATH_REJECTED lands here, and it is not a crash: the sandbox
         // refused a directory. Say what the server said and leave the
         // dialog open.
-        setMessage(errorText(err, 'file.errList', canImport), 'error');
+        setMessage(errorText(err, 'file.errList', canImport, canChooseRoot), 'error');
+        offerChangeRoot(err);
       }
       return false;
     } finally {
@@ -658,7 +767,8 @@ export function openFileDialog(options) {
     const isFileNotDir =
       err && err.code === 'PATH_REJECTED' && err.detail && err.detail.reason === 'not_a_directory';
     if (!isFileNotDir) {
-      setMessage(errorText(err, 'file.errList', canImport), 'error');
+      setMessage(errorText(err, 'file.errList', canImport, canChooseRoot), 'error');
+      offerChangeRoot(err);
       pathInput.focus();
       return;
     }
@@ -688,7 +798,9 @@ export function openFileDialog(options) {
     const base = baseName(value);
     if (!dir || !(await navigate(dir, true))) {
       // Neither the path nor the folder it would be saved in exists.
-      setMessage(missing ? t('file.errFolderNotFound', { path: dir || value }) : errorText(err, 'file.errList'), 'error');
+      setMessage(missing ? t('file.errFolderNotFound', { path: dir || value })
+        : errorText(err, 'file.errList', false, canChooseRoot), 'error');
+      if (!missing) offerChangeRoot(err);
       pathInput.focus();
       return;
     }
@@ -960,6 +1072,8 @@ export function openFileDialog(options) {
       homeError = err;
     }
     if (closed) return;
+    canChooseRoot = Boolean(home && home.canChooseRoot);
+    relaunchCommand = home && typeof home.relaunch === 'string' ? home.relaunch : '';
 
     const candidates = [];
     if (opts.startDir) candidates.push(opts.startDir);
@@ -1010,6 +1124,10 @@ const STYLES = `
 .fta-filedialog .fdlg-body { gap: 0.5rem; }
 
 .fdlg-toolbar { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.fdlg-toolbar .fdlg-location { flex: 1 1 auto; }
+.fdlg-changeroot { flex: 0 0 auto; }
+.fdlg-message-action { align-self: flex-start; }
+.fdlg-message-action[hidden] { display: none; }
 .fdlg-location {
   margin: 0;
   flex: 1 1 auto;

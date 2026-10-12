@@ -1316,3 +1316,477 @@ def test_5_the_page_offers_the_copy_on_the_first_run_screen():
                 "recovery.discardConfirm"):
         assert catalog.count("'%s':" % key) == 2, key
     assert "Restore unsaved work from {date} ({title})" in catalog and "Discard it" in catalog
+
+
+# =============================================================================================
+# 6: choosing the allowed folder while the editor runs
+# =============================================================================================
+#
+# The native dialog is never opened here: folder_picker.pick (or the helper
+# process under it) is replaced by a function in every test, and an autouse
+# fixture fails any test that would reach the real one.
+
+import base64  # noqa: E402
+
+from fta_web import folder_picker, fsbrowser, user_prefs  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_native_dialog(monkeypatch):
+    """No test in this file may start the helper process that shows a
+    dialog. A test that wants an answer replaces this again."""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a test tried to open the native folder dialog")
+
+    monkeypatch.setattr(folder_picker, "_start_helper", refuse)
+
+
+class FakePicker:
+    """Stands in for the person at the dialog: ``answer`` is the folder they
+    pick (None: they close it)."""
+
+    def __init__(self, answer):
+        self.answer = answer
+        self.started_in = []
+
+    def __call__(self, start=None):
+        self.started_in.append(start)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+@pytest.fixture
+def other(tmp_path):
+    folder = tmp_path / "other folder"
+    folder.mkdir()
+    return folder
+
+
+def _choose(client, monkeypatch, answer, **request):
+    picker = FakePicker(answer)
+    monkeypatch.setattr(folder_picker, "pick", picker)
+    return client.post("/api/fs/root/choose", **request), picker
+
+
+def test_6_the_folder_the_person_picks_becomes_the_root(client, sandbox, other, monkeypatch):
+    inside_new = other / "tree.json"
+    inside_new.write_bytes((EXAMPLES / "sampleFTA.json").read_bytes())
+    assert client.post("/api/file/open", json={"path": str(inside_new)}).status_code == 400
+
+    answer, picker = _choose(client, monkeypatch, str(other))
+    assert answer.status_code == 200, body(answer)
+    got = body(answer)
+    assert got["changed"] is True and got["cancelled"] is False
+    assert got["root"] == str(other.resolve())
+    assert picker.started_in == [str(sandbox.resolve())], "the dialog starts in the current root"
+    assert Path(get_state().fs_root) == other.resolve()
+    home = body(client.get("/api/fs/home"))
+    assert home["root"] == str(other.resolve()) and home["cwd"] == str(other.resolve())
+
+    # the boundary moved, it did not go: the new folder is readable ...
+    assert client.post("/api/file/open", json={"path": str(inside_new)}).status_code == 200
+    # ... and the old one is outside now
+    old = _sample(sandbox, "old.json")
+    refused = client.post("/api/file/open", json={"path": str(old), "force": True})
+    assert error(refused)["detail"]["reason"] == "outside_root"
+    assert error(refused)["detail"]["root"] == str(other.resolve())
+
+
+PATHS_IN_A_REQUEST = [
+    {"json": {"path": "PLACEHOLDER"}},
+    {"json": {"root": "PLACEHOLDER"}},
+    {"json": {"folder": "PLACEHOLDER", "force": True}},
+    {"json": {"anything": 1}},
+    {"json": ["PLACEHOLDER"]},
+    {"json": "PLACEHOLDER"},
+    {"data": b"null", "content_type": "application/json"},
+    {"data": b"{} x", "content_type": "application/json"},
+    {"data": "PLACEHOLDER", "content_type": "text/plain"},
+    {"data": b"{\"path\": \"PLACEHOLDER\"}", "content_type": "text/plain"},
+    {"data": {"path": "PLACEHOLDER"}, "content_type": "multipart/form-data"},
+    {"data": {"path": "PLACEHOLDER"}, "content_type": "application/x-www-form-urlencoded"},
+    {"query_string": {"path": "PLACEHOLDER"}},
+    {"query_string": {"root": "PLACEHOLDER"}, "json": {}},
+    {"data": b"\xff\xfe", "content_type": "application/json"},
+]
+
+
+@pytest.mark.parametrize("request_", PATHS_IN_A_REQUEST)
+def test_6_a_path_in_the_request_cannot_change_the_root(client, sandbox, other, monkeypatch, request_):
+    """The security property of this endpoint. Whatever a request carries,
+    it is refused before any dialog is opened, and the root stays."""
+
+    def fill(value):
+        if isinstance(value, dict):
+            return {key: fill(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [fill(item) for item in value]
+        if isinstance(value, bytes):
+            return value.replace(b"PLACEHOLDER", str(other).replace("\\", "\\\\").encode("utf-8"))
+        return str(other) if value == "PLACEHOLDER" else value
+
+    # Even with a person who would pick that very folder: the request is
+    # refused first, so the dialog never opens.
+    answer, picker = _choose(client, monkeypatch, str(other), **fill(request_))
+    assert answer.status_code == 400, (request_, body(answer))
+    assert error(answer)["code"] == "INVALID_FIELD" and error(answer)["detail"] == {"field": "body"}
+    assert picker.started_in == [], "no dialog was opened"
+    assert Path(get_state().fs_root) == sandbox
+    assert body(client.get("/api/fs/home"))["root"] == str(sandbox.resolve())
+    assert str(other) not in answer.get_data(as_text=True), "nothing of the input is echoed"
+    assert client.get("/api/fs/list", query_string={"path": str(other)}).status_code == 400
+
+
+def test_6_an_empty_request_is_the_only_one_taken(client, sandbox, other, monkeypatch):
+    for request_ in ({}, {"json": {}}, {"data": b"", "content_type": "application/json"},
+                     {"data": b"  {}  ", "content_type": "application/json"},
+                     {"query_string": {"lang": "ja"}}):
+        get_state().fs_root = sandbox
+        answer, picker = _choose(client, monkeypatch, str(other), **request_)
+        assert answer.status_code == 200 and len(picker.started_in) == 1, request_
+
+
+def test_6_no_other_request_reaches_the_root(client, sandbox, other):
+    """Nothing but the dialog's answer is ever assigned to the root."""
+    routes = {rule.rule for rule in client.application.url_map.iter_rules()}
+    assert {rule for rule in routes if "root" in rule} == {"/api/fs/root/choose"}
+    assert "fs_root" not in _read(REPO / "fta_web" / "user_prefs.py")
+    assignments = {}
+    for path in (REPO / "fta_web").rglob("*.py"):
+        if "tests" in path.parts or ".venv" in path.parts or "build" in path.parts:
+            continue
+        hits = [line.strip() for line in _read(path).splitlines()
+                if re.match(r"^(?:[\w()]+\.)*fs_root(?::\s*[\w.\[\]]+)?\s*=[^=]", line.strip())]
+        if hits:
+            assignments[path.name] = hits
+    assert assignments == {
+        # the default, in AppState.__init__
+        "state.py": ["self.fs_root: Path = Path(config.DEFAULT_FS_ROOT)"],
+        # --root (or the default) at start-up
+        "run.py": ["fs_root = _resolve_root(args.root) if args.root else config.DEFAULT_FS_ROOT"],
+        "app.py": ["fs_root: Path = None,"],
+        "files.py": [
+            # create_app's fs_root, once, at registration
+            "get_state().fs_root = Path(root)",
+            # the answer of the dialog
+            "state.fs_root = new_root",
+        ],
+    }, assignments
+    # /api/prefs cannot store one either
+    stored = client.post("/api/prefs", json={"fsRoot": str(other), "lastFolder": str(other)})
+    assert Path(get_state().fs_root) == sandbox and stored.status_code in (200, 400)
+    assert user_prefs.last_folder() is None
+
+
+def test_6_cancel_changes_nothing(client, sandbox, monkeypatch):
+    opened = _sample(sandbox)
+    client.post("/api/file/open", json={"path": str(opened)})
+    add(client, name="unsaved")
+    before = state_of(client)
+    answer, picker = _choose(client, monkeypatch, None)
+    assert answer.status_code == 200
+    assert body(answer) == {"ok": True, "changed": False, "cancelled": True, "root": str(sandbox.resolve())}
+    assert len(picker.started_in) == 1
+    after = state_of(client)
+    assert Path(get_state().fs_root) == sandbox
+    assert (after["currentPath"], after["dirty"], after["revision"], after["tree"]) == (
+        before["currentPath"], before["dirty"], before["revision"], before["tree"])
+
+
+def test_6_the_choice_is_normalised_like_the_root_option(client, sandbox, other, tmp_path, monkeypatch, launcher):
+    (other / "sub").mkdir()
+    spellings = [
+        str(other) + os.sep,
+        str(other / "sub" / ".."),
+        str(other / "." / "sub" / ".." / "."),
+        str(other).replace("\\", "/"),
+    ]
+    if os.name == "nt":
+        spellings.append(str(other).upper())
+    for spelling in spellings:
+        get_state().fs_root = sandbox
+        answer, _picker = _choose(client, monkeypatch, spelling)
+        assert answer.status_code == 200, spelling
+        # exactly what `--root <spelling>` gives at start-up
+        assert Path(body(answer)["root"]) == launcher._resolve_root(spelling), spelling
+        assert Path(get_state().fs_root) == launcher._resolve_root(spelling)
+
+    # "~" is expanded by both
+    monkeypatch.setenv("HOME", str(other))
+    monkeypatch.setenv("USERPROFILE", str(other))
+    get_state().fs_root = sandbox
+    answer, _picker = _choose(client, monkeypatch, "~")
+    assert Path(body(answer)["root"]) == launcher._resolve_root("~") == other.resolve()
+
+    # what --root refuses is refused here, and the root stays
+    get_state().fs_root = sandbox
+    a_file = other / "file.txt"
+    a_file.write_text("x", encoding="utf-8")
+    for bad in (str(other / "gone"), str(a_file)):
+        with pytest.raises(SystemExit):
+            launcher._resolve_root(bad)
+        answer, _picker = _choose(client, monkeypatch, bad)
+        assert answer.status_code == 400 and error(answer)["code"] == "PATH_REJECTED"
+        assert error(answer)["detail"]["reason"] == "not_a_directory"
+        assert Path(get_state().fs_root) == sandbox
+        assert bad not in answer.get_data(as_text=True)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="needs a symbolic link")
+def test_6_a_link_that_is_chosen_is_resolved_as_for_the_root_option(client, sandbox, other, tmp_path,
+                                                                 monkeypatch, launcher):
+    link = tmp_path / "link"
+    link.symlink_to(other, target_is_directory=True)
+    answer, _picker = _choose(client, monkeypatch, str(link))
+    assert Path(body(answer)["root"]) == other.resolve() == launcher._resolve_root(str(link))
+
+
+def test_6_the_document_keeps_its_path_only_inside_the_new_root(client, sandbox, tmp_path, monkeypatch):
+    project = sandbox / "project"
+    project.mkdir()
+    target = project / "tree.json"
+    target.write_bytes((EXAMPLES / "sampleFTA.json").read_bytes())
+    assert client.post("/api/file/open", json={"path": str(target)}).status_code == 200
+    add(client, name="unsaved edit")
+    before = state_of(client)
+
+    # a narrower root that still holds the file: the path is kept
+    answer, _picker = _choose(client, monkeypatch, str(project))
+    got = body(answer)
+    assert got["documentUntitled"] is False and got["currentPath"] == str(target.resolve())
+    assert client.post("/api/file/save", json={}).status_code == 200
+    assert "unsaved edit" in target.read_text("utf-8")
+
+    # a root elsewhere: the document becomes untitled, and nothing of it is lost
+    add(client, name="second edit")
+    on_disk = target.read_bytes()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    answer, _picker = _choose(client, monkeypatch, str(elsewhere))
+    got = body(answer)
+    assert got["documentUntitled"] is True and got["currentPath"] is None and got["dirty"] is True
+    after = state_of(client)
+    assert after["currentPath"] is None and after["dirty"] is True
+    assert after["tree"] == body(client.get("/api/state"))["tree"]
+    names = [c["name"] for c in after["tree"]["children"]]
+    assert "unsaved edit" in names and "second edit" in names
+    assert after["canUndo"] is True and after["documentSerial"] == before["documentSerial"]
+    # Save has nowhere to write: Save As, inside the new root
+    assert error(client.post("/api/file/save", json={}))["code"] == "NO_CURRENT_PATH"
+    assert target.read_bytes() == on_disk, "the file outside the new root is not written"
+    assert get_state().core.last_saved_file is None
+    kept = elsewhere / "kept.json"
+    assert client.post("/api/file/save-as", json={"path": str(kept)}).status_code == 200
+    assert "second edit" in kept.read_text("utf-8")
+
+
+def test_6_the_remembered_folder_is_checked_against_the_new_root(client, sandbox, other, monkeypatch):
+    sub = sandbox / "sub"
+    sub.mkdir()
+    target = _sample(sub, "inner.json")
+    client.post("/api/file/open", json={"path": str(target)})
+    client.post("/api/new", json={})
+    assert user_prefs.last_folder() == str(sub.resolve())
+    assert body(client.get("/api/fs/home"))["cwd"] == str(sub.resolve())
+
+    _choose(client, monkeypatch, str(other))
+    # the stored value is still the old folder, and it is no longer offered
+    assert user_prefs.last_folder() == str(sub.resolve())
+    home = body(client.get("/api/fs/home"))
+    assert home["cwd"] == str(other.resolve()) == home["root"]
+    # back to a root that holds it: offered again
+    _choose(client, monkeypatch, str(sandbox))
+    assert body(client.get("/api/fs/home"))["cwd"] == str(sub.resolve())
+
+
+def test_6_only_one_dialog_at_a_time(app, client, sandbox, other, monkeypatch):
+    opened, close = threading.Event(), threading.Event()
+    starts = []
+
+    def helper(name, start):
+        starts.append(start)
+        opened.set()
+        close.wait(10)
+        return str(other)
+
+    monkeypatch.setattr(folder_picker, "_run_helper", helper)
+    monkeypatch.setattr(folder_picker, "backend", lambda: ("powershell", ""))
+    thread, outcome = _in_background(app, "/api/fs/root/choose")
+    try:
+        assert opened.wait(5)
+        assert folder_picker.is_open()
+        second = client.post("/api/fs/root/choose")
+        assert second.status_code == 409 and error(second)["code"] == "PICKER_BUSY"
+        assert Path(get_state().fs_root) == sandbox, "still the old root while the dialog is open"
+        # the editor is not held while the dialog is open
+        assert client.get("/api/state").status_code == 200
+        assert add(client, name="typed meanwhile")
+    finally:
+        close.set()
+    thread.join(5)
+    assert outcome["response"].status_code == 200 and len(starts) == 1
+    assert Path(get_state().fs_root) == other.resolve()
+    assert not folder_picker.is_open()
+    assert client.post("/api/fs/root/choose").status_code == 200
+
+
+@pytest.mark.parametrize("reason", ["no_display", "packaged_without_tkinter", "no_tkinter",
+                                    "no_powershell", "helper_failed"])
+def test_6_without_a_dialog_the_answer_is_501_and_the_relaunch_command(client, sandbox, monkeypatch, reason):
+    unavailable = folder_picker.PickerUnavailable("No folder chooser can be opened here.", reason)
+    answer, _picker = _choose(client, monkeypatch, unavailable)
+    assert answer.status_code == 501
+    assert error(answer)["code"] == "PICKER_UNAVAILABLE"
+    assert error(answer)["detail"] == {"reason": reason, "relaunch": fsbrowser.relaunch_with_root()}
+    assert '--root "<folder>"' in error(answer)["message"]
+    assert Path(get_state().fs_root) == sandbox
+
+
+def test_6_the_page_is_told_whether_the_folder_can_be_changed(client, monkeypatch):
+    monkeypatch.setattr(folder_picker, "backend", lambda: (None, "no_display"))
+    home = body(client.get("/api/fs/home"))
+    assert home["canChooseRoot"] is False and home["relaunch"] == fsbrowser.relaunch_with_root()
+    monkeypatch.setattr(folder_picker, "backend", lambda: ("tkinter", ""))
+    assert body(client.get("/api/fs/home"))["canChooseRoot"] is True
+
+
+# ---- the helper process: constant command lines, and what is read from them -----------------
+
+
+def test_6_where_a_dialog_can_be_shown(monkeypatch):
+    monkeypatch.setenv(folder_picker.DISABLE_ENV, "1")
+    assert folder_picker.backend() == (None, "disabled") and not folder_picker.available()
+    monkeypatch.delenv(folder_picker.DISABLE_ENV)
+    monkeypatch.setattr(folder_picker.os, "name", "nt")
+    monkeypatch.setattr(folder_picker, "_powershell_path", lambda: r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+    assert folder_picker.backend() == ("powershell", "")
+    monkeypatch.setattr(folder_picker, "_powershell_path", lambda: None)
+    assert folder_picker.backend() == (None, "no_powershell")
+
+    monkeypatch.setattr(folder_picker.os, "name", "posix")
+    monkeypatch.setattr(folder_picker.runtime_paths, "is_frozen", lambda: True)
+    assert folder_picker.backend() == (None, "packaged_without_tkinter")
+    monkeypatch.setattr(folder_picker.runtime_paths, "is_frozen", lambda: False)
+    monkeypatch.setattr(folder_picker.sys, "platform", "linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    assert folder_picker.backend() == (None, "no_display")   # headless Linux, CI
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(folder_picker.importlib.util, "find_spec", lambda name: None)
+    assert folder_picker.backend() == (None, "no_tkinter")
+    monkeypatch.setattr(folder_picker.importlib.util, "find_spec", lambda name: object())
+    assert folder_picker.backend() == ("tkinter", "")
+    with pytest.raises(folder_picker.PickerUnavailable):
+        monkeypatch.setattr(folder_picker, "backend", lambda: (None, "no_display"))
+        folder_picker.pick("/somewhere")
+
+
+def test_6_the_helper_command_lines_are_constants(monkeypatch, tmp_path):
+    """Nothing is interpolated into what is run: the start folder travels in
+    an environment variable, and a hostile one is only ever a value."""
+    monkeypatch.setattr(folder_picker, "_powershell_path", lambda: r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+    hostile = "C:\\x'; Remove-Item -Recurse C:\\ ; '$(calc)`\" & echo %PATH% \n__import__('os')"
+    seen = []
+
+    def run(argv, **kwargs):
+        seen.append((list(argv), kwargs))
+        answer = base64.b64encode(str(tmp_path).encode("utf-8")).decode("ascii")
+        return type("Done", (), {"returncode": 0, "stdout": ("FTA_PICKED:" + answer + "\r\n").encode(), "stderr": b""})()
+
+    monkeypatch.setattr(folder_picker, "_start_helper", run)
+    for name in ("powershell", "tkinter"):
+        monkeypatch.setattr(folder_picker, "backend", lambda name=name: (name, ""))
+        expected = folder_picker.command(name)
+        assert folder_picker.pick(hostile) == str(tmp_path)
+        argv, kwargs = seen[-1]
+        assert argv == expected, "the same command line whatever the start folder is"
+        assert not any("Remove-Item" in part or "calc" in part for part in argv)
+        assert kwargs["shell"] is False and kwargs["env"][folder_picker.START_ENV] == hostile
+        assert kwargs["stdin"] == folder_picker.subprocess.DEVNULL and kwargs["timeout"] == folder_picker.TIMEOUT_SECONDS
+        # and with no start folder at all
+        assert folder_picker.pick(None) == str(tmp_path)
+        assert seen[-1][0] == expected and folder_picker.START_ENV not in seen[-1][1]["env"]
+
+    powershell = folder_picker.command("powershell")
+    assert powershell[0].lower().endswith(r"system32\windowspowershell\v1.0\powershell.exe")
+    assert powershell[1:6] == ["-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-Command"]
+    assert powershell[6] is folder_picker._POWERSHELL_SCRIPT and len(powershell) == 7
+    assert "$env:FTA_EDITOR_PICKER_START" in powershell[6] and "FolderBrowserDialog" in powershell[6]
+    tk = folder_picker.command("tkinter")
+    assert tk == [sys.executable, "-I", "-c", folder_picker._TKINTER_PROGRAM]
+    assert "askdirectory" in tk[3] and "os.environ.get('FTA_EDITOR_PICKER_START')" in tk[3]
+    compile(tk[3], "<picker>", "exec")
+    for script in (powershell[6], tk[3]):
+        assert folder_picker.PROMPT in script and folder_picker.ANSWER_PREFIX in script
+        assert "%" not in script and "{}" not in script and "format(" not in script
+    source = _read(REPO / "fta_web" / "folder_picker.py")
+    assert "shell=True" not in source and "os.system" not in source and "Popen" not in source
+    assert source.count("subprocess.run(") == 1, "one place starts a process"
+
+
+def test_6_what_is_read_from_the_helper(monkeypatch):
+    def encode(text):
+        return "FTA_PICKED:" + base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+    assert folder_picker.parse_answer(encode("C:\\解析\\ポンプ")) == "C:\\解析\\ポンプ"
+    assert folder_picker.parse_answer("a banner\r\n" + encode("/home/u/trees") + "\r\n") == "/home/u/trees"
+    # a closed dialog prints nothing; anything else is not an answer
+    for nothing in ("", "\n", "C:\\not marked", "FTA_PICKED:", "FTA_PICKED:not base64!!",
+                    "FTA_PICKED:" + base64.b64encode(b"\xff\xfe").decode("ascii"),
+                    encode("a\x00b"), encode("   ")):
+        assert folder_picker.parse_answer(nothing) is None, nothing
+
+    monkeypatch.setattr(folder_picker, "backend", lambda: ("powershell", ""))
+    monkeypatch.setattr(folder_picker, "_powershell_path", lambda: "powershell.exe")
+
+    def done(returncode, stdout):
+        return lambda argv, **kwargs: type("Done", (), {"returncode": returncode, "stdout": stdout, "stderr": b"x"})()
+
+    monkeypatch.setattr(folder_picker, "_start_helper", done(0, b""))
+    assert folder_picker.pick(None) is None, "closed: a cancel"
+    monkeypatch.setattr(folder_picker, "_start_helper", done(1, b""))
+    with pytest.raises(folder_picker.PickerUnavailable) as failed:
+        folder_picker.pick(None)                      # the helper could not show a dialog
+    assert failed.value.reason == "helper_failed"
+
+    def timed_out(argv, **kwargs):
+        raise folder_picker.subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+    monkeypatch.setattr(folder_picker, "_start_helper", timed_out)
+    assert folder_picker.pick(None) is None, "left open too long: a cancel"
+
+    def missing(argv, **kwargs):
+        raise FileNotFoundError(2, "No such file")
+
+    monkeypatch.setattr(folder_picker, "_start_helper", missing)
+    with pytest.raises(folder_picker.PickerUnavailable):
+        folder_picker.pick(None)
+    assert not folder_picker.is_open(), "the lock is given back on every path"
+
+
+def test_6_the_packaged_app_still_excludes_tkinter_and_ships_the_picker():
+    spec = _read(REPO / "build" / "fta_editor.spec")
+    hidden = spec[spec.index("hiddenimports = ["):spec.index("]", spec.index("hiddenimports = ["))]
+    assert '"folder_picker",' in hidden and '"recovery",' in hidden
+    excludes = spec[spec.index("excludes = ["):]
+    assert '"tkinter",' in excludes and '"_tkinter",' in excludes
+
+
+def test_6_the_file_dialog_has_the_button_and_keeps_the_command_when_there_is_no_dialog():
+    src = _read(STATIC / "filedialog.js")
+    change = _function(src, "async function changeRoot()")
+    # no path is sent, and none could be: the call has no body of its own
+    assert "api.post('/fs/root/choose')" in change and "path" not in change.replace("pathInput", "")
+    assert "t('file.changeRootUnavailable', { command:" in change
+    assert "failure.code === 'PICKER_UNAVAILABLE'" in change
+    assert "dataset: { role: 'change-root' }" in src
+    assert src.count("offerChangeRoot(") >= 3, "offered where a path outside the folder is refused"
+    catalog = _read(STATIC / "i18n" / "fix181.js")
+    for key in ("file.changeRoot", "file.changeRootTitle", "file.changeRootWaiting", "file.changeRootUnavailable",
+                "file.changeRootDone", "file.changeRootUntitled", "file.changeRootCancelled",
+                "file.errOutsideRootChoose", "file.changeRootBusy"):
+        assert catalog.count("'%s':" % key) == 2, key
+    main = _read(STATIC / "main.js")
+    assert "'fta:root-changed'" in main and "'fta:root-changed'" in src

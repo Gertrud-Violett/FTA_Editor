@@ -12,6 +12,7 @@ Endpoints
 ---------
 ==============================  ==========================================
 ``GET  /api/fs/home``           where the picker should start
+``POST /api/fs/root/choose``    let the person pick another allowed folder
 ``GET  /api/examples``          the analyses that ship with the app
 ``POST /api/examples/open``     open one of them as an untitled copy
 ``GET  /api/fs/list``           one directory, filtered to openable files
@@ -121,7 +122,7 @@ try:  # normal package import: ``import fta_web.routes.files``
     from ..engine import WebCore
     from ..excel_events import export_view, export_xlsx
     from ..numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs
-    from .. import recovery
+    from .. import folder_picker, recovery
     from ..state import _emit as notify_document_event
     from ..state import get_state, load_warning_issues
     from ..tree_ops import tree_height
@@ -147,6 +148,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from engine import WebCore  # type: ignore[no-redef]
     from excel_events import export_view, export_xlsx  # type: ignore[no-redef]
     from numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs  # type: ignore[no-redef]
+    import folder_picker  # type: ignore[no-redef]
     import recovery  # type: ignore[no-redef]
     from state import _emit as notify_document_event  # type: ignore[no-redef]
     from state import get_state, load_warning_issues  # type: ignore[no-redef]
@@ -169,6 +171,8 @@ files_bp = Blueprint("files", __name__, url_prefix="/api")
 # ---------------------------------------------------------------------------
 EXPORT_UNAVAILABLE = "EXPORT_UNAVAILABLE"
 PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
+PICKER_UNAVAILABLE = "PICKER_UNAVAILABLE"
+PICKER_BUSY = "PICKER_BUSY"
 
 #: Named in the "no openpyxl" failure so the remedy travels with the error
 #: instead of living only in the docs -- the same policy rendering.py applies
@@ -388,7 +392,143 @@ def fs_home():
             cwd = root
     else:
         cwd = _remembered_folder(root) or root
-    return ok_response(root=str(root), cwd=str(cwd))
+    # canChooseRoot: whether "Change folder..." can open a dialog on this
+    # computer (POST /api/fs/root/choose). When it cannot, the page shows
+    # `relaunch`, the command that starts the editor on another folder.
+    return ok_response(
+        root=str(root),
+        cwd=str(cwd),
+        canChooseRoot=folder_picker.available(),
+        relaunch=fsbrowser.relaunch_with_root(),
+    )
+
+
+# ---- changing the allowed folder --------------------------------------------
+
+
+def _refuse_any_input() -> None:
+    """400 unless the request carries nothing: no body (an empty JSON object
+    is tolerated, it is what the page's ``api.post`` sends), no form, no
+    file, no query parameter other than the language.
+
+    This is the whole point of the endpoint. The folder is chosen by the
+    person, in a dialog; a request cannot name it. Refusing every input,
+    rather than ignoring a ``path`` it does not read, means a client that
+    believes it can pass one finds out at once -- and that no later change
+    to this function can start honouring a field by accident. Nothing of the
+    input is echoed back.
+    """
+    refusal = ApiError(
+        INVALID_FIELD,
+        "This request takes no input. The folder is chosen in a dialog the "
+        "editor opens on this computer; a request cannot name it.",
+        400,
+        {"field": "body"},
+    )
+    if any(key != "lang" for key in request.args):
+        raise refusal
+    raw = request.get_data(cache=True)
+    if raw and raw.strip():
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            raise refusal
+        if not (isinstance(parsed, dict) and not parsed):
+            raise refusal
+    if request.form or request.files:
+        raise refusal
+
+
+@files_bp.post("/fs/root/choose")
+def fs_root_choose():
+    """Let the person at this computer choose another allowed folder.
+
+    The sandbox root could only be set when the editor started (``--root``).
+    This changes it for the running session, and in one way only: the server
+    opens the operating system's folder dialog (``folder_picker.py``) and the
+    folder picked there becomes the root. **The request names nothing** --
+    see :func:`_refuse_any_input` -- so a page or a script holding the token
+    cannot point the editor anywhere; it can only make the dialog appear.
+
+    The request waits while the dialog is open. Answers:
+
+    * ``{changed: true, root, currentPath, documentUntitled}`` -- the folder
+      chosen went through the same normalisation as ``--root``
+      (``fsbrowser.resolve_root``) and is the root now.
+    * ``{changed: false, cancelled: true, root}`` -- the dialog was closed;
+      nothing changed.
+    * 501 ``PICKER_UNAVAILABLE`` -- no dialog can be shown here (no display,
+      a packaged build without one). ``detail.relaunch`` is the command that
+      starts the editor on another folder, as before.
+    * 409 ``PICKER_BUSY`` -- a dialog is already open.
+
+    **The document is never lost.** If its file is inside the new root it
+    keeps its path. If not, it becomes untitled (``documentUntitled``): Save
+    then asks where, as for a new analysis, because the old place can no
+    longer be written. Its content, its undo history and its modified flag
+    are untouched.
+
+    The remembered folder (``lastFolder``) needs no step of its own: it is
+    checked against the root each time it is read (``_remembered_folder``).
+    """
+    _refuse_any_input()
+    state = get_state()
+    try:
+        current_root: Optional[Path] = _fs_root()
+    except fsbrowser.PathRejected:
+        current_root = None  # the root has gone (an unplugged drive): choose another
+
+    try:
+        chosen = folder_picker.pick(str(current_root) if current_root else None)
+    except folder_picker.PickerBusy as exc:
+        raise ApiError(PICKER_BUSY, str(exc), 409)
+    except folder_picker.PickerUnavailable as exc:
+        raise ApiError(
+            PICKER_UNAVAILABLE,
+            "A folder chooser cannot be opened on this computer. To work in "
+            "another folder, close the editor and start it with that folder "
+            "as its root: %s" % fsbrowser.relaunch_with_root(),
+            501,
+            {"reason": exc.reason, "relaunch": fsbrowser.relaunch_with_root()},
+        )
+
+    if chosen is None:
+        return ok_response(changed=False, cancelled=True,
+                           root=str(current_root) if current_root else None)
+
+    try:
+        # Exactly what run.py does with --root: expanduser, resolve, and it
+        # must be a directory.
+        new_root = fsbrowser.resolve_root(chosen)
+    except fsbrowser.PathRejected as exc:
+        # The dialog returned something that is not a usable folder (removed
+        # meanwhile, a virtual location). Nothing changes.
+        raise fsbrowser.PathRejected(
+            "The folder that was chosen cannot be used. The allowed folder "
+            "was not changed.",
+            reason="not_a_directory",
+            status=400,
+        ) from exc
+
+    with state.lock:
+        state.fs_root = new_root
+        untitled = False
+        if state.current_path is not None:
+            try:
+                state.current_path = fsbrowser.resolve_in_root(str(state.current_path), new_root)
+            except fsbrowser.PathRejected:
+                # Outside the new root: Save could no longer write there.
+                state.current_path = None
+                state.core.last_saved_file = None
+                untitled = True
+        return ok_response(
+            changed=new_root != current_root,
+            cancelled=False,
+            root=str(new_root),
+            currentPath=str(state.current_path) if state.current_path else None,
+            dirty=state.dirty,
+            documentUntitled=untitled,
+        )
 
 
 def _remembered_folder(root: Path) -> Optional[Path]:

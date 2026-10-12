@@ -783,7 +783,10 @@ def test_25_the_sandbox_root_is_as_narrow_as_it_was(client, sandbox, tmp_path):
     assert not (tmp_path / "outside" / "new.json").exists()
     assert state_of(client)["currentPath"] is None
     routes = {rule.rule for rule in client.application.url_map.iter_rules()}
-    assert not any("root" in rule for rule in routes), "no endpoint changes the root"
+    # Since 1.8.1 one endpoint can change the root, and it takes no path:
+    # the person picks the folder in a dialog the server opens
+    # (test_known_issues_1_8.py proves a request cannot name one).
+    assert {rule for rule in routes if "root" in rule} == {"/api/fs/root/choose"}
     assert "fs_root" not in _read(REPO / "fta_web" / "user_prefs.py"), "the root is not a stored preference"
 
 
@@ -804,8 +807,11 @@ def test_25_the_refusal_says_how_to_start_the_editor_on_another_folder(client, s
     assert "Program Files" not in json.dumps(packaged)
 
     dialog = _read(STATIC / "filedialog.js")
-    text = _function(dialog, "function errorText(err, fallbackKey, sources)")
-    assert "detail.reason === 'outside_root' && detail.relaunch" in text
+    # Since 1.8.1 the function takes one more argument (whether the folder
+    # can be changed from the page) and the outside_root test has a name.
+    text = _function(dialog, "function errorText(err, fallbackKey, sources, canChoose)")
+    assert "isOutsideRoot(err) && detail.relaunch" in text
+    assert "detail.reason === 'outside_root'" in _function(dialog, "function isOutsideRoot(err)")
     assert "t('file.errOutsideRoot', { root: detail.root || '', command: detail.relaunch })" in text
 
 
@@ -829,7 +835,10 @@ def test_25_the_load_dialog_offers_the_examples_and_this_computer():
 
 
 def home_of(client):
-    return {key: Path(value) for key, value in body(client.get("/api/fs/home")).items() if key != "ok"}
+    # root and cwd; since 1.8.1 the answer also says whether the folder can
+    # be changed from the page (canChooseRoot, relaunch), which are not paths
+    return {key: Path(value) for key, value in body(client.get("/api/fs/home")).items()
+            if key in ("root", "cwd")}
 
 
 def test_26_the_folder_of_the_last_open_or_save_is_where_an_untitled_document_starts(client, sandbox, per_user_home):

@@ -4170,6 +4170,16 @@ async function boot() {
       renderValidationBadge();
     }
   });
+  // The allowed folder was changed from the file dialog (filedialog.js).
+  // A document whose file is outside the new folder has become untitled on
+  // the server; the top bar must not go on showing a place Save cannot
+  // write to.
+  window.addEventListener('fta:root-changed', (event) => {
+    const detail = (event && event.detail) || {};
+    if (!detail.changed) return;
+    store.applyMutation({ currentPath: detail.currentPath || null, dirty: Boolean(detail.dirty) });
+    if (detail.documentUntitled) toast(t('file.changeRootUntitled', { root: detail.root || '' }), 'warn');
+  });
   window.addEventListener('fta:ai-settings', (event) => {
     // preventDefault is how the asker (chat.js) learns the shell has this; an
     // unclaimed event means the dialog module never loaded.

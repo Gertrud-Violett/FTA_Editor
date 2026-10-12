@@ -164,7 +164,10 @@ hiddenimports = [
     "i18n",
     # What the editor remembers between launches (last folder, AI panel).
     "user_prefs",
+    # The recovery copy of unsaved work, and the native "choose a folder"
+    # dialog (PowerShell on Windows: tkinter stays excluded below).
     "recovery",
+    "folder_picker",
 ]
 
 # ---------------------------------------------------------------------------
