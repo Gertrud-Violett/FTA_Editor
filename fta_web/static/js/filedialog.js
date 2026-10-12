@@ -296,6 +296,7 @@ export function openFileDialog(options) {
   let busy = false;
   let starting = true; // until the start folder is listed, or could not be
   let pendingPath = null; // a path entered while a listing was on its way
+  let pendingConfirm = false; // Save As confirmed while a listing was on its way
   let closed = false;
   let typeBuffer = '';
   let typeTimer = 0;
@@ -386,6 +387,8 @@ export function openFileDialog(options) {
   });
   const nameFieldId = 'fta-filedialog-name';
   nameInput.id = nameFieldId;
+  // A name that is still being typed is not the one that was confirmed.
+  nameInput.addEventListener('input', () => { pendingConfirm = false; });
   const nameField = el('div', { class: 'fta-field fdlg-namefield' }, [
     el('label', { for: nameFieldId, text: t('file.name') }),
     nameInput,
@@ -558,6 +561,18 @@ export function openFileDialog(options) {
     acceptButton.disabled = next;
     // From a timer, so that whoever awaited this listing finishes first.
     if (!next && pendingPath !== null) window.setTimeout(flushPendingPath, 0);
+    if (!next) flushPendingConfirm();
+  }
+
+  /** A Save As that was confirmed too early (see confirmChoice): now. */
+  function flushPendingConfirm() {
+    if (!pendingConfirm || busy || starting || closed) return;
+    pendingConfirm = false;
+    // Only into a folder that was listed: a listing that failed has said
+    // why, and there is nowhere to save.
+    if (mode === 'save' && cwd && !message.classList.contains('is-error')) {
+      window.setTimeout(confirmChoice, 0);
+    }
   }
 
   /* ---- listing ---- */
@@ -850,7 +865,20 @@ export function openFileDialog(options) {
   }
 
   async function confirmChoice() {
-    if (busy || closed) return;
+    if (closed) return;
+    if (mode === 'save' && (busy || starting)) {
+      // Save As: a name typed and Enter pressed before the dialog knew its
+      // folder. While the folder was being listed, that did nothing at all
+      // and nothing said so; before the listing had even been asked for, it
+      // saved into the root instead of the folder the dialog was about to
+      // show. (The first listing can be slow.) The save now goes ahead when
+      // the listing has landed, unless the name is changed meanwhile. Not
+      // for Open: there Enter means "the highlighted row", and the rows are
+      // about to change.
+      pendingConfirm = true;
+      return;
+    }
+    if (busy) return;
     setMessage('');
 
     if (mode === 'open') {
@@ -1111,6 +1139,7 @@ export function openFileDialog(options) {
   })().finally(() => {
     starting = false;
     flushPendingPath();
+    flushPendingConfirm();
   });
 
   return done;

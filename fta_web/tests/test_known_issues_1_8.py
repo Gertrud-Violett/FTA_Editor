@@ -1949,3 +1949,44 @@ def test_5_with_the_home_folder_as_root_the_recovery_folder_is_still_out_of_reac
     listed = body(client.get("/api/fs/list", query_string={"path": str(per_user_home)}))
     assert "notes.json" in [f["name"] for f in listed["files"]]
     assert not any(recovering in f["name"] for f in listed["files"])
+
+
+# =============================================================================================
+# 8: what the first Firefox and WebKit runs found
+# =============================================================================================
+
+
+def test_8_a_save_as_confirmed_before_the_folder_is_known_waits_for_it():
+    """WebKit lists the start folder more slowly than Chromium, and showed
+    this: a name typed and Enter pressed while the listing was on its way was
+    dropped without a word; pressed before the listing had been asked for,
+    it saved into the root instead of the folder the dialog was about to
+    show. The confirmation is kept and made when the listing has landed.
+    (Driven in the browser by s_ki.js, with the listing held back.)"""
+    src = _read(STATIC / "filedialog.js")
+    confirm = _function(src, "async function confirmChoice()")
+    head = confirm[:confirm.index("setMessage('');")]
+    assert "if (mode === 'save' && (busy || starting)) {" in head
+    assert "pendingConfirm = true;" in head and head.rstrip().endswith("if (busy) return;")
+    flush = _function(src, "function flushPendingConfirm()")
+    assert "if (!pendingConfirm || busy || starting || closed) return;" in flush
+    # never into a folder that was not listed
+    assert "mode === 'save' && cwd && !message.classList.contains('is-error')" in flush
+    assert "window.setTimeout(confirmChoice, 0);" in flush
+    assert "if (!next) flushPendingConfirm();" in _function(src, "function setBusy(next)")
+    assert src.count("flushPendingConfirm();") == 2, "when a listing ends, and when the start folder is settled"
+    # a name that is still being typed is not the one that was confirmed
+    assert "nameInput.addEventListener('input', () => { pendingConfirm = false; });" in src
+
+
+def test_8_the_suite_can_drive_the_two_other_engines_and_ci_does_not():
+    lib = _read(REPO / "fta_web" / "tests" / "gui" / "lib.js")
+    assert "process.env.FTA_GUI_BROWSER || 'chromium'" in lib
+    assert "playwright[BROWSER].launch({ headless })" in lib
+    assert "function chromiumOnly(name, reason)" in lib and "function skip(name, reason)" in lib
+    runner = _read(REPO / "fta_web" / "tests" / "gui" / "run.mjs")
+    assert "FTA_GUI_BROWSER" in runner and "'ki'" in runner
+    assert "FTA_EDITOR_NO_FOLDER_PICKER: '1'" in runner, "no native dialog from a test server"
+    for workflow in (REPO / ".github" / "workflows").glob("*.yml"):
+        text = _read(workflow)
+        assert "FTA_GUI_BROWSER" not in text and "install firefox" not in text and "webkit" not in text, workflow.name

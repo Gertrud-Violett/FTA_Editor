@@ -1051,6 +1051,14 @@ let starting = true;
 let pendingPath = null;
 let closed = false;
 let lastNavigateError = null;
+// What the dialog's code names since 1.8.1 (Change folder, and a Save As
+// confirmed before the folder is known), as far as this harness needs them:
+// it enters paths, and neither chooses a folder nor confirms a save.
+let canChooseRoot = false;
+let relaunchCommand = '';
+let pendingConfirm = false;
+function offerChangeRoot() {}
+function flushPendingConfirm() {}
 const errors = [];
 function setMessage(text, kind) { if (kind === 'error') errors.push(text); }
 function t(key) { return key; }

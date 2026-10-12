@@ -65,6 +65,12 @@ The known issues of 1.8.0.
 - **`1e-400` was accepted as a probability** and stored as 0 while the box
   kept the text. A number too small to be represented is now refused, and
   `-0` is read as `0`.
+- **Save As: a name typed and Enter pressed before the dialog had listed its
+  folder.** While the folder was being listed, Enter did nothing and nothing
+  said so. Pressed even earlier, it saved into the editor's root folder
+  instead of the folder the dialog was about to show. The save now waits
+  for the listing and then goes ahead. Found by running the GUI suite on
+  WebKit, which lists more slowly.
 
 ### Changed
 

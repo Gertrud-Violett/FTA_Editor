@@ -231,6 +231,34 @@ async function run(url, label, root) {
     fs.rmSync(original, { force: true });
   }
 
+  // ---- Save As confirmed before the folder has been listed (found by the WebKit run) -----------------------
+  // A name typed and Enter pressed while the first listing was still on its
+  // way did nothing, and nothing said so. The listing is held back here.
+  await freshDoc();
+  await app.api('post', '/nodes', { parentId: 'root', name: 'Saved early', probability: 0.1 });
+  await refresh();
+  let releaseList = null;
+  await page.route('**/api/fs/list**', async (route) => {
+    await new Promise((resolve) => { releaseList = resolve; });
+    await route.continue();
+  });
+  const early = 'ki_early_' + label;
+  await page.locator('.actionbar [data-action="save-as"]').click();
+  await fileDialog.waitFor({ state: 'visible' });
+  await fileDialog.locator('.fdlg-name').fill(early);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+  await waitFor(async () => releaseList !== null, 3000);
+  L.check('Save As: Enter before the folder is listed saves nothing yet, and the dialog waits',
+    (await fileDialog.count()) === 1 && (await state()).currentPath === null && releaseList !== null);
+  releaseList();
+  const savedEarly = await waitFor(async () => (((await state()).currentPath) || '').endsWith(early + '.json'), 5000);
+  const earlyPath = (await state()).currentPath || '';
+  L.check('Save As: and the save goes ahead when the listing has landed',
+    savedEarly && fs.existsSync(earlyPath) && (await fileDialog.count()) === 0 && (await page.textContent('#dirty-text')) === 'Saved', earlyPath);
+  await page.unroute('**/api/fs/list**');
+  if (earlyPath) fs.rmSync(earlyPath, { force: true });
+
   // ---- 6: "Change folder..." ---------------------------------------------------------------------------
   await freshDoc();
   const realHome = await app.api('get', '/fs/home');
