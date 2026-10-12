@@ -11,7 +11,7 @@ async function main(url, label, root) {
   for (const tab of ['cutsets', 'importance']) {
     const app = await L.openApp(url, { prefs: { 'fta.advanced': '1' } });
     const { page } = app;
-    await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+    await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
     await page.evaluate(() => window.ftaShell.refresh());
     const st = await app.api('get', '/state');
     const pa = flatten(st.tree).find((n) => n.name === 'Pump A fails');

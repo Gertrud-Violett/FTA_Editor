@@ -30,13 +30,17 @@ the live core would leave a half-replaced document behind on a bad file. The
 new core is built, loaded and only then swapped in under the lock, which makes
 a failed open a no-op for the user's work.
 
-**Open does not refuse to discard unsaved changes**, unlike ``POST /api/new``,
-which answers 409 ``UNSAVED_CHANGES`` unless forced. The published contract
-for this endpoint is ``{path}`` in, document out, and the frontend is written
-against exactly that -- it owns the "you have unsaved changes" confirmation,
-because it is the side that can show a dialog. Adding a server-side refusal
-here would break it. The tension is deliberate and recorded rather than
-silently resolved either way.
+**Open, an example and import refuse to discard unsaved changes**, as
+``POST /api/new`` does: 409 ``UNSAVED_CHANGES`` unless the request carries
+``force: true`` (a form field ``force=true`` on the multipart import). Up to
+1.8.0 only the page asked, and a page knows about its own edits only: with the
+editor open in two tabs, a Load in the tab that looked clean replaced what the
+other tab had not saved, without a question. The page still asks first (it
+is the side that can show a dialog) and sends ``force`` once the user chose
+to discard; the server's refusal is what catches the case the page cannot
+see. The check is made under the lock, at the moment the document would be
+replaced, and after every other check: a request that would fail anyway
+(a bad path, an unreadable file) fails as it always did.
 
 **Import leaves ``currentPath`` null and the document dirty.** The bytes came
 from the browser, not from a file this server can write back to, so there is
@@ -106,6 +110,7 @@ try:  # normal package import: ``import fta_web.routes.files``
         INVALID_JSON,
         NO_CURRENT_PATH,
         PATH_REJECTED,
+        UNSAVED_CHANGES,
         ApiError,
         api_error_response,
         ok_response,
@@ -129,6 +134,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         INVALID_JSON,
         NO_CURRENT_PATH,
         PATH_REJECTED,
+        UNSAVED_CHANGES,
         ApiError,
         api_error_response,
         ok_response,
@@ -253,6 +259,44 @@ def _required_path(payload: Dict[str, Any]) -> Any:
     if "path" not in payload:
         raise ApiError(INVALID_FIELD, "'path' is required.", 400, {"field": "path"})
     return payload["path"]
+
+
+def _force_flag(value: Any) -> bool:
+    """The ``force`` of a request that replaces the document.
+
+    A real boolean only, as for ``POST /api/new``: bool("false") is True, and
+    this flag is the one thing between the user's unsaved work and the bin.
+    A multipart form has no booleans, so there (and only there) the texts
+    ``true`` and ``false`` are read.
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    raise ApiError(INVALID_FIELD, "'force' must be true or false.", 400,
+                   {"field": "force", "value": value})
+
+
+def _form_force_flag() -> bool:
+    """``force`` of a multipart request: absent, ``true`` or ``false``."""
+    value = request.form.get("force")
+    if value is None or value in ("true", "false"):
+        return value == "true"
+    raise ApiError(INVALID_FIELD, "'force' must be true or false.", 400,
+                   {"field": "force", "value": value})
+
+
+def _refuse_unsaved(state, force: bool) -> None:
+    """409 ``UNSAVED_CHANGES`` when the document about to be replaced has
+    unsaved changes and the request does not say to discard them. Call with
+    ``state.lock`` held, immediately before the replacement."""
+    if state.dirty and not force:
+        raise ApiError(
+            UNSAVED_CHANGES,
+            "The current analysis has unsaved changes. "
+            "Save it, or resend with {\"force\": true} to discard them.",
+            409,
+        )
 
 
 def _fs_root() -> Path:
@@ -437,9 +481,11 @@ def open_example():
     ``name`` is one of the names ``GET /api/examples`` lists. The document is
     installed untitled (``currentPath`` null) and unmodified: Save goes to
     Save As, so the bundled file is never written. Like ``/api/file/open``
-    this does not refuse to discard unsaved changes; the page asks first.
+    it answers 409 ``UNSAVED_CHANGES`` rather than replace unsaved work,
+    unless the body has ``force: true``.
     """
     payload = _body()
+    force = _force_flag(payload.get("force"))
     name = payload.get("name")
     if not isinstance(name, str) or not name:
         raise ApiError(INVALID_FIELD, "'name' is required.", 400, {"field": "name"})
@@ -470,6 +516,7 @@ def open_example():
 
     state = get_state()
     with state.lock:
+        _refuse_unsaved(state, force)
         _install_document(state, loaded, None, dirty=False)
         return ok_response(
             example=name, warnings=_load_warnings(loaded), **_document_payload(state)
@@ -481,9 +528,14 @@ def open_example():
 
 @files_bp.post("/file/open")
 def file_open():
-    """Replace the document with the contents of a JSON file on disk."""
+    """Replace the document with the contents of a JSON file on disk.
+
+    Body: ``{path, force?}``. 409 ``UNSAVED_CHANGES`` when the current
+    document has unsaved changes and ``force`` is not true.
+    """
     payload = _body()
     raw_path = _required_path(payload)
+    force = _force_flag(payload.get("force"))
     state = get_state()
     target = fsbrowser.resolve_for_open(raw_path, _fs_root())
 
@@ -505,6 +557,7 @@ def file_open():
     _refuse_too_deep(loaded, target.name)
 
     with state.lock:
+        _refuse_unsaved(state, force)
         _install_document(state, loaded, target, dirty=False)
         response = ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
     # After the lock: this writes a small file, and no request should wait
@@ -867,8 +920,12 @@ def import_json():
     is checked only for a plainly wrong extension, and an extension-less part
     (a browser ``Blob`` arrives as ``blob``) is accepted and judged on its
     contents.
+
+    A form field ``force=true`` beside the file says to discard unsaved
+    changes; without it they are refused with 409 ``UNSAVED_CHANGES``.
     """
     upload = _uploaded_file()
+    force = _form_force_flag()
     filename = upload.filename or ""
     suffix = Path(filename).suffix.lower()
     if suffix and suffix not in {ext.lower() for ext in ALLOWED_OPEN_EXTENSIONS}:
@@ -920,5 +977,6 @@ def import_json():
         # No current path (the bytes came from the browser, not from a file
         # this server can write to) and therefore dirty: the work exists only
         # in memory until the user picks a location with Save As.
+        _refuse_unsaved(state, force)
         _install_document(state, loaded, None, dirty=True)
         return ok_response(warnings=_load_warnings(loaded), **_document_payload(state))

@@ -226,7 +226,7 @@ async function run(url, label, root) {
   L.check('Load: Cancel opens no file dialog and keeps the document', await fileDialog.count() === 0 && (await state()).tree.children.length === 1);
 
   // ---- 26: the file dialog starts in the folder last used ------------------------------------
-  await app.api('post', '/file/open', { path: path.join(root, sub, 'inner.json') });
+  await app.api('post', '/file/open', { path: path.join(root, sub, 'inner.json'), force: true });
   await app.api('post', '/new', { force: true });
   await refresh();
   await page.locator('.actionbar [data-action="load"]').click();
@@ -237,7 +237,7 @@ async function run(url, label, root) {
   await page.keyboard.press('Escape');
   await fileDialog.waitFor({ state: 'detached' });
   // back to the root, which is where the sections after this one expect to start
-  await app.api('post', '/file/open', { path: path.join(root, fileA) });
+  await app.api('post', '/file/open', { path: path.join(root, fileA), force: true });
   await app.api('post', '/new', { force: true });
   L.check('last folder: follows the next open', path.resolve((await app.api('get', '/fs/home')).cwd) === path.resolve(root));
   await refresh();
@@ -263,7 +263,7 @@ async function run(url, label, root) {
   let said = (await toasts()).join(' | ');
   L.check('export of an unsaved document: "a copy", the download folder, and that it is not a save', /Downloaded a copy as /.test(said) && /browser saves downloads/.test(said) && /not saved by this/.test(said) && (await state()).dirty === true, said);
   await dlUntitled.cancel().catch(() => {});
-  await app.api('post', '/file/open', { path: path.join(root, fileA) });
+  await app.api('post', '/file/open', { path: path.join(root, fileA), force: true });
   await refresh();
   await clearToasts();
   const [dlNamed] = await Promise.all([page.waitForEvent('download'), page.locator('.actionbar [data-action="xml"]').click()]);
@@ -374,7 +374,7 @@ async function run(url, label, root) {
     (await page.textContent('#dirty-text')) === 'Saved' && (await page.textContent('#statusline-file')) === savedElsewhere && !(await toasts()).some((t) => /another tab/.test(t)), await toasts());
   // another document opened elsewhere
   await clearToasts();
-  await app.api('post', '/file/open', { path: path.join(root, fileA) });
+  await app.api('post', '/file/open', { path: path.join(root, fileA), force: true });
   await focusTab();
   await waitFor(async () => (await page.textContent('#statusline-file')) === fileA);
   L.check('second tab: another analysis opened elsewhere is shown, and said to be another one',
@@ -484,7 +484,7 @@ async function run(url, label, root) {
   await refresh();
 
   // ---- 19: the server stops answering --------------------------------------------------------------
-  await app.api('post', '/file/open', { path: path.join(root, fileA) });
+  await app.api('post', '/file/open', { path: path.join(root, fileA), force: true });
   await refresh();
   await row('root').click();
   await app.addViaDialog({ name: 'Not saved yet', probability: '0.25' });
@@ -521,6 +521,7 @@ async function run(url, label, root) {
   const opened = await page.evaluate(async ([text]) => {
     const form = new FormData();
     form.append('file', new File([text], 'rescue.json', { type: 'application/json' }));
+    form.append('force', 'true'); // set-up: whatever the checks above left unsaved goes
     const r = await fetch('/api/import/json', { method: 'POST', headers: { 'X-FTA-Token': sessionStorage.getItem('fta.session.token') }, body: form });
     return { status: r.status, json: await r.json() };
   }, [fs.readFileSync(rescuePath, 'utf8')]);
@@ -576,7 +577,7 @@ async function run(url, label, root) {
   await app.setLanguage('en');
 
   // leave the shared server as the next sections expect it: a new document, the root as last folder
-  await app.api('post', '/file/open', { path: path.join(root, fileA) });
+  await app.api('post', '/file/open', { path: path.join(root, fileA), force: true });
   await app.api('post', '/new', { force: true });
   await app.api('post', '/prefs', { aiPanelCollapsed: false });
 }

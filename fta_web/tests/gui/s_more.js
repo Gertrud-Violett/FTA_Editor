@@ -9,7 +9,7 @@ async function main(url, label, root) {
   L.setSection('more[' + label + ']');
   const app = await L.openApp(url, { prefs: { 'fta.advanced': '1' }, viewport: { width: 1600, height: 1050 } });
   const { page } = app;
-  await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   await page.evaluate(() => window.ftaShell.refresh());
   let st = await app.api('get', '/state');
   const byName = (name) => flatten(st.tree).find((n) => n.name === name);

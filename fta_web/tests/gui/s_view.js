@@ -10,7 +10,7 @@ const { compareCore, flatten } = require('./b2b');
 const TABS = ['details', 'quant', 'cutsets', 'importance', 'uncertainty', 'validation', 'trace', 'fmea', 'report'];
 
 async function openCore(app, root, label) {
-  const res = await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  const res = await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   await app.page.evaluate(() => window.ftaShell.refresh());
   return res;
 }
@@ -198,7 +198,7 @@ async function main(url, label, root) {
   }));
   app = await L.openApp(url, { prefs: { 'fta.advanced': '1', 'fta.language': 'ja' }, viewport: { width: 420, height: 860 } });
   page = app.page;
-  await app.api('post', '/file/open', { path: jaFile });
+  await app.api('post', '/file/open', { path: jaFile, force: true });
   await page.evaluate(() => window.ftaShell.refresh());
   await app.settle();
   for (const id of ['importance', 'quant']) {

@@ -682,8 +682,9 @@ def test_21_the_examples_are_listed_from_the_examples_folder(client):
 
 def test_21_an_example_opens_untitled_and_save_cannot_reach_the_bundled_file(client, sandbox):
     originals = {name: (EXAMPLES / name).read_bytes() for name in bundled()}
-    add(client, name="left over")  # a dirty document: the endpoint itself does not refuse
-    opened = body(client.post("/api/examples/open", json={"name": "sampleFTA.json"}))
+    add(client, name="left over")  # a dirty document: refused since 1.8.1, unless forced
+    assert error(client.post("/api/examples/open", json={"name": "sampleFTA.json"}))["code"] == "UNSAVED_CHANGES"
+    opened = body(client.post("/api/examples/open", json={"name": "sampleFTA.json", "force": True}))
     assert opened["ok"] is True and opened["example"] == "sampleFTA.json"
     assert opened["currentPath"] is None and opened["dirty"] is False
     assert opened["canUndo"] is False and opened["tree"]["children"]
@@ -816,7 +817,7 @@ def test_25_the_load_dialog_offers_the_examples_and_this_computer():
     sources = _function(main, "function documentSources()")
     assert "id: 'example'" in sources and "id: 'import'" in sources
     example = _function(main, "async function actionOpenExample(asked)")
-    assert example.index("leaveDocument('open')") < example.index("api.get('/examples')") < example.index("api.post('/examples/open', { name })")
+    assert example.index("leaveDocument('open')") < example.index("api.get('/examples')") < example.index("api.post('/examples/open', force ? { name, force: true } : { name })")
     assert "await adoptDocument(payload);" in example
     dialog = _read(STATIC / "filedialog.js")
     assert "onclick: () => close({ source: String(source.id) })" in dialog
@@ -1028,7 +1029,7 @@ def test_28_exports_are_a_labelled_group_and_the_toast_says_copy():
 def test_28_a_file_from_this_computer_goes_through_the_unsaved_prompt_and_opens_untitled(client):
     src = _read(STATIC / "main.js")
     imp = _function(src, "async function importFile(file, asked)")
-    assert imp.index("if (!asked) {") < imp.index("leaveDocument('open')") < imp.index("api.upload('/import/json', file)")
+    assert imp.index("if (!asked) {") < imp.index("leaveDocument('open')") < imp.index("api.upload('/import/json', file, 'file', force ? { force: 'true' } : null)")
     assert "await adoptDocument(payload);" in imp
     drop = _function(src, "function wireFileDrop()")
     assert "importFile(file, true)" in drop, "the picker was reached through Load, which has asked"
@@ -1038,13 +1039,14 @@ def test_28_a_file_from_this_computer_goes_through_the_unsaved_prompt_and_opens_
     html = _read(INDEX)
     assert re.search(r'<input type="file" id="import-file" accept="\.json,application/json" hidden', html)
     api = _read(STATIC / "api.js")
-    upload = _function(api, "async function upload(path, file, field)")
+    upload = _function(api, "async function upload(path, file, field, fields)")
     assert "buildInit('POST', undefined, 'application/json')" in upload, "the session token is sent"
     assert "new FormData()" in upload and "Content-Type" not in upload
 
     # what the endpoint the page posts to does with it
     add(client, name="left over")
-    upload = {"file": (io.BytesIO(_read(EXAMPLES / "sampleFTA.json").encode("utf-8")), "from my desktop.json")}
+    upload = {"file": (io.BytesIO(_read(EXAMPLES / "sampleFTA.json").encode("utf-8")), "from my desktop.json"),
+              "force": "true"}  # the node above is unsaved work (refused without it since 1.8.1)
     opened = body(client.post("/api/import/json", data=upload, content_type="multipart/form-data"))
     assert opened["currentPath"] is None and opened["dirty"] is True
     assert client.post("/api/file/save", json={}).status_code == 409

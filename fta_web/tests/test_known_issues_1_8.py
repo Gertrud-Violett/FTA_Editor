@@ -460,3 +460,168 @@ def test_1_the_port_is_documented():
     for path in (REPO / "build" / "README.md", REPO / "QUICKSTART.md", DOCS / "USER_GUIDE.md"):
         text = _read(path)
         assert "8765" in text and "--port 0" in text, path.name
+
+
+# =============================================================================================
+# 2: Load, Open example and import refuse to replace unsaved work
+# =============================================================================================
+
+EXAMPLES = REPO / "fta_web" / "examples"
+
+
+def _sample(sandbox, name="sample.json"):
+    target = sandbox / name
+    target.write_bytes((EXAMPLES / "sampleFTA.json").read_bytes())
+    return target
+
+
+def _replacers(sandbox):
+    """``{label: send}`` for every request that replaces the whole document;
+    ``send(client, force)`` posts it, with or without the flag."""
+    import io
+
+    path = str(_sample(sandbox))
+
+    def open_file(client, force):
+        return client.post("/api/file/open", json=dict({"path": path}, **force))
+
+    def open_example(client, force):
+        return client.post("/api/examples/open", json=dict({"name": "sampleFTA.json"}, **force))
+
+    def import_json(client, force):
+        data = {"file": (io.BytesIO((EXAMPLES / "sampleFTA.json").read_bytes()), "mine.json")}
+        data.update({key: json.dumps(value) if isinstance(value, bool) else value
+                     for key, value in force.items()})
+        return client.post("/api/import/json", data=data, content_type="multipart/form-data")
+
+    def new(client, force):
+        return client.post("/api/new", json=force)
+
+    return {"open": open_file, "example": open_example, "import": import_json, "new": new}
+
+
+@pytest.mark.parametrize("which", ["open", "example", "import", "new"])
+def test_2_unsaved_work_is_not_replaced_without_the_flag(client, sandbox, which):
+    send = _replacers(sandbox)[which]
+    kept = add(client, name="not saved yet")
+    before = state_of(client)
+    assert before["dirty"] is True
+
+    refused = send(client, {})
+    assert refused.status_code == 409 and error(refused)["code"] == "UNSAVED_CHANGES"
+    after = state_of(client)
+    assert after["tree"] == before["tree"] and after["dirty"] is True
+    assert (after["revision"], after["documentSerial"]) == (before["revision"], before["documentSerial"])
+    assert after["canUndo"] is True, "the undo history is kept with the document"
+
+    # "false" is not "discard"
+    assert send(client, {"force": False}).status_code == 409
+    assert "not saved yet" in json.dumps(state_of(client)["tree"]) and kept
+
+    replaced = send(client, {"force": True})
+    assert replaced.status_code == 200, body(replaced)
+    assert "not saved yet" not in json.dumps(body(replaced)["tree"])
+    assert state_of(client)["documentSerial"] == before["documentSerial"] + 1
+
+
+@pytest.mark.parametrize("which", ["open", "example", "import", "new"])
+def test_2_a_saved_document_is_replaced_without_the_flag(client, sandbox, which):
+    """What every existing client does on a document with nothing to lose."""
+    send = _replacers(sandbox)[which]
+    assert state_of(client)["dirty"] is False
+    assert send(client, {}).status_code == 200
+
+    # and after a save the document is clean again
+    client.post("/api/new", json={"force": True})
+    add(client, name="saved")
+    assert client.post("/api/file/save-as", json={"path": str(sandbox / "kept.json")}).status_code == 200
+    assert send(client, {}).status_code == 200
+
+
+@pytest.mark.parametrize("which", ["open", "example", "new"])
+@pytest.mark.parametrize("flag", ["true", "false", 1, 0, "yes", [True]])
+def test_2_the_flag_is_a_real_boolean(client, sandbox, which, flag):
+    send = _replacers(sandbox)[which]
+    add(client, name="not saved yet")
+    refused = send(client, {"force": flag})
+    assert refused.status_code == 400 and error(refused)["code"] == "INVALID_FIELD"
+    assert error(refused)["detail"]["field"] == "force"
+    assert state_of(client)["dirty"] is True
+
+
+@pytest.mark.parametrize("flag", ["1", "yes", "True", "TRUE", "on", ""])
+def test_2_the_form_field_of_an_import_is_true_or_false_and_nothing_else(client, sandbox, flag):
+    send = _replacers(sandbox)["import"]
+    add(client, name="not saved yet")
+    refused = send(client, {"force": flag})
+    assert refused.status_code == 400 and error(refused)["detail"]["field"] == "force"
+    assert state_of(client)["dirty"] is True
+    assert send(client, {"force": "false"}).status_code == 409
+    assert send(client, {"force": "true"}).status_code == 200
+
+
+def test_2_a_request_that_fails_anyway_fails_as_it_did(client, sandbox):
+    """The refusal comes last: a wrong path is still a wrong path."""
+    add(client, name="not saved yet")
+    missing = client.post("/api/file/open", json={"path": str(sandbox / "nowhere.json")})
+    assert missing.status_code == 404 and error(missing)["code"] == "PATH_REJECTED"
+    outside = client.post("/api/file/open", json={"path": str(sandbox.parent / "x.json")})
+    assert error(outside)["detail"]["reason"] == "outside_root"
+    unknown = client.post("/api/examples/open", json={"name": "no such example.json"})
+    assert unknown.status_code == 404
+    (sandbox / "broken.json").write_text("{", encoding="utf-8")
+    broken = client.post("/api/file/open", json={"path": str(sandbox / "broken.json"), "force": True})
+    assert broken.status_code == 400 and error(broken)["code"] == "INVALID_JSON"
+    assert state_of(client)["dirty"] is True, "a failed open, forced or not, replaces nothing"
+
+
+def test_2_the_second_tab_case(client, sandbox):
+    """Tab A read the document while it was saved; tab B then edited it.
+    A's Load arrives without the flag (A thinks there is nothing to lose)."""
+    path = str(_sample(sandbox))
+    seen_by_a = state_of(client)
+    assert seen_by_a["dirty"] is False
+    add(client, name="typed in the other tab")
+
+    load_from_a = client.post("/api/file/open", json={"path": path})
+    assert load_from_a.status_code == 409
+    assert "typed in the other tab" in json.dumps(state_of(client)["tree"])
+
+
+def _function(src: str, header: str) -> str:
+    """Source of the function whose header is ``header``, to its closing brace."""
+    start = src.index(header)
+    depth = 0
+    for i in range(src.index("{", start + len(header)), len(src)):
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[start:i + 1]
+    raise AssertionError("unbalanced braces")
+
+
+def test_2_the_page_sends_the_flag_only_after_discard_and_asks_on_a_409():
+    src = _read(STATIC / "main.js")
+    replace = _function(src, "async function replaceDocument(send)")
+    # forced only while the document is still modified, which after
+    # leaveDocument() means the user chose Discard
+    assert "let force = Boolean(store.state && store.state.dirty);" in replace
+    assert "err.code !== 'UNSAVED_CHANGES'" in replace
+    assert replace.index("store.applyMutation({ dirty: true });") < replace.index("leaveDocument('open')")
+    assert "return null;" in replace
+    for header, call in (
+        ("async function actionLoad()", "api.post('/file/open', force ? { path, force: true } : { path })"),
+        ("async function actionOpenExample(asked)",
+         "api.post('/examples/open', force ? { name, force: true } : { name })"),
+        ("async function importFile(file, asked)",
+         "api.upload('/import/json', file, 'file', force ? { force: 'true' } : null)"),
+    ):
+        text = _function(src, header)
+        assert "await replaceDocument(" in text and call in text, header
+        assert text.index("leaveDocument('open')") < text.index("await replaceDocument("), header
+        assert "if (!payload) return;" in text
+    # nothing else in the page posts to these three
+    for path in ("'/file/open'", "'/examples/open'", "'/import/json'"):
+        assert src.count("api.post(" + path) + src.count("api.upload(" + path) == 1, path

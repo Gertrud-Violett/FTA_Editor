@@ -2442,6 +2442,38 @@ async function leaveDocument(kind) {
   return false;
 }
 
+/**
+ * Send a request that replaces the document (open, an example, an import),
+ * after leaveDocument() said it may go.
+ *
+ * The server refuses to replace unsaved work (409 UNSAVED_CHANGES) unless
+ * the request says `force`. This tab sends it only when the user chose
+ * Discard here: the document is still marked modified then. After "Save and
+ * continue", and for a document this tab knows as saved, nothing is forced,
+ * so the server's refusal catches what this tab cannot see: changes made in
+ * another tab. The question is then asked after all, and the request sent
+ * once more with the answer.
+ *
+ * @param {(force: boolean) => Promise<object>} send
+ * @returns {Promise<object|null>} the payload, or null when the user kept
+ *   the document. Any other failure is thrown.
+ */
+async function replaceDocument(send) {
+  let force = Boolean(store.state && store.state.dirty);
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await send(force);
+    } catch (err) {
+      if (force || attempt > 0 || !(err instanceof ApiError) || err.code !== 'UNSAVED_CHANGES') throw err;
+      // The server knew of changes this tab did not: show them as unsaved
+      // (which they are) and ask.
+      store.applyMutation({ dirty: true });
+      if (!(await leaveDocument('open'))) return null;
+      force = Boolean(store.state && store.state.dirty);
+    }
+  }
+}
+
 async function actionNew() {
   if (dispatchAction('new')) return;
   // A field still being typed in is part of "unsaved changes": commit it
@@ -2930,9 +2962,9 @@ async function actionLoad() {
   // checking `dirty` before it lands skipped the question below and the
   // typing was lost to the file being opened.
   await flushPendingEdits();
-  // The backend has no unsaved-changes guard on open (only /new has one), so
-  // the guard lives here -- ask before the picker, not after, so a user who
-  // meant to save first has not already picked a file.
+  // Ask before the picker, not after, so a user who meant to save first has
+  // not already picked a file. (The server asks too, for the changes this
+  // tab cannot know about: see replaceDocument.)
   if (store.state && store.state.dirty && !(await leaveDocument('open'))) return;
 
   const chosen = await pickPath({ mode: 'open', sources: documentSources() });
@@ -2946,7 +2978,10 @@ async function actionLoad() {
   const path = chosen;
 
   try {
-    const payload = await api.post('/file/open', { path });
+    const payload = await replaceDocument(
+      (force) => api.post('/file/open', force ? { path, force: true } : { path })
+    );
+    if (!payload) return;
     await adoptDocument(payload);
     toast(t('msg.opened', { path: (store.state && store.state.currentPath) || path }), 'ok');
     showLoadWarnings(payload);
@@ -2996,7 +3031,10 @@ async function actionOpenExample(asked) {
   });
   if (!name) return;
   try {
-    const payload = await api.post('/examples/open', { name });
+    const payload = await replaceDocument(
+      (force) => api.post('/examples/open', force ? { name, force: true } : { name })
+    );
+    if (!payload) return;
     await adoptDocument(payload);
     const chosen = examples.find((example) => example.name === name);
     toast(t('examples.opened', { name: (chosen && chosen.title) || name }), 'ok');
@@ -3035,7 +3073,10 @@ async function importFile(file, asked) {
     if (!(await leaveDocument('open'))) return;
   }
   try {
-    const payload = await api.upload('/import/json', file);
+    const payload = await replaceDocument(
+      (force) => api.upload('/import/json', file, 'file', force ? { force: 'true' } : null)
+    );
+    if (!payload) return;
     await adoptDocument(payload);
     toast(t('import.opened', { name }), 'ok');
     showLoadWarnings(payload);

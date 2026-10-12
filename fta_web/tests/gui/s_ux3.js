@@ -60,7 +60,7 @@ async function run(url, label, root) {
   };
   const openA = async () => {
     await app.api('post', '/new', { force: true });
-    const opened = await app.api('post', '/file/open', { path: path.join(root, fileA) });
+    const opened = await app.api('post', '/file/open', { path: path.join(root, fileA), force: true });
     if (opened.__error) throw new Error('could not open ' + fileA + ': ' + JSON.stringify(opened));
     await page.reload();
     await L.waitBoot(page);

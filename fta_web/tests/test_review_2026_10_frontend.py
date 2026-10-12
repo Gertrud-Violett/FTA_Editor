@@ -686,7 +686,7 @@ def test_parse_probability_accepts_decimal_text_only():
     got = dict(zip(cases, _node(script)))
     assert got == {
         "1e-6": 1e-6, "1E-6": 1e-6, " 0.5 ": 0.5, ".5": 0.5, "+0.5": 0.5, "-0": 0, "1": 1, "0": 0,
-        "1e-400": 0,
+        "1e-400": "REJECT",  # too small for a double: refused since 1.8.1, it was read as 0
         "0x1": "REJECT", "0x0": "REJECT", "0b1": "REJECT", "0o1": "REJECT", "0x10": "REJECT",
         # Read as the decimal they mean since the usability batch (both were
         # REJECT): a decimal comma and a percentage. The server is still sent
