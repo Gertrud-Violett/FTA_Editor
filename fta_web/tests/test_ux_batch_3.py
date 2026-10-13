@@ -480,6 +480,29 @@ def test_38_a_bad_request_is_refused_before_anything_changes(client, tree, paylo
     assert state_of(client)["tree"] == before["tree"]
 
 
+def test_38_a_null_error_factor_means_the_default(client, tree):
+    answer = body(client.post("/api/batch/uncertainty", json={"ef": None}))
+    assert len(answer["updatedIds"]) == 5
+    assert find(answer["tree"], tree["A"])["quant"] == {"unc": {"dist": "lognormal", "ef": 3}}
+
+
+def test_38_an_error_factor_typed_without_a_distribution_is_kept(client, tree):
+    client.patch("/api/nodes/%s" % tree["A"], json={"quant": {"unc": {"ef": 10}}})
+    answer = body(client.post("/api/batch/uncertainty", json={}))
+    assert tree["A"] in answer["updatedIds"]
+    assert find(answer["tree"], tree["A"])["quant"]["unc"] == {"dist": "lognormal", "ef": 10}
+    assert find(answer["tree"], tree["B"])["quant"]["unc"] == {"dist": "lognormal", "ef": 3}
+
+
+def test_38_an_event_tree_is_refused_and_left_alone(client, tree):
+    assert client.post("/api/metadata", json={"mode": "ETA"}).status_code == 200
+    before = state_of(client)
+    response = client.post("/api/batch/uncertainty", json={})
+    assert response.status_code == 409 and error(response)["code"] == "MODE_UNSUPPORTED", body(response)
+    after = state_of(client)
+    assert after["tree"] == before["tree"] and after["revision"] == before["revision"]
+
+
 def test_38_the_monte_carlo_then_has_a_spread(client, tree):
     flat = body(client.post("/api/analysis/uncertainty", json={"n": 500, "seed": 3}))
     assert flat["std"] == 0 and flat["uncertainEvents"] == []
@@ -679,7 +702,9 @@ def test_45_the_panel_repaints_stops_and_gives_a_failed_message_back():
     assert "if (busy || log.querySelector('.chat-msg--user, .chat-changes')) return;" in restore
     stop = _function(src, "function actionStop()")
     assert "job.stopped = true;" in stop and "setBusy(false);" in stop and "say('system', 'ai.msg.stopped')" in stop
-    assert "api." not in stop, "Stop is the page giving up waiting; nothing is sent"
+    # Since 1.8.1 Stop also tells the editor to abandon the request (it sent
+    # nothing before, and the AI slot stayed taken): test_known_issues_1_8.py.
+    assert stop.count("api.") == 1 and "api.post('/ai/cancel', { requestId: job.id })" in stop
     send = _function(src, "function actionSend()")
     assert "if (input.value.trim() === '') input.value = typed;" in send
     assert "{ onFail: giveBack }" in send and "if (!showReply(result)) giveBack();" in send
@@ -759,7 +784,7 @@ def test_the_new_endpoints_are_in_the_api_reference_and_the_changelog():
         assert "`%s %s`" % (method.upper(), path) in reference, path
     for key in ("deletedIds", "movedIds", "updatedIds", "pendingUpdate"):
         assert "`%s`" % key in reference, key
-    unreleased = _read(REPO / "CHANGELOG.md").split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    unreleased = _read(REPO / "CHANGELOG.md").split("## [1.8.0]", 1)[1].split("\n## [", 1)[0]
     unreleased = " ".join(unreleased.split())  # a phrase may be wrapped over two lines
     for phrase in ("Diagram settings", "Copy CSV", "Initiating event", "one undo step", "Formatted",
                    "light colours", "Stop", "Google Gemini", "legend"):

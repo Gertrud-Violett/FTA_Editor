@@ -15,7 +15,7 @@
  *   api.download(method, path, body)  -> {blob, filename, contentType}
  *                                    for binary responses (DOCX, XLSX...);
  *                                    filename from Content-Disposition.
- *   api.upload(path, file, field?)   POST one File/Blob as multipart
+ *   api.upload(path, file, field?, fields?)  POST one File/Blob as multipart
  *                                    (POST /api/import/json).
  *   pendingWrites()                  how many POST/PATCH/DELETE calls are on
  *                                    the wire right now.
@@ -338,11 +338,13 @@ async function request(method, path, body) {
  * (it carries the multipart boundary); buildInit() is asked for a request
  * with no body and the form is attached afterwards.
  */
-async function upload(path, file, field) {
+async function upload(path, file, field, fields) {
   const url = toApiPath(path);
   const init = buildInit('POST', undefined, 'application/json');
   const form = new FormData();
   form.append(field || 'file', file, file && file.name ? file.name : 'upload.json');
+  // Plain text fields beside the file (`force` of POST /api/import/json).
+  Object.keys(fields || {}).forEach((key) => form.append(key, String(fields[key])));
   init.body = form;
   return readEnvelope('POST', url, await send('POST', url, init));
 }
@@ -454,8 +456,8 @@ export const api = {
     return download(method, path, body);
   },
   /** POST a File/Blob as multipart. @returns {Promise<object>} the payload. */
-  upload(path, file, field) {
-    return upload(path, file, field);
+  upload(path, file, field, fields) {
+    return upload(path, file, field, fields);
   },
 };
 

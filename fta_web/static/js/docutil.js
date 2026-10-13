@@ -35,7 +35,8 @@ function isObject(value) {
 }
 
 function childrenOf(node) {
-  return node && Array.isArray(node.children) ? node.children : [];
+  // A hand-edited file can hold null among the children.
+  return node && Array.isArray(node.children) ? node.children.filter(isObject) : [];
 }
 
 /* ------------------------------------------------------------- rescue copy -- */

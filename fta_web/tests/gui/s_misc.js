@@ -11,7 +11,7 @@ async function main(url, label, root) {
   L.setSection('misc[' + label + ']');
   let app = await L.openApp(url, { prefs: { 'fta.advanced': '1' }, viewport: { width: 1500, height: 950 } });
   let page = app.page;
-  await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   await page.evaluate(() => window.ftaShell.refresh());
   let st = await app.api('get', '/state');
 

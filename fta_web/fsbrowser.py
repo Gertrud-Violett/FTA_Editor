@@ -206,6 +206,37 @@ def is_within(root: Path, candidate: Path) -> bool:
         return False
 
 
+# ---- folders that are the editor's own ----------------------------------------
+#
+# The recovery copies (recovery.py) live in the per-user folder, and the
+# per-user folder is in the home directory -- which is the default root. So
+# "outside the root" cannot keep the file endpoints away from them. They are
+# kept away by name instead: a folder registered here is refused by
+# resolve_in_root wherever the root is, for reading, writing and listing.
+# Otherwise a recovery copy could be opened *with its path* (and the next
+# Save would write into the recovery folder), or overwritten by a Save As.
+
+_reserved: List[Any] = []
+
+
+def reserve(folder: Any) -> None:
+    """Keep ``folder`` (a path, or a function returning one, asked at each
+    check) out of reach of every client path."""
+    if folder not in _reserved:
+        _reserved.append(folder)
+
+
+def _is_reserved(resolved: Path) -> bool:
+    for entry in _reserved:
+        try:
+            folder = Path(entry() if callable(entry) else entry).resolve()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            continue
+        if is_within(folder, resolved):
+            return True
+    return False
+
+
 # ---- the core check ------------------------------------------------------
 
 
@@ -284,6 +315,13 @@ def resolve_in_root(raw: Any, root: Path) -> Path:
         ) from exc
     if not is_within(root, resolved):
         raise outside_root(root)
+    if _is_reserved(resolved):
+        raise PathRejected(
+            "That folder is where the editor keeps its own recovery copies; "
+            "analyses cannot be opened from it or saved into it. Choose "
+            "another location.",
+            reason="reserved",
+        )
     return resolved
 
 

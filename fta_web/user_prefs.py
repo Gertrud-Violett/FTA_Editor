@@ -8,9 +8,11 @@ Two values, in ``ui_prefs.json`` beside the AI credentials (``~/.fta_editor``):
   of at the sandbox root every time.
 * ``aiPanelCollapsed`` -- whether the AI panel is folded away.
 
-Why on the server and not in the browser: the packaged app listens on a new
-port at every launch, and a browser keeps its storage per origin, port
-included. Whatever the page stored is gone at the next start.
+Why on the server and not in the browser: a browser keeps its storage per
+origin, port included, and up to 1.8.0 the app listened on a new port at
+every launch, so whatever the page stored was gone at the next start. The
+launcher now has a fixed default port (``config.DEFAULT_PORT``); these two
+stay here, where they also survive a start on another port.
 
 What this file is not
 ---------------------

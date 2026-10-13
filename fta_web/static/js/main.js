@@ -1086,6 +1086,7 @@ function applyLanguage() {
   renderHeadline();
   // applyLanguage rewrote the tab label's textContent, dropping the badge.
   renderValidationBadge();
+  renderRecoveryOffer(); // its button and text are written with values
   if (store.state) renderShell(store.state);
 }
 
@@ -1130,6 +1131,7 @@ const CATALOGS = [
   './i18n/ux1.js',
   './i18n/ux2.js',
   './i18n/ux3.js',
+  './i18n/fix181.js',
   './i18n/val.js',
   './i18n/gate.js',
   './i18n/diagram.js',
@@ -2015,7 +2017,9 @@ async function reloadFromServer() {
     return;
   }
   const now = store.state || {};
-  if (next.revision === now.revision && next.documentSerial === now.documentSerial) return;
+  // Not newer than what this tab holds: an answer taken before this tab's own
+  // later edit must not put the older tree back.
+  if (next.documentSerial === now.documentSerial && !(next.revision > now.revision)) return;
   const replaced = next.documentSerial !== (held && held.documentSerial);
   store.setState(next);
   if (replaced) {
@@ -2438,6 +2442,40 @@ async function leaveDocument(kind) {
   // A refused save has said why in its own toast; this adds the consequence.
   toast(t('confirm.notSaved'), 'info');
   return false;
+}
+
+/**
+ * Send a request that replaces the document (open, an example, an import),
+ * after leaveDocument() said it may go.
+ *
+ * The server refuses to replace unsaved work (409 UNSAVED_CHANGES) unless
+ * the request says `force`. This tab sends it only when the user chose
+ * Discard here: the document is still marked modified then. After "Save and
+ * continue", and for a document this tab knows as saved, nothing is forced,
+ * so the server's refusal catches what this tab cannot see: changes made in
+ * another tab. The question is then asked after all, and the request sent
+ * once more with the answer.
+ *
+ * @param {(force: boolean) => Promise<object>} send
+ * @returns {Promise<object|null>} the payload, or null when the user kept
+ *   the document. Any other failure is thrown.
+ */
+async function replaceDocument(send) {
+  let force = Boolean(store.state && store.state.dirty);
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await send(force);
+    } catch (err) {
+      if (force || attempt > 0 || !(err instanceof ApiError) || err.code !== 'UNSAVED_CHANGES') throw err;
+      // The server knew of changes this tab did not. Read the document
+      // again, so that what the question is about (the other tab's work) is
+      // on screen behind it; mark it unsaved in any case, and ask.
+      await reloadFromServer();
+      if (!(store.state && store.state.dirty)) store.applyMutation({ dirty: true });
+      if (!(await leaveDocument('open'))) return null;
+      force = Boolean(store.state && store.state.dirty);
+    }
+  }
 }
 
 async function actionNew() {
@@ -2928,9 +2966,9 @@ async function actionLoad() {
   // checking `dirty` before it lands skipped the question below and the
   // typing was lost to the file being opened.
   await flushPendingEdits();
-  // The backend has no unsaved-changes guard on open (only /new has one), so
-  // the guard lives here -- ask before the picker, not after, so a user who
-  // meant to save first has not already picked a file.
+  // Ask before the picker, not after, so a user who meant to save first has
+  // not already picked a file. (The server asks too, for the changes this
+  // tab cannot know about: see replaceDocument.)
   if (store.state && store.state.dirty && !(await leaveDocument('open'))) return;
 
   const chosen = await pickPath({ mode: 'open', sources: documentSources() });
@@ -2944,7 +2982,10 @@ async function actionLoad() {
   const path = chosen;
 
   try {
-    const payload = await api.post('/file/open', { path });
+    const payload = await replaceDocument(
+      (force) => api.post('/file/open', force ? { path, force: true } : { path })
+    );
+    if (!payload) return;
     await adoptDocument(payload);
     toast(t('msg.opened', { path: (store.state && store.state.currentPath) || path }), 'ok');
     showLoadWarnings(payload);
@@ -2994,7 +3035,10 @@ async function actionOpenExample(asked) {
   });
   if (!name) return;
   try {
-    const payload = await api.post('/examples/open', { name });
+    const payload = await replaceDocument(
+      (force) => api.post('/examples/open', force ? { name, force: true } : { name })
+    );
+    if (!payload) return;
     await adoptDocument(payload);
     const chosen = examples.find((example) => example.name === name);
     toast(t('examples.opened', { name: (chosen && chosen.title) || name }), 'ok');
@@ -3033,7 +3077,10 @@ async function importFile(file, asked) {
     if (!(await leaveDocument('open'))) return;
   }
   try {
-    const payload = await api.upload('/import/json', file);
+    const payload = await replaceDocument(
+      (force) => api.upload('/import/json', file, 'file', force ? { force: 'true' } : null)
+    );
+    if (!payload) return;
     await adoptDocument(payload);
     toast(t('import.opened', { name }), 'ok');
     showLoadWarnings(payload);
@@ -3410,8 +3457,8 @@ async function actionAiSettings() {
 
 /**
  * The AI panel folded to a strip, or open. Kept on the server (`prefs` in
- * /api/state, POST /api/prefs) and not in localStorage: the packaged app
- * starts on a new port each time, so the browser's storage starts empty.
+ * /api/state, POST /api/prefs) and not in localStorage: the browser's storage
+ * is per port, and up to 1.8.0 the app started on a new port each time.
  */
 let aiCollapsed = false;
 
@@ -3453,6 +3500,110 @@ function isUntouchedDocument(state) {
   if (!state || state.dirty || state.currentPath || state.canUndo || state.canRedo) return false;
   const tree = state.tree;
   return Boolean(tree) && !(Array.isArray(tree.children) && tree.children.length);
+}
+
+/**
+ * The recovery copy an earlier run left behind (GET /api/recovery), offered
+ * above the tree until it is restored or discarded. The server keeps a copy
+ * of the document while it has unsaved changes and removes it on Save, on
+ * New / Load and on a clean exit; what it lists here is the work of an
+ * editor that ended without any of those. Newest first; one is shown at a
+ * time.
+ */
+let recoveryCopy = null;
+
+function recoveryWhen(copy) {
+  const stamp = copy && copy.savedAt ? new Date(copy.savedAt) : null;
+  if (!stamp || Number.isNaN(stamp.getTime())) return (copy && copy.savedAt) || '';
+  try {
+    return stamp.toLocaleString(language === 'ja' ? 'ja-JP' : 'en-GB', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  } catch (_err) {
+    return copy.savedAt;
+  }
+}
+
+function renderRecoveryOffer() {
+  const box = $('#recovery-offer');
+  if (!box) return;
+  box.hidden = !recoveryCopy;
+  if (!recoveryCopy) return;
+  const vars = {
+    date: recoveryWhen(recoveryCopy),
+    title: recoveryCopy.title || t('recovery.untitled'),
+  };
+  const restore = $('#recovery-restore');
+  if (restore) restore.textContent = t('recovery.restore', vars);
+  const text = $('#recovery-text');
+  if (text) {
+    text.textContent = recoveryCopy.originalPath
+      ? t('recovery.offerFile', { path: recoveryCopy.originalPath })
+      : t('recovery.offer');
+  }
+}
+
+async function refreshRecoveryOffer() {
+  try {
+    const listed = await api.get('/recovery');
+    const copies = Array.isArray(listed.copies) ? listed.copies : [];
+    recoveryCopy = copies.length ? copies[0] : null;
+  } catch (_err) {
+    // An editor older than this page, or one that is not answering: no offer.
+    recoveryCopy = null;
+  }
+  renderRecoveryOffer();
+}
+
+/**
+ * Open the recovery copy. It replaces the document like Load does, so the
+ * same question is asked first when this document has unsaved changes. It
+ * opens untitled and modified: Save goes to Save As, and the file the work
+ * was opened from is not written.
+ */
+async function actionRestoreRecovery() {
+  if (isBooting() || !recoveryCopy) return;
+  const copy = recoveryCopy;
+  const id = copy.id;
+  await flushPendingEdits();
+  if (!(await leaveDocument('open'))) return;
+  try {
+    const payload = await replaceDocument(
+      (force) => api.post('/recovery/restore', force ? { id, force: true } : { id })
+    );
+    if (!payload) return;
+    await adoptDocument(payload);
+    toast(t('recovery.restored', { title: copy.title || t('recovery.untitled') }), 'ok');
+    showLoadWarnings(payload);
+  } catch (err) {
+    showError(err);
+  }
+  await refreshRecoveryOffer();
+}
+
+async function actionDiscardRecovery() {
+  if (isBooting() || !recoveryCopy) return;
+  const copy = recoveryCopy;
+  const id = copy.id;
+  const sure = await askConfirm(
+    t('recovery.discardConfirm', { date: recoveryWhen(copy), title: copy.title || t('recovery.untitled') }),
+    { title: t('recovery.title'), confirmLabel: t('recovery.discardOk'), danger: true }
+  );
+  if (!sure) return;
+  try {
+    await api.post('/recovery/discard', { id });
+    toast(t('recovery.discarded'), 'info');
+  } catch (err) {
+    showError(err);
+  }
+  await refreshRecoveryOffer();
+}
+
+function wireRecoveryOffer() {
+  const restore = $('#recovery-restore');
+  if (restore) restore.addEventListener('click', () => actionRestoreRecovery());
+  const discard = $('#recovery-discard');
+  if (discard) discard.addEventListener('click', () => actionDiscardRecovery());
 }
 
 function wireFirstRun() {
@@ -3985,6 +4136,7 @@ async function boot() {
   wireTopbar();
   wireActionBar();
   wireFirstRun();
+  wireRecoveryOffer();
   wireFileDrop();
 
   // The bottom panel: its height follows the tab, and can be enlarged.
@@ -4019,6 +4171,16 @@ async function boot() {
       validationCounts = visibleValidationCounts(null);
       renderValidationBadge();
     }
+  });
+  // The allowed folder was changed from the file dialog (filedialog.js).
+  // A document whose file is outside the new folder has become untitled on
+  // the server; the top bar must not go on showing a place Save cannot
+  // write to.
+  window.addEventListener('fta:root-changed', (event) => {
+    const detail = (event && event.detail) || {};
+    if (!detail.changed) return;
+    store.applyMutation({ currentPath: detail.currentPath || null, dirty: Boolean(detail.dirty) });
+    if (detail.documentUntitled) toast(t('file.changeRootUntitled', { root: detail.root || '' }), 'warn');
   });
   window.addEventListener('fta:ai-settings', (event) => {
     // preventDefault is how the asker (chat.js) learns the shell has this; an
@@ -4090,6 +4252,9 @@ async function boot() {
   } finally {
     endBoot();
   }
+  // Unsaved work an earlier run left behind, if there is any. Not awaited:
+  // the editor is usable while this is asked.
+  refreshRecoveryOffer();
 
   // From here on the page watches the server. A request that could not reach
   // it is confirmed by one more before the banner goes up: a single aborted

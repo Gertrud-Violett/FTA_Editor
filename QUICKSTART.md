@@ -2,7 +2,7 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 1.7.3 (Updated: October 11, 2026)
+**Version**: 1.8.0 (Updated: October 12, 2026)
 
 The editor runs in your **browser**, with no Graphviz to install — that is the
 primary way to run it. The original Tkinter desktop app is kept in `desktop/`
@@ -34,8 +34,14 @@ Your browser opens on the editor. The terminal prints the URL as well — it
 carries a **one-time token for this launch**, so if the browser does not open
 by itself, paste that whole URL in. `Ctrl-C` stops the server.
 
-Useful flags: `--port 8765` for a fixed port, `--no-browser` to only print the
-URL, `--root ~/trees` to confine the file browser to one directory.
+The editor listens on port **8765**, the same at every start, so the browser
+keeps your display settings (Advanced, language, theme, significant figures).
+If that port is in use (a second copy of the editor, for example) it takes a
+free one and says so in the terminal.
+
+Useful flags: `--port 8800` for another fixed port, `--port 0` for any free
+port, `--no-browser` to only print the URL, `--root ~/trees` to confine the
+file browser to one directory.
 
 <details>
 <summary><b>Legacy desktop app instead (Tkinter, v1.5.1 behaviour, frozen fallback)</b></summary>

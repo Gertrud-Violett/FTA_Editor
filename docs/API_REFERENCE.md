@@ -746,11 +746,116 @@ per-user folder).
 - No credential is in the answer: there is no field for one, and the text is
   scrubbed of the stored key like every other reply.
 
+### Keeping work, the allowed folder and Stop (after 1.8.0)
+
+Like every `/api` endpoint these need the launch token, and they are refused
+for a foreign `Origin` or `Host`.
+
+**Replacing the document needs `force` over unsaved changes.** `POST
+/api/file/open`, `POST /api/examples/open` and `POST /api/import/json` now
+behave like `POST /api/new`: when the current document has unsaved changes
+they answer `409 UNSAVED_CHANGES` and change nothing, unless the request
+says to discard them.
+
+- JSON bodies take `force: true`. It must be a boolean: `"true"`, `1` and
+  the like are `400 INVALID_FIELD` with `detail: {field: "force"}`.
+- The multipart import takes a form field `force` beside the file, with the
+  text `true` or `false`. Any other text is `400 INVALID_FIELD`.
+- The check comes after every other one. A request that fails anyway (a path
+  outside the root, a file that is not an analysis) fails as before, forced
+  or not.
+- A document without unsaved changes is replaced without the flag, as before.
+
+**`POST /api/ai/cancel`** abandons the provider request in flight. Body:
+`{requestId?}`. It answers `{cancelled: bool}`.
+
+- The single AI slot is free at once: the next `chat`, `analyze` or `update`
+  is accepted instead of `409 AI_BUSY`.
+- The abandoned request is answered `409 AI_CANCELLED`.
+- The provider's HTTP call is not interrupted. Its answer is dropped when it
+  arrives: it is not added to the conversation (`GET /api/ai/conversation`),
+  it proposes no changes, an `update` is not installed and no preview is
+  kept.
+- `chat`, `analyze` and `update` accept an optional `requestId` (a string of
+  1 to 64 characters, chosen by the client). A cancel that names a
+  `requestId` only abandons that request; `cancelled` is false when another
+  request, or none, is in flight. Without `requestId` whichever request is
+  in flight is abandoned.
+- A request that timed out (`504 AI_TIMEOUT`) and still holds the slot can
+  be abandoned too.
+- It needs no provider and works unconfigured. It never changes the
+  document.
+
+**`GET /api/recovery`** lists the recovery copies left by a session that did
+not end cleanly: `copies: [{id, title, savedAt, originalPath}]`, newest
+first. `savedAt` is local time, ISO 8601 to the second. `originalPath` is
+the file the document had been opened from or saved to, or null. The copy of
+the running session, and of any other editor that is still running, is not
+listed. The server's path of a copy is never reported.
+
+**`POST /api/recovery/restore`** `{id, force?}` opens a listed copy.
+
+- `id` is one of the ids `GET /api/recovery` lists. It is looked up in that
+  listing and is never used as a path: anything else is `404 INVALID_FIELD`
+  with `detail: {field: "id"}`, and the value is not echoed.
+- The document is installed with `currentPath: null` and `dirty: true`, so
+  `POST /api/file/save` answers `409 NO_CURRENT_PATH` and the client goes to
+  Save As. The original file is not written.
+- The answer is the usual document payload plus `restoredFrom: {title,
+  savedAt, originalPath}` and `warnings`.
+- Over unsaved changes it answers `409 UNSAVED_CHANGES` unless `force` is
+  true.
+- The copy is removed once it has been opened.
+
+**`POST /api/recovery/discard`** `{id}` deletes a listed copy and answers
+`{discarded: true}`. An id that is not listed is `404` and deletes nothing.
+
+Recovery copies are written only by an editor started through the launcher
+(`fta_web/run.py`, or the packaged app); an app built with `create_app()`
+in a test writes none. They are kept in `recovery/` in the per-user folder
+(`~/.fta_editor`). The file endpoints never reach into that folder, also
+when the sandbox root contains it (the default root is the home folder): a
+path into it is `400 PATH_REJECTED` with `detail.reason: "reserved"` for
+open, save and listing.
+
+**`POST /api/fs/root/choose`** lets the person at the computer choose
+another sandbox root. **It takes no input.** A JSON body other than `{}`, a
+form, an uploaded file, or a query parameter other than `lang` is `400
+INVALID_FIELD` with `detail: {field: "body"}`, and no dialog is opened. The
+server opens the operating system's folder chooser and waits for it:
+
+| Answer | Meaning |
+|---|---|
+| `200 {changed: true, cancelled: false, root, currentPath, dirty, documentUntitled}` | The folder that was picked is the root now. It went through the same normalisation as `--root`. |
+| `200 {changed: false, cancelled: true, root}` | The chooser was closed (or stayed open for 10 minutes). Nothing changed. |
+| `501 PICKER_UNAVAILABLE` | No chooser can be opened here. `detail: {reason, relaunch}`; `relaunch` is the command that starts the editor on another folder. `reason` is one of `no_display`, `no_tkinter`, `packaged_without_tkinter`, `no_powershell`, `disabled`, `helper_failed`. |
+| `409 PICKER_BUSY` | A chooser is already open. |
+| `400 PATH_REJECTED` (`detail.reason: "not_a_directory"`) | What the chooser returned is not a usable folder. Nothing changed. |
+
+- `documentUntitled` is true when the open document's file is outside the
+  new root: `currentPath` is then null. The tree, the undo history and
+  `dirty` are unchanged.
+- The root is changed for the running session only.
+- Setting the environment variable `FTA_EDITOR_NO_FOLDER_PICKER` (to any
+  value) before the editor starts switches the chooser off (`reason:
+  "disabled"`).
+- On Windows the chooser is shown by Windows PowerShell; elsewhere, from
+  source, by tkinter. The packaged app does not include tkinter, so on Linux
+  and macOS it answers 501.
+
+**`GET /api/fs/home`** also returns `canChooseRoot` (whether the endpoint
+above can open a chooser on this computer) and `relaunch` (the command for
+when it cannot).
+
 ### Several nodes in one request
 
 Each of these is **one undo step**, checks every id before it changes
 anything (a refusal leaves the document as it was), and answers with the
 usual mutation payload. All need the session token.
+
+Both batch requests read the tree once, whatever the number of ids: 4,800
+ids on a 4,860-node tree take well under a second (9.4 s and 4.1 s in
+1.8.0).
 
 **`POST /api/batch/delete`** `{ids: [...]}` deletes each node with its
 subtree. `deletedIds` are the nodes deleted directly (a listed node inside
@@ -835,6 +940,10 @@ headline label and puts a sentence under the picture.
 | `EXPORT_UNAVAILABLE` | 503 | An optional package is missing: `python-docx` for the report, `openpyxl` for xlsx export or FMEA import | `{format, package, install, feature?}` |
 | `AI_DOCUMENT_CHANGED` | 409 | `POST /api/ai/update` finished, or `POST /api/ai/update/apply` was called, after the document was edited, undone, replaced by New or opened from another file | none |
 | `AI_UPDATE_EXPIRED` | 409 | `POST /api/ai/update/apply` with an `id` that is not the previewed rewrite still waiting | none |
+| `AI_CANCELLED` | 409 | The AI request was abandoned by `POST /api/ai/cancel` while it was waiting for the provider | none |
+| `UNSAVED_CHANGES` | 409 | New, Open, an example, an import or a recovery restore over unsaved changes without `force` | none |
+| `PICKER_UNAVAILABLE` | 501 | `POST /api/fs/root/choose` where no folder chooser can be opened | `{reason, relaunch}` |
+| `PICKER_BUSY` | 409 | `POST /api/fs/root/choose` while a chooser is already open | none |
 
 Messages for these codes are localised like every other error. The English
 text is the server's own message; `fta_web/i18n.py` supplies the Japanese:

@@ -645,7 +645,7 @@ def test_20_the_key_is_not_in_a_preview(seeded, provider, monkeypatch):
 def test_20_the_panel_asks_then_previews_then_applies():
     src = _read(STATIC / "chat.js")
     action = re.search(r"  function actionUpdate\(\) \{(.*?)\n  \}\n", src, re.S).group(1)
-    assert action.index("choiceDialog(t('ai.update.confirm')") < action.index("api.post('/ai/update', { preview: true })")
+    assert action.index("choiceDialog(t('ai.update.confirm')") < action.index("api.post('/ai/update', { preview: true, requestId: job.id })")
     assert "if (!go || destroyed || blocked()) return;" in action
     assert "renderUpdatePreview(result);" in action
     preview = _function(src, "function renderUpdatePreview(result)")
@@ -682,8 +682,9 @@ def test_21_the_examples_are_listed_from_the_examples_folder(client):
 
 def test_21_an_example_opens_untitled_and_save_cannot_reach_the_bundled_file(client, sandbox):
     originals = {name: (EXAMPLES / name).read_bytes() for name in bundled()}
-    add(client, name="left over")  # a dirty document: the endpoint itself does not refuse
-    opened = body(client.post("/api/examples/open", json={"name": "sampleFTA.json"}))
+    add(client, name="left over")  # a dirty document: refused since 1.8.1, unless forced
+    assert error(client.post("/api/examples/open", json={"name": "sampleFTA.json"}))["code"] == "UNSAVED_CHANGES"
+    opened = body(client.post("/api/examples/open", json={"name": "sampleFTA.json", "force": True}))
     assert opened["ok"] is True and opened["example"] == "sampleFTA.json"
     assert opened["currentPath"] is None and opened["dirty"] is False
     assert opened["canUndo"] is False and opened["tree"]["children"]
@@ -782,7 +783,10 @@ def test_25_the_sandbox_root_is_as_narrow_as_it_was(client, sandbox, tmp_path):
     assert not (tmp_path / "outside" / "new.json").exists()
     assert state_of(client)["currentPath"] is None
     routes = {rule.rule for rule in client.application.url_map.iter_rules()}
-    assert not any("root" in rule for rule in routes), "no endpoint changes the root"
+    # Since 1.8.1 one endpoint can change the root, and it takes no path:
+    # the person picks the folder in a dialog the server opens
+    # (test_known_issues_1_8.py proves a request cannot name one).
+    assert {rule for rule in routes if "root" in rule} == {"/api/fs/root/choose"}
     assert "fs_root" not in _read(REPO / "fta_web" / "user_prefs.py"), "the root is not a stored preference"
 
 
@@ -803,8 +807,11 @@ def test_25_the_refusal_says_how_to_start_the_editor_on_another_folder(client, s
     assert "Program Files" not in json.dumps(packaged)
 
     dialog = _read(STATIC / "filedialog.js")
-    text = _function(dialog, "function errorText(err, fallbackKey, sources)")
-    assert "detail.reason === 'outside_root' && detail.relaunch" in text
+    # Since 1.8.1 the function takes one more argument (whether the folder
+    # can be changed from the page) and the outside_root test has a name.
+    text = _function(dialog, "function errorText(err, fallbackKey, sources, canChoose)")
+    assert "isOutsideRoot(err) && detail.relaunch" in text
+    assert "detail.reason === 'outside_root'" in _function(dialog, "function isOutsideRoot(err)")
     assert "t('file.errOutsideRoot', { root: detail.root || '', command: detail.relaunch })" in text
 
 
@@ -816,7 +823,7 @@ def test_25_the_load_dialog_offers_the_examples_and_this_computer():
     sources = _function(main, "function documentSources()")
     assert "id: 'example'" in sources and "id: 'import'" in sources
     example = _function(main, "async function actionOpenExample(asked)")
-    assert example.index("leaveDocument('open')") < example.index("api.get('/examples')") < example.index("api.post('/examples/open', { name })")
+    assert example.index("leaveDocument('open')") < example.index("api.get('/examples')") < example.index("api.post('/examples/open', force ? { name, force: true } : { name })")
     assert "await adoptDocument(payload);" in example
     dialog = _read(STATIC / "filedialog.js")
     assert "onclick: () => close({ source: String(source.id) })" in dialog
@@ -828,7 +835,10 @@ def test_25_the_load_dialog_offers_the_examples_and_this_computer():
 
 
 def home_of(client):
-    return {key: Path(value) for key, value in body(client.get("/api/fs/home")).items() if key != "ok"}
+    # root and cwd; since 1.8.1 the answer also says whether the folder can
+    # be changed from the page (canChooseRoot, relaunch), which are not paths
+    return {key: Path(value) for key, value in body(client.get("/api/fs/home")).items()
+            if key in ("root", "cwd")}
 
 
 def test_26_the_folder_of_the_last_open_or_save_is_where_an_untitled_document_starts(client, sandbox, per_user_home):
@@ -1028,7 +1038,7 @@ def test_28_exports_are_a_labelled_group_and_the_toast_says_copy():
 def test_28_a_file_from_this_computer_goes_through_the_unsaved_prompt_and_opens_untitled(client):
     src = _read(STATIC / "main.js")
     imp = _function(src, "async function importFile(file, asked)")
-    assert imp.index("if (!asked) {") < imp.index("leaveDocument('open')") < imp.index("api.upload('/import/json', file)")
+    assert imp.index("if (!asked) {") < imp.index("leaveDocument('open')") < imp.index("api.upload('/import/json', file, 'file', force ? { force: 'true' } : null)")
     assert "await adoptDocument(payload);" in imp
     drop = _function(src, "function wireFileDrop()")
     assert "importFile(file, true)" in drop, "the picker was reached through Load, which has asked"
@@ -1038,13 +1048,14 @@ def test_28_a_file_from_this_computer_goes_through_the_unsaved_prompt_and_opens_
     html = _read(INDEX)
     assert re.search(r'<input type="file" id="import-file" accept="\.json,application/json" hidden', html)
     api = _read(STATIC / "api.js")
-    upload = _function(api, "async function upload(path, file, field)")
+    upload = _function(api, "async function upload(path, file, field, fields)")
     assert "buildInit('POST', undefined, 'application/json')" in upload, "the session token is sent"
     assert "new FormData()" in upload and "Content-Type" not in upload
 
     # what the endpoint the page posts to does with it
     add(client, name="left over")
-    upload = {"file": (io.BytesIO(_read(EXAMPLES / "sampleFTA.json").encode("utf-8")), "from my desktop.json")}
+    upload = {"file": (io.BytesIO(_read(EXAMPLES / "sampleFTA.json").encode("utf-8")), "from my desktop.json"),
+              "force": "true"}  # the node above is unsaved work (refused without it since 1.8.1)
     opened = body(client.post("/api/import/json", data=upload, content_type="multipart/form-data"))
     assert opened["currentPath"] is None and opened["dirty"] is True
     assert client.post("/api/file/save", json={}).status_code == 409
@@ -1437,6 +1448,6 @@ def test_the_new_endpoints_are_in_the_api_reference_and_the_changelog():
     assert '"preview": true' in reference
     for key in ("revision", "documentSerial", "prefs"):
         assert "`%s`" % key in reference, key
-    unreleased = _read(REPO / "CHANGELOG.md").split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    unreleased = _read(REPO / "CHANGELOG.md").split("## [1.8.0]", 1)[1].split("\n## [", 1)[0]
     for phrase in ("rescue copy", "Save and continue", "Open an example", "another tab", "This run only"):
         assert phrase in unreleased, phrase

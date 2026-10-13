@@ -1025,7 +1025,9 @@ export function initChat(host) {
    * answer arrived after Stop.
    */
   async function run(statusText, work, hooks) {
-    const job = { stopped: false, hooks: hooks || {} };
+    // `id` names the request to the server, so that Stop abandons this one
+    // and no other (POST /api/ai/cancel).
+    const job = { stopped: false, hooks: hooks || {}, id: newRequestId() };
     current = job;
     setBusy(true, statusText);
     try {
@@ -1043,10 +1045,21 @@ export function initChat(host) {
     }
   }
 
+  /** A name for one request to the provider; not a secret, only distinct. */
+  function newRequestId() {
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+  }
+
   /**
-   * Stop waiting. The request cannot be withdrawn from the provider, and the
-   * editor's one AI slot stays taken until it answers, so the message says
-   * that a new request may be refused for a moment.
+   * Stop waiting, and tell the editor to abandon the request. The request
+   * cannot be withdrawn from the provider, but the editor drops its answer
+   * and frees its one AI slot at once, so the next request is accepted. Up
+   * to 1.8.0 nothing was sent, and the slot stayed taken until the provider
+   * answered: a new request was refused as busy for up to two minutes.
+   *
+   * The panel is given back first and does not wait for the editor's answer.
+   * If the editor could not be told (it has stopped, or the connection is
+   * gone), a second line says that a new request may still be refused.
    */
   function actionStop() {
     const job = current;
@@ -1057,6 +1070,9 @@ export function initChat(host) {
     if (job.hooks.onFail) job.hooks.onFail();
     say('system', 'ai.msg.stopped');
     input.focus();
+    api.post('/ai/cancel', { requestId: job.id }).catch(() => {
+      if (!destroyed) say('system', 'ai.msg.stopNotFreed');
+    });
   }
 
   /**
@@ -1095,7 +1111,7 @@ export function initChat(host) {
       row.dataset.failed = 'true';
     };
     run(t('ai.msg.thinking'), async (job) => {
-      const result = await api.post('/ai/chat', { message: text });
+      const result = await api.post('/ai/chat', { message: text, requestId: job.id });
       if (destroyed || job.stopped) return;
       if (!showReply(result)) giveBack();
       renderChanges(listFrom(result, ['changes', 'suggestions']));
@@ -1111,7 +1127,7 @@ export function initChat(host) {
     if (blocked()) return;
     say('user', modeKey('ai.msg.analyzePrompt'));
     run(t(modeKey('ai.msg.analyzing')), async (job) => {
-      const result = await api.post('/ai/analyze', {});
+      const result = await api.post('/ai/analyze', { requestId: job.id });
       if (destroyed || job.stopped) return;
       showReply(result);
       renderChanges(listFrom(result, ['changes', 'suggestions']));
@@ -1134,7 +1150,7 @@ export function initChat(host) {
       if (!go || destroyed || blocked()) return;
       say('user', modeKey('ai.msg.updatePrompt'));
       run(t(modeKey('ai.msg.updating')), async (job) => {
-        const result = await api.post('/ai/update', { preview: true });
+        const result = await api.post('/ai/update', { preview: true, requestId: job.id });
         if (destroyed) return;
         if (job.stopped) {
           // The preview nobody is waiting for must not stay on the server.

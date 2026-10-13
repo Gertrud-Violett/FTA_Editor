@@ -12,6 +12,7 @@ AI assistant endpoints -- the ``/api/ai`` blueprint.
 ``POST   /api/ai/update``                     full-JSON rewrite of the tree
 ``POST   /api/ai/update/apply``               install a previewed rewrite
 ``POST   /api/ai/update/discard``             drop a previewed rewrite
+``POST   /api/ai/cancel``                     abandon the request in flight
 ``POST   /api/ai/changes/apply``              apply selected proposals
 ``GET    /api/ai/conversation``               the chat so far, for a reload
 ``DELETE /api/ai/conversation``               forget the chat history
@@ -123,6 +124,7 @@ ai_bp = Blueprint("ai", __name__, url_prefix="/api/ai")
 # ---------------------------------------------------------------------------
 AI_BUSY = "AI_BUSY"
 AI_TIMEOUT = "AI_TIMEOUT"
+AI_CANCELLED = "AI_CANCELLED"
 AI_CALL_FAILED = "AI_CALL_FAILED"
 AI_CONNECTION_FAILED = "AI_CONNECTION_FAILED"
 AI_INVALID_JSON = "AI_INVALID_JSON"
@@ -162,6 +164,27 @@ def _body() -> Dict[str, Any]:
     return data
 
 
+#: The longest ``requestId`` taken (the page sends about 20 characters).
+REQUEST_ID_MAX = 64
+
+
+def _request_id(payload: Dict[str, Any]) -> Optional[str]:
+    """The optional ``requestId`` of a provider request or of a cancel: an
+    opaque name the page made up, so that Stop abandons the request it was
+    pressed for and no other."""
+    value = payload.get("requestId")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value or len(value) > REQUEST_ID_MAX:
+        raise ApiError(
+            INVALID_FIELD,
+            "'requestId' must be a string of 1 to %d characters." % REQUEST_ID_MAX,
+            400,
+            {"field": "requestId"},
+        )
+    return value
+
+
 def _require_configured() -> None:
     """400 ``AI_NOT_CONFIGURED`` unless a key is saved."""
     if not ai_bridge.is_configured():
@@ -195,6 +218,10 @@ def _ai_failures(secret: Optional[str] = None):
         yield
     except ai_bridge.AiBusy as exc:
         raise ApiError(AI_BUSY, str(exc), 409)
+    except ai_bridge.AiCancelled as exc:
+        # The tab that pressed Stop has usually stopped listening; a client
+        # that still is gets a refusal it can tell from every other one.
+        raise ApiError(AI_CANCELLED, str(exc), 409)
     except ai_bridge.AiTimeout as exc:
         raise ApiError(
             AI_TIMEOUT,
@@ -468,12 +495,14 @@ def post_chat():
     _require_configured()
     payload = _body()
     message = _required_text(payload, "message")
+    request_id = _request_id(payload)
 
     handler = ai_bridge.get_handler()
     tree, mode, title, document, analysis = _document_snapshot()
     secret = ai_bridge.call_secret()
 
     with _ai_failures(secret):
+        ai_bridge.tag_next_call(request_id)
         # set_fta_context is pure formatting, but it writes to the handler, so
         # it runs inside the same single-call slot as send_message -- see
         # ai_bridge.run_ai_call.
@@ -507,12 +536,14 @@ def post_analyze():
     same as letting it edit.
     """
     _require_configured()
+    request_id = _request_id(_body())
 
     handler = ai_bridge.get_handler()
     tree, mode, title, document, analysis = _document_snapshot()
     secret = ai_bridge.call_secret()
 
     with _ai_failures(secret):
+        ai_bridge.tag_next_call(request_id)
         reply, changes = ai_bridge.run_ai_call(
             "analyze",
             _with_results(handler, tree, mode, analysis,
@@ -911,12 +942,14 @@ def post_update():
     and ``changed`` nodes by id and name (see ``ai_bridge.update_summary``).
     """
     _require_configured()
-    preview = _body().get("preview", False)
+    payload = _body()
+    preview = payload.get("preview", False)
     if not isinstance(preview, bool):
         raise ApiError(
             INVALID_FIELD, "'preview' must be true or false.", 400,
             {"field": "preview", "value": preview},
         )
+    request_id = _request_id(payload)
 
     handler = ai_bridge.get_handler()
     tree, mode, title, document, analysis = _document_snapshot()
@@ -925,6 +958,7 @@ def post_update():
     _drop_pending_update()
 
     with _ai_failures(secret):
+        ai_bridge.tag_next_call(request_id)
         # The handler parses proposals out of this reply too; they are pending
         # like any others, so they are recorded against this document as well.
         assistant_text, updated = ai_bridge.run_ai_call(
@@ -1047,3 +1081,29 @@ def post_update_discard():
     if update_id is not None and not isinstance(update_id, str):
         raise ApiError(INVALID_FIELD, "'id' must be a string.", 400, {"field": "id"})
     return ok_response(discarded=_drop_pending_update(update_id))
+
+
+# ---- Stop ----------------------------------------------------------------
+
+
+@ai_bp.post("/cancel")
+def post_cancel():
+    """Abandon the provider request in flight. Body: ``{requestId?}``.
+
+    Stop in the chat only stopped the tab from waiting: the server's one AI
+    slot stayed taken until the provider answered (up to the two-minute
+    deadline), and every request in that time was refused as busy. This
+    frees the slot at once. The provider's HTTP call cannot be interrupted;
+    its answer, when it comes, is dropped -- not added to the conversation,
+    not offered as suggestions, and no Update FTA preview is made of it
+    (``ai_bridge.cancel_ai_call`` says how). The abandoned request itself is
+    answered 409 ``AI_CANCELLED``.
+
+    With ``requestId`` (the one the request was sent with) only that request
+    is abandoned, so a Stop that arrives late cannot abandon the next one.
+    Returns ``{cancelled}``: false when nothing was in flight (or the request
+    named had already finished), which is not an error. Needs no provider,
+    so it works unconfigured, and it never touches the document.
+    """
+    cancelled = ai_bridge.cancel_ai_call(_request_id(_body()))
+    return ok_response(cancelled=cancelled)
