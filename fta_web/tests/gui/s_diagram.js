@@ -19,7 +19,7 @@ async function main(url, label, root) {
   L.setSection('diagram[' + label + ']');
   const app = await L.openApp(url, { prefs: { 'fta.advanced': '1' }, viewport: { width: 1700, height: 1000 } });
   const { page } = app;
-  const res = await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  const res = await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   L.check('opened core file', !res.__error, res);
   await page.evaluate(() => window.ftaShell.refresh());
   const st = await app.api('get', '/state');

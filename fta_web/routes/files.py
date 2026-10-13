@@ -12,6 +12,7 @@ Endpoints
 ---------
 ==============================  ==========================================
 ``GET  /api/fs/home``           where the picker should start
+``POST /api/fs/root/choose``    let the person pick another allowed folder
 ``GET  /api/examples``          the analyses that ship with the app
 ``POST /api/examples/open``     open one of them as an untitled copy
 ``GET  /api/fs/list``           one directory, filtered to openable files
@@ -20,6 +21,9 @@ Endpoints
 ``POST /api/file/save-as``      write to a new path and adopt it
 ``GET  /api/export/{json,xml,xlsx}``  download a rendering of the document
 ``POST /api/import/json``       replace the document from an upload
+``GET  /api/recovery``          unsaved work left by an editor that crashed
+``POST /api/recovery/restore``  open one of those copies, untitled
+``POST /api/recovery/discard``  remove one of those copies
 ==============================  ==========================================
 
 Decisions a reviewer should know about
@@ -30,13 +34,17 @@ the live core would leave a half-replaced document behind on a bad file. The
 new core is built, loaded and only then swapped in under the lock, which makes
 a failed open a no-op for the user's work.
 
-**Open does not refuse to discard unsaved changes**, unlike ``POST /api/new``,
-which answers 409 ``UNSAVED_CHANGES`` unless forced. The published contract
-for this endpoint is ``{path}`` in, document out, and the frontend is written
-against exactly that -- it owns the "you have unsaved changes" confirmation,
-because it is the side that can show a dialog. Adding a server-side refusal
-here would break it. The tension is deliberate and recorded rather than
-silently resolved either way.
+**Open, an example and import refuse to discard unsaved changes**, as
+``POST /api/new`` does: 409 ``UNSAVED_CHANGES`` unless the request carries
+``force: true`` (a form field ``force=true`` on the multipart import). Up to
+1.8.0 only the page asked, and a page knows about its own edits only: with the
+editor open in two tabs, a Load in the tab that looked clean replaced what the
+other tab had not saved, without a question. The page still asks first (it
+is the side that can show a dialog) and sends ``force`` once the user chose
+to discard; the server's refusal is what catches the case the page cannot
+see. The check is made under the lock, at the moment the document would be
+replaced, and after every other check: a request that would fail anyway
+(a bad path, an unreadable file) fails as it always did.
 
 **Import leaves ``currentPath`` null and the document dirty.** The bytes came
 from the browser, not from a file this server can write back to, so there is
@@ -106,6 +114,7 @@ try:  # normal package import: ``import fta_web.routes.files``
         INVALID_JSON,
         NO_CURRENT_PATH,
         PATH_REJECTED,
+        UNSAVED_CHANGES,
         ApiError,
         api_error_response,
         ok_response,
@@ -113,6 +122,8 @@ try:  # normal package import: ``import fta_web.routes.files``
     from ..engine import WebCore
     from ..excel_events import export_view, export_xlsx
     from ..numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs
+    from .. import folder_picker, recovery
+    from ..state import _emit as notify_document_event
     from ..state import get_state, load_warning_issues
     from ..tree_ops import tree_height
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
@@ -129,6 +140,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         INVALID_JSON,
         NO_CURRENT_PATH,
         PATH_REJECTED,
+        UNSAVED_CHANGES,
         ApiError,
         api_error_response,
         ok_response,
@@ -136,6 +148,9 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from engine import WebCore  # type: ignore[no-redef]
     from excel_events import export_view, export_xlsx  # type: ignore[no-redef]
     from numfmt import DEFAULT_SIG_FIGS, clamp_sig_figs  # type: ignore[no-redef]
+    import folder_picker  # type: ignore[no-redef]
+    import recovery  # type: ignore[no-redef]
+    from state import _emit as notify_document_event  # type: ignore[no-redef]
     from state import get_state, load_warning_issues  # type: ignore[no-redef]
     from tree_ops import tree_height  # type: ignore[no-redef]
 
@@ -156,6 +171,8 @@ files_bp = Blueprint("files", __name__, url_prefix="/api")
 # ---------------------------------------------------------------------------
 EXPORT_UNAVAILABLE = "EXPORT_UNAVAILABLE"
 PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
+PICKER_UNAVAILABLE = "PICKER_UNAVAILABLE"
+PICKER_BUSY = "PICKER_BUSY"
 
 #: Named in the "no openpyxl" failure so the remedy travels with the error
 #: instead of living only in the docs -- the same policy rendering.py applies
@@ -255,6 +272,44 @@ def _required_path(payload: Dict[str, Any]) -> Any:
     return payload["path"]
 
 
+def _force_flag(value: Any) -> bool:
+    """The ``force`` of a request that replaces the document.
+
+    A real boolean only, as for ``POST /api/new``: bool("false") is True, and
+    this flag is the one thing between the user's unsaved work and the bin.
+    A multipart form has no booleans, so there (and only there) the texts
+    ``true`` and ``false`` are read.
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    raise ApiError(INVALID_FIELD, "'force' must be true or false.", 400,
+                   {"field": "force", "value": value})
+
+
+def _form_force_flag() -> bool:
+    """``force`` of a multipart request: absent, ``true`` or ``false``."""
+    value = request.form.get("force")
+    if value is None or value in ("true", "false"):
+        return value == "true"
+    raise ApiError(INVALID_FIELD, "'force' must be true or false.", 400,
+                   {"field": "force", "value": value})
+
+
+def _refuse_unsaved(state, force: bool) -> None:
+    """409 ``UNSAVED_CHANGES`` when the document about to be replaced has
+    unsaved changes and the request does not say to discard them. Call with
+    ``state.lock`` held, immediately before the replacement."""
+    if state.dirty and not force:
+        raise ApiError(
+            UNSAVED_CHANGES,
+            "The current analysis has unsaved changes. "
+            "Save it, or resend with {\"force\": true} to discard them.",
+            409,
+        )
+
+
 def _fs_root() -> Path:
     """The sandbox root for this request, resolved."""
     return fsbrowser.resolve_root(get_state().fs_root)
@@ -295,6 +350,11 @@ def _install_document(state, core: FTACore, path: Optional[Path],
     state.core = core
     state.current_path = path
     state.dirty = dirty
+    if dirty:
+        # Not through mark_dirty() (the revision went up in reset()), so the
+        # recovery copy is told here: an imported document exists only in
+        # memory until it is saved.
+        notify_document_event("dirty")
     # reset() emptied the session warnings; the new document's own load
     # repairs are the first entries of its session.
     state.add_session_warnings(
@@ -332,7 +392,143 @@ def fs_home():
             cwd = root
     else:
         cwd = _remembered_folder(root) or root
-    return ok_response(root=str(root), cwd=str(cwd))
+    # canChooseRoot: whether "Change folder..." can open a dialog on this
+    # computer (POST /api/fs/root/choose). When it cannot, the page shows
+    # `relaunch`, the command that starts the editor on another folder.
+    return ok_response(
+        root=str(root),
+        cwd=str(cwd),
+        canChooseRoot=folder_picker.available(),
+        relaunch=fsbrowser.relaunch_with_root(),
+    )
+
+
+# ---- changing the allowed folder --------------------------------------------
+
+
+def _refuse_any_input() -> None:
+    """400 unless the request carries nothing: no body (an empty JSON object
+    is tolerated, it is what the page's ``api.post`` sends), no form, no
+    file, no query parameter other than the language.
+
+    This is the whole point of the endpoint. The folder is chosen by the
+    person, in a dialog; a request cannot name it. Refusing every input,
+    rather than ignoring a ``path`` it does not read, means a client that
+    believes it can pass one finds out at once -- and that no later change
+    to this function can start honouring a field by accident. Nothing of the
+    input is echoed back.
+    """
+    refusal = ApiError(
+        INVALID_FIELD,
+        "This request takes no input. The folder is chosen in a dialog the "
+        "editor opens on this computer; a request cannot name it.",
+        400,
+        {"field": "body"},
+    )
+    if any(key != "lang" for key in request.args):
+        raise refusal
+    raw = request.get_data(cache=True)
+    if raw and raw.strip():
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            raise refusal
+        if not (isinstance(parsed, dict) and not parsed):
+            raise refusal
+    if request.form or request.files:
+        raise refusal
+
+
+@files_bp.post("/fs/root/choose")
+def fs_root_choose():
+    """Let the person at this computer choose another allowed folder.
+
+    The sandbox root could only be set when the editor started (``--root``).
+    This changes it for the running session, and in one way only: the server
+    opens the operating system's folder dialog (``folder_picker.py``) and the
+    folder picked there becomes the root. **The request names nothing** --
+    see :func:`_refuse_any_input` -- so a page or a script holding the token
+    cannot point the editor anywhere; it can only make the dialog appear.
+
+    The request waits while the dialog is open. Answers:
+
+    * ``{changed: true, root, currentPath, documentUntitled}`` -- the folder
+      chosen went through the same normalisation as ``--root``
+      (``fsbrowser.resolve_root``) and is the root now.
+    * ``{changed: false, cancelled: true, root}`` -- the dialog was closed;
+      nothing changed.
+    * 501 ``PICKER_UNAVAILABLE`` -- no dialog can be shown here (no display,
+      a packaged build without one). ``detail.relaunch`` is the command that
+      starts the editor on another folder, as before.
+    * 409 ``PICKER_BUSY`` -- a dialog is already open.
+
+    **The document is never lost.** If its file is inside the new root it
+    keeps its path. If not, it becomes untitled (``documentUntitled``): Save
+    then asks where, as for a new analysis, because the old place can no
+    longer be written. Its content, its undo history and its modified flag
+    are untouched.
+
+    The remembered folder (``lastFolder``) needs no step of its own: it is
+    checked against the root each time it is read (``_remembered_folder``).
+    """
+    _refuse_any_input()
+    state = get_state()
+    try:
+        current_root: Optional[Path] = _fs_root()
+    except fsbrowser.PathRejected:
+        current_root = None  # the root has gone (an unplugged drive): choose another
+
+    try:
+        chosen = folder_picker.pick(str(current_root) if current_root else None)
+    except folder_picker.PickerBusy as exc:
+        raise ApiError(PICKER_BUSY, str(exc), 409)
+    except folder_picker.PickerUnavailable as exc:
+        raise ApiError(
+            PICKER_UNAVAILABLE,
+            "A folder chooser cannot be opened on this computer. To work in "
+            "another folder, close the editor and start it with that folder "
+            "as its root: %s" % fsbrowser.relaunch_with_root(),
+            501,
+            {"reason": exc.reason, "relaunch": fsbrowser.relaunch_with_root()},
+        )
+
+    if chosen is None:
+        return ok_response(changed=False, cancelled=True,
+                           root=str(current_root) if current_root else None)
+
+    try:
+        # Exactly what run.py does with --root: expanduser, resolve, and it
+        # must be a directory.
+        new_root = fsbrowser.resolve_root(chosen)
+    except fsbrowser.PathRejected as exc:
+        # The dialog returned something that is not a usable folder (removed
+        # meanwhile, a virtual location). Nothing changes.
+        raise fsbrowser.PathRejected(
+            "The folder that was chosen cannot be used. The allowed folder "
+            "was not changed.",
+            reason="not_a_directory",
+            status=400,
+        ) from exc
+
+    with state.lock:
+        state.fs_root = new_root
+        untitled = False
+        if state.current_path is not None:
+            try:
+                state.current_path = fsbrowser.resolve_in_root(str(state.current_path), new_root)
+            except fsbrowser.PathRejected:
+                # Outside the new root: Save could no longer write there.
+                state.current_path = None
+                state.core.last_saved_file = None
+                untitled = True
+        return ok_response(
+            changed=new_root != current_root,
+            cancelled=False,
+            root=str(new_root),
+            currentPath=str(state.current_path) if state.current_path else None,
+            dirty=state.dirty,
+            documentUntitled=untitled,
+        )
 
 
 def _remembered_folder(root: Path) -> Optional[Path]:
@@ -437,9 +633,11 @@ def open_example():
     ``name`` is one of the names ``GET /api/examples`` lists. The document is
     installed untitled (``currentPath`` null) and unmodified: Save goes to
     Save As, so the bundled file is never written. Like ``/api/file/open``
-    this does not refuse to discard unsaved changes; the page asks first.
+    it answers 409 ``UNSAVED_CHANGES`` rather than replace unsaved work,
+    unless the body has ``force: true``.
     """
     payload = _body()
+    force = _force_flag(payload.get("force"))
     name = payload.get("name")
     if not isinstance(name, str) or not name:
         raise ApiError(INVALID_FIELD, "'name' is required.", 400, {"field": "name"})
@@ -470,6 +668,7 @@ def open_example():
 
     state = get_state()
     with state.lock:
+        _refuse_unsaved(state, force)
         _install_document(state, loaded, None, dirty=False)
         return ok_response(
             example=name, warnings=_load_warnings(loaded), **_document_payload(state)
@@ -481,9 +680,14 @@ def open_example():
 
 @files_bp.post("/file/open")
 def file_open():
-    """Replace the document with the contents of a JSON file on disk."""
+    """Replace the document with the contents of a JSON file on disk.
+
+    Body: ``{path, force?}``. 409 ``UNSAVED_CHANGES`` when the current
+    document has unsaved changes and ``force`` is not true.
+    """
     payload = _body()
     raw_path = _required_path(payload)
+    force = _force_flag(payload.get("force"))
     state = get_state()
     target = fsbrowser.resolve_for_open(raw_path, _fs_root())
 
@@ -505,6 +709,7 @@ def file_open():
     _refuse_too_deep(loaded, target.name)
 
     with state.lock:
+        _refuse_unsaved(state, force)
         _install_document(state, loaded, target, dirty=False)
         response = ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
     # After the lock: this writes a small file, and no request should wait
@@ -867,8 +1072,12 @@ def import_json():
     is checked only for a plainly wrong extension, and an extension-less part
     (a browser ``Blob`` arrives as ``blob``) is accepted and judged on its
     contents.
+
+    A form field ``force=true`` beside the file says to discard unsaved
+    changes; without it they are refused with 409 ``UNSAVED_CHANGES``.
     """
     upload = _uploaded_file()
+    force = _form_force_flag()
     filename = upload.filename or ""
     suffix = Path(filename).suffix.lower()
     if suffix and suffix not in {ext.lower() for ext in ALLOWED_OPEN_EXTENSIONS}:
@@ -920,5 +1129,98 @@ def import_json():
         # No current path (the bytes came from the browser, not from a file
         # this server can write to) and therefore dirty: the work exists only
         # in memory until the user picks a location with Save As.
+        _refuse_unsaved(state, force)
         _install_document(state, loaded, None, dirty=True)
         return ok_response(warnings=_load_warnings(loaded), **_document_payload(state))
+
+
+# ---- the recovery copy ------------------------------------------------------
+#
+# recovery.py keeps a copy of the document while it has unsaved changes and
+# says which copies were left by an editor that ended without saving. These
+# three endpoints are how the page offers one back. An id here is a name from
+# the server's own listing (``recovery.abandoned``), exactly as an example's
+# name is: it is looked up, never joined onto a path.
+
+
+@files_bp.get("/recovery")
+def recovery_list():
+    """Unsaved work left by a session that did not end cleanly:
+    ``copies: [{id, title, savedAt, originalPath}]``, newest first. Empty in
+    the usual case. ``originalPath`` is where that document had been opened
+    from (null for one never saved); it is shown, never written to."""
+    return ok_response(copies=recovery.listing())
+
+
+def _recovery_copy(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """The listed copy ``payload["id"]`` names; 400 / 404 otherwise."""
+    copy_id = payload.get("id")
+    if not isinstance(copy_id, str) or not copy_id:
+        raise ApiError(INVALID_FIELD, "'id' is required.", 400, {"field": "id"})
+    found = recovery.abandoned().get(copy_id)
+    if found is None:
+        # Never echoed back: the value may be a path somebody hoped to read.
+        raise ApiError(INVALID_FIELD, "There is no recovery copy with that id.", 404,
+                       {"field": "id"})
+    return found
+
+
+@files_bp.post("/recovery/restore")
+def recovery_restore():
+    """Open a recovery copy. Body: ``{id, force?}``.
+
+    The copy opens as an **untitled, modified** document: ``currentPath`` is
+    null and ``dirty`` true, so Save goes to Save As and the user chooses
+    where it goes. It is never written over the file the work was opened
+    from; that file may be newer, or somebody else's by now. The answer
+    carries ``restoredFrom: {title, savedAt, originalPath}`` for the page's
+    message.
+
+    Like every request that replaces the document it answers 409
+    ``UNSAVED_CHANGES`` over unsaved work unless ``force`` is true. The copy
+    is removed once it has been opened; from then on the restored document
+    is this session's unsaved work and has a recovery copy of its own.
+    """
+    payload = _body()
+    force = _force_flag(payload.get("force"))
+    found = _recovery_copy(payload)
+    source = found["path"]
+
+    loaded = WebCore()
+    ok, error = loaded.load_from_json(str(source))
+    if not ok:
+        raise ApiError(
+            INVALID_JSON,
+            "The recovery copy could not be read as an FTA analysis: %s"
+            % (error or "unrecognised format"),
+            400,
+            {"reason": "load_failed"},
+        )
+    # load_from_json() remembers the file it read; nothing may later write
+    # the analysis back into the recovery folder as if it were its home.
+    loaded.last_saved_file = None
+    _refuse_too_deep(loaded, "the recovery copy")
+
+    state = get_state()
+    with state.lock:
+        _refuse_unsaved(state, force)
+        _install_document(state, loaded, None, dirty=True)
+        response = ok_response(
+            restoredFrom={key: found[key] for key in ("title", "savedAt", "originalPath")},
+            warnings=_load_warnings(loaded),
+            **_document_payload(state),
+        )
+    # Outside the lock (recovery.flush takes it itself): this session's own
+    # copy first, and only then the one it was read from, so the work is on
+    # disk at every moment in between.
+    if recovery.flush() or recovery.session_id() is None:
+        recovery.discard(found["id"])
+    return response
+
+
+@files_bp.post("/recovery/discard")
+def recovery_discard():
+    """Remove a recovery copy. Body: ``{id}``. ``discarded`` says whether it
+    was there; an id that is not in the listing is 404 and removes nothing."""
+    found = _recovery_copy(_body())
+    return ok_response(discarded=recovery.discard(found["id"]))

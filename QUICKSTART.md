@@ -34,8 +34,14 @@ Your browser opens on the editor. The terminal prints the URL as well — it
 carries a **one-time token for this launch**, so if the browser does not open
 by itself, paste that whole URL in. `Ctrl-C` stops the server.
 
-Useful flags: `--port 8765` for a fixed port, `--no-browser` to only print the
-URL, `--root ~/trees` to confine the file browser to one directory.
+The editor listens on port **8765**, the same at every start, so the browser
+keeps your display settings (Advanced, language, theme, significant figures).
+If that port is in use (a second copy of the editor, for example) it takes a
+free one and says so in the terminal.
+
+Useful flags: `--port 8800` for another fixed port, `--port 0` for any free
+port, `--no-browser` to only print the URL, `--root ~/trees` to confine the
+file browser to one directory.
 
 <details>
 <summary><b>Legacy desktop app instead (Tkinter, v1.5.1 behaviour, frozen fallback)</b></summary>

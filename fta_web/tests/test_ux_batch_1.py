@@ -107,7 +107,8 @@ def test_42_percent_fraction_comma_and_full_width_digits_are_read():
 
 @needs_node
 def test_42_plain_decimals_are_left_exactly_as_typed():
-    got = _parse_numbers(["0.5", " 0.5 ", "1e-6", "1E-6", ".5", "+0.5", "-0", "1", "0"])
+    # "-0" left this list in 1.8.1: it is read as "0" (test_known_issues_1_8.py).
+    got = _parse_numbers(["0.5", " 0.5 ", "1e-6", "1E-6", ".5", "+0.5", "0.0", "1", "0"])
     assert all(row is not None and row[2] is False for row in got.values()), got
     assert got["1E-6"] == [1e-06, "1E-6", False] and got[" 0.5 "] == [0.5, "0.5", False]
 

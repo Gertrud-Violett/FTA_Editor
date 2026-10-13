@@ -173,6 +173,19 @@
         <span class="panel__spacer"></span>
         <span class="panel__meta" id="tree-count"></span>
       </div>
+      <!-- Unsaved work an earlier run of the editor left behind (it crashed,
+           or its window was closed): shown by main.js when the server lists
+           a recovery copy, until it is restored or discarded. -->
+      <div class="firstrun firstrun--recovery" id="recovery-offer" role="region"
+           data-i18n-aria="recovery.title" aria-label="Unsaved work found" hidden>
+        <p class="firstrun__title" data-i18n="recovery.title">Unsaved work found</p>
+        <p class="firstrun__text" id="recovery-text"></p>
+        <div class="firstrun__actions">
+          <button type="button" class="btn btn--primary" id="recovery-restore"></button>
+          <button type="button" class="btn" id="recovery-discard"
+                  data-i18n="recovery.discard">Discard it</button>
+        </div>
+      </div>
       <!-- For a new analysis nobody has touched yet: the two ways to begin.
            main.js shows it (renderShell) and it goes with the first edit. -->
       <div class="firstrun" id="first-run" hidden>

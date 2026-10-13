@@ -48,6 +48,11 @@ if str(CORE_DIR) not in sys.path:
 # endpoints make any other binding a remote-file-access hole.
 HOST = "127.0.0.1"
 
+#: The port the launcher listens on when ``--port`` is not given and this one
+#: is free (run.py: choose_port). Fixed, because the browser keeps the page's
+#: preferences per origin and the port is part of the origin.
+DEFAULT_PORT = 8765
+
 # Header carrying the per-launch session token (see security.py).
 TOKEN_HEADER = "X-FTA-Token"
 

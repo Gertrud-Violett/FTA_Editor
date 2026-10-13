@@ -6,7 +6,7 @@ const path = require('path');
 const L = require('./lib');
 
 async function openSample(app, root) {
-  const res = await app.api('post', '/file/open', { path: path.join(root, 'sampleFTA.json') });
+  const res = await app.api('post', '/file/open', { path: path.join(root, 'sampleFTA.json'), force: true });
   if (res.__error) throw new Error('open failed ' + JSON.stringify(res));
   await app.page.evaluate(() => window.ftaShell.refresh());
   await app.page.waitForTimeout(500);

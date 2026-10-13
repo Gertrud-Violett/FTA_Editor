@@ -41,7 +41,7 @@ async function main(url, label, root) {
   L.setSection('i18n[' + label + ']');
   const app = await L.openApp(url, { prefs: { 'fta.advanced': '1' }, viewport: { width: 1700, height: 1050 } });
   const { page } = app;
-  await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   await page.evaluate(() => window.ftaShell.refresh());
   const st = await app.api('get', '/state');
   const user = [];

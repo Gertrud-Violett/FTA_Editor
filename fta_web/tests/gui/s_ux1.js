@@ -467,7 +467,11 @@ async function run(url, label, root) {
   // Each shows up twice, as the browser's console line and as the response.
   const errs = app.errorsSince(0, [/status of 40[04]/, /40[04] GET \/api\/fs\/list/]);
   const refused = app.errorsSince(mark).map((e) => (/40[04]/.exec(e.text) || [''])[0]).sort().join(' ');
-  L.check('no console errors in the editing flow (but for the three refused listings)', errs.length === 0 && refused === '400 400 404 404 404 404', { errs, refused });
+  // (Twice in Chromium. Firefox writes no console line for a refused request,
+  // so there each shows up once, as the response; either count is taken for
+  // an engine other than Chromium.)
+  const refusedAsExpected = refused === '400 400 404 404 404 404' || (L.BROWSER !== 'chromium' && refused === '400 404 404');
+  L.check('no console errors in the editing flow (but for the three refused listings)', errs.length === 0 && refusedAsExpected, { errs, refused });
   await app.context.close();
 }
 

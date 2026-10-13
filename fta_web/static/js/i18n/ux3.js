@@ -59,7 +59,7 @@ export default {
 
     'ai.chat.stop': 'Stop',
     'ai.chat.stopTitle': 'Stop waiting for this answer',
-    'ai.msg.stopped': 'Stopped waiting. The request cannot be taken back from the provider: until it answers, a new request may be refused as busy.',
+    'ai.msg.stopped': 'Stopped waiting. The request was abandoned: whatever the provider still answers to it is ignored, and you can send a new one now.',
     'ai.msg.restored': 'Earlier in this conversation (the editor keeps it while it is running):',
     'ai.msg.restoredUpdate': 'The assistant answered with a rewritten tree.',
     'ai.changes.kind.add': 'Add',
@@ -132,7 +132,7 @@ export default {
 
     'ai.chat.stop': '中止',
     'ai.chat.stopTitle': 'この回答を待つのをやめる',
-    'ai.msg.stopped': '待機を中止しました。プロバイダーへの要求は取り消せないため、回答が返るまで新しい要求が処理中として拒否されることがあります。',
+    'ai.msg.stopped': '待機を中止しました。この要求は破棄され、プロバイダーから後で届く回答は無視されます。すぐに新しい要求を送信できます。',
     'ai.msg.restored': 'これまでの会話（エディターの実行中は保持されます）:',
     'ai.msg.restoredUpdate': 'アシスタントは書き換えたツリーを返しました。',
     'ai.changes.kind.add': '追加',
