@@ -511,7 +511,8 @@ def test_open_clears_the_undo_stack(client, sandbox):
     created = post(client, "/api/nodes", {"parentId": "root", "name": "Scratch"})
     assert body(created)["canUndo"] is True
 
-    payload = body(post(client, "/api/file/open", {"path": str(target)}))
+    # the added node is unsaved work: since 1.8.1 the open says to discard it
+    payload = body(post(client, "/api/file/open", {"path": str(target), "force": True}))
     assert payload["canUndo"] is False
     assert body(post(client, "/api/undo")) ["error"]["code"] == "NOTHING_TO_UNDO"
 
@@ -898,12 +899,15 @@ def test_capability_flag_and_endpoint_agree(opened):
 # --------------------------------------------------------------------------
 
 
-def upload(client, content, filename="uploaded.json", field="file"):
+def upload(client, content, filename="uploaded.json", field="file", force=False):
     if isinstance(content, str):
         content = content.encode("utf-8")
+    data = {field: (io.BytesIO(content), filename)}
+    if force:
+        data["force"] = "true"
     return client.post(
         "/api/import/json",
-        data={field: (io.BytesIO(content), filename)},
+        data=data,
         content_type="multipart/form-data",
     )
 
@@ -943,8 +947,9 @@ def test_import_accepts_legacy_and_encoded_uploads(client):
 
     document = json.loads(json.dumps(DOCUMENT))
     document["title"] = "ポンプ故障"
+    # the first import is unsaved work (an import has no file): discard it
     payload = body(
-        upload(client, dumps(document).encode("cp932"))
+        upload(client, dumps(document).encode("cp932"), force=True)
     )
     assert payload["metadata"]["title"] == "ポンプ故障"
 

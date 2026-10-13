@@ -44,6 +44,11 @@ from AI_agent_handler import AICredentialManager  # noqa: E402
 from FTA_Editor_core import FTACore  # noqa: E402,F401  (kept for importers)
 
 try:  # normal package import
+    from . import user_prefs  # noqa: E402
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import user_prefs  # type: ignore[no-redef]  # noqa: E402
+
+try:  # normal package import
     from .engine import WebCore  # noqa: E402
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     from engine import WebCore  # type: ignore[no-redef]  # noqa: E402
@@ -187,6 +192,36 @@ def _ai_configured() -> bool:
         return False
 
 
+# ---- document events -------------------------------------------------------
+#
+# Who wants to know that the document changed, was saved or was replaced:
+# the recovery copy (recovery.py). A listener is called with "dirty", "saved"
+# or "reset", possibly with ``AppState.lock`` held, so it must only take note
+# and return: no file, no lock of its own that a request could be holding.
+# Module-level, not per AppState: reset_state() makes a new AppState and the
+# listeners are about "the document of this process".
+
+_document_listeners: List[Any] = []
+
+
+def add_document_listener(listener) -> None:
+    if listener not in _document_listeners:
+        _document_listeners.append(listener)
+
+
+def remove_document_listener(listener) -> None:
+    if listener in _document_listeners:
+        _document_listeners.remove(listener)
+
+
+def _emit(kind: str) -> None:
+    for listener in list(_document_listeners):
+        try:
+            listener(kind)
+        except Exception:  # a listener must never fail the edit it hears of
+            pass
+
+
 class AppState:
     """The single open document, plus its undo history and session facts."""
 
@@ -213,6 +248,12 @@ class AppState:
         self.fs_root: Path = Path(config.DEFAULT_FS_ROOT)
         self._undo: Deque[Dict[str, Any]] = deque(maxlen=config.UNDO_DEPTH)
         self._redo: Deque[Dict[str, Any]] = deque(maxlen=config.UNDO_DEPTH)
+        # Two counters a browser tab compares with its own copy (see
+        # revision_fields). ``revision`` goes up whenever the document's
+        # content changes; ``document_serial`` only when another document
+        # replaces this one (New, Open, Import, an example).
+        self.revision: int = 0
+        self.document_serial: int = 0
         # Give the fresh root a calculatedProbability so every payload the API
         # emits has the same node shape, even before the first mutation.
         self.core.recalculate_probabilities()
@@ -290,12 +331,17 @@ class AppState:
     # ---- document lifecycle ---------------------------------------------
 
     def mark_dirty(self) -> None:
+        """The document's content changed. Every edit, undo and redo ends
+        here, so this is also where the revision goes up."""
         with self.lock:
             self.dirty = True
+            self.revision += 1
+        _emit("dirty")
 
     def mark_saved(self) -> None:
         with self.lock:
             self.dirty = False
+        _emit("saved")
 
     def reset(self) -> None:
         """Start a new, empty document. Clears history, path and dirty flag."""
@@ -307,7 +353,28 @@ class AppState:
             self._redo.clear()
             self.current_path = None
             self.dirty = False
+            self.revision += 1
+            self.document_serial += 1
             self.core.recalculate_probabilities()
+        _emit("reset")
+
+    def revision_fields(self) -> Dict[str, int]:
+        """``{revision, documentSerial}``, sent with every payload that
+        carries the tree.
+
+        The editor can be open in two browser tabs, and each holds its own
+        copy of the document. A tab that was in the background while the
+        other one edited showed the old tree and still said "Saved". It now
+        asks ``GET /api/revision`` when it gets the focus back and reads the
+        document again when its own number is behind.
+
+        Saving does not raise the revision: the content is the same, and a
+        tab that has just saved must not conclude that somebody else changed
+        the document. ``dirty`` and ``currentPath`` travel beside the
+        revision instead.
+        """
+        with self.lock:
+            return {"revision": self.revision, "documentSerial": self.document_serial}
 
     # ---- session warnings -------------------------------------------------
 
@@ -399,6 +466,12 @@ class AppState:
                 "zeroNodes": self.core.get_zero_probability_nodes(),
                 "analysis": copy.deepcopy(getattr(self.core, "analysis", None)),
                 "sessionWarnings": copy.deepcopy(self.session_warnings),
+                "revision": self.revision,
+                "documentSerial": self.document_serial,
+                # What the page remembers between launches whatever port
+                # it is served from (the browser's own storage is per port,
+                # and the port is another one when the default is taken).
+                "prefs": user_prefs.client_prefs(),
             }
 
 

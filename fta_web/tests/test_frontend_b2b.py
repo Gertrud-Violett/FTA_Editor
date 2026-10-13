@@ -63,8 +63,14 @@ def test_selection_does_not_relayout_the_diagram():
     src = _read(STATIC / "diagram.js")
     body = re.search(r"const unsubscribe = store\.subscribe\(\(\) => \{(.*?)\n  \}\);", src, re.S).group(1)
     assert "markSelection();" in body
-    # schedule() (a /api/dot fetch + a full WASM layout) only for a new state object
-    assert body.index("if (store.state === renderedState) return;") < body.index("schedule();")
+    # schedule() (a /api/dot fetch + a full WASM layout) only for a new state object.
+    # Batch 3: with the same state a new selection is panned into view (no
+    # layout), so the early return is the end of a block now.
+    same = body[body.index("if (store.state === renderedState) {"):]
+    same = same[:same.index("\n    }") + len("\n    }")]
+    assert same.rstrip().endswith("return;\n    }") and "schedule();" not in same
+    assert "panIntoView(selected)" in same
+    assert body.index("if (store.state === renderedState) {") < body.index("schedule();")
 
 
 def test_diagram_meta_says_what_drew_the_picture():
@@ -238,7 +244,8 @@ def test_chat_log_relabels_on_language_switch():
     src = _read(STATIC / "chat.js")
     on_lang = re.search(r"const onLanguage = \(\) => \{(.*?)\};", src, re.S).group(1)
     assert "relabelLog();" in on_lang
-    assert "say('system', 'ai.msg.welcome');" in src
+    # Batch 3: the welcome names the kind of tree (modeKey picks the ETA wording).
+    assert "say('system', modeKey('ai.msg.welcome'));" in src
     assert "addMessage('system', t(" not in src, "catalog messages must go through say()"
 
 

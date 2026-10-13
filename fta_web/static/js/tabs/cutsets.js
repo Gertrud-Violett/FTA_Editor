@@ -4,7 +4,10 @@
  * POST /api/analysis/cutsets with optional per-run limits. The limit inputs
  * start from the document's `analysis.cutsets` (blank also means the document
  * value); "Save as document defaults" writes them back through POST
- * /api/analysis/settings (undoable), which Importance and the headline use. Runs on first show and again, debounced,
+ * /api/analysis/settings (undoable), which Importance and the headline use.
+ * A limit typed here and not saved applies to the runs of this tab only: the
+ * toolbar says so ("This run only") and Reset goes back to the document's.
+ * Runs on first show and again, debounced,
  * whenever the tree changes while the tab is visible. A row click lights its
  * events up in the tree and the diagram through ctx.highlight(ids,
  * 'cutsets'); leaving the tab clears that highlight.
@@ -37,11 +40,22 @@ const STALE_DELAY_MS = 700;
  * The empty-table message: not run yet, or no cut sets at all. Null when the
  * result has cut sets, even if "Show" lists none of them (the summary then
  * reads "0 of N"): "the top event cannot occur" would be false.
+ *
+ * It would be just as false when a limit cut every set away. With Max order
+ * 1 on a tree whose smallest cut set has two events the search finds nothing
+ * and says it was truncated; that is "none within these limits", not "the
+ * top event cannot occur".
  */
 export function emptyMessageKey(result) {
   if (!result) return 'cutsets.notRun';
   const listed = Array.isArray(result.cutSets) ? result.cutSets.length : 0;
-  return listed > 0 || result.total > 0 ? null : 'cutsets.none';
+  if (listed > 0 || result.total > 0) return null;
+  return result.truncated ? 'cutsets.noneWithinLimits' : 'cutsets.none';
+}
+
+/** True when the limits left no cut set at all: the totals then mean nothing. */
+export function nothingWithinLimits(result) {
+  return emptyMessageKey(result) === 'cutsets.noneWithinLimits';
 }
 
 /** A cut set's identity across runs (ranks shift when the tree changes): its event ids. */
@@ -80,9 +94,15 @@ export function mount(panel, ctx) {
   const saveBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'save-defaults' } });
   // Inputs the user has typed in since they were last filled from the document.
   const edited = new Set();
+  // Shown while a typed limit differs from the document's: it is used by
+  // this tab's runs and by nothing else (the headline, Importance and the
+  // report keep the document's limits) until it is saved.
+  const runOnly = el('span', { class: 'anl-badge anl-badge--info', dataset: { role: 'run-only' }, hidden: true });
+  const resetBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'reset-limits' }, hidden: true });
   const status = el('span', { class: 'anl-note', 'aria-live': 'polite' });
   const toolbar = el('div', { class: 'anl-toolbar' }, [
-    runBtn, lblOrder, lblCount, lblCutoff, saveBtn, lblLimit, el('span', { class: 'anl-grow' }), status, copyBtn,
+    runBtn, lblOrder, lblCount, lblCutoff, runOnly, resetBtn, saveBtn, lblLimit,
+    el('span', { class: 'anl-grow' }), status, copyBtn,
   ]);
   const summary = el('div', { class: 'anl-summary', 'aria-live': 'polite' });
   const warnings = el('ul', { class: 'anl-warnings' });
@@ -246,6 +266,43 @@ export function mount(panel, ctx) {
     lblLimit.firstChild.textContent = t('cutsets.limit');
     lblLimit.title = t('cutsets.limitTitle');
     status.textContent = result && !running ? t('anl.elapsed', { ms: Math.round(result.elapsedMs) }) : '';
+    paintRunOnly();
+  }
+
+  /** The limit inputs that hold something other than the document's value. */
+  function overridden() {
+    const doc = docLimits();
+    return [[inOrder, doc.maxOrder], [inCount, doc.maxCount], [inCutoff, doc.cutoff]].filter(([input, value]) => {
+      const typed = input.value.trim();
+      if (!edited.has(input) || typed === '') return false;
+      const number = parseNumber(typed);
+      return value === undefined || Number.isNaN(number) || number !== Number(value);
+    }).map(([input]) => input);
+  }
+
+  function paintRunOnly() {
+    const inputs = overridden();
+    for (const input of [inOrder, inCount, inCutoff]) {
+      input.classList.toggle('anl-override', inputs.includes(input));
+    }
+    runOnly.hidden = inputs.length === 0;
+    resetBtn.hidden = inputs.length === 0;
+    runOnly.textContent = t('cutsets.runOnly');
+    runOnly.title = t('cutsets.runOnlyTitle');
+    resetBtn.textContent = t('cutsets.resetLimits');
+    resetBtn.title = t('cutsets.resetLimitsTitle');
+  }
+
+  /** Back to the document's limits, and run with them. */
+  function resetLimits() {
+    edited.clear();
+    for (const input of [inOrder, inCount, inCutoff]) {
+      input.classList.remove('anl-invalid');
+      input.removeAttribute('aria-invalid');
+    }
+    paintToolbar();
+    runSoon.cancel();
+    run();
   }
 
   function badge(text, kind, title) {
@@ -256,15 +313,38 @@ export function mount(panel, ctx) {
     return el('span', { class: 'anl-stat' }, [label + ' ', el('b', { text: value })]);
   }
 
+  /**
+   * The rare-event figure is the SUM of the cut-set probabilities. It is an
+   * upper bound and not a probability: "Rare-event 2.90" stood in a row of
+   * probabilities with nothing to say so. The tooltip says what it is, and
+   * above 1 a note says it outright.
+   */
+  function rareStat() {
+    const node = stat(t('cutsets.rare'), fmt(result.rareEvent));
+    node.title = t('cutsets.rareTitle');
+    node.dataset.stat = 'rare';
+    if (Number(result.rareEvent) > 1) {
+      node.appendChild(el('span', { class: 'anl-stat__note', dataset: { role: 'rare-over' }, text: ' ' + t('cutsets.rareOver') }));
+    }
+    return node;
+  }
+
   function paintSummary() {
     clear(summary);
     if (!result) return;
-    summary.append(
-      stat(t('cutsets.mcub'), fmt(result.mcub)),
-      stat(t('cutsets.rare'), fmt(result.rareEvent)),
-      stat(t('cutsets.treeWalk'), fmt(result.treeWalk)),
-      el('span', { class: 'anl-stat', text: t('cutsets.count', { shown: result.returned, total: result.total }) })
-    );
+    if (nothingWithinLimits(result)) {
+      // No cut set survived the limits, so the bound and the rare-event sum
+      // are 0 by construction ("Min-cut upper bound 0" read as a result).
+      // The tree walk does not depend on the limits and stays.
+      summary.append(stat(t('cutsets.treeWalk'), fmt(result.treeWalk)));
+    } else {
+      summary.append(
+        stat(t('cutsets.mcub'), fmt(result.mcub)),
+        rareStat(),
+        stat(t('cutsets.treeWalk'), fmt(result.treeWalk)),
+        el('span', { class: 'anl-stat', text: t('cutsets.count', { shown: result.returned, total: result.total }) })
+      );
+    }
     if (result.truncated) {
       const by = (result.truncatedBy || []).map((b) => t('anl.by.' + b)).join(', ');
       summary.appendChild(badge(t('cutsets.truncated'), 'warn', t('cutsets.truncatedTitle', { by })));
@@ -341,7 +421,8 @@ export function mount(panel, ctx) {
     const rows = (result && result.cutSets) || [];
     const empty = emptyMessageKey(result);
     message.hidden = !empty;
-    message.textContent = empty ? t(empty) : '';
+    const by = result ? (result.truncatedBy || []).map((b) => t('anl.by.' + b)).join(', ') : '';
+    message.textContent = empty ? t(empty, { by }) : '';
     hint.hidden = rows.length === 0;
     hint.textContent = t('cutsets.hint');
     paintTable();
@@ -379,8 +460,12 @@ export function mount(panel, ctx) {
     run();
   });
   saveBtn.addEventListener('click', () => saveDefaults());
+  resetBtn.addEventListener('click', () => resetLimits());
   for (const input of [inOrder, inCount, inCutoff]) {
-    input.addEventListener('input', () => edited.add(input));
+    input.addEventListener('input', () => {
+      edited.add(input);
+      paintRunOnly();
+    });
   }
   for (const input of [inOrder, inCount, inCutoff, inLimit]) {
     // Escape discards what was typed since the field was focused (as in the
@@ -401,6 +486,7 @@ export function mount(panel, ctx) {
         if (!before.edited) edited.delete(input);
         input.classList.remove('anl-invalid');
         input.removeAttribute('aria-invalid');
+        paintRunOnly();
       }
     });
   }

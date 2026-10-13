@@ -254,8 +254,10 @@ def test_markdown_js_never_builds_html():
 def test_only_the_models_replies_are_drawn_as_markdown():
     chat = (STATIC / "chat.js").read_text(encoding="utf-8")
     assert "import { renderMarkdown } from './markdown.js';" in chat
-    # The two places a model's reply enters the log, and nothing else.
-    assert chat.count("{ reply: true }") == 2
+    # The places a model's reply enters the log, and nothing else: a chat
+    # answer, an Update FTA answer, and (batch 3) a reply repainted after a
+    # reload from GET /api/ai/conversation.
+    assert chat.count("{ reply: true }") == 3
     assert "addMessage('user', text);" in chat
     # A rendering failure falls back to the raw text, and raw mode is textContent.
     fill = re.search(r"  function fillReply\(.*?\n  \}\n", chat, re.S).group(0)

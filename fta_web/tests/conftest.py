@@ -28,6 +28,28 @@ if str(CORE_DIR) not in sys.path:
     sys.path.insert(0, str(CORE_DIR))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _per_user_files_in_tmp(tmp_path_factory):
+    """Keep the suite out of the developer's real ``~/.fta_editor``.
+
+    ``fta_web/user_prefs.py`` writes ``ui_prefs.json`` (the folder last opened
+    from or saved to) into ``AICredentialManager.CREDENTIALS_DIR``, and every
+    test that opens or saves a file through the API reaches it. Without this
+    a test run would leave a pytest temp folder as the developer's "last
+    folder". Only the directory is redirected, for the whole session:
+    ``CREDENTIALS_FILE`` is left alone, so the tests that do not isolate the
+    credentials read what they always read, and the ones that do
+    (``monkeypatch.setattr(AICredentialManager, ...)``) override this as before.
+    """
+    from AI_agent_handler import AICredentialManager
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(AICredentialManager, "CREDENTIALS_DIR",
+                  tmp_path_factory.mktemp("fta_editor_home"))
+    yield
+    patch.undo()
+
+
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     """Absolute path to the repository root."""

@@ -397,3 +397,113 @@ def collect_flat(core) -> List[Dict[str, Any]]:
     if isinstance(data, dict):
         walk(data, 0)
     return flat
+
+
+# ---- several nodes at once -------------------------------------------------
+#
+# The batch routes (delete and move of a multi-selection) used the helpers
+# above once per listed id, and each of those walks the whole tree: 4,800 ids
+# on a 4,860-node tree held the state lock for 4 s (delete) and 9 s (move).
+# TreeIndex is one walk that answers the same questions for every id.
+
+
+class TreeIndex:
+    """One pre-order walk of the tree: id -> node, parent and position.
+
+    Built by :func:`index_tree`, and only for a tree in the shape the editor
+    writes (see there). Valid until the tree's structure is changed.
+    """
+
+    def __init__(self) -> None:
+        self.nodes: Dict[str, Dict[str, Any]] = {}
+        self.parents: Dict[str, Optional[Dict[str, Any]]] = {}
+        #: Every id, in the order the tree shows them (pre-order).
+        self.order: List[str] = []
+
+    def ancestors(self, node_id: str) -> List[str]:
+        """Ids from the parent of ``node_id`` up to the root."""
+        out: List[str] = []
+        parent = self.parents.get(node_id)
+        while parent is not None:
+            parent_id = parent["id"]
+            out.append(parent_id)
+            parent = self.parents.get(parent_id)
+        return out
+
+    def top_most(self, ids) -> List[str]:
+        """``ids`` without those below another listed node, in tree order
+        (what ``routes.tree._top_most`` answers with a walk per id)."""
+        wanted = set(ids)
+        kept: List[str] = []
+        root_id = self.order[0] if self.order else None
+        stack = [self.nodes[root_id]] if root_id is not None else []
+        while stack:
+            node = stack.pop()
+            if node["id"] in wanted:
+                kept.append(node["id"])
+                continue  # everything below goes with it
+            stack.extend(reversed(node["children"]))
+        return kept
+
+    def subtree_ids(self, node_id: str) -> set:
+        """``node_id`` and every id below it."""
+        ids: set = set()
+        stack = [self.nodes[node_id]]
+        while stack:
+            node = stack.pop()
+            ids.add(node["id"])
+            stack.extend(node["children"])
+        return ids
+
+    def heights(self) -> Dict[str, int]:
+        """Levels below every node (``tree_height`` of each), in one pass."""
+        height: Dict[str, int] = {}
+        for node_id in reversed(self.order):  # children before their parent
+            below = [height[child["id"]] for child in self.nodes[node_id]["children"]]
+            height[node_id] = 1 + max(below) if below else 0
+        return height
+
+
+def index_tree(core) -> Optional[TreeIndex]:
+    """A :class:`TreeIndex` of the tree, or None when the tree is not in the
+    editor's own shape.
+
+    "The editor's own shape" is what the loader and every route produce:
+    each node a dict whose ``id`` is a string no other node has and whose
+    ``children`` is a list of nodes. Only then does a lookup by id mean the
+    same as ``find_node_by_id`` / ``delete_node_from_data`` (which compare
+    ids loosely and act on every node of that id). For anything else the
+    caller keeps the per-id helpers, so the answer is the same either way.
+    """
+    data = core.get_data()
+    if not isinstance(data, dict):
+        return None
+    index = TreeIndex()
+    stack: List[Tuple[Dict[str, Any], Optional[Dict[str, Any]]]] = [(data, None)]
+    while stack:
+        node, parent = stack.pop()
+        node_id = node.get("id")
+        children = node.get("children")
+        if (type(node_id) is not str or node_id in index.nodes
+                or type(children) is not list
+                or not all(isinstance(child, dict) for child in children)):
+            return None
+        index.nodes[node_id] = node
+        index.parents[node_id] = parent
+        index.order.append(node_id)
+        stack.extend((child, node) for child in reversed(children))
+    return index
+
+
+def detach_nodes(index: TreeIndex, node_ids) -> None:
+    """Take the listed nodes (with their subtrees) out of their parents.
+
+    The tree is left as ``delete_node_from_data`` leaves it after the same
+    deletions: that function gives every node it walks a new ``children``
+    list, and callers were written against that (a list read before the call
+    is not the node's list after it). ``index`` is stale afterwards.
+    """
+    gone = set(node_ids)
+    for node_id in index.order:
+        node = index.nodes[node_id]
+        node["children"] = [child for child in node["children"] if child["id"] not in gone]

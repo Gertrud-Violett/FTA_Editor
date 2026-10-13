@@ -223,8 +223,12 @@ def _bgcolor(cp: Any) -> str:
 class _Ctx:
     """What every label/shape helper needs, computed once per call."""
 
-    def __init__(self, data, sig_figs, pad, dark, rankdir, font_name, root_headline=None):
+    def __init__(self, data, sig_figs, pad, dark, rankdir, font_name, root_headline=None,
+                 eta=False):
         self.sig_figs = sig_figs
+        # An event tree: a branch point is not a gate, so no gate text
+        # (compact) and no gate or event symbol (symbols) is drawn for it.
+        self.eta = bool(eta)
         # The root node object and the MCUB headline its label shows instead
         # of its tree-walk value (None: every label is the tree walk's).
         self.root = data if isinstance(data, dict) and data else None
@@ -313,7 +317,11 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     cp_str = ctx.prob(cp)
     kind = ctx.kind_text(node)
     is_transfer = _gate_type(node) == "TRANSFER"
-    if kind is not None and not is_transfer:
+    if ctx.eta:
+        # ETA mode: the stored logicGate is the FTA default and plays no part
+        # in the calculation, so "Gate: OR" on an event tree said nothing true.
+        head = ""
+    elif kind is not None and not is_transfer:
         head = kind + " | "
     elif (node.get("children") or is_transfer) and (node.get("logicGate")
                                                     or node.get("gateType")):
@@ -357,7 +365,11 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     marked = ctx.headline_for(node)
     calc = marked[0] if marked is not None else ctx.prob(node.get("calculatedProbability"))
     base = ctx.prob(node.get("probability"))
-    if node.get("children") and _gate_type(node) != "TRANSFER":
+    if ctx.eta:
+        # Every node of an event tree has its own branch probability (q) and
+        # the probability of the path down to it (Q).
+        probs = ("q=%s" % base) if base == calc else "q=%s | Q=%s" % (base, calc)
+    elif node.get("children") and _gate_type(node) != "TRANSFER":
         probs = "Q=%s" % calc
     elif base == calc:
         # An event's calculated value is its own: "q=0.01 | Q=0.01" said the
@@ -570,6 +582,8 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
     ]
 
     def is_conditioning(nid) -> bool:
+        if ctx.eta:
+            return False
         node = nodes[nid]
         if node.get("children") or _gate_type(node) == "TRANSFER":
             return False
@@ -596,6 +610,16 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
                 f'  {box} [shape=ellipse, class="fta-event fta-event-conditioning", '
                 f'style=filled, fillcolor="{_bgcolor(cp)}", fontcolor="black", '
                 f'margin="0.12,0.04", label={_box_label(node, ctx)}];'
+            )
+            attach[nid] = box
+            continue
+        if ctx.eta:
+            # An event tree: the boxes are joined directly. A gate symbol
+            # under each branch point claimed an AND/OR that is not there.
+            body.append(
+                f'  {box} [shape=box, class="fta-box", style=filled, '
+                f'fillcolor="{_bgcolor(cp)}", '
+                f'fontcolor="black", margin="0.2,0.05", label={_box_label(node, ctx)}];'
             )
             attach[nid] = box
             continue
@@ -691,7 +715,8 @@ def build_dot_text2(
     else:
         nodes, edges = {}, []
 
-    ctx = _Ctx(data, sig_figs, pad, dark, rankdir, font_name, root_headline)
+    eta = str(metadata.get("mode") or "").strip().upper() == "ETA"
+    ctx = _Ctx(data, sig_figs, pad, dark, rankdir, font_name, root_headline, eta=eta)
     names = _Names(nodes.keys())
     if style == "symbols":
         lines = _symbols(nodes, edges, ctx, names)

@@ -47,7 +47,7 @@ async function main(url, label, root) {
   // Open the GUI-built file through Load + file dialog
   await page.locator('.actionbar [data-action="load"]').click();
   await page.waitForTimeout(300);
-  if (await page.locator('.fta-modal:not(.fta-filedialog)').count()) await page.locator('.fta-modal:not(.fta-filedialog) .fta-btn.is-primary').click();
+  await L.discardIfAsked(page);
   await page.locator('.fta-filedialog').waitFor({ state: 'visible' });
   await page.locator('.fta-filedialog .fdlg-row', { hasText: 'b2b_core_' + label + '.json' }).dblclick();
   await page.waitForTimeout(1000);

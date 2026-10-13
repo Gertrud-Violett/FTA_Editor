@@ -2,8 +2,9 @@
 """
 Launcher for the FTA Editor web UI.
 
-    python3 fta_web/run.py                  # free port, opens a browser
-    python3 fta_web/run.py --port 8765      # fixed port
+    python3 fta_web/run.py                  # port 8765, opens a browser
+    python3 fta_web/run.py --port 8800      # another fixed port
+    python3 fta_web/run.py --port 0         # any free port
     python3 fta_web/run.py --no-browser     # print the URL, open it yourself
     python3 fta_web/run.py --root ~/trees   # restrict the file sandbox
 
@@ -15,12 +16,14 @@ It is also the entry script of the frozen build (build/fta_editor.spec), where
 the same flags are spelled ``./fta_editor --port 8765``.
 """
 import argparse
+import logging
 import socket
 import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
+from typing import Optional, Tuple
 
 # Make the bare-name imports below work regardless of how this file was
 # invoked (``python3 fta_web/run.py``, an absolute path, or a symlink).
@@ -38,6 +41,7 @@ if _FTA_WEB_DIR not in sys.path:
     sys.path.insert(0, _FTA_WEB_DIR)
 
 import config  # noqa: E402
+import recovery  # noqa: E402
 import security  # noqa: E402
 from app import create_app  # noqa: E402
 
@@ -45,6 +49,26 @@ from app import create_app  # noqa: E402
 #: before giving up and opening the URL anyway.
 _STARTUP_TIMEOUT_S = 10.0
 _STARTUP_POLL_S = 0.05
+
+
+class QuietPing(logging.Filter):
+    """Keep the page's "are you there" request out of the request log.
+
+    A visible tab asks ``GET /api/revision`` every few seconds (main.js), and
+    the development server prints a line for every request. Left alone that
+    is some seven hundred lines an hour, and it scrolls the start-up lines
+    out of the terminal -- the URL among them, which is the only copy the
+    user has when the browser did not open. Only the answered ping is
+    dropped: a refused or failed one is still printed, like every other
+    request.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # a record that cannot be formatted is not ours to judge
+            return True
+        return not ("GET /api/revision " in message and '" 200 ' in message)
 
 
 def _free_port() -> int:
@@ -58,6 +82,50 @@ def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((config.HOST, 0))
         return sock.getsockname()[1]
+
+
+def _port_is_free(port: int) -> bool:
+    """Whether this process could listen on ``port`` right now.
+
+    A bind that is released again, like :func:`_free_port`. Windows lets a
+    second socket bind a port somebody is listening on when it asks for
+    address reuse (and Werkzeug's server asks for it), so the question is put
+    with SO_EXCLUSIVEADDRUSE there: the bind fails whenever anything holds
+    the port. Elsewhere address reuse is the right question: it still fails
+    on a listening port, and it does not fail on a port a server that has
+    just stopped left in TIME_WAIT -- the port the next start should reuse.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+            if exclusive is not None:
+                sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+            else:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((config.HOST, port))
+        except OSError:
+            return False
+    return True
+
+
+def choose_port(requested: Optional[int]) -> Tuple[int, bool]:
+    """``(port, fell_back)`` for the ``--port`` that was given.
+
+    * a number: that port, and a clear failure at startup if it is taken;
+    * ``0``: any free port (what the default was up to 1.8.0);
+    * nothing: ``config.DEFAULT_PORT``, or a free port when that one is taken
+      (``fell_back`` is then true), so that a second copy still starts.
+
+    Why a fixed default: a browser keeps what a page stores (Advanced, the
+    language, the theme, significant figures, the diagram style) per origin,
+    and the port is part of the origin. A new port at every start meant a
+    page with nothing remembered at every start.
+    """
+    if requested is not None:
+        return (requested if requested else _free_port()), False
+    if _port_is_free(config.DEFAULT_PORT):
+        return config.DEFAULT_PORT, False
+    return _free_port(), True
 
 
 def _wait_until_serving(port: int, timeout: float = _STARTUP_TIMEOUT_S) -> bool:
@@ -121,7 +189,8 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--port",
         type=int,
         default=None,
-        help="port to listen on (default: a free ephemeral port)",
+        help="port to listen on (default: %d, or a free port when that one is "
+             "in use; 0: any free port)" % config.DEFAULT_PORT,
     )
     parser.add_argument(
         "--no-browser",
@@ -135,8 +204,8 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="root directory for the file sandbox (default: your home directory)",
     )
     args = parser.parse_args(argv)
-    if args.port is not None and not (0 < args.port < 65536):
-        parser.error("--port must be between 1 and 65535")
+    if args.port is not None and not (0 <= args.port < 65536):
+        parser.error("--port must be between 0 and 65535")
     return args
 
 
@@ -163,7 +232,7 @@ def main(argv=None) -> int:
 
     args = parse_args(argv)
 
-    port = args.port if args.port is not None else _free_port()
+    port, fell_back = choose_port(args.port)
     fs_root = _resolve_root(args.root) if args.root else config.DEFAULT_FS_ROOT
 
     # One token per launch. It is never persisted, so quitting the server
@@ -182,8 +251,18 @@ def main(argv=None) -> int:
     print("  Bound to  : %s:%d (loopback only)" % (config.HOST, port))
     print("  Auth      : %s header, validated against this launch's token"
           % config.TOKEN_HEADER)
+    if fell_back:
+        print("  Note      : port %d is in use (another FTA Editor?), so this one is on "
+              "%d; preferences kept by the browser will not carry over."
+              % (config.DEFAULT_PORT, port))
     print("Press Ctrl-C to stop.")
     sys.stdout.flush()
+
+    logging.getLogger("werkzeug").addFilter(QuietPing())
+
+    # From here on unsaved work is copied to the per-user folder, and a copy
+    # an earlier run left behind is offered by the page (recovery.py).
+    recovery.start()
 
     if not args.no_browser:
         _open_browser_when_ready(url, port)
@@ -204,6 +283,9 @@ def main(argv=None) -> int:
         )
     except KeyboardInterrupt:  # pragma: no cover - interactive
         print("\nStopped.")
+    finally:
+        # A clean exit: this session leaves no recovery copy behind.
+        recovery.end_session()
     return 0
 
 

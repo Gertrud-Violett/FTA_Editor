@@ -7,14 +7,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The known issues of 1.8.0.
+
+### Added
+
+- **A recovery copy of unsaved work.** While an analysis has unsaved changes
+  the editor keeps a copy of it in `~/.fta_editor/recovery/` (on Windows
+  `C:\Users\<you>\.fta_editor\recovery\`): written 2 seconds after you stop
+  editing and at the latest 30 seconds after a change. The copy is removed
+  on Save, on New and Load, and when the editor is stopped with Ctrl-C. If
+  the editor ends in any other way (a crash, a power cut, its window
+  closed), the next start shows **Unsaved work found** above the tree, with
+  **Restore unsaved work from <date> (<title>)** and **Discard it**.
+  Restore opens the copy as an untitled, modified analysis, so **Save** asks
+  where to put it; the file it had been opened from is never written. At
+  most five copies are kept. New endpoints: `GET /api/recovery`,
+  `POST /api/recovery/restore`, `POST /api/recovery/discard`.
+- **Change folder… in the file dialog.** The folder the editor may read and
+  write could only be set when it was started (`--root`). The file dialog
+  now has **Change folder…**, also under the message that refuses a path
+  outside the folder. The editor itself opens the operating system's folder
+  chooser on your computer, and the folder you pick there becomes the
+  allowed folder for this session. The browser page cannot name a folder:
+  `POST /api/fs/root/choose` takes no input and refuses a request that
+  carries any. An open analysis whose file is outside the new folder becomes
+  untitled and is otherwise unchanged. Where no chooser can be opened (no
+  display, the packaged app on Linux or macOS) the button shows the command
+  to start the editor on another folder, as before.
+
+### Fixed
+
+- **Preferences were lost at every start.** The editor listened on a new
+  port each time, and a browser keeps a page's settings per address. It now
+  listens on port **8765** unless `--port` says otherwise, so Advanced, the
+  language, the theme, significant figures, the Formatted switch and the
+  diagram style are kept. If 8765 is in use, for example by a second copy
+  of the editor, it starts on a free port and prints a `Note` line.
+  `--port 0` asks for any free port.
+- **Load, Open an example and a file from this computer could replace the
+  unsaved work of another tab without asking.** Only New refused on the
+  server. `POST /api/file/open`, `/api/examples/open` and `/api/import/json`
+  now answer `409 UNSAVED_CHANGES` unless the request says `force`, and the
+  page shows the unsaved-changes prompt when that happens. **API change:** a
+  client that opens a file over unsaved changes must send `force: true` (a
+  form field `force=true` for the import).
+- **Moving or deleting several thousand nodes at once held the editor for
+  seconds.** 4,800 nodes of a 4,860-node tree took 9.4 s to move and 4.1 s
+  to delete, with every other request waiting. Both now take well under a
+  second. The answers and the refusals are unchanged.
+- **Stop in the assistant did not free the editor.** It only stopped the
+  page from waiting; a new request was refused as busy until the provider
+  answered, up to two minutes. Stop now tells the editor to abandon the
+  request (`POST /api/ai/cancel`): a new request is accepted at once, and
+  the late answer is dropped. It is not added to the conversation, proposes
+  nothing and is never applied. A request that timed out can be abandoned
+  the same way, which used to need a restart.
+- **`1e-400` was accepted as a probability** and stored as 0 while the box
+  kept the text. A number too small to be represented is now refused, and
+  `-0` is read as `0`.
+- **Save As: a name typed and Enter pressed before the dialog had listed its
+  folder.** While the folder was being listed, Enter did nothing and nothing
+  said so. Pressed even earlier, it saved into the editor's root folder
+  instead of the folder the dialog was about to show. The save now waits
+  for the listing and then goes ahead. Found by running the GUI suite on
+  WebKit, which lists more slowly.
+
 ### Changed
+
+- The GUI test suite can drive Firefox and WebKit
+  (`FTA_GUI_BROWSER=firefox|webkit`); see `fta_web/tests/gui/README.md`.
+
+## [1.8.0] - 2026-10-12
+
+### Changed
+
+- **The diagram's settings are behind a button that says so.** **Aa**
+  ("Font & box size") is now **Settings**, the popover is titled **Diagram
+  settings**, and "Box scale" is **Box padding (0-30)**, which is what it
+  is. Style and Layout were there all along, with nothing to say so.
+- **A selected node comes into view.** Selecting a row of the tree or of an
+  analysis table moves a zoomed diagram by the least that shows that node;
+  the zoom is not changed. **1:1** sets 100 % and **◎** centres the selected
+  node at a readable size.
+- **Diagram exports: the document's name, a message, light colours, and the
+  importance colours.** The toolbar's SVG and PNG saved `fta_diagram.*`
+  without a word; they now use the same name as **Render** (the file's or
+  the title's) and the same message. Every export is in the light colours
+  (the dark theme gave a dark PNG with a white strip). With **Colour diagram
+  by FV** on, the file has the colours and a legend under the diagram, and
+  the Report tab has **Colour the diagram by Fussell-Vesely importance**.
+- **The bottom panel is tall enough for a table.** Tabs other than Details
+  have a height of their own (about 45 % of the window by default), and
+  **△** enlarges the panel to all the height there is while a strip of the
+  diagram stays.
+- **ETA mode is called what it is.** The headline reads **Initiating event**;
+  Quantification, Cut Sets, Importance and Uncertainty are greyed with the
+  reason in their tooltip; the diagram draws no gate or event symbols and no
+  `Gate:` text; the assistant says **Analyze ETA**, **Update ETA** and
+  "event tree".
+- **Tree rows show the gate and the probability**, and a gate is no longer
+  bold red for its unused base probability of 1. Only an event that is
+  certain is.
+- **A multi-selection is honoured everywhere.** Delete, a drag and
+  Ctrl+Shift+arrow keys act on every selected node, each as one undo step
+  (deleting three nodes used to take three Ctrl+Z). The bottom panel's
+  header says **N selected**, and otherwise names the selected node instead
+  of giving its id.
+- **The assistant.** **Stop** gives the panel back while the provider is
+  still working. A message that failed to send returns to the box. After a
+  reload the conversation, the pending suggestions and a waiting Update
+  preview are shown again. Suggested changes name their node as a link that
+  selects it and list the changes in words; a card made for another analysis
+  is switched off by New or Load; a rejected suggestion is one line, not
+  raw JSON. A reply that is the provider's error is drawn as an error. "No
+  provider is set up yet" is said once. **MD** is now **Formatted**.
+- **AI setup.** With nothing configured the dialog opens on **Google Gemini**
+  (free tier). One line says that the whole tree and what you type are sent
+  to the chosen provider. Microsoft Copilot says that it needs an Azure
+  OpenAI resource (it showed OpenAI's hint and OpenAI's key page).
+- **Quieter messages.** A title or a date no longer answers "Metadata
+  updated."; a mode switch says which mode and what it means. A notice no
+  longer carries a raw code such as `ROOT_PROTECTED`. Messages appear beside
+  the AI panel, not over its Send button.
 
 - **The diagram opens with the gate symbols.** The Live Diagram Preview's
   default style is now **Standard symbols** (IEC 61025 / NUREG-0492 gates
   and events) instead of **Compact boxes**. The packaged app starts on a new
   port each time, so its browser storage is new as well and it always opened
   on the boxes: the symbols looked as if they had been removed. A style
-  already saved in a browser is kept, and **Aa** on the diagram toolbar
+  already saved in a browser is kept, and **Settings** (then **Aa**) on the diagram toolbar
   switches as before. `GET /api/dot`, `POST /api/render`, the CLI and the
   Word report keep their own defaults.
 - **Add Node says where the node will go.** The dialog's title named the
@@ -84,6 +205,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The "All features available" chip is a tick.** With nothing missing, the
   chip in the top bar now shows the tick alone; its tooltip and the panel it
   opens say the rest. A missing feature is still named on the chip.
+- **Update FTA asks first, and shows what it would change before it changes
+  anything.** One click sent the whole tree to the AI provider and replaced
+  it with the answer; the summary came afterwards. The button now asks
+  before sending. The answer arrives as a card in the chat that lists the
+  nodes the rewrite would add, change and remove, by name, with **Apply
+  update** and **Discard**. The tree is untouched until Apply. Apply is
+  refused if the tree was edited since the preview (as the update itself was
+  when the tree changed while the model worked), and it is still one undo
+  step. `POST /api/ai/update` without the new `preview` flag behaves as
+  before.
+- **New and Load offer "Save and continue".** With unsaved changes the
+  question had two answers, Cancel and Discard; keeping the work took
+  Cancel, Save, and the action again. There is now a third button, **Save
+  and continue**, and it has the focus: Enter saves. An analysis that has no
+  file yet goes to Save As. If that dialog is closed, or the save is
+  refused, the analysis stays as it is and New or Load does not go ahead.
+- **Undo and redo say what they did, and select the node.** Ctrl+Z changed
+  the tree without a word, and when the selected node was the one that went,
+  the selection jumped to the top event. A toast now names the step
+  ("Undid: deleting "Seal leak"", "Redid: a change to "Pump A" (name)"). The
+  selection goes to the node concerned, or to the former parent of a node
+  that is gone. A step that touches many nodes at once (an analysis setting)
+  leaves the selection where it is.
+- **A download says it is a copy.** JSON, XML, Excel and Render answered
+  "Downloaded x.json", which beside the Save button read as "saved". The
+  toast now says a copy was downloaded to the folder the browser saves
+  downloads in, and that the open file is unchanged (or, for an analysis
+  with no file, that this did not save it). The four buttons are labelled as
+  a group, **Export:**.
+- **The file dialog starts in the folder used last.** For an analysis with
+  no file of its own (new, an example, an import) Load and Save As opened at
+  the root folder every time. They now open in the folder of the last file
+  opened or saved. It is stored in `~/.fta_editor/ui_prefs.json`, beside the
+  AI credentials, and is checked against the root folder each time it is
+  read. An analysis that has a file still starts in that file's folder.
+- **A path outside the root folder is refused with the command to use.**
+  The refusal said "Relaunch with --root to change it". It now gives the
+  command for this installation, `fta_editor.exe --root "<folder>"` in the
+  packaged app and `uv run python fta_web/run.py --root "<folder>"` from
+  source, and the Load dialog adds that one file from there can be opened
+  with **A file on this computer…**. The root folder itself is unchanged:
+  it is still set only when the editor is started.
+- **The "no session" screen says what happened in plain words.** It spoke
+  of a one-time session key and told every user to run
+  `python3 fta_web/run.py`. It now says the tab is not connected to the
+  editor, why that happens, and what to start: the packaged app's own file
+  name, or the command for a source checkout. The server supplies it.
+- **Cut Sets: a limit that leaves nothing no longer reads "the top event
+  cannot occur".** With **Max order** 1 on a tree whose smallest cut set has
+  two events, the tab said so, under "Min-cut upper bound 0". It now says
+  that there are no cut sets within these limits, names the limit, and
+  hides the bound, the rare-event sum and the count. The tree-walk value
+  stays.
+- **Cut Sets: a typed limit is marked "This run only".** A limit typed into
+  the tab applies to that tab's runs until it is saved as a document
+  default; the headline, Importance and the report keep the document's
+  limits. The tab now says so beside the boxes, and **Reset** goes back to
+  the document's limits and runs again.
+- **Save on an analysis with no file goes straight to Save As.** The page
+  asked the server to save first and was refused (409), which the browser
+  logged as an error on every Ctrl+S of a new analysis.
 
 ### Fixed
 
@@ -135,8 +317,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with straight-segment lines, and a smaller one whose layout still fails is
   laid out again that way. Smaller diagrams keep their right-angle lines.
   Native `dot` (the **Render** button, `POST /api/render`) was not affected.
+- **A second tab showed an old tree and still said "Saved".** Each browser
+  tab holds its own copy of the analysis, and a tab left in the background
+  did not learn that another tab had edited, saved or replaced it. A tab now
+  asks the server when it gets the focus back or becomes visible, and reads
+  the analysis again when it is behind; a toast says why the tree changed.
+  It waits while a dialog is open, an edit is on its way or something typed
+  has not been committed. A save in another tab updates the Saved badge and
+  the file name without a reload.
+- **A file dropped on the page replaced the editor.** The browser opened the
+  dropped file in place of the page, and unsaved changes went with it. A
+  drop outside the tree panel now does nothing.
 
 ### Added
+
+- **Copy CSV on the Importance tab**, as on Cut Sets: the table as sorted,
+  the numbers in full.
+- **Uncertainty for every event at once.** **Lognormal EF=3 for all events
+  without one** on the Uncertainty tab, one undo step. With no spread the
+  tab says why and draws no chart.
+- **A note on the rare-event sum** (Cut Sets): it is a sum, not a
+  probability, and is marked when it is above 1.
+- **Type offers Event, Gate and Intermediate** (Details and Add). It is
+  still free text.
+- **API.** `GET /api/ai/conversation`, `POST /api/batch/delete`,
+  `POST /api/batch/move` and `POST /api/batch/uncertainty` are new. All of
+  them need the session token; the first never returns a credential. See
+  `docs/API_REFERENCE.md`.
+- **Tests for the analysis, diagram and AI changes.**
+  `fta_web/tests/test_ux_batch_3.py`, and a new section of the real-browser
+  suite, `fta_web/tests/gui/s_ux3.js` (79 checks). The suite now has 1073
+  checks in 17 sections. No test calls an AI provider.
+  Existing checks changed to the new behaviour: the diagram's settings
+  button is found by its role instead of the text "Aa" (`s_diagram.js`,
+  `s_fixes.js`, `s_i18n.js`); six source checks follow the code they read
+  (`test_frontend_b2b.py`, `test_review_2026_10_ai.py`,
+  `test_review_2026_10_frontend.py`, `test_ai_markdown.py`); and
+  `ai.chat.markdown` left the list of strings that may be the same in both
+  languages (`test_catalog_parity.py`).
 
 - **AI assistant: replies are shown as formatted Markdown, with a switch to
   the raw text.** A reply's headings, lists, tables, code and bold were shown
@@ -164,6 +382,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after Add (the suite's `addViaDialog` now finds the new node in the store,
   not through the selection), the status line (file name and folder instead
   of the whole path), and `parseProbability`, which accepts `0,5` and `50%`.
+- **A banner and a rescue copy when the editor stops answering.** With the
+  editor closed (its window shut, or the machine asleep and the process
+  gone) the page still showed the tree, and every button answered "could
+  not reach the server": unsaved changes could not be got out. While it is
+  visible the page now asks the editor every five seconds whether it is
+  there. When no answer comes, a banner stays at the top until one does,
+  with **Download a rescue copy (JSON)**. The copy is built in the page from
+  the analysis the tab holds, in the format Save writes, so **Load** opens
+  it. The same download is offered on the "not connected" screen of a tab
+  whose editor was closed and started again. Text still being typed in a
+  field is not in the copy. The request the page asks with
+  (`GET /api/revision`) is left out of the terminal's request log when it is
+  answered, so it does not scroll the start-up lines away.
+- **Open an example.** The examples that come with the editor are listed by
+  **Open an example…** in the Load dialog and in the hint of a new analysis.
+  An example opens as an untitled copy: Save asks where to put it. The
+  examples are in the editor's own folder, which the Load dialog cannot
+  reach unless the root folder happens to include it; and an example opened
+  through the Load dialog keeps its path, so Save writes over the file that
+  ships with the editor. Opened this way it cannot.
+- **A file on this computer.** The Load dialog has **A file on this
+  computer…**, which opens the browser's own file picker, and a `.json`
+  dropped on the tree panel opens the same way (it asks about unsaved
+  changes first). The file opens as an untitled copy, through the existing
+  `POST /api/import/json`. This is the way to open a file outside the root
+  folder without restarting the editor.
+- **A hint in a new analysis.** An analysis with no file, no edits and only
+  the top event shows two buttons in the tree panel: **Name your top event**
+  puts the caret in its Name box, and **Open an example** opens the list.
+  The hint goes with the first edit and can be closed.
+- **The AI panel folds away.** The **»** button in its header folds the
+  panel to a strip at the right edge, and **«** opens it again at the width
+  it had. The choice is stored by the editor (`ui_prefs.json`), not by the
+  browser, so it is kept from one launch to the next.
+- **API.** `GET /api/revision`, `POST /api/prefs`, `GET /api/examples`,
+  `POST /api/examples/open`, `POST /api/ai/update/apply` and
+  `POST /api/ai/update/discard` are new; `POST /api/ai/update` takes
+  `preview`; `/api/state` and every answer that carries the tree have
+  `revision` and `documentSerial`, and `/api/state` has `prefs`. A
+  `PATH_REJECTED` for a path outside the root has `detail.root` and
+  `detail.relaunch`. All of them need the session token. See
+  `docs/API_REFERENCE.md`.
+- **Tests for the changes that protect work.**
+  `fta_web/tests/test_ux_batch_2.py`, and a new section of the real-browser
+  suite, `fta_web/tests/gui/s_ux2.js` (72 checks). The suite now has
+  994 checks in 16 sections. No test calls an AI provider: the provider
+  is mocked in pytest, and the browser suite answers the three update
+  routes itself. Existing checks changed to the new behaviour: the buttons
+  of the unsaved-changes prompt are found by their role (the primary button
+  now saves), in six places; `AppState.to_dict()` has three more keys; and
+  the source check of Load follows its call of the file dialog. The test
+  suite keeps its per-user files (`ui_prefs.json`) in a temporary folder
+  (`conftest.py`). One existing browser check was made independent of
+  chance: "no English UI text left" (`s_i18n.js`) took the folder shown in
+  the status line for English text unless the temporary folder's random
+  name happened to hold a digit that is also a cell of the FMEA test sheet,
+  so it failed for about half the names.
 
 ## [1.7.3] - 2026-10-11
 

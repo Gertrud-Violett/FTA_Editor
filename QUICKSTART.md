@@ -2,7 +2,7 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 1.7.3 (Updated: October 11, 2026)
+**Version**: 1.8.0 (Updated: October 12, 2026)
 
 The editor runs in your **browser**, with no Graphviz to install — that is the
 primary way to run it. The original Tkinter desktop app is kept in `desktop/`
@@ -34,8 +34,14 @@ Your browser opens on the editor. The terminal prints the URL as well — it
 carries a **one-time token for this launch**, so if the browser does not open
 by itself, paste that whole URL in. `Ctrl-C` stops the server.
 
-Useful flags: `--port 8765` for a fixed port, `--no-browser` to only print the
-URL, `--root ~/trees` to confine the file browser to one directory.
+The editor listens on port **8765**, the same at every start, so the browser
+keeps your display settings (Advanced, language, theme, significant figures).
+If that port is in use (a second copy of the editor, for example) it takes a
+free one and says so in the terminal.
+
+Useful flags: `--port 8800` for another fixed port, `--port 0` for any free
+port, `--no-browser` to only print the URL, `--root ~/trees` to confine the
+file browser to one directory.
 
 <details>
 <summary><b>Legacy desktop app instead (Tkinter, v1.5.1 behaviour, frozen fallback)</b></summary>
@@ -115,7 +121,7 @@ See the [CLI reference](docs/USER_GUIDE.md#command-line-interface).
 
 ### AI Quick Actions (optional)
 - **Analyze FTA**: Reads the current tree and posts analysis/suggestions to chat only (no changes applied).
-- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed. One Ctrl+Z undoes it; review the tree before saving.
+- **Update FTA**: The AI is asked to rewrite the whole tree, keeping the existing nodes and adding to them. The button asks first; the answer is then listed (nodes added, changed and removed) and nothing changes until you press **Apply update**. One Ctrl+Z undoes it.
 
 ## AI Assistant Setup (Optional)
 
@@ -181,14 +187,13 @@ Desktop app:
 
 ## Need Help?
 
-- Load a worked example from `fta_web/examples/` (in the standalone build:
-  `fta_editor\_internal\examples\`), in English or Japanese:
-  `challenger_fta_en.json` / `challenger_fta_ja.json`, a fault tree of the
-  Challenger accident with a common cause, and `tmi2_eta_en.json` /
-  `tmi2_eta_ja.json`, an event tree of Three Mile Island Unit 2. Their
-  probabilities are illustrative. See
-  [Example analyses](README.md#example-analyses) for what to look at and how
-  to open them.
+- Open a worked example: **Open an example** in the hint of a new analysis,
+  or **Load** and then **Open an example…**. It opens as an untitled copy, in
+  English or Japanese: `challenger_fta_en.json` / `challenger_fta_ja.json`, a
+  fault tree of the Challenger accident with a common cause, and
+  `tmi2_eta_en.json` / `tmi2_eta_ja.json`, an event tree of Three Mile Island
+  Unit 2. Their probabilities are illustrative. See
+  [Example analyses](README.md#example-analyses) for what to look at.
 - The small `fta_web/examples/sampleFTA.json` is the 1.x sample (the legacy
   desktop app has the same tree at `desktop/data/examples/sampleFTA.json`)
 - Documentation: `docs/USER_GUIDE.md`

@@ -80,6 +80,32 @@ When you first launch the application, you'll see:
 5. **Node Details** - Bottom panel showing selected node information
 6. **Action Buttons** - Bottom toolbar for all operations
 
+In the web app a new analysis shows a **Start here** hint in the tree panel,
+with two buttons:
+
+- **Name your top event** puts the caret in the top event's Name box, with
+  the name selected. Type the failure you want to analyse and press Enter,
+  then add its causes with **Add**.
+- **Open an example** lists the analyses that come with the editor. See
+  [Example files](#example-files).
+
+The hint goes with the first edit, and the **×** in its corner closes it.
+
+The **»** button in the AI Assistant's header folds that panel to a strip at
+the right edge; **«** opens it again. The editor remembers the choice for the
+next launch.
+
+**The address is the same at every start.** The editor listens on
+`127.0.0.1:8765` unless you start it with `--port`. A browser keeps what a
+page stores per address, port included, so your display settings (Advanced,
+the language, the theme, significant figures, the Formatted switch, the
+diagram style) are there again at the next start. Up to 1.8.0 the port was a
+new one each time and they were lost. If port 8765 is in use, for example
+because a second copy of the editor is running, the editor starts on a free
+port and its terminal window says so in a line beginning with `Note`; that
+copy starts with the default settings. `--port 8800` chooses another fixed
+port and `--port 0` any free one.
+
 ## Understanding FTA vs ETA
 
 ### FTA (Fault Tree Analysis) - Bottom-Up
@@ -161,6 +187,47 @@ type a path and press Enter. A bare name or a relative path is read against
 the folder shown in the dialog, and `~` is your home folder. A path that does
 not exist is reported as *Folder not found* or *File not found*.
 
+**Where the dialog starts** (web app): in the folder of the open file. For an
+analysis with no file yet (new, an example, a file from this computer) it
+starts in the folder of the last file you opened or saved.
+
+**Other places to open from** (web app): the Load dialog has two buttons at
+the left of its footer.
+
+- **Open an example…** lists the analyses that come with the editor.
+- **A file on this computer…** opens the browser's own file picker, which can
+  reach any folder. You can also drop a `.json` file on the tree panel.
+
+Both open the analysis as an **untitled copy**: the status line says
+*No file*, and **Save** asks where to put it. The file you chose is not
+changed.
+
+**Unsaved changes** (web app): New, Load, an example and a dropped file ask
+first when the analysis has unsaved changes. **Save and continue** saves and
+then goes on (an analysis with no file yet asks where to save; if you close
+that dialog, nothing else happens). **Discard and …** goes on without
+saving. **Cancel** does nothing.
+
+**Two tabs** (web app): the editor holds one analysis, and each browser tab
+shows a copy of it. A tab you come back to checks whether the analysis was
+changed in another tab and shows the current version; a message says so. It
+waits while a dialog is open or something you typed has not been entered.
+
+**If the editor stops** (web app): when the editor has been closed, or the
+computer slept and it is gone, a red banner appears at the top of the page
+within a few seconds and stays until the editor answers again. The tree you
+see is still in the tab. **Download a rescue copy (JSON)** saves it through
+the browser, unsaved changes included, as a file named
+`<name>-rescue-<date>-<time>.json`. Start the editor again and open that
+file with **Load** (*A file on this computer…* if it is outside the root
+folder). Text you were still typing in a field is not in the copy: press
+Enter in the field first if the editor is still running.
+
+A tab whose editor was closed and started again shows *This tab is not
+connected to the editor* and the command that starts the editor. If that tab
+still holds an analysis, the same **Download a rescue copy (JSON)** button is
+on that screen.
+
 ### Tree View
 
 - Hierarchical display of your analysis
@@ -235,8 +302,9 @@ does on screen.
 
 #### Box Sizing (font detection and scale)
 
-If text crowds or spills outside its node box, open the **Aa** popover on the
-diagram panel's toolbar. (The popover can be dragged to a new position if it
+If text crowds or spills outside its node box, open **Settings** on the
+diagram panel's toolbar (the **Diagram settings** popover; the button was
+**Aa** up to 1.7.3). (The popover can be dragged to a new position if it
 covers something you need to see; it stays where you put it.)
 
 **Why this exists:** the diagram is laid out by Graphviz, which sizes each box
@@ -253,11 +321,32 @@ Hiragino, Noto Sans CJK JP and others, ending in a generic fallback. Both sides
 then agree on a font that really exists on your machine, which closes most of
 the gap. You can also pick a specific font if you prefer one.
 
-**Box scale**: the escape hatch for whatever mismatch is left. It accepts
-**0–30** and defaults to **4**. Raising it inflates font size and padding
-together, which is what grows the box — a box has no size of its own beyond
-what its label needs. Raise it a step at a time until the text sits
-comfortably.
+**Box padding (0-30)**: the escape hatch for whatever mismatch is left (it
+was labelled **Box scale**). It accepts **0–30** and defaults to **4**. It is
+blank space added around the text of every box, which is what grows the box —
+a box has no size of its own beyond what its label needs. Raise it a step at
+a time until the text sits comfortably.
+
+#### Zoom, and finding a node
+
+The wheel zooms about the cursor, **−** and **+** about the selected node,
+**⤢** fits the whole diagram, **1:1** sets 100 %, and **◎** puts the selected
+node in the middle of the panel at 100 % (or at the current zoom, if that is
+larger). Selecting a node anywhere (a row of the tree, a row of an analysis
+table) moves a zoomed diagram by the least that brings that node wholly into
+view; the zoom is left alone.
+
+#### Exporting the picture
+
+**SVG** and **PNG** on the diagram toolbar, and **Render** in the action bar,
+download the diagram under the document's name (`pump.json` gives
+`pump.png`; an unsaved analysis uses its title), and a message says so.
+
+- The file is always in the **light colours**, whatever theme the editor is
+  in: a picture goes onto a white page.
+- With **Colour diagram by FV** on (Importance tab), the file has the same
+  colours and the legend under the diagram. The selection outline is never
+  in the file.
 
 > If the diagram looks right in the browser but wrong in an exported PNG, see
 > [CJK_RENDERING.md](CJK_RENDERING.md): a native Graphviz install renders the
@@ -339,8 +428,9 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
 
 ### Features
 
-**Formatted replies (MD)**: the assistant's replies are shown as formatted
-Markdown: headings, lists, tables, code and bold. The **MD** button beside
+**Formatted replies**: the assistant's replies are shown as formatted
+Markdown: headings, lists, tables, code and bold. The **Formatted** button
+(it was **MD**) beside
 **Clear Chat** switches every reply between that view and the raw text the
 model sent; use the raw text to copy a reply exactly. The choice is remembered
 in this browser. Only the assistant's replies are formatted. HTML in a reply
@@ -348,7 +438,7 @@ is shown as text, and links are made for http, https and mailto only.
 
 **Quick Actions**:
 - **Analyze FTA**: Posts analysis and suggestions to chat only (no changes applied).
-- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed (the first five of each). One Ctrl+Z undoes the whole update, so review the tree before saving. Detailed error logs are shown if the AI output is invalid.
+- **Update FTA**: The AI is asked to rewrite the whole tree, keeping the existing nodes and adding to them. In the web app the button asks first, because the tree is sent to the AI provider. The answer does not change anything: a card in the chat, **Proposed update (not applied yet)**, lists the nodes the rewrite would add, change and remove (the first twelve of each by name). **Apply update** replaces the tree with the AI's version in one step, and one Ctrl+Z undoes it. **Discard** drops it. If you edit the tree before you press Apply, the update is refused and nothing is changed: run Update FTA again. Detailed error logs are shown if the AI output is invalid. (The desktop app applies the update at once.)
 - **Clear Chat**: Reset conversation history
 
 **What the AI is told about the numbers**: with every request the AI gets the
@@ -852,6 +942,19 @@ How to read them:
   refused (`422 ANALYSIS_TOO_LARGE`). So is an analysis that runs past its
   time budget (30 s for the tab).
 
+**Limits.** **Max order**, **Max count** and **Cutoff** start from the
+limits saved in the document. A value you type applies to this tab's runs
+only, and the tab marks it **This run only**: the headline, Importance and
+the report go on using the document's limits. **Save as document defaults**
+stores what you typed; **Reset** goes back to the document's limits and runs
+again.
+
+When the limits leave no cut set at all (Max order 1 on a tree whose
+smallest cut set has two events), the tab says *No cut sets within these
+limits* and names the limit. That is not a statement about the tree: the
+top event can still occur. The min-cut upper bound and the rare-event sum
+are not shown then, because with no cut sets both would read 0.
+
 ### Importance measures
 
 The measures are computed on the MCUB, Q, from the (possibly truncated) cut
@@ -1220,8 +1323,14 @@ does not repeat it.
 
 ### Diagram styles and layout
 
-The **Aa** popover on the diagram toolbar has two display settings. They are
-remembered per browser (`fta.diagram.settings`) and are not saved in the file.
+**Settings** on the diagram toolbar opens the **Diagram settings** popover,
+which has two display settings. They are remembered per browser
+(`fta.diagram.settings`) and are not saved in the file.
+
+In **ETA mode** neither style draws a gate: an event tree has branch points,
+not gates. The compact boxes leave out `Gate: ...`, and the symbols style
+draws the description boxes only, joined directly, each with its own
+probability and that of the path down to it (`q=<q> | Q=<Q>`).
 
 - **Style**
   - **Compact boxes**: the 1.6 two-row boxes. The meta row reads
@@ -1265,6 +1374,165 @@ In the browser, these shapes are replaced by the true symbol paths
   `POST /api/render`) shows the **approximate** shapes.
 
 For a document you send to a reviewer, export from the browser.
+
+### Working in the tree, the bottom panel and ETA mode (after 1.7.3)
+
+**What a tree row shows.** At the right of the name, a node with inputs has
+its gate (`AND`, `OR`, `2/3`, `XOR`, ...) and every row has a probability:
+the calculated one for a gate, its own for an event. Hover either for what
+it is. A row is bold red only for an **event** whose probability is exactly
+1; a gate is never red for its unused base value.
+
+**Several nodes at once.** Ctrl-click or Shift-click rows to select several.
+The right end of the bottom panel's tab strip then says **N selected**
+instead of naming one node. What acts on all of them, each as **one undo
+step**:
+
+| Action | Result |
+|---|---|
+| `Delete` / `Ctrl+D` / **Delete** | Deletes every selected node with what is beneath it, after one confirmation that gives the total. |
+| Drag one of the selected rows | Moves them all: onto a node (they become its last children) or between two rows. |
+| `Ctrl+Shift+Up` / `Down` | Moves the block past the next sibling. The nodes must share a parent. |
+| `Ctrl+Shift+Right` / `Left` | Moves the block under the sibling above it, or out to follow its parent. |
+
+A selected node inside another selected node goes with that node. The root
+is never moved or deleted. Details still shows the node clicked last.
+
+**The bottom panel's height.** Details keeps the height you give it. Every
+other tab has a height of its own, about 45 % of the window until you drag
+the splitter while one is shown (double-click the splitter to go back). The
+**△** button at the right of the tab strip enlarges the panel to all the
+height there is, leaving a strip of the diagram; **▽** puts it back.
+
+**ETA mode.**
+
+- The headline in the top bar reads **Initiating event** (in FTA: **Top
+  event**).
+- **Quantification**, **Cut Sets**, **Importance** and **Uncertainty** work
+  on the gates of a fault tree. In ETA mode their tabs are greyed and struck
+  through, and the tooltip says why; opening one shows the same notice.
+- The diagram draws no gate or event symbols, and the tree rows no gate.
+- The assistant's buttons read **Analyze ETA** and **Update ETA**.
+- Switching the mode says what it did (*Switched to ETA (event tree)...*).
+  Changing the title or the date no longer shows *Metadata updated.*
+
+**Importance: Copy CSV.** Copies the table as shown (its sort order, the
+numbers in full) to the clipboard, as on the Cut Sets tab.
+
+**Uncertainty for every event.** **Lognormal EF=3 for all events without
+one** gives each basic event that has no uncertainty distribution a
+lognormal one with error factor 3 around its own value, in one undo step.
+Events that have one, house events, undeveloped and conditioning events are
+left alone. When no event the top event depends on has a distribution, every
+sample is the same value: the tab then says so and draws no chart.
+
+**Rare-event.** The Cut Sets figure labelled *Rare-event* is the sum of the
+cut-set probabilities: an upper bound, not a probability. Above 1 the tab
+marks it as such.
+
+**Report.** **Colour the diagram by Fussell-Vesely importance** puts the
+coloured diagram and its legend into the Word report. Without it the
+report's diagram is plain, whatever is on screen.
+
+**Type.** The Type box of a node offers **Event**, **Gate** and
+**Intermediate**; any other text is still accepted.
+
+**Messages.** A notice no longer carries a code such as `ROOT_PROTECTED`
+(an error still does), and messages appear beside the AI panel instead of
+over its **Send** button.
+
+### Keeping your work (after 1.8.0)
+
+**A recovery copy.** While an analysis has unsaved changes, the editor keeps
+a copy of it on disk. If the editor then ends without your saving (a crash,
+a power cut, its terminal window closed), the next start shows **Unsaved
+work found** above the tree:
+
+- **Restore unsaved work from <date> (<title>)** opens the copy as an
+  untitled analysis marked as modified. **Save** then asks where to put it.
+  The file the work had been opened from is not changed; the message names
+  it, so you can compare the two and decide which to keep.
+- **Discard it** deletes the copy after asking once.
+
+The offer stays until you choose one of the two. Details:
+
+- The copies are in the `recovery` folder of the editor's per-user folder:
+  `~/.fta_editor/recovery/`, which on Windows is
+  `C:\Users\<you>\.fta_editor\recovery\`. This is the folder that also
+  holds the AI settings. It does not depend on the folder the editor works
+  in.
+- A copy is written 2 seconds after you stop editing, and at the latest 30
+  seconds after a change while you keep editing. At most that much work can
+  be lost.
+- The copy is the same JSON that **Save** writes, with a small file beside it
+  that holds the title, the original file's path and the time. It contains
+  no API key.
+- The copy is deleted when you save, when you start a new analysis or load
+  another one (after you chose to save or to discard), and when the editor
+  is stopped with Ctrl-C. Stopping the editor with Ctrl-C while an analysis
+  is unsaved therefore discards it, as closing a document without saving
+  does.
+- A second copy of the editor that is running at the same time keeps its own
+  recovery copy; neither offers the other's.
+- At most five copies of ended sessions are kept. Older ones are removed
+  when the editor starts.
+- The file dialog cannot open or save in the `recovery` folder. A copy is
+  only reached through **Restore**.
+- An analysis larger than 10 MB is not copied.
+
+**Two tabs.** If the editor is open in two browser tabs and you load a file
+in one while the other has unsaved changes, the editor now asks before it
+replaces them, whichever tab the changes were made in.
+
+**Changing the folder the editor works in.** The editor reads and writes
+inside one folder (your home folder unless it was started with `--root`).
+To work somewhere else you no longer have to restart it:
+
+1. Open **Load** or **Save As** and press **Change folder…**. The same
+   button appears under the message that refuses a path outside the folder.
+2. The editor opens your operating system's folder chooser. It may open
+   behind the browser window.
+3. Pick the folder. The file dialog then shows it, and it stays the editor's
+   folder until the editor is closed. Closing the chooser changes nothing.
+
+If the analysis that is open was saved outside the folder you picked, it
+becomes untitled: nothing in it changes, and **Save** asks where to put it.
+The choice is not remembered for the next start; use `--root` for that.
+
+The folder chooser belongs to the editor program, not to the browser page.
+A page cannot choose the folder for you, which is what keeps the folder a
+limit on what the page can reach. Where the editor cannot open a chooser
+(a computer without a display, or the packaged app on Linux or macOS),
+**Change folder…** shows the command that starts the editor on another
+folder instead.
+
+### The assistant (after 1.7.3)
+
+- **What is sent.** The setup dialog says it in one line: the analysis open
+  in the editor (the whole tree with its names, probabilities and notes) and
+  what you type go to the provider you choose. Nothing is sent before you
+  press Send, Analyze or Update.
+- **First choice.** With nothing configured the dialog opens on **Google
+  Gemini**, which has a free tier. A saved choice is never changed.
+  **Microsoft Copilot** says what it needs: an Azure OpenAI resource of your
+  own.
+- **Stop.** While the assistant is working, **Stop** gives the panel back
+  and tells the editor to abandon the request. You can send a new one at
+  once. The request cannot be taken back from the provider, but its answer
+  is ignored when it arrives: it is not shown, not added to the
+  conversation and never applied. What you had typed returns to the box.
+  (Up to 1.8.0 a new request was refused as busy until the provider had
+  answered.)
+- **A message that did not get through** (the request failed, or the
+  provider reported an error) is put back in the box to send again. A reply
+  that is the provider's error is drawn as an error.
+- **After a reload** the conversation is shown again, with the suggestions
+  and the Update preview that still wait for an answer. The editor keeps it
+  while it is running; **Clear Chat** empties it.
+- **Suggested changes** name the node as a link (click it to select the
+  node), and list what would change in words: `probability: 0.05 → 0.5`.
+  A card made for another analysis is switched off when you press New or
+  open a file.
 
 ## Command-line interface
 
@@ -1397,8 +1665,12 @@ AND/OR and fixed probabilities only.
 
 ### JSON Export
 
-**Save** / **Save As** in the action bar (**JSON** downloads a copy; desktop
-app: **(S)ave JSON As**)
+**Save** / **Save As** in the action bar (desktop app: **(S)ave JSON As**).
+
+The buttons after **Export:** (**JSON**, **XML**, **Excel**, **Render**) are
+downloads. Each hands a copy to the browser, which puts it in its own
+download folder; the editor is not told where. The open file is not changed
+and the analysis does not count as saved. Use **Save** for that.
 
 Saves complete analysis including:
 - Metadata (title, date, mode)
@@ -1468,9 +1740,9 @@ analysis itself is not changed.
 | `Ctrl+D` / `Delete` | Delete the selected node (`Delete` only from the tree) |
 | `Ctrl+S` | Save (also with the caret still in a field) |
 | `Ctrl+Shift+S` | Save As |
-| `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / Redo |
+| `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / Redo. A message names the step (*Undid: deleting "Seal leak"*), and the node concerned is selected, or its former parent when it is gone. |
 | `Ctrl+F` | Search the tree |
-| `Escape` | Discard what was typed in a field; close a dialog or the diagram's Aa popover; dismiss a toast |
+| `Escape` | Discard what was typed in a field; close a dialog or the Diagram settings popover; dismiss a toast |
 
 Inside a text field `Ctrl+A` and `Ctrl+Z` keep their usual meaning (select
 all, undo typing). With the focus on a dropdown, such as **Logic Gate**
@@ -1506,14 +1778,18 @@ analysis: only the names, the notes and the title differ.
 | `tmi2_eta_en.json`, `tmi2_eta_ja.json` | ETA | Accident at Three Mile Island Unit 2, 28 March 1979 |
 | `sampleFTA.json` | FTA | The small AND/OR tree of the 1.x releases |
 
-They are in `fta_web/examples/` in a source checkout and in
-`fta_editor\_internal\examples\` in the standalone build. To open one, click
-**Load**, go to that folder (or type its path into the dialog) and pick the
-file. The dialog only reaches inside the editor's root folder, which is your
-home folder unless you started the editor with `--root`. If the editor is
-installed somewhere else, copy the `examples` folder into your home folder, or
-start the editor with `--root <that folder>`. **Save** writes back to the file
-you opened; use **Save As** to keep the example as it was.
+To open one in the web app, click **Open an example** in the hint of a new
+analysis, or **Load** and then **Open an example…**, and pick it from the
+list. It opens as an untitled copy: **Save** asks where to put your version,
+and the example itself is never changed.
+
+The files are in `fta_web/examples/` in a source checkout and in
+`fta_editor\_internal\examples\` in the standalone build. The Load dialog's
+file list can open them from there too, when that folder is inside the
+editor's root folder (your home folder unless you started the editor with
+`--root`). An example opened that way keeps its path, so **Save** writes back
+to the file that came with the editor: use **Save As**, or open it from the
+list instead.
 
 Each node's notes (the **Details** tab) say what happened and cite the
 accident report with the finding or page: the *Report of the Presidential
@@ -1623,8 +1899,42 @@ backup.
 A: The web app only reads and writes inside its root folder. On Windows a
 path on another drive, a network (UNC) path, or a drive letter created with
 `subst` is refused even if it points at the same folder, and a `:` in a file
-name (an NTFS alternate data stream) is refused. Relaunch with `--root` to
-use another folder.
+name (an NTFS alternate data stream) is refused. To open one file from
+outside the root folder, use **Load** and then **A file on this computer…**:
+it opens as an untitled copy. To work in another folder, press **Change
+folder…** in the file dialog and pick it (see
+[Keeping your work](#keeping-your-work-after-180)). Where that button cannot
+open a folder chooser, close the editor and start it with `--root`; the
+message gives the command for your installation
+(`fta_editor.exe --root "<folder>"`, or
+`uv run python fta_web/run.py --root "<folder>"` from source).
+
+**Q: My settings (Advanced, language, theme) are gone after a restart**
+A: The browser keeps them per address. The editor uses `127.0.0.1:8765`
+unless that port is taken or you start it with `--port`. If its terminal
+window shows a line beginning with `Note`, another program (often a second
+copy of the editor) was using the port; close it and start the editor again.
+
+**Q: The editor closed and I had not saved**
+A: Start it again. If it had ended without a clean stop, **Unsaved work
+found** appears above the tree. See
+[Keeping your work](#keeping-your-work-after-180).
+
+**Q: The page says "The editor is not answering"**
+A: The editor (the program the page talks to) has been closed or has
+stopped. Press **Download a rescue copy (JSON)** to keep the analysis in the
+tab, then start the editor again and open that file with **Load**. See
+[Top Bar](#top-bar), *If the editor stops*.
+
+**Q: The page says "This tab is not connected to the editor"**
+A: The editor only works in the tab it opens itself. A tab opened from a
+bookmark or the history, or left over from an earlier run, cannot reach it.
+Close the tab and use the one the editor opened, or start the editor again
+with the command the screen shows.
+
+**Q: The tree changed by itself and a message says "changed in another tab"**
+A: The same editor is open in two tabs or windows, and the other one edited
+the analysis. Both tabs show the same analysis; work in one of them.
 
 **Q: Legacy JSON files don't load properly**
 A: Old format is supported, but defaults to FTA mode. Set mode manually after loading.

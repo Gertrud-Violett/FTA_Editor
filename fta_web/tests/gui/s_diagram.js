@@ -8,7 +8,7 @@ const L = require('./lib');
 const { compareCore, dotIdMap, flatten, labelNumbers, rootShowsHeadline } = require('./b2b');
 
 async function setStyle(page, style, rankdir) {
-  await page.locator('#diagram-root .diagram__btn', { hasText: 'Aa' }).click();
+  await page.locator('#diagram-root [data-role="diagram-settings"]').click();
   const pop = page.locator('.diagram__popover');
   await pop.locator('select').nth(0).selectOption(style);
   await pop.locator('select').nth(1).selectOption(rankdir);
@@ -19,7 +19,7 @@ async function main(url, label, root) {
   L.setSection('diagram[' + label + ']');
   const app = await L.openApp(url, { prefs: { 'fta.advanced': '1' }, viewport: { width: 1700, height: 1000 } });
   const { page } = app;
-  const res = await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  const res = await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   L.check('opened core file', !res.__error, res);
   await page.evaluate(() => window.ftaShell.refresh());
   const st = await app.api('get', '/state');
