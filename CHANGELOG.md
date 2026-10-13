@@ -9,12 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The diagram's settings are behind a button that says so.** **Aa**
+  ("Font & box size") is now **Settings**, the popover is titled **Diagram
+  settings**, and "Box scale" is **Box padding (0-30)**, which is what it
+  is. Style and Layout were there all along, with nothing to say so.
+- **A selected node comes into view.** Selecting a row of the tree or of an
+  analysis table moves a zoomed diagram by the least that shows that node;
+  the zoom is not changed. **1:1** sets 100 % and **◎** centres the selected
+  node at a readable size.
+- **Diagram exports: the document's name, a message, light colours, and the
+  importance colours.** The toolbar's SVG and PNG saved `fta_diagram.*`
+  without a word; they now use the same name as **Render** (the file's or
+  the title's) and the same message. Every export is in the light colours
+  (the dark theme gave a dark PNG with a white strip). With **Colour diagram
+  by FV** on, the file has the colours and a legend under the diagram, and
+  the Report tab has **Colour the diagram by Fussell-Vesely importance**.
+- **The bottom panel is tall enough for a table.** Tabs other than Details
+  have a height of their own (about 45 % of the window by default), and
+  **△** enlarges the panel to all the height there is while a strip of the
+  diagram stays.
+- **ETA mode is called what it is.** The headline reads **Initiating event**;
+  Quantification, Cut Sets, Importance and Uncertainty are greyed with the
+  reason in their tooltip; the diagram draws no gate or event symbols and no
+  `Gate:` text; the assistant says **Analyze ETA**, **Update ETA** and
+  "event tree".
+- **Tree rows show the gate and the probability**, and a gate is no longer
+  bold red for its unused base probability of 1. Only an event that is
+  certain is.
+- **A multi-selection is honoured everywhere.** Delete, a drag and
+  Ctrl+Shift+arrow keys act on every selected node, each as one undo step
+  (deleting three nodes used to take three Ctrl+Z). The bottom panel's
+  header says **N selected**, and otherwise names the selected node instead
+  of giving its id.
+- **The assistant.** **Stop** gives the panel back while the provider is
+  still working. A message that failed to send returns to the box. After a
+  reload the conversation, the pending suggestions and a waiting Update
+  preview are shown again. Suggested changes name their node as a link that
+  selects it and list the changes in words; a card made for another analysis
+  is switched off by New or Load; a rejected suggestion is one line, not
+  raw JSON. A reply that is the provider's error is drawn as an error. "No
+  provider is set up yet" is said once. **MD** is now **Formatted**.
+- **AI setup.** With nothing configured the dialog opens on **Google Gemini**
+  (free tier). One line says that the whole tree and what you type are sent
+  to the chosen provider. Microsoft Copilot says that it needs an Azure
+  OpenAI resource (it showed OpenAI's hint and OpenAI's key page).
+- **Quieter messages.** A title or a date no longer answers "Metadata
+  updated."; a mode switch says which mode and what it means. A notice no
+  longer carries a raw code such as `ROOT_PROTECTED`. Messages appear beside
+  the AI panel, not over its Send button.
+
 - **The diagram opens with the gate symbols.** The Live Diagram Preview's
   default style is now **Standard symbols** (IEC 61025 / NUREG-0492 gates
   and events) instead of **Compact boxes**. The packaged app starts on a new
   port each time, so its browser storage is new as well and it always opened
   on the boxes: the symbols looked as if they had been removed. A style
-  already saved in a browser is kept, and **Aa** on the diagram toolbar
+  already saved in a browser is kept, and **Settings** (then **Aa**) on the diagram toolbar
   switches as before. `GET /api/dot`, `POST /api/render`, the CLI and the
   Word report keep their own defaults.
 - **Add Node says where the node will go.** The dialog's title named the
@@ -209,6 +258,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drop outside the tree panel now does nothing.
 
 ### Added
+
+- **Copy CSV on the Importance tab**, as on Cut Sets: the table as sorted,
+  the numbers in full.
+- **Uncertainty for every event at once.** **Lognormal EF=3 for all events
+  without one** on the Uncertainty tab, one undo step. With no spread the
+  tab says why and draws no chart.
+- **A note on the rare-event sum** (Cut Sets): it is a sum, not a
+  probability, and is marked when it is above 1.
+- **Type offers Event, Gate and Intermediate** (Details and Add). It is
+  still free text.
+- **API.** `GET /api/ai/conversation`, `POST /api/batch/delete`,
+  `POST /api/batch/move` and `POST /api/batch/uncertainty` are new. All of
+  them need the session token; the first never returns a credential. See
+  `docs/API_REFERENCE.md`.
+- **Tests for the analysis, diagram and AI changes.**
+  `fta_web/tests/test_ux_batch_3.py`, and a new section of the real-browser
+  suite, `fta_web/tests/gui/s_ux3.js` (79 checks). The suite now has 1073
+  checks in 17 sections. No test calls an AI provider.
+  Existing checks changed to the new behaviour: the diagram's settings
+  button is found by its role instead of the text "Aa" (`s_diagram.js`,
+  `s_fixes.js`, `s_i18n.js`); six source checks follow the code they read
+  (`test_frontend_b2b.py`, `test_review_2026_10_ai.py`,
+  `test_review_2026_10_frontend.py`, `test_ai_markdown.py`); and
+  `ai.chat.markdown` left the list of strings that may be the same in both
+  languages (`test_catalog_parity.py`).
 
 - **AI assistant: replies are shown as formatted Markdown, with a switch to
   the raw text.** A reply's headings, lists, tables, code and bold were shown

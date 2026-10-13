@@ -36,6 +36,8 @@ const RUN_MAX_N = 100000;
 /** Largest n the document may store (engine.MAX_MC_N, used by the CLI). */
 const SAVE_MAX_N = 1000000;
 const MAX_TIME = 60;
+/** The error factor "Apply to all" gives (routes/tree.py DEFAULT_ERROR_FACTOR). */
+const DEFAULT_EF = 3;
 
 /**
  * A seed the browser can send exactly: a whole number from 0 up to
@@ -76,9 +78,14 @@ export function mount(panel, ctx) {
   const lblSeed = el('label', null, [el('span'), inSeed]);
   const lblTime = el('label', null, [el('span'), inTime]);
   const saveBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'save-defaults' } });
+  // Uncertainty was set one event at a time, in another tab. This gives every
+  // basic event that has none a lognormal with error factor 3, in one step.
+  const applyAllBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'apply-all' } });
   const edited = new Set(); // inputs typed in since they were filled from the document
   const status = el('span', { class: 'anl-note', 'aria-live': 'polite' });
-  const toolbar = el('div', { class: 'anl-toolbar' }, [runBtn, lblN, lblSeed, saveBtn, lblTime, el('span', { class: 'anl-grow' }), status]);
+  const toolbar = el('div', { class: 'anl-toolbar' }, [runBtn, lblN, lblSeed, saveBtn, lblTime, applyAllBtn, el('span', { class: 'anl-grow' }), status]);
+  // Shown in place of the chart when every sample came out the same.
+  const noSpread = el('p', { class: 'anl-note', dataset: { role: 'no-spread' }, hidden: true });
   const message = el('p', { class: 'anl-empty' });
   const stats = el('div', { class: 'anl-statgrid' });
   const meta = el('p', { class: 'anl-note' });
@@ -148,6 +155,45 @@ export function mount(panel, ctx) {
     }
   }
 
+  /** Basic events with no uncertainty distribution, as the server counts them. */
+  function eventsWithout() {
+    const root = ctx.store.tree ? ctx.store.tree() : null;
+    let n = 0;
+    const walk = (node) => {
+      if (!node || typeof node !== 'object') return;
+      const kids = Array.isArray(node.children) ? node.children : [];
+      if (kids.length) {
+        for (const kid of kids) walk(kid);
+        return;
+      }
+      if (node === root) return;
+      if (String(node.gateType || '').toUpperCase() === 'TRANSFER') return;
+      if (String(node.eventKind || 'basic').toLowerCase() !== 'basic') return;
+      const unc = node.quant && typeof node.quant === 'object' ? node.quant.unc : null;
+      if (!(unc && typeof unc === 'object' && unc.dist)) n += 1;
+    };
+    walk(root);
+    return n;
+  }
+
+  let applying = false;
+  async function applyToAll() {
+    if (applying || running) return;
+    applying = true;
+    paintToolbar();
+    try {
+      const res = await ctx.api.post('/batch/uncertainty', { ef: DEFAULT_EF });
+      ctx.store.applyMutation(res);
+      const n = Array.isArray(res.updatedIds) ? res.updatedIds.length : 0;
+      ctx.toast(n ? t('unc.appliedAll', { n, ef: DEFAULT_EF }) : t('unc.appliedNone'), n ? 'ok' : 'info');
+    } catch (err) {
+      reportError(ctx, err);
+    } finally {
+      applying = false;
+      paintToolbar();
+    }
+  }
+
   function tick() {
     const s = ((performance.now() - startedAt) / 1000).toFixed(1);
     status.textContent = t('unc.elapsed', { s });
@@ -196,6 +242,11 @@ export function mount(panel, ctx) {
     saveBtn.disabled = running;
     saveBtn.textContent = t('unc.saveDefaults');
     saveBtn.title = t('unc.saveDefaultsTitle');
+    const without = eventsWithout();
+    applyAllBtn.textContent = t('unc.applyAll', { ef: DEFAULT_EF });
+    applyAllBtn.title = t('unc.applyAllTitle', { n: without, ef: DEFAULT_EF });
+    applyAllBtn.disabled = running || applying || without === 0;
+    applyAllBtn.dataset.count = String(without);
     lblN.firstChild.textContent = t('unc.n');
     lblSeed.firstChild.textContent = t('unc.seed');
     lblSeed.title = t('unc.seedTitle');
@@ -309,7 +360,7 @@ export function mount(panel, ctx) {
       root.appendChild(etaNotice(ctx));
       return;
     }
-    root.append(toolbar, message, stats, meta, warnings, chartBox);
+    root.append(toolbar, message, stats, meta, warnings, noSpread, chartBox);
     paintToolbar();
     message.hidden = Boolean(result);
     message.textContent = t('unc.notRun');
@@ -338,11 +389,18 @@ export function mount(panel, ctx) {
       warnings.hidden = warnings.childNodes.length === 0;
     }
     clear(chartBox);
-    const figure = result ? chart() : null;
+    // Every sample equal (no event has a distribution, or none the top event
+    // depends on): a histogram of one bar under "Std. deviation 0" looked
+    // like a result. Say what is missing instead, and how to add it.
+    const flat = Boolean(result) && (!(result.uncertainEvents || []).length || !(Number(result.std) > 0));
+    noSpread.hidden = !flat;
+    noSpread.textContent = flat ? t('unc.noSpread', { ef: DEFAULT_EF }) : '';
+    const figure = result && !flat ? chart() : null;
     if (figure) chartBox.appendChild(figure);
   }
 
   runBtn.addEventListener('click', () => run());
+  applyAllBtn.addEventListener('click', () => applyToAll());
   saveBtn.addEventListener('click', () => saveDefaults());
   for (const input of [inN, inSeed]) input.addEventListener('input', () => edited.add(input));
   for (const input of [inN, inSeed, inTime]) {

@@ -209,6 +209,16 @@ def get_handler() -> AIAgentHandler:
         return _handler
 
 
+def existing_handler() -> Optional[AIAgentHandler]:
+    """The handler if one has been created, else None -- without creating it.
+
+    For a read that must stay free of side effects (GET /api/ai/conversation
+    runs on every page load): creating a handler makes ``~/.fta_editor``.
+    """
+    with _handler_lock:
+        return _handler
+
+
 def reset_handler() -> AIAgentHandler:
     """Replace the handler with a fresh one and return it.
 

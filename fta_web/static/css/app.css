@@ -1471,3 +1471,94 @@ html[data-booting] .tabstrip { pointer-events: none; }
 @media (max-width: 520px) {
   .capbar__panel { position: fixed; left: 16px; right: 16px; top: 56px; width: auto; }
 }
+
+/* =============================================================================
+   Analysis, diagram and AI (usability batch 3)
+   ========================================================================== */
+
+/* ---- bottom panel: who is selected, and the enlarge button ----------------- */
+.panel__head--tabs .panel__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel__head--tabs .panel__meta[data-count]:not([data-count="0"]):not([data-count="1"]) {
+  color: var(--accent);
+  font-weight: 700;
+}
+#btn-bottom-max { align-self: center; flex: 0 0 auto; }
+#btn-bottom-max[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+/* One column (a narrow window): the panels are stacked and scroll, so there
+   is no height to share out. */
+@media (max-width: 900px) {
+  #btn-bottom-max { display: none; }
+}
+
+/* ---- ETA mode: the four fault-tree analyses are greyed, with the reason in
+        their tooltip. Still focusable and still openable: the panel says the
+        same thing at length. ---------------------------------------------- */
+.tabstrip__tab.is-unavailable {
+  color: var(--text-faint);
+  font-weight: 400;
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+  cursor: help;
+}
+.tabstrip__tab.is-unavailable[aria-selected="true"] { color: var(--text-dim); }
+.tabstrip__tab.is-unavailable[aria-selected="true"]::after { background: var(--border-strong); }
+
+/* ---- analysis tabs ---------------------------------------------------------- */
+.anl-stat__note { color: var(--warn); white-space: normal; }
+
+/* ---- AI panel: the switch is a word now, Stop, links, readable changes ------ */
+.chat__md { font-family: inherit; font-weight: 600; }
+.chat__stop {
+  margin-left: auto;
+  min-height: 0;
+  height: auto;
+  padding: 1px 10px;
+  font-size: var(--fs-xs);
+}
+.chat__stop[hidden] { display: none; }
+.chat-msg[data-failed="true"] { opacity: .7; }
+.chat-msg[data-kind="restored"] { font-style: italic; }
+.chat-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.chat-link:hover { color: var(--accent-hover); }
+.chat-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+.chat-changes[data-retired="true"] .chat-link { color: inherit; }
+.chat-changes__id { font-family: var(--font-mono); }
+.chat-changes__item .chat-changes__fields {
+  /* Two classes: `.panel__body ul` resets every list's margin. */
+  margin: 0 0 0 21px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.chat-changes__old { text-decoration: line-through; color: var(--text-faint); }
+.chat-changes__new { color: var(--text); font-weight: 600; }
+
+/* ---- AI setup: what is sent, said once -------------------------------------- */
+.aiset-disclosure {
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+}

@@ -715,6 +715,70 @@ the `updateId` of the preview.
 nothing for whichever is waiting. It answers `{discarded: bool}` and is never
 an error for "nothing was waiting". It needs no credentials.
 
+**`GET /api/ai/conversation`** is what a reloaded page repaints. It is
+read-only, needs the session token like every `/api` route, and works with
+no provider configured (everything empty; it then does not even create the
+per-user folder).
+
+```json
+{ "ok": true,
+  "messages": [
+    {"role": "user", "kind": "chat", "content": "What fails first?"},
+    {"role": "assistant", "kind": "chat", "content": "The **valve**."},
+    {"role": "user", "kind": "analyze"},
+    {"role": "assistant", "kind": "analyze", "content": "..."},
+    {"role": "user", "kind": "update"},
+    {"role": "assistant", "kind": "update"}
+  ],
+  "changes": [],
+  "pendingUpdate": null }
+```
+
+- `messages` are the turns the editor keeps while it runs: what was typed
+  and what the model answered. The system prompt and the tree sent with a
+  message are not in it. `kind` is `chat`, `analyze` or `update`; the
+  built-in request of an Analyze and both turns of an Update FTA (whose
+  reply is the whole tree as JSON) carry no `content`.
+- `changes` are the proposals still pending **for the open document**, with
+  their `index`, as `POST /api/ai/chat` returns them.
+- `pendingUpdate` is `{updateId, updateSummary}` for the Update FTA preview
+  still waiting, or null.
+- No credential is in the answer: there is no field for one, and the text is
+  scrubbed of the stored key like every other reply.
+
+### Several nodes in one request
+
+Each of these is **one undo step**, checks every id before it changes
+anything (a refusal leaves the document as it was), and answers with the
+usual mutation payload. All need the session token.
+
+**`POST /api/batch/delete`** `{ids: [...]}` deletes each node with its
+subtree. `deletedIds` are the nodes deleted directly (a listed node inside
+another listed node goes with it); `removedLinks` as for `DELETE
+/api/nodes/<id>`. `400 ROOT_PROTECTED`, `404 NODE_NOT_FOUND`,
+`400 INVALID_FIELD` (`ids` not a non-empty list of strings, or more than
+5000).
+
+**`POST /api/batch/move`** `{ids: [...], newParentId, index}` moves the
+nodes under one parent, side by side, in the order the tree showed them.
+`index` is the position among the new parent's children once every moved
+node is detached (clamped; null appends). Answers `movedIds` and
+`parentId`. A move that leaves everything where it is makes no undo step.
+`400 CYCLE_REJECTED`, `400 ROOT_PROTECTED`, `404 NODE_NOT_FOUND`,
+`404 PARENT_NOT_FOUND`, `400 INVALID_FIELD` (also for a move that would go
+deeper than the tree may be).
+
+**`POST /api/batch/uncertainty`** `{ef}` (optional, default 3) gives every
+basic event without an uncertainty distribution `quant.unc = {dist:
+"lognormal", ef}`. Events that have one, house, undeveloped and conditioning
+events, transfers, gates and the root are left alone. Answers `updatedIds`;
+when it is empty nothing changed and no undo step was made.
+
+**ETA mode in `GET /api/dot` and `POST /api/render`.** For a document in ETA
+mode the DOT has no gate or event symbol nodes (symbols style: boxes joined
+directly, `idMap` one entry per node) and no `Gate: ...` text (compact
+style).
+
 **`PATH_REJECTED` with `detail.reason: "outside_root"`** now also carries
 `detail.root` (the sandbox root, which `/api/fs/home` gives too) and
 `detail.relaunch`, the command that starts the editor on another folder:

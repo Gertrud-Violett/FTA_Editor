@@ -37,8 +37,9 @@
  *   POST   /api/ai/update/apply    -> install the previewed rewrite
  *   POST   /api/ai/update/discard  -> drop it
  *   POST   /api/ai/changes/apply   {indices:[...]}
+ *   GET    /api/ai/conversation    the chat so far (repainted after a reload)
  *   DELETE /api/ai/conversation    clear the history
- * Any of them answers 400 AI_NOT_CONFIGURED while no key is stored.
+ * Any of them but the GET answers 400 AI_NOT_CONFIGURED while no key is stored.
  *
  * CONTRACT
  *   initChat(host) -> {refresh(), destroy()}
@@ -103,6 +104,29 @@ function writeMarkdownPref(on) {
     /* private mode: the choice lasts until the page is closed */
   }
 }
+
+/** True when the open document is an event tree. */
+function isEta() {
+  try {
+    return String(store.metadata().mode || '').toUpperCase() === 'ETA';
+  } catch (_err) {
+    return false;
+  }
+}
+
+/**
+ * The catalog key for the mode: `key + '.eta'` in ETA mode where the catalog
+ * has one, else `key`. "Analyze FTA" and "this fault tree" on an event tree
+ * were simply wrong.
+ */
+function modeKey(key) {
+  if (!isEta()) return key;
+  const eta = key + '.eta';
+  return t(eta) === eta ? key : eta;
+}
+
+/** The start of a reply that is the provider's failure, reported in-band. */
+const AI_ERROR_PREFIX = 'AI Error:';
 
 /* ------------------------------------------------------------- payloads ---- */
 
@@ -267,9 +291,19 @@ export function initChat(host) {
   });
 
   const busyText = el('span', { class: 'chat__busy-text' });
+  // Stop gives the panel back while the provider is still thinking. It was
+  // wait-or-reload: up to two minutes with every button disabled.
+  const stopBtn = el('button', {
+    type: 'button',
+    class: 'btn chat__stop',
+    dataset: { role: 'stop' },
+    hidden: true,
+    onclick: () => actionStop(),
+  });
   const busyBar = el('div', { class: 'chat__busy', role: 'status', 'aria-live': 'polite', hidden: true }, [
     el('span', { class: 'chat__spinner', 'aria-hidden': 'true' }),
     busyText,
+    stopBtn,
   ]);
 
   const analyzeBtn = el('button', { type: 'button', class: 'btn chat__action', onclick: () => actionAnalyze() });
@@ -308,6 +342,10 @@ export function initChat(host) {
   let openChanges = null; // the newest, still-applicable suggestion card
   let openUpdate = null; // the Update FTA preview still waiting for Apply or Discard
   let markdownOn = readMarkdownPref();
+  let current = null; // the request to the provider now on the wire (see run())
+  let lastMode = isEta();
+  let notConfiguredRow = null; // the one "no provider yet" line in the log
+  let welcomeRow = null;
 
   /* ---- labels (re-applied on every EN/JA switch) ---- */
 
@@ -319,10 +357,12 @@ export function initChat(host) {
 
     log.setAttribute('aria-label', t('ai.chat.log'));
 
-    analyzeBtn.textContent = t('ai.chat.analyze');
-    analyzeBtn.title = t('ai.chat.analyzeTitle');
-    updateBtn.textContent = t('ai.chat.update');
-    updateBtn.title = t('ai.chat.updateTitle');
+    analyzeBtn.textContent = t(modeKey('ai.chat.analyze'));
+    analyzeBtn.title = t(modeKey('ai.chat.analyzeTitle'));
+    updateBtn.textContent = t(modeKey('ai.chat.update'));
+    updateBtn.title = t(modeKey('ai.chat.updateTitle'));
+    stopBtn.textContent = t('ai.chat.stop');
+    stopBtn.title = t('ai.chat.stopTitle');
     clearBtn.textContent = t('ai.chat.clear');
     clearBtn.title = t('ai.chat.clearTitle');
     markdownBtn.textContent = t('ai.chat.markdown');
@@ -331,7 +371,7 @@ export function initChat(host) {
     markdownBtn.setAttribute('aria-pressed', markdownOn ? 'true' : 'false');
 
     input.setAttribute('aria-label', t('ai.chat.input'));
-    input.placeholder = t('ai.chat.placeholder');
+    input.placeholder = t(modeKey('ai.chat.placeholder'));
     sendBtn.textContent = t('ai.chat.send');
     sendBtn.title = t('ai.chat.sendTitle');
   }
@@ -487,6 +527,9 @@ export function initChat(host) {
     busy = Boolean(next);
     root.dataset.busy = busy ? 'true' : 'false';
     busyBar.hidden = !busy;
+    // Only a request to the provider can be stopped; applying is short and
+    // must run to its end.
+    stopBtn.hidden = !(busy && current);
     busyText.textContent = busy ? message || t('ai.msg.thinking') : '';
     log.setAttribute('aria-busy', busy ? 'true' : 'false');
     for (const button of [analyzeBtn, updateBtn, clearBtn, sendBtn]) {
@@ -521,10 +564,25 @@ export function initChat(host) {
    * @returns {boolean} false when the request must not be sent. Nothing here
    * shouts: not being set up is a state, not a mistake.
    */
+  /**
+   * "No provider is set up yet", once. Each press of a button added the line
+   * again, so three presses left three of them; now the one line is moved to
+   * the end of the log instead.
+   */
+  function sayNotConfigured() {
+    if (notConfiguredRow && notConfiguredRow.isConnected) {
+      log.appendChild(notConfiguredRow);
+      scrollToEnd();
+      return;
+    }
+    notConfiguredRow = say('system', 'ai.msg.notConfigured');
+    notConfiguredRow.dataset.kind = 'not-configured';
+  }
+
   function ensureConfigured() {
     if (aiConfigured() === false) {
       showInvitation(true);
-      say('system', 'ai.msg.notConfigured');
+      sayNotConfigured();
       return false;
     }
     return true;
@@ -533,7 +591,7 @@ export function initChat(host) {
   function handleError(err) {
     if (err instanceof ApiError && err.code === 'AI_NOT_CONFIGURED') {
       showInvitation(true);
-      say('system', 'ai.msg.notConfigured');
+      sayNotConfigured();
       return;
     }
     addMessage('error', err && err.message ? err.message : String(err));
@@ -564,11 +622,92 @@ export function initChat(host) {
 
   /* ---- suggested changes ---- */
 
-  function changeTitle(change, index) {
+  /** "Add", "Change", "Delete", "Move" for a change type; the raw type if unknown. */
+  function changeKind(change) {
     const type = firstString(change, ['changeType', 'change_type', 'type', 'kind']);
+    if (!type) return '';
+    const key = 'ai.changes.kind.' + type.toLowerCase();
+    const label = t(key);
+    return label === key ? type.toUpperCase() : label;
+  }
+
+  function changeTitle(change, index) {
+    const kind = changeKind(change);
     const description = firstString(change, ['description', 'summary', 'detail', 'text']);
-    const head = type ? '[' + type.toUpperCase() + '] ' : '';
-    return head + (description || t('ai.changes.untitled', { n: index + 1 }));
+    return (kind ? kind + ': ' : '') + (description || t('ai.changes.untitled', { n: index + 1 }));
+  }
+
+  /**
+   * A node by name, as a button that selects it (and brings it into view in
+   * the tree and the diagram). A card said "Target: root_1_0" and left the
+   * user to find out which node that was. An id that names no node of this
+   * tree (a node the change would add) is shown as plain text.
+   */
+  function nodeLink(id) {
+    const node = store.findNode(id);
+    if (!node) return el('span', { class: 'chat-changes__id', text: String(id) });
+    const name = node.name === undefined || node.name === null || String(node.name).trim() === '' ? String(id) : String(node.name);
+    return el('button', {
+      type: 'button',
+      class: 'chat-link',
+      dataset: { node: String(id) },
+      title: t('ai.changes.selectTitle', { id: String(id) }),
+      text: name,
+      onclick: () => {
+        if (store.findNode(id)) store.jumpTo(String(id));
+      },
+    });
+  }
+
+  /** Keys of a change's data that hold a node id (shown by name). */
+  const ID_FIELDS = new Set(['parentId', 'parent_id', 'newParentId', 'new_parent_id', 'new_parent', 'parent']);
+  /** Keys never listed: the id is the server's business, links have their own lines. */
+  const SKIP_FIELDS = new Set(['id', 'links', 'children']);
+
+  function fieldLabel(key) {
+    const known = 'history.field.' + key;
+    const label = t(known);
+    return label === known ? key : label;
+  }
+
+  function fieldText(value) {
+    if (value === null || value === undefined || value === '') return t('ai.changes.empty');
+    if (typeof value === 'object') {
+      const text = safeJson(value).replace(/\s+/g, ' ');
+      return text.length > 120 ? text.slice(0, 119) + '…' : text;
+    }
+    return String(value);
+  }
+
+  /**
+   * A change's data as lines a person can read: "probability: 0.01 → 0.05"
+   * for a field of an existing node, "name: Pump fails" for a new one. The
+   * card used to offer the raw JSON and nothing else.
+   */
+  function fieldLines(change, target) {
+    const data = change && change.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+    const type = firstString(change, ['changeType', 'change_type', 'type', 'kind']).toLowerCase();
+    const existing = type === 'edit' && target ? store.findNode(target) : null;
+    const lines = [];
+    for (const [key, value] of Object.entries(data)) {
+      if (SKIP_FIELDS.has(key)) continue;
+      const line = el('li', { class: 'chat-changes__field', dataset: { field: key } });
+      line.append(fieldLabel(key) + ': ');
+      if (ID_FIELDS.has(key) && value !== null && value !== undefined && value !== '') {
+        line.appendChild(nodeLink(value));
+      } else if (existing && Object.prototype.hasOwnProperty.call(existing, key) && fieldText(existing[key]) !== fieldText(value)) {
+        line.append(
+          el('span', { class: 'chat-changes__old', text: fieldText(existing[key]) }),
+          ' → ',
+          el('span', { class: 'chat-changes__new', text: fieldText(value) })
+        );
+      } else {
+        line.appendChild(el('span', { class: 'chat-changes__new', text: fieldText(value) }));
+      }
+      lines.push(line);
+    }
+    return lines;
   }
 
   /** `Name (id)` for a link target; the id alone when the name is unknown. */
@@ -633,8 +772,13 @@ export function initChat(host) {
 
       const target = firstString(change, ['targetId', 'target_id', 'target', 'nodeId', 'node_id']);
       if (target) {
-        item.appendChild(el('p', { class: 'chat-changes__target', text: t('ai.changes.target', { id: target }) }));
+        const type = firstString(change, ['changeType', 'change_type', 'type', 'kind']).toLowerCase();
+        const line = el('p', { class: 'chat-changes__target', dataset: { target: target } });
+        line.append(t(type === 'add' ? 'ai.changes.under' : 'ai.changes.node') + ' ', nodeLink(target));
+        item.appendChild(line);
       }
+      const fields = fieldLines(change, target);
+      if (fields.length) item.appendChild(el('ul', { class: 'chat-changes__fields' }, fields));
       // What approving this does to the node's links, in words: the links in
       // a suggestion replace the node's whole list, so a removal is as much
       // part of it as an addition, and neither is visible in a title.
@@ -648,15 +792,9 @@ export function initChat(host) {
         }
         item.appendChild(box);
       }
-      if (change && change.data !== null && change.data !== undefined && change.data !== '') {
-        const pre = el('pre', { class: 'chat-block__pre' });
-        pre.textContent = typeof change.data === 'string' ? change.data : safeJson(change.data);
-        item.appendChild(
-          el('details', { class: 'chat-block chat-block--inline' }, [
-            el('summary', { class: 'chat-block__summary', text: t('ai.changes.details') }),
-            pre,
-          ])
-        );
+      if (change && typeof change.data === 'string' && change.data !== '') {
+        // Data that is not an object cannot be read field by field.
+        item.appendChild(el('p', { class: 'chat-changes__target', text: change.data }));
       }
 
       rows.push({ index, box });
@@ -743,17 +881,24 @@ export function initChat(host) {
           say('system', 'ai.changes.ignoredOne', { title: changeTitle(record, 0), fields: record.ignored.join(', ') });
         }
       }
+      // One line each, with the server's reason (showRejected). The same
+      // records used to follow as a block of raw JSON.
       if (result && Array.isArray(result.rejected) && result.rejected.length) {
         showRejected(result.rejected);
-        showDiagnostics({ rejected: result.rejected });
       }
     } catch (err) {
       if (destroyed) return;
       handle.status.textContent = '';
       if (err instanceof ApiError && err.detail && Array.isArray(err.detail.rejected)) {
+        // Named one by one; the rest of the detail, if any, as usual.
         showRejected(err.detail.rejected);
+        addMessage('error', err.message || String(err));
+        const rest = Object.assign({}, err.detail);
+        delete rest.rejected;
+        showDiagnostics(rest);
+      } else {
+        handleError(err);
       }
-      handleError(err);
     } finally {
       if (!destroyed) setBusy(false);
     }
@@ -871,22 +1016,64 @@ export function initChat(host) {
     return !ensureConfigured();
   }
 
-  /** The busy state and the single catch every request shares. */
-  async function run(statusText, work) {
+  /**
+   * The busy state and the single catch every request to the provider
+   * shares. `work(job)` checks `job.stopped` after each await: Stop cannot
+   * call the provider back, so an answer that arrives after it is dropped
+   * here. `hooks.onFail` runs when the request failed or was stopped (the
+   * typed message goes back into the box), `hooks.late(result)` when an
+   * answer arrived after Stop.
+   */
+  async function run(statusText, work, hooks) {
+    const job = { stopped: false, hooks: hooks || {} };
+    current = job;
     setBusy(true, statusText);
     try {
-      await work();
+      await work(job);
     } catch (err) {
-      if (!destroyed) handleError(err);
+      if (!destroyed && !job.stopped) {
+        handleError(err);
+        if (job.hooks.onFail) job.hooks.onFail();
+      }
     } finally {
-      if (!destroyed) setBusy(false);
+      if (!destroyed && current === job) {
+        current = null;
+        setBusy(false);
+      }
     }
   }
 
+  /**
+   * Stop waiting. The request cannot be withdrawn from the provider, and the
+   * editor's one AI slot stays taken until it answers, so the message says
+   * that a new request may be refused for a moment.
+   */
+  function actionStop() {
+    const job = current;
+    if (!job) return;
+    job.stopped = true;
+    current = null;
+    setBusy(false);
+    if (job.hooks.onFail) job.hooks.onFail();
+    say('system', 'ai.msg.stopped');
+    input.focus();
+  }
+
+  /**
+   * @returns {boolean} false when the "reply" is the provider's failure,
+   * which the server passes on in-band as text starting "AI Error:". It is
+   * shown as an error, not as something the assistant said.
+   */
   function showReply(payload) {
     const reply = replyFrom(payload);
+    if (reply && reply.trim().indexOf(AI_ERROR_PREFIX) === 0) {
+      const row = addMessage('error', reply.trim().slice(AI_ERROR_PREFIX.length).trim() || reply);
+      row.dataset.kind = 'ai-error';
+      return false;
+    }
     if (reply) addMessage('assistant', reply, { reply: true });
     else say('assistant', 'ai.msg.emptyReply');
+    return true;
   }
 
   function actionSend() {
@@ -898,14 +1085,21 @@ export function initChat(host) {
     }
     if (blocked()) return;
 
-    addMessage('user', text);
+    const typed = input.value;
+    const row = addMessage('user', text);
     input.value = '';
-    run(t('ai.msg.thinking'), async () => {
+    // A message that did not get through is not lost: it goes back into the
+    // box (unless something else was typed there meanwhile) to send again.
+    const giveBack = () => {
+      if (input.value.trim() === '') input.value = typed;
+      row.dataset.failed = 'true';
+    };
+    run(t('ai.msg.thinking'), async (job) => {
       const result = await api.post('/ai/chat', { message: text });
-      if (destroyed) return;
-      showReply(result);
+      if (destroyed || job.stopped) return;
+      if (!showReply(result)) giveBack();
       renderChanges(listFrom(result, ['changes', 'suggestions']));
-    });
+    }, { onFail: giveBack });
   }
 
   /**
@@ -915,10 +1109,10 @@ export function initChat(host) {
    */
   function actionAnalyze() {
     if (blocked()) return;
-    say('user', 'ai.msg.analyzePrompt');
-    run(t('ai.msg.analyzing'), async () => {
+    say('user', modeKey('ai.msg.analyzePrompt'));
+    run(t(modeKey('ai.msg.analyzing')), async (job) => {
       const result = await api.post('/ai/analyze', {});
-      if (destroyed) return;
+      if (destroyed || job.stopped) return;
       showReply(result);
       renderChanges(listFrom(result, ['changes', 'suggestions']));
     });
@@ -933,15 +1127,22 @@ export function initChat(host) {
   function actionUpdate() {
     if (blocked()) return;
     choiceDialog(t('ai.update.confirm'), {
-      title: t('ai.update.confirmTitle'),
+      title: t(modeKey('ai.update.confirmTitle')),
       cancelValue: false,
       buttons: [{ value: true, role: 'ask', label: t('ai.update.confirmOk'), primary: true, focus: true }],
     }).then((go) => {
       if (!go || destroyed || blocked()) return;
-      say('user', 'ai.msg.updatePrompt');
-      run(t('ai.msg.updating'), async () => {
+      say('user', modeKey('ai.msg.updatePrompt'));
+      run(t(modeKey('ai.msg.updating')), async (job) => {
         const result = await api.post('/ai/update', { preview: true });
         if (destroyed) return;
+        if (job.stopped) {
+          // The preview nobody is waiting for must not stay on the server.
+          if (result && typeof result.updateId === 'string') {
+            api.post('/ai/update/discard', { id: result.updateId }).catch(() => {});
+          }
+          return;
+        }
         const reply = replyFrom(result);
         if (reply) addMessage('assistant', reply, { reply: true });
         if (result && result.preview) {
@@ -952,7 +1153,7 @@ export function initChat(host) {
         await refreshDocument(result);
         const summary = updateSummaryMessage(result && result.updateSummary);
         if (summary) say('system', summary.key, summary.vars);
-        else say('system', 'ai.msg.updated');
+        else say('system', modeKey('ai.msg.updated'));
       });
     });
   }
@@ -980,6 +1181,7 @@ export function initChat(host) {
     clear(log);
     openChanges = null;
     openUpdate = null; // DELETE /api/ai/conversation dropped it on the server
+    notConfiguredRow = null;
     welcomed = false;
     greet();
     if (failure) handleError(failure);
@@ -990,7 +1192,45 @@ export function initChat(host) {
   function greet() {
     if (welcomed) return;
     welcomed = true;
-    say('system', 'ai.msg.welcome');
+    welcomeRow = say('system', modeKey('ai.msg.welcome'));
+  }
+
+  /**
+   * After a reload: the conversation the server still holds, painted again,
+   * with the suggestions and the Update FTA preview that still wait for an
+   * answer. The log lived only in the page, so F5 emptied it while the
+   * assistant went on remembering every turn.
+   */
+  async function restore() {
+    let saved;
+    try {
+      saved = await api.get('/ai/conversation');
+    } catch (_err) {
+      return; // an older server, or no session: the empty log is the truth
+    }
+    if (destroyed || !saved || typeof saved !== 'object') return;
+    // Not over something the user has already started in this page.
+    if (busy || log.querySelector('.chat-msg--user, .chat-changes')) return;
+    const messages = Array.isArray(saved.messages) ? saved.messages : [];
+    const changes = Array.isArray(saved.changes) ? saved.changes : [];
+    const update = saved.pendingUpdate && typeof saved.pendingUpdate === 'object' ? saved.pendingUpdate : null;
+    if (!messages.length && !changes.length && !update) return;
+
+    const note = say('system', 'ai.msg.restored');
+    note.dataset.kind = 'restored';
+    for (const message of messages) {
+      if (!message || typeof message !== 'object') continue;
+      const user = message.role === 'user';
+      const text = typeof message.content === 'string' ? message.content : '';
+      let row = null;
+      if (message.kind === 'analyze' && user) row = say('user', modeKey('ai.msg.analyzePrompt'));
+      else if (message.kind === 'update') row = user ? say('user', modeKey('ai.msg.updatePrompt')) : say('system', 'ai.msg.restoredUpdate');
+      else if (user) row = addMessage('user', text);
+      else if (text) row = addMessage('assistant', text, { reply: true });
+      if (row) row.dataset.restored = 'true';
+    }
+    if (changes.length) renderChanges(changes);
+    if (update) renderUpdatePreview({ preview: true, updateId: update.updateId, updateSummary: update.updateSummary });
   }
 
   /**
@@ -1004,6 +1244,24 @@ export function initChat(host) {
     if (configured !== lastConfigured) {
       lastConfigured = configured;
       showInvitation(configured === false);
+      // Set up since: the "no provider yet" line no longer applies.
+      if (configured !== false && notConfiguredRow) {
+        notConfiguredRow.remove();
+        notConfiguredRow = null;
+      }
+    }
+    // FTA <-> ETA: the buttons and the placeholder name the kind of tree.
+    const eta = isEta();
+    if (eta !== lastMode) {
+      lastMode = eta;
+      applyLabels();
+      // The welcome line names the buttons, so it follows them.
+      if (welcomeRow && welcomeRow.isConnected) {
+        const key = modeKey('ai.msg.welcome');
+        keyed.set(welcomeRow, { key, vars: undefined });
+        const body = welcomeRow.querySelector('.chat-msg__body');
+        if (body) body.textContent = t(key);
+      }
     }
     greet();
   }
@@ -1034,6 +1292,13 @@ export function initChat(host) {
   // New / Open: a preview made for the previous document cannot be applied
   // to this one (the server would refuse it), so the card says so now.
   const onDocument = () => {
+    // Suggestions too: they name nodes of the document that was open, and
+    // ids such as root_0 recur from file to file. The card stayed live after
+    // New or Load and offered to apply them to the new tree.
+    if (openChanges) {
+      retireChanges(openChanges, t('ai.changes.otherDocument'));
+      openChanges = null;
+    }
     if (!openUpdate) return;
     forgetUpdate(openUpdate);
     retireUpdate(openUpdate, t('ai.update.otherDocument'));
@@ -1043,6 +1308,7 @@ export function initChat(host) {
   applyLabels();
   const unsubscribe = store.subscribe(render);
   render();
+  restore();
 
   return {
     refresh: render,

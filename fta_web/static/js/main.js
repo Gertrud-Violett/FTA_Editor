@@ -374,12 +374,12 @@ const STRINGS = {
     'diagram.nothingToExport': 'Nothing to export yet.',
     'diagram.pngFailed': 'Could not rasterise the diagram to PNG.',
     'diagram.nativeFellBack': 'System Graphviz unavailable; exported from the browser renderer instead.',
-    'diagram.fontSettings': 'Font & box size',
+    'diagram.fontSettings': 'Diagram settings',
     'diagram.fontSettingsClose': 'Close',
     'diagram.fontLabel': 'Font',
     'diagram.fontAutoUsing': 'Detected: ',
-    'diagram.scaleLabel': 'Box scale',
-    'diagram.scaleHint': 'If text still spills out of the boxes after auto-detect, raise the scale.',
+    'diagram.scaleLabel': 'Box padding (0-30)',
+    'diagram.scaleHint': 'Blank space added around the text of every box. Raise it if text spills out of a box.',
 
     // --- P4: the AI assistant panel (chat.js) and its setup dialog
     // (aisettings.js). Every string those two modules show is here, including
@@ -473,7 +473,7 @@ const STRINGS = {
       'Ask for an updated fault tree. It is verified before it replaces this one.',
     'ai.chat.clear': 'Clear Chat',
     'ai.chat.clearTitle': 'Forget this conversation, here and on the server.',
-    'ai.chat.markdown': 'MD',
+    'ai.chat.markdown': 'Formatted',
     'ai.chat.markdownLabel': 'Show replies as formatted Markdown',
     'ai.chat.markdownOnTitle': 'Replies are shown as formatted Markdown. Click for the raw text.',
     'ai.chat.markdownOffTitle': 'Replies are shown as raw text. Click for formatted Markdown.',
@@ -551,7 +551,7 @@ const STRINGS = {
     'tree.moveNoIndent': 'There is no sibling above it to move it under.',
     'tree.moveNoOutdent': 'It already sits directly under the root node.',
     'tree.selected': '{n} nodes selected',
-    'tree.deletedMany': 'Deleted {n} nodes. Undo steps back one node at a time.',
+    'tree.deletedMany': 'Deleted {n} nodes. One Undo brings them all back.',
     'tree.deletePartial': 'Deleted {done} of {total} nodes; the rest were left in place.',
     'tree.rootKept': 'The root node cannot be deleted, so nothing was removed.',
 
@@ -814,12 +814,12 @@ const STRINGS = {
     'diagram.nothingToExport': '書き出せる図がまだありません。',
     'diagram.pngFailed': '図をPNGに変換できませんでした。',
     'diagram.nativeFellBack': 'システムのGraphvizが利用できないため、ブラウザ内描画で書き出しました。',
-    'diagram.fontSettings': 'フォントと枠サイズ',
+    'diagram.fontSettings': '図の設定',
     'diagram.fontSettingsClose': '閉じる',
     'diagram.fontLabel': 'フォント',
     'diagram.fontAutoUsing': '検出結果: ',
-    'diagram.scaleLabel': '枠の拡大率',
-    'diagram.scaleHint': '自動検出後もテキストが枠からはみ出す場合は拡大率を上げてください。',
+    'diagram.scaleLabel': '枠の余白 (0〜30)',
+    'diagram.scaleHint': 'すべての枠の文字のまわりに加える余白です。文字が枠からはみ出す場合は大きくしてください。',
 
     // --- P4: the AI assistant panel (chat.js) and its setup dialog
     // (aisettings.js).
@@ -910,7 +910,7 @@ const STRINGS = {
       '更新版のフォールトツリーを依頼します。置き換える前に検証されます。',
     'ai.chat.clear': '会話を消去',
     'ai.chat.clearTitle': 'この会話を画面とサーバーの両方から消去します。',
-    'ai.chat.markdown': 'MD',
+    'ai.chat.markdown': '整形表示',
     'ai.chat.markdownLabel': '回答をMarkdownで整形して表示',
     'ai.chat.markdownOnTitle': '回答をMarkdownで整形して表示しています。クリックすると元のテキストを表示します。',
     'ai.chat.markdownOffTitle': '回答を元のテキストのまま表示しています。クリックするとMarkdownで整形します。',
@@ -983,7 +983,7 @@ const STRINGS = {
     'tree.moveNoIndent': '配下に移動できる兄弟ノードが上にありません。',
     'tree.moveNoOutdent': '既にルートノードの直下にあります。',
     'tree.selected': '{n} 件のノードを選択中',
-    'tree.deletedMany': '{n} 件のノードを削除しました。元に戻す操作は1件ずつ戻ります。',
+    'tree.deletedMany': '{n} 件のノードを削除しました。元に戻す操作 1 回ですべて戻ります。',
     'tree.deletePartial': '{total} 件中 {done} 件のノードを削除しました。残りはそのままです。',
     'tree.rootKept': 'ルートノードは削除できないため、何も削除されませんでした。',
 
@@ -1129,6 +1129,7 @@ const CATALOGS = [
   './i18n/shell17.js',
   './i18n/ux1.js',
   './i18n/ux2.js',
+  './i18n/ux3.js',
   './i18n/val.js',
   './i18n/gate.js',
   './i18n/diagram.js',
@@ -1482,7 +1483,23 @@ const PANES = {
   details: { cssVar: '--details-h', def: 260, min: 140, max: 720, axis: 'y' },
 };
 
-let layout = { tree: PANES.tree.def, ai: PANES.ai.def, details: PANES.details.def };
+// `analysis` is the bottom panel's height while a tab other than Details is
+// shown; null until the user drags it, and then it is ANALYSIS_SHARE of the
+// workspace. A table of cut sets or an importance ranking in the 260 px that
+// suit the Details form showed five rows.
+let layout = { tree: PANES.tree.def, ai: PANES.ai.def, details: PANES.details.def, analysis: null };
+
+/**
+ * The diagram panel (and the tree beside it) keeps at least this much height
+ * above the bottom panel: its head, toolbar and caption take some 90 px, so
+ * this leaves about 150 px of diagram.
+ */
+const MIN_DIAGRAM_PX = 240;
+const ANALYSIS_SHARE = 0.45;
+/** The bottom tab on screen, from tabs/host.js (`fta:tab`). */
+let bottomTab = 'details';
+/** The bottom panel enlarged to all the height there is (this session only). */
+let bottomMax = false;
 
 function loadLayout() {
   const raw = readLocal(LAYOUT_KEY);
@@ -1495,32 +1512,91 @@ function loadLayout() {
         layout[key] = clamp(Math.round(value), PANES[key].min, PANES[key].max);
       }
     }
+    const analysis = Number(saved && saved.analysis);
+    if (saved && saved.analysis !== null && Number.isFinite(analysis)) {
+      layout.analysis = Math.max(PANES.details.min, Math.round(analysis));
+    }
   } catch (_err) {
     /* corrupt entry: keep the defaults */
   }
 }
 
+/** The most the bottom panel may take: what leaves MIN_DIAGRAM_PX above it. */
+function bottomCap() {
+  const workspace = $('#workspace');
+  const splitter = document.querySelector('[data-splitter="details"]');
+  if (!workspace || !workspace.clientHeight) return PANES.details.max;
+  const style = window.getComputedStyle(workspace);
+  const inner = workspace.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
+  const room = inner - (splitter ? splitter.offsetHeight : 0) - MIN_DIAGRAM_PX;
+  return Math.max(PANES.details.min, Math.floor(room));
+}
+
+/** The bottom panel's height now: by the kind of tab, never crowding out the diagram. */
+function bottomHeight() {
+  const cap = bottomCap();
+  let want = layout.details;
+  if (bottomMax) want = cap;
+  else if (bottomTab !== 'details') {
+    want = layout.analysis === null ? Math.round((cap + MIN_DIAGRAM_PX) * ANALYSIS_SHARE) : layout.analysis;
+  }
+  return clamp(Math.round(want), PANES.details.min, cap);
+}
+
 function applyLayout() {
   const workspace = $('#workspace');
   if (!workspace) return;
+  const sizes = { tree: layout.tree, ai: layout.ai, details: bottomHeight() };
   for (const [key, pane] of Object.entries(PANES)) {
-    workspace.style.setProperty(pane.cssVar, layout[key] + 'px');
+    workspace.style.setProperty(pane.cssVar, sizes[key] + 'px');
   }
   for (const el of document.querySelectorAll('[data-splitter]')) {
     const pane = PANES[el.dataset.splitter];
     if (!pane) continue;
-    el.setAttribute('aria-valuenow', String(layout[el.dataset.splitter]));
+    el.setAttribute('aria-valuenow', String(sizes[el.dataset.splitter]));
     el.setAttribute('aria-valuemin', String(pane.min));
-    el.setAttribute('aria-valuemax', String(pane.max));
+    el.setAttribute('aria-valuemax', String(el.dataset.splitter === 'details' ? bottomCap() : pane.max));
+  }
+  const max = $('#btn-bottom-max');
+  if (max) {
+    const key = bottomMax ? 'bottom.restore' : 'bottom.maximise';
+    max.dataset.i18nTitle = key;
+    max.dataset.i18nAria = key;
+    max.title = t(key);
+    max.setAttribute('aria-label', t(key));
+    max.setAttribute('aria-pressed', bottomMax ? 'true' : 'false');
+    const glyph = $('#bottom-max-glyph');
+    if (glyph) glyph.textContent = bottomMax ? '\u25bd' : '\u25b3';
   }
 }
 
 function setPane(key, px) {
   const pane = PANES[key];
   if (!pane || !Number.isFinite(px)) return;
-  layout[key] = clamp(Math.round(px), pane.min, pane.max);
+  if (key === 'details') {
+    // A drag sets the height of the kind of tab on screen, and ends "enlarged".
+    bottomMax = false;
+    const value = clamp(Math.round(px), pane.min, bottomCap());
+    if (bottomTab === 'details') layout.details = clamp(value, pane.min, pane.max);
+    else layout.analysis = value;
+  } else {
+    layout[key] = clamp(Math.round(px), pane.min, pane.max);
+  }
   applyLayout();
   writeLocal(LAYOUT_KEY, JSON.stringify(layout));
+}
+
+function setBottomMax(on) {
+  bottomMax = Boolean(on);
+  applyLayout();
+}
+
+/** tabs/host.js says which tab is shown; the panel takes that tab's height. */
+function onBottomTab(event) {
+  const id = event && event.detail && event.detail.id;
+  if (!id || id === bottomTab) return;
+  bottomTab = String(id);
+  applyLayout();
 }
 
 function measurePane(key, event) {
@@ -1581,15 +1657,25 @@ function initSplitters() {
       }
       if (event.key === 'Home' || event.key === 'End') {
         event.preventDefault();
-        setPane(key, event.key === 'Home' ? pane.min : pane.max);
+        setPane(key, event.key === 'Home' ? pane.min : key === 'details' ? bottomCap() : pane.max);
         return;
       }
       if (!delta) return;
       event.preventDefault();
-      setPane(key, layout[key] + delta);
+      setPane(key, (key === 'details' ? bottomHeight() : layout[key]) + delta);
     });
 
-    el.addEventListener('dblclick', () => setPane(key, pane.def));
+    el.addEventListener('dblclick', () => {
+      if (key === 'details' && bottomTab !== 'details') {
+        // Back to the share an analysis tab gets by default.
+        bottomMax = false;
+        layout.analysis = null;
+        applyLayout();
+        writeLocal(LAYOUT_KEY, JSON.stringify(layout));
+        return;
+      }
+      setPane(key, pane.def);
+    });
   }
 }
 
@@ -1621,7 +1707,11 @@ function toast(message, kind = 'info', code = null, options = null) {
   const body = document.createElement('div');
   body.className = 'toast__body';
   body.textContent = message;
-  if (code) {
+  // A code helps when something failed and is reported to someone else. On a
+  // plain notice ("The top event cannot be deleted") the line ROOT_PROTECTED
+  // under it was noise; it stays on the element for a script to read.
+  if (code) node.dataset.code = String(code);
+  if (code && kind === 'error') {
     const tag = document.createElement('span');
     tag.className = 'toast__code';
     tag.textContent = code;
@@ -1656,11 +1746,26 @@ function toast(message, kind = 'info', code = null, options = null) {
   }
 
   node.append(body, close);
+  placeToasts(host);
   host.appendChild(node);
 
   const timer = window.setTimeout(() => node.remove(), TOAST_MS[kind] || 6000);
   node.addEventListener('mouseenter', () => window.clearTimeout(timer));
   while (host.children.length > 4) host.firstElementChild.remove();
+}
+
+/**
+ * Keep the toasts off the AI panel. They sat in the lower right corner of
+ * the window, which is where that panel has its message box and Send: a
+ * toast covered the button for as long as it stayed. With the panel beside
+ * the workspace they go to the left of it; in a narrow window, where the
+ * panels are stacked, they stay where they were.
+ */
+function placeToasts(host) {
+  const panel = $('#ai-panel');
+  const rect = panel ? panel.getBoundingClientRect() : null;
+  const beside = rect && rect.width > 0 && rect.left > 460 && rect.right >= window.innerWidth - 40;
+  host.style.right = beside ? Math.round(window.innerWidth - rect.left + 12) + 'px' : '';
 }
 
 /**
@@ -2063,7 +2168,7 @@ function buildTabContext() {
       return caps && typeof caps === 'object' ? { ...caps } : {};
     },
     pickPath: (opts) => pickPath(opts),
-    diagramPng: () => diagramPng(),
+    diagramPng: (opts) => diagramPng(opts),
   });
 }
 
@@ -2071,10 +2176,12 @@ function buildTabContext() {
  * The diagram preview as a PNG Blob (browser canvas), or null when the
  * diagram panel is missing or has nothing rendered. Never downloads.
  */
-async function diagramPng() {
+async function diagramPng(options) {
   if (!diagramPanel || typeof diagramPanel.toPngBlob !== 'function') return null;
   try {
-    return (await diagramPanel.toPngBlob()) || null;
+    // options.overlay: {kind, values} colours the picture, null leaves it
+    // plain; without it the picture is as the diagram is on screen.
+    return (await diagramPanel.toPngBlob(options)) || null;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[fta] diagram PNG failed', err);
@@ -2186,13 +2293,18 @@ async function commitMetadata() {
   if (!store.state || sessionLost) return;
   if (!metadataChanged()) return;
   try {
+    const modeBefore = store.metadata().mode === 'ETA' ? 'ETA' : 'FTA';
     const result = await api.post('/metadata', metadataFromInputs());
     store.applyMutation(result);
     // The server sanitizes the title; show the truth -- but not in a field
     // typed in since: after Title, Tab, Date the answer can arrive mid-typing,
     // and forcing it spliced the old date into the new one, which was saved.
     syncMetadataInputs();
-    toast(t('msg.metadataSaved'), 'ok');
+    // A title or a date is on screen where it was typed: "Metadata updated."
+    // after each one told nobody anything. A mode switch recalculates every
+    // probability, and that is worth saying, in words that name the mode.
+    const modeNow = store.metadata().mode === 'ETA' ? 'ETA' : 'FTA';
+    if (modeNow !== modeBefore) toast(t(modeNow === 'ETA' ? 'msg.modeEta' : 'msg.modeFta'), 'ok');
   } catch (err) {
     showError(err);
     syncMetadataInputs(true); // roll the inputs back to the server's version
@@ -3212,12 +3324,15 @@ async function actionRenderImage() {
   setStatus(t('msg.downloading', { name }), 'info');
   // Same font/box-scale the diagram panel is previewing, so a native export
   // matches what is on screen instead of reverting to server-side defaults.
-  const box = diagramPanel && typeof diagramPanel.getBoxSettings === 'function'
-    ? diagramPanel.getBoxSettings()
+  // In the light colours whatever the theme: see diagram.js exportBoxSettings().
+  const box = diagramPanel && typeof diagramPanel.getExportSettings === 'function'
+    ? diagramPanel.getExportSettings()
     : null;
   // The standard symbols are drawn in the browser; native `dot` only has the
-  // placeholder polygons, so that style is rasterised from the preview.
-  if (box && box.style === 'symbols' && diagramPanel && typeof diagramPanel.toPngBlob === 'function') {
+  // placeholder polygons, so that style is rasterised from the preview. So is
+  // a diagram coloured by an overlay (importance), which the server never sees.
+  const coloured = diagramPanel && typeof diagramPanel.hasOverlay === 'function' && diagramPanel.hasOverlay();
+  if (box && (box.style === 'symbols' || coloured) && diagramPanel && typeof diagramPanel.toPngBlob === 'function') {
     const blob = await diagramPanel.toPngBlob();
     if (blob) {
       saveBlob(blob, name);
@@ -3579,11 +3694,67 @@ function syncTreeTitle(state) {
   title.textContent = t(key);
 }
 
+/**
+ * The headline is the top event's probability in FTA. An event tree has no
+ * top event: its root is the initiating event, and the label says so.
+ */
+function syncHeadlineLabel(state) {
+  const eta = Boolean(state.metadata) && state.metadata.mode === 'ETA';
+  const label = document.querySelector('#headline .headline__label [data-i18n]');
+  if (label) {
+    const key = eta ? 'headline.labelEta' : 'headline.label';
+    if (label.dataset.i18n !== key) {
+      label.dataset.i18n = key;
+      label.textContent = t(key);
+    }
+  }
+  const box = $('#headline');
+  if (box) {
+    const key = eta ? 'headline.titleEta' : 'headline.title';
+    if (box.dataset.i18nTitle !== key) {
+      box.dataset.i18nTitle = key;
+      box.title = t(key);
+    }
+  }
+}
+
+/** How many rows the tree panel has selected (its own wider selection). */
+let selectionCount = 0;
+
+/**
+ * The line at the right of the bottom tabs: the selected node by NAME (its
+ * id is in the tooltip and in the Details form), or how many are selected.
+ */
+function renderSelectionMeta() {
+  const meta = $('#details-meta');
+  if (!meta) return;
+  const id = store.selectedId;
+  if (selectionCount > 1) {
+    meta.textContent = t('meta.selectedMany', { n: selectionCount });
+    meta.title = t('meta.selectedManyTitle');
+    meta.dataset.count = String(selectionCount);
+    return;
+  }
+  meta.dataset.count = id ? '1' : '0';
+  if (!id) {
+    meta.textContent = t('meta.noSelection');
+    meta.removeAttribute('title');
+    return;
+  }
+  const node = store.findNode(id);
+  const name = node && node.name !== undefined && node.name !== null && String(node.name).trim() !== ''
+    ? String(node.name)
+    : String(id);
+  meta.textContent = t('meta.selectedName', { name });
+  meta.title = t('meta.selectedId', { id });
+}
+
 function renderShell(state) {
   if (!state) return;
 
   syncMetadataInputs();
   syncTreeTitle(state);
+  syncHeadlineLabel(state);
 
   const dirty = Boolean(state.dirty);
   const badge = $('#dirty');
@@ -3601,9 +3772,7 @@ function renderShell(state) {
   const nodeCount = store.flat().length;
   $('#tree-count').textContent =
     nodeCount === 1 ? t('meta.node') : t('meta.nodes', { n: nodeCount });
-  $('#details-meta').textContent = store.selectedId
-    ? t('meta.selected', { id: store.selectedId })
-    : t('meta.noSelection');
+  renderSelectionMeta();
   // diagram.js owns this line once it is up (it states what drew the picture);
   // writing it here too made it flip between two texts on every click.
   if (!diagramPanel) {
@@ -3818,6 +3987,18 @@ async function boot() {
   wireFirstRun();
   wireFileDrop();
 
+  // The bottom panel: its height follows the tab, and can be enlarged.
+  window.addEventListener('fta:tab', onBottomTab);
+  window.addEventListener('resize', applyLayout);
+  const bottomMaxButton = $('#btn-bottom-max');
+  if (bottomMaxButton) bottomMaxButton.addEventListener('click', () => setBottomMax(!bottomMax));
+  // tree.js keeps a selection wider than the store's one lead node.
+  window.addEventListener('fta:selection', (event) => {
+    const ids = event && event.detail && Array.isArray(event.detail.ids) ? event.detail.ids : [];
+    selectionCount = ids.length;
+    renderSelectionMeta();
+  });
+
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener(SESSION_INVALID_EVENT, onSessionInvalid);
   window.addEventListener('fta:error', (event) => {
@@ -3986,6 +4167,10 @@ window.ftaShell = {
   firstChildWarning,
   /** Download the document this tab holds as a .json Load can open; no server needed. */
   downloadRescueCopy,
+  /** The name a download of the open document gets: its file's or its title's stem + '.' + extension. */
+  exportFilename,
+  /** The toast that says what a download was and where the browser put it. */
+  toastDownloaded,
   /** Ask the server whether this tab is behind another one, and reload when it is idle. */
   checkServer: () => checkServer(true),
 };

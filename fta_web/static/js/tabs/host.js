@@ -49,6 +49,14 @@ export const TAB_DEFS = Object.freeze([
 
 const DEFAULT_TAB = 'details';
 
+/**
+ * The tabs with nothing to show for an event tree (each paints the same
+ * "not available in ETA mode" notice). In ETA mode they are greyed and say
+ * why in their tooltip, so nobody has to open four tabs to find four dead
+ * ends. They can still be opened: the notice in the panel is the long form.
+ */
+export const ETA_UNAVAILABLE = Object.freeze(['quant', 'cutsets', 'importance', 'uncertainty']);
+
 function readLocal(key) {
   try {
     return window.localStorage.getItem(key);
@@ -216,6 +224,8 @@ export function initTabHost({ strip, ctx, importer } = {}) {
       const previous = activeId ? tabs.get(activeId) : null;
       activeId = wanted;
       paintSelection();
+      // For the shell: the bottom panel's height depends on the tab shown.
+      window.dispatchEvent(new CustomEvent('fta:tab', { detail: { id: wanted } }));
       if (previous) call(previous, 'deactivate');
       ensureMounted(tab).then((handle) => {
         if (!handle || activeId !== wanted) return;
@@ -245,6 +255,32 @@ export function initTabHost({ strip, ctx, importer } = {}) {
     const preferred = readLocal(STORAGE_KEY);
     if (preferred && preferred !== activeId && isVisible(preferred) && activeId === DEFAULT_TAB) {
       select(preferred, { persist: false });
+    }
+  }
+
+  // ---- ETA mode: the fault-tree analyses are marked as not available ------
+  function isEtaMode() {
+    try {
+      return String(ctx.store.metadata().mode || '').toUpperCase() === 'ETA';
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function applyMode() {
+    const eta = isEtaMode();
+    for (const id of ETA_UNAVAILABLE) {
+      const tab = tabs.get(id);
+      if (!tab) continue;
+      const off = eta;
+      tab.button.classList.toggle('is-unavailable', off);
+      if (off) {
+        tab.button.dataset.unavailable = 'eta';
+        tab.button.title = t('tab.etaUnavailable');
+      } else if (tab.button.dataset.unavailable) {
+        delete tab.button.dataset.unavailable;
+        tab.button.removeAttribute('title');
+      }
     }
   }
 
@@ -294,6 +330,7 @@ export function initTabHost({ strip, ctx, importer } = {}) {
       ? ctx.store.subscribe((state) => {
           const tree = state ? state.tree : undefined;
           const analysis = state ? state.analysis : undefined;
+          applyMode();
           if (!primed) {
             primed = true;
             seenTree = tree;
@@ -313,9 +350,12 @@ export function initTabHost({ strip, ctx, importer } = {}) {
 
   const unAdvanced =
     ctx && typeof ctx.onAdvanced === 'function' ? ctx.onAdvanced(() => applyVisibility()) : null;
+  const onLanguage = () => applyMode();
+  window.addEventListener('fta:language', onLanguage);
 
   // ---- first paint ---------------------------------------------------------
   for (const tab of tabs.values()) tab.panel.hidden = true;
+  applyMode();
   applyVisibility();
   select(readLocal(STORAGE_KEY) || DEFAULT_TAB, { persist: false });
 
@@ -334,6 +374,7 @@ export function initTabHost({ strip, ctx, importer } = {}) {
       strip.removeEventListener('click', onClick);
       if (typeof unsubscribe === 'function') unsubscribe();
       if (typeof unAdvanced === 'function') unAdvanced();
+      window.removeEventListener('fta:language', onLanguage);
       for (const tab of tabs.values()) call(tab, 'dispose');
     },
   };

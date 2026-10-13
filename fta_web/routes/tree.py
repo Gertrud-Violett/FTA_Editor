@@ -817,6 +817,232 @@ def move_node_endpoint(node_id: str):
         )
 
 
+# ---- several nodes in one step -------------------------------------------
+#
+# The tree panel's multi-selection, and "give every basic event a default
+# uncertainty". One request, one undo step: N requests were N steps, so a
+# three-node delete took three Ctrl+Z to take back. Each of these checks every
+# id before it touches the tree, so a refusal leaves the document as it was.
+# They live under ``/api/batch/`` and not ``/api/nodes/``, where a node whose
+# id is "batch" would shadow them.
+
+#: The most ids one batch request may name.
+BATCH_MAX_IDS = 5000
+
+
+def _batch_ids(payload: Dict[str, Any]) -> List[str]:
+    """``payload["ids"]`` as a list of distinct, non-empty strings, in order."""
+    ids = payload.get("ids")
+    if not isinstance(ids, list) or not ids:
+        raise ApiError(INVALID_FIELD, "'ids' must be a non-empty list of node ids.", 400,
+                       {"field": "ids"})
+    if len(ids) > BATCH_MAX_IDS:
+        raise ApiError(INVALID_FIELD, "'ids' may name at most %d nodes." % BATCH_MAX_IDS, 400,
+                       {"field": "ids", "limit": BATCH_MAX_IDS})
+    out: List[str] = []
+    seen = set()
+    for value in ids:
+        if not isinstance(value, str) or not value.strip():
+            raise ApiError(INVALID_FIELD, "'ids' must be a non-empty list of node ids.", 400,
+                           {"field": "ids"})
+        if value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def _document_order(core) -> Dict[str, int]:
+    """Every node id -> its position reading the tree top to bottom."""
+    order: Dict[str, int] = {}
+    stack = [core.get_data()] if isinstance(core.get_data(), dict) else []
+    while stack:
+        node = stack.pop()
+        order.setdefault(str(node.get("id")), len(order))
+        stack.extend(c for c in reversed(node.get("children") or []) if isinstance(c, dict))
+    return order
+
+
+def _top_most(core, ids: List[str]) -> List[str]:
+    """``ids`` without those inside another listed node's subtree (they go
+    wherever that node goes), in the order the tree shows them."""
+    covered = set()
+    for node_id in ids:
+        covered |= subtree_ids(core, node_id) - {str(node_id)}
+    order = _document_order(core)
+    kept = [node_id for node_id in ids if node_id not in covered]
+    return sorted(kept, key=lambda node_id: order.get(node_id, len(order)))
+
+
+@tree_bp.post("/batch/delete")
+def delete_nodes():
+    """Delete several nodes, each with its subtree, as one undo step.
+
+    Body: ``{ids: [...]}``. The root and an unknown id are refused before
+    anything is deleted. A listed node that sits inside another listed node
+    goes with it. ``deletedIds`` are the nodes deleted directly;
+    ``removedLinks`` as for ``DELETE /api/nodes/<id>``.
+    """
+    ids = _batch_ids(_body())
+    state = get_state()
+
+    with state.lock:
+        core = state.core
+        for node_id in ids:
+            _refuse_root(core, node_id, "deleted")
+            _require_node(core, node_id)
+        targets = _top_most(core, ids)
+
+        state.push_undo()
+        doomed: set = set()
+        for node_id in targets:
+            doomed |= subtree_ids(core, node_id)
+            core.delete_node_from_data(node_id)
+        removed_links = strip_references_to(core, doomed)
+        issues: List[Dict[str, Any]] = []
+        for entry in removed_links:
+            issues.extend(removed_link_issues([entry], entry.get("targetId")))
+        state.add_edit_warnings(issues)
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(
+            deletedIds=targets,
+            removedLinks=removed_links,
+            **_mutation_payload(state),
+        )
+
+
+@tree_bp.post("/batch/move")
+def move_nodes():
+    """Move several nodes under one parent, side by side, as one undo step.
+
+    Body: ``{ids: [...], newParentId, index}``. ``index`` is the position
+    among the new parent's children once every moved node has been detached
+    (clamped; null appends). The nodes keep the order the tree showed them
+    in. A listed node inside another listed node is not moved on its own: it
+    travels with that node. Every node is checked (root, unknown id, a move
+    into its own subtree, depth) before any is moved.
+    """
+    payload = _body()
+    ids = _batch_ids(payload)
+    state = get_state()
+
+    new_parent_id = payload.get("newParentId")
+    if new_parent_id is None or not str(new_parent_id).strip():
+        raise ApiError(
+            INVALID_FIELD, "'newParentId' is required.", 400, {"field": "newParentId"}
+        )
+    new_parent_id = str(new_parent_id)
+    index = _validate_index(payload.get("index"))
+
+    with state.lock:
+        core = state.core
+        for node_id in ids:
+            _refuse_root(core, node_id, "moved")
+            _require_node(core, node_id)
+        parent = _require_node(core, new_parent_id, PARENT_NOT_FOUND, "New parent node")
+        targets = _top_most(core, ids)
+        parent_depth = depth_of(core, new_parent_id)
+        for node_id in targets:
+            if would_create_cycle(core, node_id, new_parent_id):
+                raise ApiError(
+                    CYCLE_REJECTED,
+                    f"Cannot move '{node_id}' into itself or one of its descendants.",
+                    400,
+                    {"nodeId": str(node_id), "newParentId": new_parent_id},
+                )
+            _refuse_too_deep(
+                parent_depth + 1 + tree_height(core.find_node_by_id(node_id)), "newParentId"
+            )
+
+        chosen = set(targets)
+        before = [str(child.get("id")) for child in parent.get("children") or []]
+        rest = [child_id for child_id in before if child_id not in chosen]
+        position = len(rest) if index is None else max(0, min(index, len(rest)))
+        if rest[:position] + targets + rest[position:] == before:
+            # Dropped where they already are: no undo step, redo kept.
+            return ok_response(movedIds=targets, parentId=new_parent_id,
+                               **_mutation_payload(state))
+
+        state.push_undo()
+        for node_id in targets:
+            moved, reason = move_node(core, node_id, new_parent_id, None)
+            if not moved:  # pragma: no cover - every cause is pre-checked above
+                raise ApiError(INVALID_FIELD, reason or "Move rejected.", 400)
+        # move_node appended them in order; put the block where it was asked.
+        # Re-read: delete_node_from_data rebinds every `children` list.
+        parent = core.find_node_by_id(new_parent_id)
+        children = list(parent.get("children") or [])
+        block = [child for child in children if str(child.get("id")) in chosen]
+        others = [child for child in children if str(child.get("id")) not in chosen]
+        parent["children"] = others[:position] + block + others[position:]
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(movedIds=targets, parentId=new_parent_id,
+                           **_mutation_payload(state))
+
+
+#: The error factor "Apply to all" uses when the request names none.
+DEFAULT_ERROR_FACTOR = 3
+
+
+def _lacks_uncertainty(node: Dict[str, Any]) -> bool:
+    """A basic event (a leaf that is not a house event or a transfer) with no
+    uncertainty distribution of its own."""
+    if node.get("children"):
+        return False
+    if str(node.get("gateType") or "").upper() == "TRANSFER":
+        return False
+    if str(node.get("eventKind") or "basic").lower() != "basic":
+        return False
+    quant = node.get("quant")
+    unc = quant.get("unc") if isinstance(quant, dict) else None
+    return not (isinstance(unc, dict) and unc.get("dist"))
+
+
+@tree_bp.post("/batch/uncertainty")
+def apply_default_uncertainty():
+    """Give every basic event without an uncertainty distribution a lognormal
+    one with error factor ``ef`` (default 3), as one undo step.
+
+    Body: ``{ef}`` (optional). Events that already have a distribution, house
+    events, undeveloped and conditioning events and transfers are left alone,
+    and so is the root. ``updatedIds`` lists the events changed; when there
+    are none nothing is changed and no undo step is made.
+    """
+    payload = _body()
+    unknown = [key for key in payload if key != "ef"]
+    if unknown:
+        raise ApiError(INVALID_FIELD, "Unsupported field(s): " + ", ".join(sorted(unknown)) + ".",
+                       400, {"fields": sorted(unknown)})
+    ef = payload.get("ef", DEFAULT_ERROR_FACTOR)
+    patch = node_schema.validate_quant({"unc": {"dist": "lognormal", "ef": ef}})
+    state = get_state()
+
+    with state.lock:
+        core = state.core
+        root = core.get_data()
+        targets: List[Dict[str, Any]] = []
+        stack = [root] if isinstance(root, dict) else []
+        while stack:
+            node = stack.pop()
+            if node is not root and _lacks_uncertainty(node):
+                targets.append(node)
+            stack.extend(c for c in reversed(node.get("children") or []) if isinstance(c, dict))
+        if not targets:
+            return ok_response(updatedIds=[], **_mutation_payload(state))
+
+        updated = [str(node.get("id")) for node in targets]
+        state.push_undo()
+        for node in targets:
+            node["quant"] = node_schema.merge_partial(node.get("quant"), patch)
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(updatedIds=updated, **_mutation_payload(state))
+
+
 # ---- history -------------------------------------------------------------
 
 
