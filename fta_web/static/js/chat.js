@@ -8,7 +8,9 @@
  *   * an input where Enter sends and Shift+Enter starts a new line,
  *   * Analyze FTA (reply only, never mutates), Update FTA (generate -> verify
  *     -> apply) and Clear Chat,
- *   * a reviewable list whenever the assistant proposes `changes`.
+ *   * a reviewable list whenever the assistant proposes `changes`,
+ *   * an MD switch: the assistant's replies as formatted Markdown, or as the
+ *     raw text the model sent (markdown.js; kept in `fta.aiMarkdown`).
  *
  * WHAT THIS PANEL LOOKS LIKE WITH NO PROVIDER CONFIGURED
  * ------------------------------------------------------
@@ -40,6 +42,7 @@
 import { api, ApiError } from './api.js';
 import { store } from './store.js';
 import { clear, el } from './dialogs.js';
+import { renderMarkdown } from './markdown.js';
 
 /* ------------------------------------------------------------- shell glue -- */
 
@@ -73,6 +76,28 @@ function aiConfigured() {
   if (caps && typeof caps.aiConfigured === 'boolean') return caps.aiConfigured;
   if (typeof state.aiConfigured === 'boolean') return state.aiConfigured;
   return null;
+}
+
+/**
+ * The MD switch is a per-browser preference like the theme. On unless it was
+ * switched off; a browser without storage simply starts on every time.
+ */
+const MARKDOWN_PREF = 'fta.aiMarkdown';
+
+function readMarkdownPref() {
+  try {
+    return window.localStorage.getItem(MARKDOWN_PREF) !== '0';
+  } catch (_err) {
+    return true;
+  }
+}
+
+function writeMarkdownPref(on) {
+  try {
+    window.localStorage.setItem(MARKDOWN_PREF, on ? '1' : '0');
+  } catch (_err) {
+    /* private mode: the choice lasts until the page is closed */
+  }
 }
 
 /* ------------------------------------------------------------- payloads ---- */
@@ -234,10 +259,15 @@ export function initChat(host) {
   const updateBtn = el('button', { type: 'button', class: 'btn chat__action', onclick: () => actionUpdate() });
   const clearBtn = el('button', {
     type: 'button',
-    class: 'btn btn--danger chat__action chat__action--end',
+    class: 'btn btn--danger chat__action',
     onclick: () => actionClear(),
   });
-  const actions = el('div', { class: 'chat__actions' }, [analyzeBtn, updateBtn, clearBtn]);
+  const markdownBtn = el('button', {
+    type: 'button',
+    class: 'btn chat__action chat__action--end chat__md',
+    onclick: () => setMarkdown(!markdownOn),
+  });
+  const actions = el('div', { class: 'chat__actions' }, [analyzeBtn, updateBtn, markdownBtn, clearBtn]);
 
   const input = el('textarea', { class: 'chat__input', rows: '3', spellcheck: 'true' });
   const sendBtn = el('button', { type: 'submit', class: 'btn btn--primary chat__send' });
@@ -259,6 +289,7 @@ export function initChat(host) {
   let welcomed = false;
   let lastConfigured = undefined;
   let openChanges = null; // the newest, still-applicable suggestion card
+  let markdownOn = readMarkdownPref();
 
   /* ---- labels (re-applied on every EN/JA switch) ---- */
 
@@ -276,6 +307,10 @@ export function initChat(host) {
     updateBtn.title = t('ai.chat.updateTitle');
     clearBtn.textContent = t('ai.chat.clear');
     clearBtn.title = t('ai.chat.clearTitle');
+    markdownBtn.textContent = t('ai.chat.markdown');
+    markdownBtn.title = t(markdownOn ? 'ai.chat.markdownOnTitle' : 'ai.chat.markdownOffTitle');
+    markdownBtn.setAttribute('aria-label', t('ai.chat.markdownLabel'));
+    markdownBtn.setAttribute('aria-pressed', markdownOn ? 'true' : 'false');
 
     input.setAttribute('aria-label', t('ai.chat.input'));
     input.placeholder = t('ai.chat.placeholder');
@@ -301,14 +336,56 @@ export function initChat(host) {
    */
   const keyed = new WeakMap();
 
-  function addMessage(role, text) {
+  /**
+   * The model's own replies (row -> the text as sent). Only these are ever
+   * drawn as Markdown: what the user typed and what the editor says stay
+   * plain. The raw text is kept so the MD switch can redraw either way.
+   */
+  const replies = new WeakMap();
+
+  /**
+   * Draw a reply as Markdown or as its raw text. markdown.js builds elements
+   * and text nodes only, never HTML, so the reply stays as untrusted as it is
+   * under textContent. If it throws, the raw text is shown: a reply is never
+   * lost to its formatting.
+   */
+  function fillReply(body, text) {
+    clear(body);
+    body.classList.toggle('chat-msg__body--md', markdownOn);
+    if (markdownOn) {
+      try {
+        body.appendChild(renderMarkdown(text, document));
+        return;
+      } catch (_err) {
+        clear(body);
+        body.classList.remove('chat-msg__body--md');
+      }
+    }
+    body.textContent = text;
+  }
+
+  function setMarkdown(on) {
+    markdownOn = Boolean(on);
+    writeMarkdownPref(markdownOn);
+    applyLabels();
+    for (const row of log.querySelectorAll('.chat-msg')) {
+      const body = row.querySelector('.chat-msg__body');
+      if (body && replies.has(row)) fillReply(body, replies.get(row));
+    }
+  }
+
+  function addMessage(role, text, options) {
     const kind = ROLE_KEY[role] ? role : 'system';
     const body = el('div', { class: 'chat-msg__body' });
-    body.textContent = String(text === null || text === undefined ? '' : text);
+    const raw = String(text === null || text === undefined ? '' : text);
+    const reply = Boolean(options && options.reply);
+    if (reply) fillReply(body, raw);
+    else body.textContent = raw;
     const row = el('div', { class: 'chat-msg chat-msg--' + kind, dataset: { role: kind } }, [
       el('span', { class: 'chat-msg__role', text: t(ROLE_KEY[kind]) }),
       body,
     ]);
+    if (reply) replies.set(row, raw);
     log.appendChild(row);
     scrollToEnd();
     return row;
@@ -692,7 +769,8 @@ export function initChat(host) {
 
   function showReply(payload) {
     const reply = replyFrom(payload);
-    addMessage('assistant', reply || t('ai.msg.emptyReply'));
+    if (reply) addMessage('assistant', reply, { reply: true });
+    else say('assistant', 'ai.msg.emptyReply');
   }
 
   function actionSend() {
@@ -737,7 +815,7 @@ export function initChat(host) {
       const result = await api.post('/ai/update', {});
       if (destroyed) return;
       const reply = replyFrom(result);
-      if (reply) addMessage('assistant', reply);
+      if (reply) addMessage('assistant', reply, { reply: true });
       await refreshDocument(result);
       const summary = updateSummaryMessage(result && result.updateSummary);
       if (summary) say('system', summary.key, summary.vars);

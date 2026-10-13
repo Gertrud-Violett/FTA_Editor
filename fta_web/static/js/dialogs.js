@@ -23,7 +23,7 @@
  * imports from them.
  */
 import { api, ApiError } from './api.js';
-import { formatProb, getSigFigs } from './numfmt.js';
+import { formatProb, getSigFigs, parseNumberText } from './numfmt.js';
 import { BASIC_GATES, GATE_TYPES, projectLogicGate } from './schema.js';
 import gateCatalog from './i18n/gate.js';
 
@@ -53,7 +53,15 @@ const FALLBACK = {
   'dialog.dismiss': 'Dismiss',
   'dialog.somethingWrong': 'Something went wrong.',
   'dialog.addNode': 'Add Node',
-  'dialog.addNodeUnder': 'Add Node under {id}',
+  'dialog.addNodeUnder': 'Add Node under "{name}"',
+  'dialog.addNoSelection':
+    'No node is selected, so the new node goes under the top event. To add it elsewhere, cancel and select a node first.',
+  'dialog.addAnother': 'OK and add another',
+  'dialog.addAnotherTitle': 'Create this node and keep the dialog open for the next one (Ctrl+Enter)',
+  'dialog.addedOne': 'Added "{name}". Type the next one, or press Escape to finish.',
+  'dialog.probabilityRequired':
+    'Enter a probability from 0 to 1. For an event that will get children of its own the value is not used: enter 1.',
+  'dialog.probabilityPlaceholder': '0 to 1, e.g. 1e-3, 0.5% or 1/1000',
   'dialog.nameRequired': 'Name is required.',
   'dialog.typeRequired': 'Type must not be empty.',
   'dialog.probabilityRange': 'Probability must be a number between 0.0 and 1.0.',
@@ -435,6 +443,14 @@ const CHROME_CSS = `
   color: var(--fta-danger-fg);
 }
 .fta-field-error[hidden] { display: none; }
+.fta-dialog-note {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--fta-border);
+  border-radius: var(--fta-radius);
+  background: var(--fta-surface);
+  font-size: 0.82rem;
+}
 .fta-field input[aria-invalid="true"],
 .fta-field select[aria-invalid="true"],
 .fta-field textarea[aria-invalid="true"] { border-color: var(--fta-danger-border); }
@@ -657,21 +673,18 @@ export function fillGateOptions(select, value, advanced) {
 }
 
 /**
- * A plain decimal: digits, an optional fraction and exponent. Number() alone
- * also reads 0x1, 0b1 and 0o1 as 1 (and 0x0 as 0), which the server's float()
- * refuses and nobody means as a probability.
+ * Mirror of `routes/tree.py::_validate_probability`, after numfmt.js has read
+ * what was typed: "5%", "0,05", "1/1000" and full-width digits are the plain
+ * decimal they mean (parseNumberText). The server is sent the number and
+ * accepts what it always did. `text` is that decimal as text, for the field
+ * to show; `changed` says it is not what was typed.
  */
-const DECIMAL_TEXT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
-
-/** Mirror of `routes/tree.py::_validate_probability`. */
 export function parseProbability(raw) {
-  const text = String(raw === null || raw === undefined ? '' : raw).trim();
   const bad = () => ({ ok: false, message: t('dialog.probabilityRange') });
-  if (!DECIMAL_TEXT.test(text)) return bad();
-  const value = Number(text);
-  if (!Number.isFinite(value)) return bad();
-  if (value < 0 || value > 1) return bad();
-  return { ok: true, value: value };
+  const read = parseNumberText(raw);
+  if (!read.ok) return bad();
+  if (read.value < 0 || read.value > 1) return bad();
+  return { ok: true, value: read.value, text: read.text, changed: read.changed };
 }
 
 /** Trim to the shape `sanitize_name` produces, so the field shows what will be stored. */
@@ -983,8 +996,9 @@ function focusableIn(root) {
 
 /**
  * Give focus back to the element that opened a dialog. A tree row trigger is
- * re-rendered on every store change, so when it is gone the tree panel host
- * takes focus instead of letting it drop to <body>.
+ * re-rendered on every store change, so when it is gone the tree's lead row
+ * (or, with no rows, the tree panel host) takes focus instead of letting it
+ * drop to <body>.
  */
 export function restoreFocus(trigger) {
   if (trigger && typeof trigger.focus === 'function' && trigger.isConnected) {
@@ -992,7 +1006,12 @@ export function restoreFocus(trigger) {
     return;
   }
   const host = document.getElementById('tree-root');
-  if (host && typeof host.focus === 'function') host.focus();
+  if (!host) return;
+  // The tree's lead row (its one tab stop) rather than the panel around it:
+  // from the panel itself no arrow key or shortcut of the tree works.
+  const lead = host.querySelector('[role="treeitem"][tabindex="0"]');
+  if (lead && typeof lead.focus === 'function') lead.focus();
+  else if (typeof host.focus === 'function') host.focus();
 }
 
 /**
@@ -1080,6 +1099,14 @@ function createModal(config) {
       }
       return;
     }
+    // Ctrl+Enter is the dialog's second action (Add: "OK and add another").
+    // It works from every control, a textarea and a button included, since
+    // neither has a use of its own for it.
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && typeof cfg.onCtrlEnter === 'function') {
+      event.preventDefault();
+      cfg.onCtrlEnter(event);
+      return;
+    }
     if (event.key === 'Enter' && typeof cfg.onEnter === 'function') {
       const target = event.target;
       const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
@@ -1088,7 +1115,7 @@ function createModal(config) {
         return;
       }
       event.preventDefault();
-      cfg.onEnter();
+      cfg.onEnter(event);
     }
   }
 
@@ -1102,6 +1129,11 @@ function createModal(config) {
  * Yes/no confirmation. Resolves true for OK, false for Cancel or Escape.
  * `confirmLabel` names the OK button; `okLabel` is accepted as an alias
  * because main.js's delete confirmation passes that spelling.
+ *
+ * `focusCancel` opens with the focus on Cancel, for a confirmation whose OK
+ * destroys something: Enter and Space then cancel, and deleting takes a
+ * deliberate Tab or click. (Enter on a focused button is that button's own
+ * click; see createModal.)
  */
 export function confirmDialog(message, options) {
   const opts = options || {};
@@ -1128,7 +1160,8 @@ export function confirmDialog(message, options) {
   });
   modal.footer.appendChild(cancel);
   modal.footer.appendChild(confirm);
-  confirm.focus();
+  if (opts.focusCancel) cancel.focus();
+  else confirm.focus();
 
   return modal.done.then((value) => value === true);
 }
@@ -1151,9 +1184,10 @@ let selectOnFocusInstalled = false;
 
 /**
  * Select a numeric field's whole value when a mouse click focuses it, so
- * typing replaces the value. The Add dialog's probability starts as "1.0";
- * clicking into it left the caret at the end and typing 1e-3 stored
- * "1.01e-3" = 0.00101. A click into a field that already has focus still
+ * typing replaces the value. The Add dialog's probability used to start as
+ * "1.0"; clicking into it left the caret at the end and typing 1e-3 stored
+ * "1.01e-3" = 0.00101, and the same goes for any field that shows a stored
+ * number. A click into a field that already has focus still
  * places the caret, and a drag that selects part of the text is kept.
  * Installed once, on the document, for every present and future field.
  */
@@ -1229,10 +1263,27 @@ export function createGateSelect(opts) {
  * the dialog was cancelled. No id is included and none may be sent: ids are
  * assigned server-side by `next_child_id` (routes/tree.py::create_node).
  *
- * `options.submit(fields)`, when given, creates the node: the dialog awaits it
+ * `options.submit(fields, how)`, when given, creates the node: the dialog awaits it
  * and stays open, with everything typed, until it resolves; a rejection is
  * shown at the field the server named (or under the form) for another try.
+ *
+ * With `submit` there is a second button, "OK and add another" (Ctrl+Enter):
+ * `how.another` is then true, and once the node exists the dialog clears the
+ * name, probability, notes and links and waits for the next sibling. Type and
+ * gate are kept, since a run of siblings usually shares them.
+ *
+ * The probability starts empty and has to be typed. It used to start at 1.0,
+ * and Enter in the Name box made a certain event of every node; now Enter
+ * there moves on to the empty Probability box instead of submitting.
  */
+/** A dialog title names the parent as the user knows it; the id is the fallback. */
+const PARENT_LABEL_CHARS = 48;
+
+function parentLabel(id, name) {
+  const text = String(name === null || name === undefined ? '' : name).trim() || String(id);
+  return text.length > PARENT_LABEL_CHARS ? text.slice(0, PARENT_LABEL_CHARS - 1) + '…' : text;
+}
+
 export function openAddNodeDialog(parentId, options) {
   const opts = options && typeof options === 'object' ? options : {};
   const parent = parentId === undefined || parentId === null ? null : String(parentId);
@@ -1241,7 +1292,14 @@ export function openAddNodeDialog(parentId, options) {
   const typeField = field(t('details.type'), el('input', { type: 'text', value: 'Event' }));
   const probabilityField = field(
     t('details.probability'),
-    el('input', { type: 'text', inputmode: 'decimal', value: '1.0' })
+    el('input', {
+      type: 'text',
+      inputmode: 'decimal',
+      value: '',
+      required: true,
+      'aria-required': 'true',
+      placeholder: t('dialog.probabilityPlaceholder'),
+    })
   );
   const advancedGates = isAdvancedMode();
   const gateField = field(t('details.logicGate'), createGateSelect({ value: 'OR', advanced: advancedGates }));
@@ -1249,13 +1307,37 @@ export function openAddNodeDialog(parentId, options) {
 
   const linksEditor = createLinksEditor({ selfId: null, links: [] });
   const formError = el('p', { class: 'fta-field-error', role: 'alert', hidden: true });
+  // "Added X" after OK-and-add-another: the only sign, inside the dialog, that
+  // the cleared form is a new one and the last node was made.
+  const addedNote = el('p', { class: 'fta-dialog-note', role: 'status', hidden: true });
+  const canAddAnother = typeof opts.submit === 'function';
 
   const modal = createModal({
-    title: parent ? t('dialog.addNodeUnder', { id: parent }) : t('dialog.addNode'),
+    title: parent ? t('dialog.addNodeUnder', { name: parentLabel(parent, opts.parentName) }) : t('dialog.addNode'),
     cancelValue: null,
-    onEnter: () => submit(),
+    onEnter: (event) => {
+      // Enter in Name with no probability yet: go and type one. Submitting
+      // here only bounced back with "required", one keystroke later.
+      if (
+        event && event.target === nameField.control &&
+        sanitizeName(nameField.control.value) &&
+        String(probabilityField.control.value || '').trim() === ''
+      ) {
+        probabilityField.control.focus();
+        return;
+      }
+      submit(false);
+    },
+    onCtrlEnter: () => submit(canAddAnother),
   });
 
+  // Adding with nothing selected is allowed, but never silent: an id like
+  // root_0_0 in the title read as "root", and a node that went to the top
+  // event unasked looked like a bug.
+  if (opts.noSelection) {
+    modal.body.appendChild(el('p', { class: 'fta-dialog-note', text: t('dialog.addNoSelection') }));
+  }
+  modal.body.appendChild(addedNote);
   modal.body.appendChild(nameField.element);
   modal.body.appendChild(
     el('div', { class: 'fta-row-2' }, [typeField.element, probabilityField.element])
@@ -1273,13 +1355,35 @@ export function openAddNodeDialog(parentId, options) {
       onclick: () => modal.close(null),
     })
   );
+  const anotherButton = el('button', {
+    type: 'button',
+    class: 'fta-btn',
+    text: t('dialog.addAnother'),
+    title: t('dialog.addAnotherTitle'),
+    dataset: { role: 'add-another' },
+    onclick: () => submit(true),
+  });
+  if (canAddAnother) modal.footer.appendChild(anotherButton);
   const okButton = el('button', {
     type: 'button',
     class: 'fta-btn is-primary',
     text: t('dialog.ok'),
-    onclick: () => submit(),
+    onclick: () => submit(false),
   });
   modal.footer.appendChild(okButton);
+
+  // A complaint about a box goes away as soon as the box is typed in again;
+  // it used to stay under a corrected value until the next OK.
+  for (const one of [nameField, typeField, probabilityField, notesField]) {
+    one.control.addEventListener('input', () => one.setError(''));
+  }
+  gateField.control.addEventListener('change', () => gateField.setError(''));
+
+  // Show what "5%" or "0,05" was read as before it is sent, not after.
+  probabilityField.control.addEventListener('blur', () => {
+    const read = parseProbability(probabilityField.control.value);
+    if (read.ok && read.changed) probabilityField.control.value = read.text;
+  });
 
   /** The server's field names, mapped to this dialog's controls. */
   const fieldFor = {
@@ -1298,7 +1402,25 @@ export function openAddNodeDialog(parentId, options) {
 
   let submitting = false;
 
-  function submit() {
+  function setBusy(on) {
+    submitting = on;
+    okButton.disabled = on;
+    anotherButton.disabled = on;
+  }
+
+  /** The node was made and another is wanted: an empty form for a sibling. */
+  function resetForNext(name) {
+    nameField.control.value = '';
+    probabilityField.control.value = '';
+    notesField.control.value = '';
+    linksEditor.setLinks([]);
+    linksEditor.reload(); // the node just made can be linked to now
+    addedNote.textContent = t('dialog.addedOne', { name: name });
+    addedNote.hidden = false;
+    nameField.control.focus();
+  }
+
+  function submit(another) {
     if (submitting) return;
     nameField.setError('');
     typeField.setError('');
@@ -1317,6 +1439,11 @@ export function openAddNodeDialog(parentId, options) {
     if (!type) {
       typeField.setError(t('dialog.typeRequired'));
       typeField.control.focus();
+      return;
+    }
+    if (String(probabilityField.control.value || '').trim() === '') {
+      probabilityField.setError(t('dialog.probabilityRequired'));
+      probabilityField.control.focus();
       return;
     }
     const probability = parseProbability(probabilityField.control.value);
@@ -1348,15 +1475,20 @@ export function openAddNodeDialog(parentId, options) {
     }
     // The caller creates the node. Closing first lost everything typed when
     // the server refused it, so the dialog waits, and says why on a refusal.
-    submitting = true;
-    okButton.disabled = true;
+    setBusy(true);
     Promise.resolve()
-      .then(() => opts.submit(result))
+      .then(() => opts.submit(result, { another: !!another }))
       .then(
-        () => modal.close(result),
+        () => {
+          if (!another) {
+            modal.close(result);
+            return;
+          }
+          setBusy(false);
+          resetForNext(name);
+        },
         (err) => {
-          submitting = false;
-          okButton.disabled = false;
+          setBusy(false);
           const message = errorMessage(err, t('dialog.somethingWrong'));
           const named = errorField(err);
           const target = named && Object.prototype.hasOwnProperty.call(fieldFor, named) ? fieldFor[named] : null;

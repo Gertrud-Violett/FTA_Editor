@@ -482,7 +482,8 @@ def _guard_before(body: str, guard: str, *keys: str) -> None:
 def test_enter_and_escape_handlers_leave_composition_to_the_ime():
     dialogs = _read(STATIC / "dialogs.js")
     modal = _braced(dialogs, dialogs.index("function onKeydown(event)"))
-    _guard_before(modal, "if (isImeKey(event)) return;", "event.key === 'Escape'", "cfg.onEnter()")
+    _guard_before(modal, "if (isImeKey(event)) return;", "event.key === 'Escape'",
+                  "cfg.onEnter(event)", "cfg.onCtrlEnter(event)")
     assert "if (event.key === 'Enter' && !isImeKey(event)) event.preventDefault();" in dialogs
 
     details = _read(STATIC / "details.js")
@@ -653,10 +654,13 @@ def test_tree_finds_rows_whose_ids_hold_backslashes_or_newlines():
 
 
 def _parse_probability_source() -> str:
+    """parseProbability (dialogs.js) with the number reader it calls
+    (numfmt.js parseNumberText and what that needs), as one script."""
+    numfmt = _read(STATIC / "numfmt.js")
+    reader = numfmt[numfmt.index("export const DECIMAL_TEXT"):numfmt.index("export default formatProb;")]
     src = _read(STATIC / "dialogs.js")
-    decl = re.search(r"^const DECIMAL_TEXT = .*;$", src, re.M)
     fn = re.search(r"export function parseProbability\(raw\) \{.*?\n\}", src, re.S).group(0)
-    return (decl.group(0) + "\n" if decl else "") + fn.replace("export ", "")
+    return (reader + "\n" + fn).replace("export ", "")
 
 
 @needs_node
@@ -673,7 +677,11 @@ def test_parse_probability_accepts_decimal_text_only():
         "1e-6": 1e-6, "1E-6": 1e-6, " 0.5 ": 0.5, ".5": 0.5, "+0.5": 0.5, "-0": 0, "1": 1, "0": 0,
         "1e-400": 0,
         "0x1": "REJECT", "0x0": "REJECT", "0b1": "REJECT", "0o1": "REJECT", "0x10": "REJECT",
-        "0,5": "REJECT", "50%": "REJECT", "5.": "REJECT", "Infinity": "REJECT", "NaN": "REJECT",
+        # Read as the decimal they mean since the usability batch (both were
+        # REJECT): a decimal comma and a percentage. The server is still sent
+        # a plain number. test_ux_batch_1.py covers the reader itself.
+        "0,5": 0.5, "50%": 0.5,
+        "5.": "REJECT", "Infinity": "REJECT", "NaN": "REJECT",
         "": "REJECT", "  ": "REJECT", "1_0": "REJECT",
     }
 
@@ -709,19 +717,32 @@ def test_add_dialog_stays_open_until_the_node_is_made():
     dialogs = _read(STATIC / "dialogs.js")
     header = "export function openAddNodeDialog(parentId, options)"
     assert header in dialogs
-    submit = _braced(dialogs, dialogs.index("function submit()", dialogs.index(header)))
+    submit = _braced(dialogs, dialogs.index("function submit(another)", dialogs.index(header)))
     assert "if (submitting) return;" in submit, "no second POST while the first is on the wire"
-    hook = submit[submit.index(".then(() => opts.submit(result))"):]
-    assert submit.index("okButton.disabled = true;") < submit.index(".then(() => opts.submit(result))")
-    assert "() => modal.close(result)," in hook
+    call = ".then(() => opts.submit(result, { another: !!another }))"
+    hook = submit[submit.index(call):]
+    # setBusy(true) disables OK and "OK and add another" before the POST
+    busy = _braced(dialogs, dialogs.index("function setBusy(on)", dialogs.index(header)))
+    assert "okButton.disabled = on;" in busy and "anotherButton.disabled = on;" in busy
+    assert submit.index("setBusy(true);") < submit.index(call)
+    made = hook[:hook.index("(err) => {")]
+    assert "modal.close(result);" in made, "OK closes once the node is made"
     refused = hook[hook.index("(err) => {"):]
     assert "modal.close(" not in refused, "a refused POST keeps the dialog open"
+    assert "setBusy(false);" in refused
     assert "target.setError(message);" in refused and "setFormError(message);" in refused
 
     main = _read(STATIC / "main.js")
     add = _braced(main, main.index("async function actionAdd()"))
-    assert "await fn(parentId, { submit })" in add
-    assert add.index("await fn(parentId, { submit })") < add.index("store.applyMutation(result);")
+    opened = "await fn(parentId, { submit, parentName, noSelection })"
+    assert opened in add
+    # OK: the store is updated only once the dialog is gone (its focus
+    # restore still finds the row that opened it). Only "OK and add another",
+    # which leaves the dialog open, adopts its node from inside the hook.
+    assert add.index(opened) < add.index("adopt(result, last.name, false);")
+    hook_adopts = add[add.index("const submit = (values, how) => {"):add.index(opened)]
+    assert hook_adopts.index("if (!how || !how.another) return request;") < hook_adopts.index("adopt(result")
+    assert add.count("store.applyMutation(result);") == 1
     assert add.count("api.post('/nodes'") == 2, "the hook, and the fallback for a dialog without it"
 
 
@@ -1107,7 +1128,11 @@ def _file_dialog_start(scenario):
     """Run the dialog's own start-up, listing and typed-path code against a
     server that answers one request at a time, with the user acting in between."""
     src = _read(STATIC / "filedialog.js")
-    starts = ["function setBusy(next)", "async function navigate(target, quiet)",
+    # separatorFor / joinPath / isAbsolutePath: a typed relative path is read
+    # against the folder on screen, with the module's own path helpers.
+    starts = ["function separatorFor(dir)", "function joinPath(dir, name)",
+              "function isAbsolutePath(path)",
+              "function setBusy(next)", "async function navigate(target, quiet)",
               "async function goToPath(raw)"]
     if "function flushPendingPath()" in src:
         starts.append("function flushPendingPath()")

@@ -47,6 +47,7 @@ import {
   parseProbability,
   sanitizeName,
   showError,
+  showNotice,
   t,
   uid,
   validateGate,
@@ -120,6 +121,11 @@ const DETAILS_CSS = `
 .fta-details-extras { display: flex; flex-direction: column; gap: 0.5rem; }
 .fta-details-note { margin: 0; font-size: 0.78rem; color: var(--fta-muted-fg); }
 .fta-details input[readonly] { background: var(--fta-surface-2, #f4f6f8); color: var(--fta-muted-fg); }
+/* The base probability of a node with children: kept in the file, not used
+   in the calculation. Greyed, with a note, but still editable. */
+.fta-details .fta-field.is-unused label,
+.fta-details .fta-field.is-unused input { color: var(--fta-muted-fg); }
+.fta-details .fta-field.is-unused input { background: var(--fta-surface-2, #f4f6f8); }
 `;
 
 /** The editable fields, in the order the desktop dialog lists them. */
@@ -446,8 +452,15 @@ export function initDetails(container) {
     const model = derivedModel(node);
     const prob = fields.probability.control;
     prob.readOnly = !!model;
-    probNote.hidden = !model;
-    probNote.textContent = model ? t('event.derivedNote', { model: model }) : '';
+    // FTA: a node with children is calculated from them, and its own
+    // probability is not used (Validation: PARENT_PROBABILITY_IGNORED). The
+    // box says so instead of looking like the number that counts. An event
+    // tree uses every node's probability.
+    const unused = !model && n > 0 && store.metadata().mode !== 'ETA';
+    prob.parentNode.classList.toggle('is-unused', unused);
+    probNote.hidden = !model && !unused;
+    if (model) probNote.textContent = t('event.derivedNote', { model: model });
+    else probNote.textContent = unused ? t('details.probabilityUnused') : '';
   }
 
   function setKError(message) {
@@ -784,6 +797,36 @@ export function initDetails(container) {
     );
   }
 
+  /**
+   * The selection is moving on (or the node is gone) while a box still holds
+   * text that was refused: say what is being dropped, with the text, before
+   * the form is filled with the next node. Without this "0.5.1" typed for a
+   * probability vanished on the click that selected another row, and the old
+   * value stayed, with nothing to show the entry had not been taken.
+   */
+  function warnDropped() {
+    for (const key of Object.keys(fields)) {
+      const field = fields[key];
+      const control = field.control;
+      if (field.spec.kind === 'gate') continue;
+      if (control.dataset.dirty !== 'true' || control.getAttribute('aria-invalid') !== 'true') continue;
+      const message = t('details.notSaved', {
+        field: t(field.spec.label),
+        value: control.value,
+        name: fields.name.baseline || String(renderedId),
+      });
+      const shell = window.ftaShell;
+      if (shell && typeof shell.toast === 'function') shell.toast(message, 'warn');
+      else showNotice(message);
+    }
+  }
+
+  /** The tree's lead row: where the focus goes once a field is committed by Enter. */
+  function treeLeadRow() {
+    const tree = document.getElementById('tree-root');
+    return tree ? tree.querySelector('[role="treeitem"][tabindex="0"]') : null;
+  }
+
   for (const key of Object.keys(fields)) {
     const field = fields[key];
     const control = field.control;
@@ -804,7 +847,18 @@ export function initDetails(container) {
         if (isImeKey(event)) return;
         if (event.key === 'Enter' && field.spec.kind !== 'textarea') {
           event.preventDefault();
-          control.blur();
+          // A value that will be refused keeps the caret, to be corrected.
+          if (!validateField(key, control.value).ok) {
+            commitField(key);
+            return;
+          }
+          // Committed: the focus goes back to the node's row in the tree, so
+          // the arrows, F2, Ctrl+A and Ctrl+Z work at once. A bare blur left
+          // it on <body>, where the next key did nothing. Moving the focus
+          // is what commits (the blur listener above).
+          const row = treeLeadRow();
+          if (row) row.focus();
+          else control.blur();
         } else if (event.key === 'Escape') {
           // Escape here means "discard my typing", not "dismiss the toast".
           event.preventDefault();
@@ -823,6 +877,7 @@ export function initDetails(container) {
     const id = currentId();
     const node = currentNode();
     const switched = id !== renderedId;
+    if (switched && renderedId !== null) warnDropped();
 
     if (!node) {
       renderedId = null;

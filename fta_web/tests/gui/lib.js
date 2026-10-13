@@ -347,8 +347,17 @@ function makeApp(page, context, errors, expected) {
         await page.waitForTimeout(100);
       }
     },
-    /** Add a child to the currently selected node through the Add dialog. */
+    /**
+     * Add a child to the currently selected node through the Add dialog;
+     * resolves with the new node's id. The selection stays on the parent
+     * (it used to move to the new node), so a caller that wants the next
+     * node beneath this one selects it first. `probability` has to be
+     * given: the dialog's box starts empty and is required.
+     */
     async addViaDialog({ name, type, probability, gate, notes, useKeyboard }) {
+      if (probability === undefined) throw new Error('addViaDialog: probability is required (the Add dialog has no default)');
+      const idsOf = (tree) => { const out = []; const walk = (n) => { out.push(String(n.id)); (n.children || []).forEach(walk); }; if (tree) walk(tree); return out; };
+      const known = new Set(idsOf((await api('get', '/state')).tree));
       if (useKeyboard) await page.keyboard.press('Control+a');
       else await page.locator('.actionbar [data-action="add"]').click();
       const modal = page.locator('.fta-modal');
@@ -372,19 +381,27 @@ function makeApp(page, context, errors, expected) {
       if (notes !== undefined) {
         await modal.locator('.fta-field textarea').first().fill(notes);
       }
-      const before = await app.selectedId();
       if (useKeyboard) {
+        // Enter in Name submits once the probability is filled in (with it
+        // empty, Enter only moves the caret there).
         await nameInput.focus();
         await page.keyboard.press('Enter');
       } else {
         await modal.locator('.fta-modal-footer .fta-btn.is-primary').click();
       }
       await modal.waitFor({ state: 'detached', timeout: 5000 });
-      // Wait for the new selection (actionAdd selects the new node once POST
-      // /nodes answers). Polled from here: page.waitForFunction treats the
-      // Promise an async predicate returns as truthy and never waits, which
-      // let this return the PREVIOUS selection whenever the server was slow.
-      return app.waitSelectionChange(before, 5000);
+      // The new node is the id the page's store did not have before. Polled
+      // from here (page.waitForFunction treats the Promise an async predicate
+      // returns as truthy and never waits), and read from the STORE, not the
+      // server: the caller goes on to click the new row.
+      const t0 = Date.now();
+      for (;;) {
+        const now = await page.evaluate(async () => (await import('/static/js/store.js')).store.flat().map((e) => e.id));
+        const fresh = now.filter((id) => !known.has(String(id)));
+        if (fresh.length) return String(fresh[fresh.length - 1]);
+        if (Date.now() - t0 > 5000) throw new Error('no new node within 5000 ms of the Add dialog closing');
+        await page.waitForTimeout(25);
+      }
     },
     /** Poll the store until the selection differs from `before`; returns it. */
     async waitSelectionChange(before, timeout) {

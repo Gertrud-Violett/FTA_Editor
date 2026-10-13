@@ -150,6 +150,17 @@ Initiating Event (0.001)
 - Free-text format
 - Saved with JSON file
 
+**Saved / Unsaved changes** (web app): the pill at the right end of the top
+bar. The browser tab shows the same: its title is the file name (`Untitled`
+before the first save), with a `●` in front while there are unsaved changes.
+The status line at the bottom right shows the file name, then its folder;
+hover over either for the full path.
+
+**Opening a file by path** (web app): in the Load and Save As dialogs you can
+type a path and press Enter. A bare name or a relative path is read against
+the folder shown in the dialog, and `~` is your home folder. A path that does
+not exist is reported as *Folder not found* or *File not found*.
+
 ### Tree View
 
 - Hierarchical display of your analysis
@@ -158,13 +169,30 @@ Initiating Event (0.001)
 - Shows node names
 - A ✖ marker flags zero-probability nodes
 
+In the web app:
+
+- The top event is selected when the editor starts, and after New and Open.
+- Double-click a name to rename it (or press F2). Double-click elsewhere on
+  a row to open or close its branch.
+- A node selected anywhere else (a click in the diagram, a row of a tab) is
+  scrolled into view in the tree.
+- Which branches are open is remembered per file. A new, unsaved document
+  starts fully open.
+- **Ctrl+Shift+Up / Down** move the focused node among its siblings,
+  **Ctrl+Shift+Right / Left** indent and outdent it. Dragging a row does the
+  same.
+
 ### Diagram Preview
 
 - Live visualization using Graphviz
 - Pan: Click and drag
-- Zoom: Ctrl + Mouse Wheel, or the **−** / **+** buttons (the percentage
-  between them shows the current level)
+- Zoom: the mouse wheel (with or without Ctrl; it zooms about the pointer),
+  or the **−** / **+** buttons, which zoom about the selected node, or about
+  the middle of the diagram when the selected node is not in view. The
+  percentage between the buttons shows the current level.
 - Updates automatically when tree changes
+- Click a node to select it. A tab that jumps to a node moves the diagram
+  only when that node is not already in view.
 
 ### Appearance (web UI)
 
@@ -255,6 +283,22 @@ Probabilities are shown with the chosen number of
 than *fixed* derives the probability, it is shown read-only; you edit the
 model in the **Quantification** tab.
 
+In an FTA, a node with children is calculated from them, and its own
+**Probability (base)** is not used. The box is then greyed, with a note; the
+value stays in the file. When a node that has a probability of its own gets
+its first child (Add, a move or a drag), a warning says so and links to the
+**Validation** tab.
+
+Enter in a field saves it and returns the focus to the node's row in the
+tree. If the value is refused, the caret stays in the field. If you select
+another node while a field still holds a refused value, a warning shows the
+text that was dropped.
+
+A probability can be typed as a decimal (`0.05`, `5e-2`), a percentage
+(`5%`), a fraction (`1/20`), with a decimal comma (`0,05`) or in
+full-width characters (`０．０５`). The field then shows the value as a plain
+decimal. `1,000` is refused, because it could mean a thousand or one.
+
 ## AI Assistant
 
 The AI Assistant provides intelligent analysis and suggestions for your fault trees. It works with OpenAI, Microsoft Copilot (Azure OpenAI), Anthropic Claude and Google Gemini.
@@ -294,6 +338,13 @@ The AI Assistant provides intelligent analysis and suggestions for your fault tr
   closed.
 
 ### Features
+
+**Formatted replies (MD)**: the assistant's replies are shown as formatted
+Markdown: headings, lists, tables, code and bold. The **MD** button beside
+**Clear Chat** switches every reply between that view and the raw text the
+model sent; use the raw text to copy a reply exactly. The choice is remembered
+in this browser. Only the assistant's replies are formatted. HTML in a reply
+is shown as text, and links are made for http, https and mailto only.
 
 **Quick Actions**:
 - **Analyze FTA**: Posts analysis and suggestions to chat only (no changes applied).
@@ -336,7 +387,8 @@ Type any question in the input box and press Enter. Examples:
 ### Adding a Node
 
 1. Select parent node in tree
-2. Click "Add Node" button (or press Ctrl+A)
+2. Click the **Add** button (or press Ctrl+A). The dialog's title names the
+   parent.
 3. Fill in node details:
    - **Name**: Descriptive name
    - **Type**: Event, Gate, etc.
@@ -344,19 +396,38 @@ Type any question in the input box and press Enter. Examples:
    - **Logic Gate**: AND or OR (for nodes with children)
    - **Notes**: Optional description
 
+In the web app:
+
+- **Probability** starts empty and has to be filled in. Enter in **Name**
+  moves to it. For an event that will get children of its own the value is
+  not used; enter 1.
+- **OK** adds the node and closes the dialog. **OK and add another**
+  (Ctrl+Enter) adds it and clears the dialog for the next node under the
+  same parent; Type and Logic Gate are kept. Escape closes the dialog.
+- The parent stays selected, so the next Add makes a sibling. The new node's
+  row is shown in the tree and marked for a moment. To add beneath the new
+  node, select it first.
+
 ### Editing a Node
 
 1. Select node in tree
-2. Click "Edit Node" button (or press Ctrl+E)
+2. Click the **Edit** button (or press Ctrl+E)
 3. Modify any fields
 4. Save changes
+
+In the web app, Edit opens the **Details** tab with the caret in **Name** and
+the name selected. Each field is saved when you press Enter or leave it.
 
 ### Deleting a Node
 
 1. Select node in tree
-2. Click "Delete Node" button (or press Ctrl+D)
+2. Click the **Delete** button (or press Ctrl+D)
 3. Confirm deletion
 4. All children are also deleted
+
+In the web app the confirmation says how many nodes will be deleted, and it
+opens with the focus on **Cancel**: press Tab and Enter, or click
+**Delete**, to confirm.
 
 In the web app, links and transfer targets (`transferTo`) that pointed into
 the deleted branch are removed as well and listed in the Validation tab
@@ -948,6 +1019,8 @@ Field prefixes narrow a search to one field. Terms combine with AND.
 Use quotes for values with spaces, for example `tag:"hot section"`. A prefix
 with no value, such as `tag:`, matches every node that has that field. Matches
 are shown with their ancestors, so the path to each match stays visible.
+Press Enter in the search box to select the first match, Enter again for the
+next and Shift+Enter for the one before; the caret stays in the box.
 
 ### FMEA import
 
@@ -1151,18 +1224,25 @@ The **Aa** popover on the diagram toolbar has two display settings. They are
 remembered per browser (`fta.diagram.settings`) and are not saved in the file.
 
 - **Style**
-  - **Compact boxes** (default): the 1.6 two-row boxes. The meta row reads
+  - **Compact boxes**: the 1.6 two-row boxes. The meta row reads
     `Gate: <gate> | P:<q> | P_calc:<Q>` for a gate and `P:<q> | P_calc:<Q>`
     for a basic event (1.6 also showed a meaningless `Gate: OR` there). The
     1.7 gates appear as `2/3`, `XOR`, `INHIBIT`, `PAND` or
     `TRANSFER→<target>`. A non-basic leaf shows `House: ON|OFF`,
     `Undeveloped` or `Conditioning` in front of the probabilities.
-  - **Standard symbols**: a description rectangle for every node, with an
-    IEC 61025 / NUREG-0492 gate or event symbol under it. A transfer gate's
+  - **Standard symbols** (default): a description rectangle for every node, with an
+    IEC 61025 / NUREG-0492 gate or event symbol under it. Under the name,
+    in bold, a gate shows `Q=<Q>` and an event `q=<q>`; an event whose
+    calculated value differs from its own (it has links) shows
+    `q=<q> | Q=<Q>`. A transfer gate's
     ignored children are drawn dotted. A conditioning event is drawn as an
     ellipse hanging off its INHIBIT gate. Clicking a gate symbol selects its
     node.
 - **Layout**: *Left → right* (default, as in 1.6) or *Top → down*.
+
+In the symbols style the lines are right-angled up to about 50 nodes. A larger
+tree is drawn with straight-segment lines, because the in-browser Graphviz
+cannot route right-angle lines for it.
 
 **Export limitation.** Graphviz itself has only polygons, so the DOT the
 server produces uses *approximate* shapes:
@@ -1393,10 +1473,14 @@ analysis itself is not changed.
 | `Escape` | Discard what was typed in a field; close a dialog or the diagram's Aa popover; dismiss a toast |
 
 Inside a text field `Ctrl+A` and `Ctrl+Z` keep their usual meaning (select
-all, undo typing). In the tree: arrows move, `Enter` / `Space` select, `F2`
-renames, `Ctrl+Shift+arrows` move the focused node. In the bottom tab strip:
-`Left` / `Right` / `Home` / `End`. In the diagram: `Ctrl+=` / `Ctrl+-` zoom,
-`Ctrl+0` fits (never above 100%).
+all, undo typing). With the focus on a dropdown, such as **Logic Gate**
+after a change, `Ctrl+Z` and `Ctrl+Y` undo and redo in the document. In the
+Add dialog `Ctrl+Enter` is **OK and add another**. In the tree: arrows move,
+`Enter` / `Space` select, `F2` or a double-click on the name renames,
+`Ctrl+Shift+arrows` move the focused node. In the search box: `Enter` and
+`Shift+Enter` step through the matches. In the bottom tab strip:
+`Left` / `Right` / `Home` / `End`. In the diagram: the mouse wheel or
+`Ctrl+=` / `Ctrl+-` zoom, `Ctrl+0` fits (never above 100%).
 
 ### Desktop app
 

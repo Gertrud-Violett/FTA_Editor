@@ -57,7 +57,16 @@
  * from the keyboard and Shift+Arrow extends. When another module moves the
  * store's selection -- details.js, an undo, a freshly added node -- the set
  * collapses back to that single node, because a multi-selection nobody else
- * knows about must not silently outlive the click that made it.
+ * knows about must not silently outlive the click that made it. Such a
+ * selection (a click in the diagram, a jump from a tab) also scrolls its row
+ * into view, so the tree never shows a different part than the one chosen.
+ *
+ * EXPANSION, PER DOCUMENT
+ * -----------------------
+ * Which branches are open is remembered per file path (EXPANDED_KEY), because
+ * ids such as root_0 recur in every tree: with one list for all files, a
+ * branch collapsed in one document was collapsed in the next. A document that
+ * has no path yet has one slot of its own, emptied by New.
  *
  * SEARCH
  * ------
@@ -107,8 +116,20 @@ import traceStrings from './i18n/trace.js';
 import { formatProb, getSigFigs } from './numfmt.js';
 import { scaleColor, overlayMax } from './overlay_scale.js';
 
-const STORAGE_KEY = 'fta.tree.expanded.v1';
+/**
+ * {"<file path>": [open branch ids], ...}, newest last, in localStorage. The
+ * document that has no file yet is the key '' and lives in sessionStorage
+ * instead: it survives a reload of the tab, but a later launch, with another
+ * unsaved tree, does not inherit it. (v1 was one list for every file; it is
+ * left alone and no longer read.)
+ */
+const EXPANDED_KEY = 'fta.tree.expanded.v2';
+/** Files remembered. The oldest drops out; its tree then opens fully expanded. */
+const EXPANDED_FILES_MAX = 40;
 const MARK = '✖';
+
+/** How long a row just added stays tinted (fta:reveal). */
+const REVEAL_MS = 2500;
 
 /** How long a drag has to hover a collapsed branch before it springs open. */
 const HOVER_EXPAND_MS = 650;
@@ -335,6 +356,13 @@ const TREE_CSS = `
 /* Highlight bus (cut sets, FMEA import...): a tinted ground plus a thick
    left edge, layered with the selection tint when a row is both. */
 .fta-tree-row.is-highlighted {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
+/* A node just added (fta:reveal): the same mark, for a couple of seconds. The
+   parent keeps the selection, so this is what shows where the child went. */
+.fta-tree-row.is-new {
   box-shadow:
     inset 5px 0 0 0 var(--fta-tree-hl-edge),
     inset 0 0 0 100vmax var(--fta-tree-hl-bg);
@@ -646,24 +674,50 @@ function subtreeIds(nodeId) {
 
 /* ------------------------------------------------------ expansion, persisted -- */
 
-function readExpanded() {
+/** The slot of the loaded document: its file path, '' while it has none. */
+function documentKey() {
+  const state = store.state;
+  const path = state && typeof state === 'object' ? state.currentPath : null;
+  return typeof path === 'string' ? path : '';
+}
+
+function expandedStorage(key) {
+  return key === '' ? window.sessionStorage : window.localStorage;
+}
+
+function readExpandedTable(key) {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return new Set(parsed.map(String));
+    const parsed = JSON.parse(expandedStorage(key).getItem(EXPANDED_KEY) || 'null');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
   } catch (err) {
     /* private mode, quota, corrupt value: fall back to the default */
   }
-  return null;
+  return {};
 }
 
-function writeExpanded(expanded) {
+function writeExpandedTable(key, table) {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(expanded)));
+    expandedStorage(key).setItem(EXPANDED_KEY, JSON.stringify(table));
   } catch (err) {
     /* persistence is a convenience, never a correctness requirement */
   }
+}
+
+/** The open branches remembered for `key`, or null when it has none yet. */
+function readExpanded(key) {
+  const table = readExpandedTable(key);
+  const ids = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : null;
+  return Array.isArray(ids) ? new Set(ids.map(String)) : null;
+}
+
+/** Remember `expanded` for `key`; null forgets it. */
+function writeExpanded(key, expanded) {
+  const table = readExpandedTable(key);
+  delete table[key]; // re-inserted below, so the newest file is the last key
+  if (expanded) table[key] = Array.from(expanded);
+  const keys = Object.keys(table);
+  for (const old of keys.slice(0, Math.max(0, keys.length - EXPANDED_FILES_MAX))) delete table[old];
+  writeExpandedTable(key, table);
 }
 
 /** Every id that currently has at least one child. */
@@ -791,9 +845,24 @@ export function initTree(container) {
 
   /* ---- panel state ---- */
 
-  let expanded = readExpanded();
+  // The document the expansion state below belongs to (documentKey()). It
+  // trails the store for one tick when a file is opened: see the subscriber.
+  let docKey = documentKey();
+  let expanded = readExpanded(docKey);
   let seeded = expanded !== null;
   let lastSelected = null;
+  /** Persist the expansion state, under the document it was made in. */
+  const saveExpanded = () => writeExpanded(docKey, expanded);
+  // True between the store showing another file path and knowing whether
+  // that was Open (another tree: load its own state) or Save As (this tree
+  // under a new name: carry the state over). Nothing is written meanwhile.
+  let keyInDoubt = false;
+
+  /** The id of a row just added, tinted until the timer runs out. */
+  let revealedId = null;
+  let revealTimer = 0;
+  /** True until Enter has stepped to a match of the current search. */
+  let searchFresh = true;
   // Ids that had children at the previous render. A node that becomes a branch
   // after the panel is up -- a child was just added to a leaf -- opens itself,
   // so the new node is visible without hunting for a twisty. Seeded silently on
@@ -853,7 +922,7 @@ export function initTree(container) {
     // While a filter is on, the expansion set is scaffolding for the filter and
     // is thrown away when the box is cleared; persisting it would leak the
     // filter's shape into the next page load.
-    if (!query) writeExpanded(expanded);
+    if (!query) saveExpanded();
     render();
   }
 
@@ -976,10 +1045,11 @@ export function initTree(container) {
       expanded = new Set(snapshot.expanded);
       seeded = snapshot.seeded;
       snapshot = null;
-      writeExpanded(expanded);
+      saveExpanded();
     }
 
     query = next;
+    searchFresh = true;
     clearSearch.hidden = query === '';
     if (search.value.trim() !== query) search.value = query;
     render();
@@ -1043,6 +1113,7 @@ export function initTree(container) {
 
     const rowClass =
       'fta-tree-row' +
+      (id === revealedId ? ' is-new' : '') +
       (isFull ? ' is-full' : '') +
       (isZero ? ' is-zero' : '') +
       (isHighlighted ? ' is-highlighted' : '');
@@ -1131,7 +1202,7 @@ export function initTree(container) {
       // single collapsed root, then persist whatever the user does next.
       expanded = new Set(branches);
       seeded = true;
-      writeExpanded(expanded);
+      if (!keyInDoubt) saveExpanded();
     } else if (knownBranches) {
       let changed = false;
       for (const id of branches) {
@@ -1140,7 +1211,7 @@ export function initTree(container) {
           changed = true;
         }
       }
-      if (changed && !query) writeExpanded(expanded);
+      if (changed && !query && !keyInDoubt) saveExpanded();
     }
     knownBranches = branches;
 
@@ -1373,7 +1444,16 @@ export function initTree(container) {
   async function requestMove(id, newParentId, index, sameParent) {
     if (!expanded) expanded = new Set();
     expanded.add(String(newParentId)); // land somewhere the user can see
-    if (!query) writeExpanded(expanded);
+    if (!query) saveExpanded();
+
+    // A leaf that gets its first child this way stops using its own
+    // probability, exactly as with Add (main.js firstChildWarning). Asked
+    // before the move, while the new parent is still a leaf.
+    const shell = window.ftaShell;
+    const warn =
+      !sameParent && shell && typeof shell.firstChildWarning === 'function'
+        ? shell.firstChildWarning(String(newParentId))
+        : null;
 
     const commit = (async () => {
       try {
@@ -1383,6 +1463,7 @@ export function initTree(container) {
         });
         store.applyMutation(result);
         setSelection([id], id);
+        if (warn) warn();
         say(
           sameParent
             ? t('tree.reordered', { name: nameOf(id), parent: nameOf(newParentId) })
@@ -1421,7 +1502,9 @@ export function initTree(container) {
     if (direction === 'up' || direction === 'down') {
       const to = direction === 'up' ? at - 1 : at + 1;
       if (to < 0 || to >= siblings.length) {
-        say(t('tree.moveNoRoom'), 'info');
+        // Up on the first child said "already at the end", which read as a
+        // refusal to move down. Each end has its own sentence.
+        say(t(direction === 'up' ? 'tree.moveNoRoomUp' : 'tree.moveNoRoomDown'), 'info');
         return;
       }
       // Post-detach indices: moving up inserts before the previous sibling
@@ -1671,10 +1754,19 @@ export function initTree(container) {
   async function deleteMany(ids) {
     const parent = parentIdOf(ids[0]) || rootId();
     const only = ids.length === 1 ? nameOf(ids[0]) : null;
-    const proceed = await confirmDialog(
-      only ? t('confirm.delete', { name: only }) : t('tree.confirmDeleteMany', { n: ids.length }),
-      { title: t('btn.delete'), confirmLabel: t('btn.delete') }
-    );
+    // The count is of everything that goes: each chosen node and all beneath
+    // it. Cancel has the focus, as in the shell's single delete.
+    let total = 0;
+    for (const id of ids) total += subtreeIds(id).size;
+    let question;
+    if (only) question = total > 1 ? t('confirm.deleteTree', { name: only, n: total }) : t('confirm.deleteLeaf', { name: only });
+    else if (total > ids.length) question = t('tree.confirmDeleteManyTree', { n: ids.length, total: total });
+    else question = t('tree.confirmDeleteManyLeaves', { n: ids.length });
+    const proceed = await confirmDialog(question, {
+      title: t('btn.delete'),
+      confirmLabel: t('btn.delete'),
+      focusCancel: true,
+    });
     if (!proceed) return;
 
     // One request per node, because the API has no batch delete -- so this is
@@ -1737,6 +1829,20 @@ export function initTree(container) {
       return;
     }
     const id = item.dataset.id;
+
+    // The second click of a double-click. There is no `dblclick` listener:
+    // the first click selects, which re-renders the list, so the two clicks
+    // land on two different elements and the browser never reports them as
+    // one double-click. `detail` still counts them. On the *label* it
+    // renames; anywhere else on the row it keeps its P1 meaning of
+    // expand/collapse.
+    if (event.detail === 2 && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      if (target.closest('.fta-tree-label')) startRename(id);
+      else if (item.hasAttribute('aria-expanded')) toggle(id);
+      return;
+    }
+
     focusItem(item, false);
 
     if (event.ctrlKey || event.metaKey) {
@@ -1751,22 +1857,6 @@ export function initTree(container) {
       return;
     }
     setSelection([id], id);
-  });
-
-  host.addEventListener('dblclick', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest('.fta-tree-rename')) return;
-    const item = target.closest('.fta-tree-item');
-    if (!item || !host.contains(item)) return;
-    // A double-click on the *label* renames; anywhere else on the row keeps its
-    // P1 meaning of expand/collapse.
-    if (target.closest('.fta-tree-label')) {
-      event.preventDefault();
-      startRename(item.dataset.id);
-      return;
-    }
-    if (item.hasAttribute('aria-expanded')) toggle(item.dataset.id);
   });
 
   host.addEventListener('keydown', (event) => {
@@ -1914,7 +2004,20 @@ export function initTree(container) {
       }
       return;
     }
-    if (event.key === 'ArrowDown' || event.key === 'Enter') {
+    if (event.key === 'Enter') {
+      // Enter goes to the first match, and again to the next (Shift+Enter
+      // back), with the caret left in the box. It used to move the focus to
+      // the first ROW, which under a filter is the top event, not a match.
+      event.preventDefault();
+      if (searchTimer) {
+        window.clearTimeout(searchTimer);
+        searchTimer = 0;
+      }
+      setQuery(search.value); // the debounce may still hold the last keystrokes
+      stepToMatch(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
       // Straight from the box into the results, without reaching for the mouse.
       const first = itemNodes()[0];
       if (first) {
@@ -1923,6 +2026,36 @@ export function initTree(container) {
       }
     }
   });
+
+  /**
+   * Select the next (step 1) or previous (step -1) match of the search, in
+   * tree order, wrapping round. The first step after the query changed goes
+   * to the first match, wherever the selection is.
+   */
+  function stepToMatch(step) {
+    const filter = computeFilter(treeRoot());
+    if (!filter || !filter.matches.size) return;
+    const ids = store.flat().map((entry) => String(entry.id)).filter((id) => filter.matches.has(id));
+    if (!ids.length) return;
+    const at = ids.indexOf(String(store.selectedId));
+    let next;
+    if (searchFresh || at === -1) next = step > 0 ? 0 : ids.length - 1;
+    else next = (at + step + ids.length) % ids.length;
+    searchFresh = false;
+    const id = ids[next];
+    // A match under a collapsed match is not drawn yet; open the way first.
+    if (revealAll([id])) render();
+    setSelection([id], id);
+    scrollToRow(id);
+  }
+
+  /** Bring a row into view inside the list, moving as little as possible. */
+  function scrollToRow(id) {
+    const row = rowOf(itemById(id));
+    if (row && typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
 
   clearSearch.addEventListener('click', () => {
     search.value = '';
@@ -1949,6 +2082,22 @@ export function initTree(container) {
       store.selectedId === null || store.selectedId === undefined
         ? null
         : String(store.selectedId);
+    const moved = Boolean(selectedId) && selectedId !== lastSelected;
+
+    // Another file path. An Open announces itself with fta:document later in
+    // this same tick (onDocument then loads that file's own state); if none
+    // came by the next microtask it was a Save As, and the state on screen is
+    // kept under the new name.
+    if (documentKey() !== docKey && !keyInDoubt) {
+      keyInDoubt = true;
+      Promise.resolve().then(() => {
+        if (!keyInDoubt || destroyed) return;
+        keyInDoubt = false;
+        docKey = documentKey();
+        if (expanded && !query) saveExpanded();
+      });
+    }
+
     if (selectedId && selectedId !== lastSelected) {
       // A selection made elsewhere -- details.js, an undo, a freshly added
       // child -- is a single-node selection: a wider one this panel never told
@@ -1966,10 +2115,14 @@ export function initTree(container) {
           changed = true;
         }
       }
-      if (changed && !query) writeExpanded(expanded);
+      if (changed && !query && !keyInDoubt) saveExpanded();
     }
     lastSelected = selectedId;
     render();
+    // A selection made anywhere (a click in the diagram, a row of a tab) is
+    // brought into view here. Its ancestors were opened above, but the row
+    // could still be far outside the scrolled part of a long list.
+    if (moved && !editing) scrollToRow(selectedId);
 
     if (refocusAfterMutation) {
       refocusAfterMutation = false;
@@ -1996,7 +2149,42 @@ export function initTree(container) {
       store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
     selection = new Set(lead ? [lead] : []);
     anchorId = lead;
+    // The expansion state is per document. A file comes back as it was left;
+    // a new, unsaved document starts fully open, and so does a file not seen
+    // before (unseeded: the next render opens every branch).
+    keyInDoubt = false;
+    docKey = documentKey();
+    if (docKey === '') writeExpanded(docKey, null);
+    expanded = readExpanded(docKey);
+    seeded = expanded !== null;
+    knownBranches = null;
+    // A search carried over from the old document goes on filtering this one;
+    // clearing it later must restore this document's shape, not the old one's.
+    if (snapshot) snapshot = { expanded: new Set(expanded || []), seeded: seeded };
+    revealedId = null;
     render();
+  }
+
+  /**
+   * `fta:reveal` {id}: a node was just made (main.js actionAdd) and the
+   * selection stayed on its parent. Open the way to the new row, tint it for
+   * a moment and bring it into view.
+   */
+  function onReveal(event) {
+    const id = event && event.detail && event.detail.id;
+    if (id === null || id === undefined || id === '') return;
+    const wanted = String(id);
+    if (!store.findNode(wanted)) return;
+    revealAll([wanted]);
+    revealedId = wanted;
+    if (revealTimer) window.clearTimeout(revealTimer);
+    revealTimer = window.setTimeout(() => {
+      revealTimer = 0;
+      revealedId = null;
+      render();
+    }, REVEAL_MS);
+    render();
+    scrollToRow(wanted);
   }
 
   /** Hand the shell whatever rename/move is still on the wire (see `pending`). */
@@ -2019,7 +2207,7 @@ export function initTree(container) {
         }
       }
     }
-    if (changed && !query) writeExpanded(expanded);
+    if (changed && !query && !keyInDoubt) saveExpanded();
     return changed;
   }
 
@@ -2097,6 +2285,7 @@ export function initTree(container) {
   window.addEventListener('fta:flush', onFlush);
   window.addEventListener('fta:jump', onJump);
   window.addEventListener('fta:document', onDocument);
+  window.addEventListener('fta:reveal', onReveal);
 
   render();
 
@@ -2111,6 +2300,8 @@ export function initTree(container) {
       window.removeEventListener('fta:flush', onFlush);
       window.removeEventListener('fta:jump', onJump);
       window.removeEventListener('fta:document', onDocument);
+      window.removeEventListener('fta:reveal', onReveal);
+      if (revealTimer) window.clearTimeout(revealTimer);
       if (typeof unHighlight === 'function') unHighlight();
       if (typeof unOverlay === 'function') unOverlay();
       if (searchTimer) window.clearTimeout(searchTimer);
