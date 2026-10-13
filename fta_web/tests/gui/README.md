@@ -3,8 +3,8 @@
 A back-to-back check of the web GUI. Playwright drives a real browser with
 real mouse and keyboard input, reads what the GUI shows (headline, Node
 Details, every diagram label, every analysis tab, the downloaded reports) and
-compares it with what the API computes for the same document. It has 830
-checks in 14 sections and takes about 5 minutes.
+compares it with what the API computes for the same document. It has 922
+checks in 15 sections and takes about 5 minutes.
 
 It complements the numeric back-to-back suite in [`../b2b/`](../b2b/README.md),
 which compares the engine, API, CLI and exe paths without a browser.
@@ -13,20 +13,21 @@ which compares the engine, API, CLI and exe paths without a browser.
 
 | Section | Checks | What |
 |---|---:|---|
-| `core` | 256 | Builds a tree entirely through the GUI: New, title and date, the Add dialog (button and Ctrl+A), Details edits committed with Enter / Tab / blur and reverted with Escape, gate select, undo / redo by keys and buttons, sig figs 1 to 6, switching to Advanced mid-edit, k-of-n, a link through the links editor, Save As / Ctrl+S / New / Open through the file dialog. After every step the headline, Details and every diagram label are compared with the API. It saves `b2b_core_<label>.json`, which most later sections open. |
+| `core` | 258 | Builds a tree entirely through the GUI: New, title and date, the Add dialog (button and Ctrl+A), Details edits committed with Enter / Tab / blur and reverted with Escape, gate select, undo / redo by keys and buttons, sig figs 1 to 6, switching to Advanced mid-edit, k-of-n, a link through the links editor, Save As / Ctrl+S / New / Open through the file dialog. After every step the headline, Details and every diagram label are compared with the API. It saves `b2b_core_<label>.json`, which most later sections open. |
 | `fit` | 7 | Diagram auto-fit never enlarges past 100 %; zoom buttons, Ctrl+0, a 26-node tree still shrinks. |
 | `treeclick` | 33 | The first real click on the bottom tree rows selects them, at three window sizes; the keyboard hint shows only for keyboard focus and never shifts rows. |
 | `fixes` | 22 | The 1.7.1 frontend fixes: Alt+N and consequence-named confirmations, numeric fields that select on click, Escape in the Aa popover, formatted Validation messages, the FMEA λ unit warning, the live language switch of the AI panel and action bar. |
+| `ux1` | 63 | The editing flow: the top event selected at start-up; the Add dialog (probability required, Enter moving from Name to it, `5%` / full-width digits / `1/1000` / `0,25`, **OK and add another** with Ctrl+Enter, four siblings from four Adds); the top bar keeping its height on the first edit and the tab title; the first-child warning after Add and after a keyboard move, with **Show in Validation**; first / last sibling messages; double-click to rename and to collapse; Ctrl+Z from the gate dropdown; Edit; Enter in a Details field; the warning for a dropped invalid entry; delete confirmations (count, focus on Cancel); Enter in the search box; the tree's open / closed state per file; a diagram click scrolling the tree; jumps, the + and − buttons and the plain wheel; the bold number row; *Folder not found* in the Open dialog. |
 | `tabs` | 84 | Quantification (rate model through the form, derived q and formula), Cut Sets (rows, summary, highlight, sig figs), Importance (every measure, sort, FV overlay), Uncertainty (fixed seed against an API run with the same seed), Validation (list, chips, badge, after undo), tabs refreshed after an edit made while hidden, Traceability cell edits, ETA mode. |
 | `files` | 21 | FMEA CSV import through the file dialog; the DOCX report, Excel and CSV exports, parsed back with `parse_exports.py` and compared with the API; the "Save … again" link; a path entered in the file dialog while its first listing is held back. |
-| `diagram` | 80 | compact / symbols × LR / TB show the API's numbers and each other's; with the root selected, its box, Node Details and the caption give the MCUB headline and the root's tree-walk value; a real-mouse click on every shape selects its node; zoom, Ctrl+wheel, pan, fit; dark theme. |
-| `more` | 69 | Escape in the title, Hide Zero, λ units, the standby model, document defaults for cut sets and Monte Carlo, the truncation marker on the headline, RRW ∞, New with the FV overlay on. |
+| `diagram` | 85 | compact / symbols × LR / TB show the API's numbers and each other's; with the root selected, its box, Node Details and the caption give the MCUB headline and the root's tree-walk value; a real-mouse click on every shape selects its node; zoom, Ctrl+wheel, pan, fit; dark theme. |
+| `more` | 79 | Escape in the title, Hide Zero, λ units, the standby model, document defaults for cut sets and Monte Carlo, the truncation marker on the headline, RRW ∞, New with the FV overlay on. |
 | `stale` | 59 | No stale values after undo / redo / delete: the Quantification form, Details, the title, the Validation list and badge. |
 | `race` | 4 | An edit made while the first Cut Sets / Importance run is still in flight (responses delayed with `page.route`). |
 | `view` | 150 | Every tab in en/light and ja/dark (screenshots), no raw i18n keys, tab-strip and tree keyboard navigation, F2 rename, drag and drop, the AI panel without credentials, four window sizes down to 420 px, and Japanese event names in a 420 px window (the Importance and Quantification tables keep six characters a line). |
 | `big` | 16 | A 300-node tree: click to Details under 500 ms, no diagram re-layout on selection, the Add dialog under 3 s, five analysis tabs, the tree search. |
 | `i18n` | 3 | After a live switch to Japanese no English UI text is left in any tab, and no Japanese after switching back. |
-| `misc` | 26 | Save As without an extension, the splitter by keyboard, the sig-fig select by keyboard, basic mode showing an advanced gate read-only, the OS dark theme, a tab opened without a session token. |
+| `misc` | 38 | Save As without an extension, the splitter by keyboard, the sig-fig select by keyboard, basic mode showing an advanced gate read-only, the OS dark theme, a tab opened without a session token. |
 
 Every section also fails on any console error or warning, page error, or
 unexpected HTTP 4xx/5xx from `/api` in the page. The harness's own API calls
@@ -57,7 +58,7 @@ DOCX / XLSX / CSV, `server.log` and `summary.txt`.
 
 | Option | Meaning |
 |---|---|
-| `node run.mjs tabs view` | Only these sections. `core` is added first when a section opens its file (all but `fit`, `treeclick`, `fixes`, `big`). |
+| `node run.mjs tabs view` | Only these sections. `core` is added first when a section opens its file (all but `fit`, `treeclick`, `fixes`, `ux1`, `big`). |
 | `node run.mjs --list` | The sections in run order. |
 | `FTA_GUI_CHANNEL=chrome` | Use the installed Google Chrome instead of the bundled Chromium (`msedge` works too). Playwright launches it with a fresh temporary profile, never your own. |
 | `FTA_GUI_HEADFUL=1` | Show the browser window. |
@@ -157,8 +158,15 @@ To add a section, write `s_<name>.js` ending in
 
 One trap worth knowing: `page.waitForFunction` with an `async` predicate does
 not wait, because the returned Promise is already truthy. Poll from Node
-instead (see `app.waitSelectionChange` in `lib.js`); before that fix,
-`addViaDialog` returned the previous selection whenever the server was slow.
+instead (see `app.addViaDialog` and `app.waitSelectionChange` in `lib.js`).
+
+`addViaDialog` returns the id of the node it made, found as the id the
+page's store did not have before. The selection stays on the parent after an
+Add, so a flow that wants the next node beneath the new one selects it first.
+Several checks run only when a node is selected (Details against the API,
+the diagram's selection); since the top event is selected at start-up they
+run in more places, which is where the higher counts of `diagram`, `more`
+and `misc` come from.
 
 In CI, [`.github/workflows/extended.yml`](../../../.github/workflows/extended.yml)
 runs `node run.mjs` with the bundled Chromium on ubuntu-latest weekly, on

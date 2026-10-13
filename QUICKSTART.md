@@ -77,8 +77,11 @@ executable needs its `_internal/` sibling. Details in
 
 ## 3. Use
 
-1. **Create nodes**: Select root, click "Add Node"
-2. **Set probabilities**: Edit node, enter probability (0-1)
+1. **Create nodes**: the top event is selected at start. Click **Add**
+   (Ctrl+A), type a name and a probability, and press **OK and add another**
+   (Ctrl+Enter) to go on to the next node under the same parent
+2. **Set probabilities**: 0 to 1; `5%`, `1/20` and `0,05` are read as 0.05.
+   To change one later, select the node and click **Edit**
 3. **Set logic gates**: Choose AND or OR for non-leaf nodes
 4. **Choose mode**: FTA (failure analysis) or ETA (event sequences)  
 5. **View diagram**: Logic gates displayed inside node boxes

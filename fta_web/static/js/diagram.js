@@ -78,6 +78,7 @@ export function fitScale(stageWidth, stageHeight, width, height) {
 }
 const ZOOM_STEP = 1.1;
 const PAN_SLOP_PX = 4; // movement below this is a click, not a pan
+const WHEEL_NOTCH = 100; // deltaY of one notch of a mouse wheel, in pixels
 
 /** Single WASM instance. It is ~1.1 MB -- never build one per render. */
 let vizPromise = null;
@@ -842,18 +843,36 @@ export function initDiagram(container) {
     zoomLabel.textContent = `${Math.round(scale * 100)}%`;
   }
 
+  /**
+   * The point a zoom without a cursor holds still (the + and - buttons,
+   * Ctrl +/-): the selected node when it is on the stage, else the middle of
+   * the stage. Zooming about the canvas's top-left corner, as this did, slid
+   * the diagram out of view to the lower right within a few presses.
+   */
+  function zoomAnchor() {
+    const view = stage.getBoundingClientRect();
+    const selected = svgEl ? svgEl.querySelector('g.node.is-selected') : null;
+    if (selected) {
+      const box = selected.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      if (x >= view.left && x <= view.right && y >= view.top && y <= view.bottom) return { x, y };
+    }
+    return { x: view.left + view.width / 2, y: view.top + view.height / 2 };
+  }
+
   function zoomBy(factor, originX, originY) {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale * factor));
     autoFit = false;
     if (next === scale) return;
-    // Keep the point under the cursor fixed while zooming.
-    if (typeof originX === 'number') {
-      const rect = stage.getBoundingClientRect();
-      const px = originX - rect.left;
-      const py = originY - rect.top;
-      tx = px - ((px - tx) * next) / scale;
-      ty = py - ((py - ty) * next) / scale;
-    }
+    // Keep one point fixed while zooming: the one under the cursor, or
+    // zoomAnchor() when there is no cursor to go by.
+    const anchor = typeof originX === 'number' ? { x: originX, y: originY } : zoomAnchor();
+    const rect = stage.getBoundingClientRect();
+    const px = anchor.x - rect.left;
+    const py = anchor.y - rect.top;
+    tx = px - ((px - tx) * next) / scale;
+    ty = py - ((py - ty) * next) / scale;
     scale = next;
     applyTransform();
   }
@@ -930,10 +949,17 @@ export function initDiagram(container) {
     endPan(ev);
   });
 
+  // The wheel zooms about the cursor, with or without Ctrl. The stage never
+  // scrolls (overflow: hidden), so a plain wheel used to do nothing at all,
+  // and Ctrl+wheel was the only way in that nobody was told about. One notch
+  // of a mouse wheel (a delta of 100 or more, or any line/page delta) is one
+  // ZOOM_STEP; a trackpad's stream of small deltas zooms in proportion, so
+  // two fingers do not send it from 10% to 800% in one stroke.
   stage.addEventListener('wheel', (ev) => {
-    if (!ev.ctrlKey && !ev.metaKey) return; // plain wheel scrolls the panel
+    if (!ev.deltaY) return; // a sideways wheel is not a zoom
     ev.preventDefault();
-    zoomBy(ev.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, ev.clientX, ev.clientY);
+    const notches = ev.deltaMode === 0 ? Math.max(-1, Math.min(1, ev.deltaY / WHEEL_NOTCH)) : Math.sign(ev.deltaY);
+    zoomBy(Math.pow(ZOOM_STEP, -notches), ev.clientX, ev.clientY);
   }, { passive: false });
 
   stage.addEventListener('keydown', (ev) => {
@@ -1032,7 +1058,13 @@ export function initDiagram(container) {
     }
   }
 
-  /** Centre node `id` in the stage without changing the zoom. */
+  /**
+   * Bring node `id` into view without changing the zoom: centred in the
+   * stage when it is (partly) outside it, left alone when it is already
+   * fully on it. Jumping to a visible node used to centre it all the same,
+   * which pushed half of a fitted diagram off the stage and, because a pan
+   * ends auto-fit, left it there through every later edit.
+   */
   function jumpTo(id) {
     if (!svgEl) {
       pendingJump = id;
@@ -1041,9 +1073,12 @@ export function initDiagram(container) {
     const wanted = String(id);
     const found = nodeGroups().find(({ g, id: gid }) => gid === wanted && isMainGroup(g));
     if (!found) return;
-    autoFit = false;
     const box = found.g.getBoundingClientRect();
     const view = stage.getBoundingClientRect();
+    const inView = box.left >= view.left && box.right <= view.right
+      && box.top >= view.top && box.bottom <= view.bottom;
+    if (inView) return;
+    autoFit = false;
     tx += view.left + view.width / 2 - (box.left + box.width / 2);
     ty += view.top + view.height / 2 - (box.top + box.height / 2);
     applyTransform();

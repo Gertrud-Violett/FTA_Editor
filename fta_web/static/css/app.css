@@ -298,6 +298,22 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
   white-space: nowrap;
 }
 .dirty__dot { font-size: 10px; line-height: 1; color: var(--ok); }
+/* One width for "Saved" and "Unsaved changes", in any language. The pill is a
+   two-column grid, the dot and the text; both wordings sit unseen in the text
+   column (main.js puts them in data-saved / data-unsaved) and the wider one
+   sets its width. The pill used to grow on the first edit, and the top bar
+   wrapped onto a second row and pushed the whole workspace down. */
+.dirty { display: inline-grid; grid-template-columns: auto auto; column-gap: 6px; }
+.dirty > #dirty-text { grid-column: 2; grid-row: 1; }
+.dirty::before,
+.dirty::after {
+  grid-column: 2;
+  grid-row: 1;
+  visibility: hidden;
+  pointer-events: none;
+}
+.dirty::before { content: attr(data-saved); }
+.dirty::after { content: attr(data-unsaved); }
 .dirty[data-dirty="true"] { background: var(--warn-soft); border-color: var(--warn); }
 .dirty[data-dirty="true"] .dirty__dot { color: var(--warn); }
 
@@ -841,7 +857,23 @@ html[data-hide-zero="1"] .fta-tree-item.is-zero { display: none; }
 }
 .statusline__msg[data-kind="error"] { color: var(--danger); font-weight: 600; }
 .statusline__msg[data-kind="ok"] { color: var(--ok); }
+/* The file name is what tells two documents apart, so it never shrinks; the
+   folder beside it is the part that gives way. The full path is the tooltip
+   of both. */
+.statusline__file {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 48ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .statusline__path {
+  flex: 0 1 auto;
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-faint);
@@ -850,6 +882,7 @@ html[data-hide-zero="1"] .fta-tree-item.is-zero { display: none; }
   white-space: nowrap;
   max-width: 30ch;
 }
+.statusline__path[hidden] { display: none; }
 
 /* ---- toasts -------------------------------------------------------------- */
 
@@ -1268,6 +1301,19 @@ html[data-booting] .tabstrip { pointer-events: none; }
 .capbar__button:hover { background: var(--surface-hover); }
 .capbar__button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .capbar__button[data-state="ok"] .capbar__glyph { color: var(--ok); }
+/* Nothing missing: the tick alone. "All features available" took a fifth of
+   the top bar to say there was nothing to say; the words stay in the tooltip,
+   in the accessible name and in the panel the chip opens. A limitation still
+   gets its words (the other states). */
+.capbar__button[data-state="ok"] { padding-left: 6px; padding-right: 6px; }
+.capbar__button[data-state="ok"] .capbar__text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .capbar__button[data-state="warn"] { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
 .capbar__button[data-state="invite"] .capbar__glyph { color: var(--accent-hover); }
 .capbar__panel {

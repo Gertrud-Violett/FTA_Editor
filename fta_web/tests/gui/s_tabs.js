@@ -210,14 +210,15 @@ async function main(url, label, root) {
 
   // ---- Validation list + badge -----------------------------------------------------------
   // provoke: an XOR gate over 3 inputs (error, via the Details gate select) and an
-  // unquantified leaf added with the Add dialog's default 1.0 (warning)
+  // unquantified leaf, added with probability 1 typed into the Add dialog (warning;
+  // the dialog has no default any more)
   const pumps = byName(st, 'Pumps fail');
   await app.clickTab('details');
   await app.selectTreeNode(pumps.id);
   await app.selectDetailsGate('XOR');
   await page.waitForTimeout(400);
   await app.selectTreeNode(st.tree.id);
-  await app.addViaDialog({ name: 'Unquantified event' });
+  await app.addViaDialog({ name: 'Unquantified event', probability: '1' });
   await page.waitForTimeout(400);
   await app.clickTab('validation');
   await page.waitForTimeout(1500);

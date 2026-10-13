@@ -265,7 +265,6 @@ const STRINGS = {
     'api.exportFailed': 'The export failed (HTTP {status}).',
     'store.panelFailed': 'A panel failed to update: {error}',
 
-    'confirm.delete': 'Delete "{name}" and everything beneath it?',
     'confirm.discard': 'Discard the unsaved changes and start a new analysis?',
     'confirm.discardOpen': 'Discard the unsaved changes and open another file?',
     'confirm.discardNewOk': 'Discard and start new',
@@ -535,11 +534,9 @@ const STRINGS = {
     'tree.reordered': 'Moved "{name}" within "{parent}".',
     'tree.moveInvalid': 'A node cannot be moved into itself or one of its own children.',
     'tree.moveRootRefused': 'The root node cannot be moved.',
-    'tree.moveNoRoom': 'It is already at the end of its list of siblings.',
     'tree.moveNoIndent': 'There is no sibling above it to move it under.',
     'tree.moveNoOutdent': 'It already sits directly under the root node.',
     'tree.selected': '{n} nodes selected',
-    'tree.confirmDeleteMany': 'Delete these {n} nodes and everything beneath them?',
     'tree.deletedMany': 'Deleted {n} nodes. Undo steps back one node at a time.',
     'tree.deletePartial': 'Deleted {done} of {total} nodes; the rest were left in place.',
     'tree.rootKept': 'The root node cannot be deleted, so nothing was removed.',
@@ -711,7 +708,6 @@ const STRINGS = {
     'api.exportFailed': 'エクスポートに失敗しました (HTTP {status})。',
     'store.panelFailed': 'パネルを更新できませんでした: {error}',
 
-    'confirm.delete': '「{name}」と配下のノードを削除しますか？',
     'confirm.discard': '未保存の変更を破棄して新規作成しますか？',
     'confirm.discardOpen': '未保存の変更を破棄して別のファイルを開きますか？',
     'confirm.discardNewOk': '破棄して新規作成',
@@ -970,11 +966,9 @@ const STRINGS = {
     'tree.reordered': '「{name}」を「{parent}」内で移動しました。',
     'tree.moveInvalid': 'ノードを自分自身または自分の子孫の配下へは移動できません。',
     'tree.moveRootRefused': 'ルートノードは移動できません。',
-    'tree.moveNoRoom': '既に兄弟ノードの末尾にあります。',
     'tree.moveNoIndent': '配下に移動できる兄弟ノードが上にありません。',
     'tree.moveNoOutdent': '既にルートノードの直下にあります。',
     'tree.selected': '{n} 件のノードを選択中',
-    'tree.confirmDeleteMany': 'これら {n} 件のノードと配下のノードを削除しますか？',
     'tree.deletedMany': '{n} 件のノードを削除しました。元に戻す操作は1件ずつ戻ります。',
     'tree.deletePartial': '{total} 件中 {done} 件のノードを削除しました。残りはそのままです。',
     'tree.rootKept': 'ルートノードは削除できないため、何も削除されませんでした。',
@@ -1119,6 +1113,7 @@ function registerStrings(table) {
  */
 const CATALOGS = [
   './i18n/shell17.js',
+  './i18n/ux1.js',
   './i18n/val.js',
   './i18n/gate.js',
   './i18n/diagram.js',
@@ -2101,9 +2096,41 @@ async function actionNew() {
   }
 }
 
+/**
+ * A node that has no children is about to get its first (Add here; a move or
+ * a drag in tree.js, through ftaShell.firstChildWarning). In FTA mode a node
+ * with children is calculated from them and its own probability is no longer
+ * used. A value somebody typed must not go quiet without a word; exactly 1 is
+ * the untouched default and is not worth a warning.
+ *
+ * Call it BEFORE the change, with the parent as it still is. The answer is
+ * the warning to show once the change went through, or null.
+ *
+ * @returns {(() => void)|null}
+ */
+function firstChildWarning(parentId) {
+  if (isEtaMode()) return null; // an event tree uses every node's probability
+  const parent = store.findNode(parentId);
+  if (!parent || (Array.isArray(parent.children) && parent.children.length)) return null;
+  const own = Number(parent.probability);
+  if (!Number.isFinite(own) || own === 1) return null;
+  const message = t('msg.firstChild', {
+    name: parent.name ? String(parent.name) : String(parentId),
+    p: formatProb(own, getSigFigs()),
+  });
+  return () => toast(message, 'warn', null, showInValidation());
+}
+
+/** Show a node just made: tree.js opens the way to its row and tints it. */
+function revealNode(id) {
+  if (id === null || id === undefined || id === '') return;
+  window.dispatchEvent(new CustomEvent('fta:reveal', { detail: { id: String(id) } }));
+}
+
 async function actionAdd() {
-  // The new node goes under the selected one. With nothing selected (after
-  // New, Load or a reload) it goes under the top event, and the dialog says so.
+  // The new node goes under the selected one. With nothing selected (rare,
+  // now that the top event is selected at start-up) it goes under the top
+  // event, and the dialog says so.
   const noSelection = !store.selectedId;
   const parentId = store.selectedId || rootId();
   const parentNode = store.findNode(parentId);
@@ -2118,19 +2145,50 @@ async function actionAdd() {
       // without the hook hands the fields back to be posted here. The store
       // is updated only once the dialog is gone, so its focus restore still
       // lands on the row that opened it.
+      //
+      // The PARENT stays selected. Selecting the new node made the next Add
+      // nest under it, so three siblings took a click back on the parent
+      // between each one. The new child is shown instead: its row is opened
+      // to and tinted (fta:reveal), and the status line names it.
       let posting = null;
-      const submit = (values) => {
-        posting = api.post('/nodes', { parentId, ...values });
-        return posting;
+      const adopt = (result, name, quiet) => {
+        const warn = firstChildWarning(parentId);
+        store.applyMutation(result);
+        if (!store.selectedId) store.select(parentId);
+        revealNode(result.nodeId);
+        const message = t('msg.added', { name, parent: parentName || parentId });
+        // With the dialog still open it says "Added" itself; a toast per node
+        // would pile up beside it.
+        if (quiet) setStatus(message, 'ok');
+        else toast(message, 'ok');
+        if (warn) warn();
+      };
+      // "OK and add another" leaves the dialog open, so that node is adopted
+      // at once: the next one has to find it in the tree and the links list.
+      const submit = (values, how) => {
+        const request = api.post('/nodes', { parentId, ...values });
+        const mine = { request, name: values.name };
+        posting = mine;
+        if (!how || !how.another) return request;
+        return request.then((result) => {
+          if (posting === mine) posting = null;
+          adopt(result, values.name, true);
+          return result;
+        });
       };
       const fields = await fn(parentId, { submit, parentName, noSelection });
-      let result = null;
-      // Cancelled with the POST on the wire: the node may still have been made.
-      if (posting) result = await posting.catch(() => null);
-      else if (fields) result = await api.post('/nodes', { parentId, ...fields });
-      if (!result) return;
-      store.applyMutation(result);
-      if (result.nodeId) store.select(result.nodeId);
+      if (posting) {
+        // Closed by OK, or cancelled with the POST on the wire: the node may
+        // still have been made. An add-another request adopts its own answer
+        // and clears `posting`, so it is never adopted twice.
+        const last = posting;
+        const result = await last.request.catch(() => null);
+        if (result && posting === last) adopt(result, last.name, false);
+      } else if (fields) {
+        // A dialog without the submit hook hands the fields back instead.
+        const result = await api.post('/nodes', { parentId, ...fields });
+        if (result) adopt(result, fields.name, false);
+      }
     } catch (err) {
       showError(err);
     }
@@ -2155,9 +2213,18 @@ async function actionEdit() {
     }
     return;
   }
-  // details.js edits in place, so this is a pointer rather than a failure.
+  // details.js edits in place: Edit opens that form with the caret in the
+  // Name box and the name selected, ready to be typed over. It used to show
+  // a toast that said where to click.
   openTab('details');
   const host = $('#details-root');
+  const name = host && host.querySelector('.fta-details-form input[type="text"]');
+  if (name && !name.disabled && name.offsetParent !== null) {
+    name.focus();
+    name.select();
+    name.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   if (host) {
     host.focus();
     host.scrollIntoView({ block: 'nearest' });
@@ -2193,10 +2260,20 @@ async function actionDelete() {
 
   const node = store.findNode(nodeId);
   const name = (node && node.name) || nodeId;
-  const proceed = await askConfirm(t('confirm.delete', { name }), {
+  // How much goes with it: the node and everything beneath it. Cancel has the
+  // focus, so a stray Enter keeps the subtree.
+  let total = 0;
+  const count = (n) => {
+    total += 1;
+    for (const child of (n && Array.isArray(n.children) ? n.children : [])) count(child);
+  };
+  count(node);
+  const question = total > 1 ? t('confirm.deleteTree', { name, n: total }) : t('confirm.deleteLeaf', { name });
+  const proceed = await askConfirm(question, {
     title: t('btn.delete'),
     okLabel: t('btn.delete'),
     danger: true,
+    focusCancel: true,
   });
   if (!proceed) return;
 
@@ -2917,6 +2994,11 @@ function renderShell(state) {
   const badge = $('#dirty');
   badge.dataset.dirty = String(dirty);
   $('#dirty-text').textContent = dirty ? t('status.unsaved') : t('status.saved');
+  // Both wordings, for the two invisible sizers in app.css: the pill is as
+  // wide as the longer one in either state, so the first edit ("Saved" ->
+  // "Unsaved changes") no longer pushed the top bar onto a second row.
+  badge.dataset.saved = t('status.saved');
+  badge.dataset.unsaved = t('status.unsaved');
 
   $('#btn-undo').disabled = !state.canUndo;
   $('#btn-redo').disabled = !state.canRedo;
@@ -2936,9 +3018,24 @@ function renderShell(state) {
   const aiDot = $('#ai-status');
   aiDot.dataset.on = String(Boolean(state.aiConfigured));
 
+  // The file NAME, then its folder. The whole path in 30 characters showed
+  // "K:\Dropbox\NHI\GitHub\FTA_Edi…" for every file in the project; the
+  // name is what tells two of them apart, so it is never the part cut off.
+  const fileName = state.currentPath ? pathBaseName(state.currentPath) : '';
+  const fileDir = state.currentPath ? pathDirName(state.currentPath) || '' : '';
+  $('#statusline-file').textContent = fileName || t('status.noFile');
   const path = $('#statusline-path');
-  path.textContent = state.currentPath || t('status.noFile');
-  path.title = state.currentPath || '';
+  path.textContent = fileDir;
+  path.hidden = !fileDir;
+  const pathTitle = state.currentPath || '';
+  path.title = pathTitle;
+  $('#statusline-file').title = pathTitle;
+
+  // The browser tab: which file, and whether it has unsaved changes, readable
+  // from the tab strip and the task bar with the window in the background.
+  const docName = fileName || t('status.untitled');
+  const tabTitle = (dirty ? '● ' : '') + docName + ' - ' + APP_NAME;
+  if (document.title !== tabTitle) document.title = tabTitle;
 
   // Runs on every state change, so a capability that only arrives with the
   // first /api/state is applied the moment it does.
@@ -2948,6 +3045,9 @@ function renderShell(state) {
 // ---------------------------------------------------------------------------
 // keyboard shortcuts
 // ---------------------------------------------------------------------------
+
+/** The product name, as index.html's <title> has it. Not translated. */
+const APP_NAME = 'FTA Editor';
 
 const NON_TEXT_INPUTS = new Set([
   'checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'range', 'color', 'image',
@@ -2960,6 +3060,22 @@ function isTextEntry(el) {
   if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (tag === 'INPUT') return !NON_TEXT_INPUTS.has((el.type || 'text').toLowerCase());
   return false;
+}
+
+/**
+ * Where a shortcut must stand aside for the control's own keys. A text field
+ * has its own Ctrl+A and Ctrl+Z. A <select> has neither: after a gate was
+ * changed in the Details dropdown the focus is still on it, and Ctrl+Z did
+ * nothing at all. So the document's Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z work from
+ * a <select>; every other shortcut still leaves it alone (a letter there is
+ * type-ahead, Delete is not ours).
+ */
+function blocksShortcut(el, event) {
+  if (!isTextEntry(el)) return false;
+  if (el.tagName !== 'SELECT') return true;
+  const key = (event.key || '').toLowerCase();
+  const history = (event.ctrlKey || event.metaKey) && !event.altKey && (key === 'z' || key === 'y');
+  return !history;
 }
 
 function modalOpen() {
@@ -3021,7 +3137,7 @@ function onKeyDown(event) {
 
   // Typing must never trigger an action, and Ctrl+A/Ctrl+Z inside a field must
   // keep meaning select-all and undo-my-typing.
-  if (isTextEntry(event.target)) return;
+  if (blocksShortcut(event.target, event)) return;
 
   // Alt+N is New. Chrome and Edge keep Ctrl+N for themselves (a new browser
   // window; the page never sees the key), so the documented shortcut is the
@@ -3167,6 +3283,10 @@ async function boot() {
   }
 
   store.setState(state);
+  // Start with the top event selected, as New and Open do. With nothing
+  // selected the Details panel was empty and Add, Edit and Delete each had to
+  // explain that there was nothing to act on.
+  if (!store.selectedId) store.select(rootId());
 
   // Subscribing after setState is safe: store.subscribe fires immediately with
   // the current state, so the shell paints once here and on every change after.
@@ -3231,6 +3351,8 @@ window.ftaShell = {
   rootHeadline,
   /** Show a bottom-panel tab by id. @returns {boolean} false if hidden/unknown. */
   openTab,
+  /** Before a node gets its first child: the warning to show after, or null (see firstChildWarning). */
+  firstChildWarning,
 };
 
 boot().catch((err) => {

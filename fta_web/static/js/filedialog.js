@@ -90,6 +90,11 @@ function separatorFor(dir) {
   return '/';
 }
 
+/** "/x", "\x", "C:\x" and "C:x": anything that does not start from the folder on screen. */
+export function isAbsolutePath(path) {
+  return /^(?:[\\/]|[A-Za-z]:)/.test(String(path == null ? '' : path));
+}
+
 /** Join a directory and a bare file name with the directory's own separator. */
 export function joinPath(dir, name) {
   const sep = separatorFor(dir);
@@ -592,8 +597,13 @@ export function openFileDialog(options) {
    * works whether it names a folder or the file itself.
    */
   async function goToPath(raw) {
-    const value = String(raw || '').trim();
+    let value = String(raw || '').trim();
     if (!value || closed) return;
+    // A relative path is relative to the folder on screen ("sub/file.json",
+    // "report.json"); the server would read it against the sandbox root,
+    // which is somewhere else as soon as the user has clicked into a folder.
+    // "~" (home) is the server's to expand.
+    if (cwd && !isAbsolutePath(value) && !/^~(?:[\\/]|$)/.test(value)) value = joinPath(cwd, value);
     if (busy || starting) {
       // A listing is on its way, and the first one can be slow. Dropping the
       // Enter left the typed path in the box over the start folder's list;
@@ -615,6 +625,17 @@ export function openFileDialog(options) {
       pathInput.focus();
       return;
     }
+    // The same refusal covers "that is a file" (400) and "nothing is there"
+    // (404). Nothing there, in an Open dialog, is a mistyped path: say so.
+    // It used to fall through to the check below and answer a typo in a
+    // folder name with "this dialog saves .json files".
+    const missing = err.status === 404;
+    if (mode === 'open' && missing) {
+      const key = extensions.length && matchesExtension(value, extensions) ? 'file.errFileNotFound' : 'file.errFolderNotFound';
+      setMessage(t(key, { path: value }), 'error');
+      pathInput.focus();
+      return;
+    }
     if (mode === 'open') {
       if (extensions.length && !matchesExtension(value, extensions)) {
         setMessage(t('file.errExtension', { ext: extensionLabel }), 'error');
@@ -628,8 +649,9 @@ export function openFileDialog(options) {
     // prefill the name box exactly as clicking a file in the list does.
     const dir = dirName(value);
     const base = baseName(value);
-    if (!dir || !(await navigate(dir))) {
-      setMessage(errorText(err, 'file.errList'), 'error');
+    if (!dir || !(await navigate(dir, true))) {
+      // Neither the path nor the folder it would be saved in exists.
+      setMessage(missing ? t('file.errFolderNotFound', { path: dir || value }) : errorText(err, 'file.errList'), 'error');
       pathInput.focus();
       return;
     }

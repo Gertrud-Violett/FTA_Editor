@@ -45,6 +45,10 @@ Styles
     * a ``conditioning`` leaf is drawn as the ellipse itself (no rectangle),
       hanging off its INHIBIT gate, as in NUREG-0492.
 
+    The box reads the name, then one bold row with the numbers: ``Q=<Q>`` for
+    a gate, ``q=<q>`` for an event whose calculated value is its own, and
+    ``q=<q> | Q=<Q>`` only where the two differ.
+
     Native Graphviz only has polygons, so the shapes are approximations (see
     :data:`GATE_SHAPES` / :data:`EVENT_SHAPES`); the browser replaces them with
     true IEC 61025 / NUREG-0492 paths (``static/js/fta_symbols.js``), keyed by
@@ -162,6 +166,16 @@ DARK_MUTED = "#8b949e"
 #: ``Gate:``; the diagram panel's caption explains them (en/ja).
 MCUB_MARK = "MCUB"
 TREE_WALK_MARK = "tree walk"
+
+#: Type sizes, in points. A fitted diagram of a real tree is drawn at 30-50 %,
+#: where the 9 pt probability row of 1.7 came out about 4 px high. In the
+#: symbols style the row with the numbers is now the largest in the box, and
+#: bold: a box is as wide as its name, so the larger number costs height
+#: only. The compact style keeps its 1.6 text and only grows its meta row.
+SYMBOLS_NAME_PT = 12
+SYMBOLS_PROB_PT = 14
+SYMBOLS_EXTRA_PT = 9
+COMPACT_META_PT = 11
 
 #: Weight of the box -> gate/event-symbol edge in the symbols style (tree
 #: edges keep Graphviz' default 1): the symbol hangs straight off its box.
@@ -318,7 +332,7 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     name = html.escape(name_plain, quote=False)
     head = html.escape(head, quote=False)
     meta_text = f"{head}P:{p_str} | P_calc:{cp_str}"
-    font_size, small_font_size, cellpadding = 14, 9, 6
+    font_size, small_font_size, cellpadding = 14, COMPACT_META_PT, 6
     name_height = max(1, round(font_size * 1.7))
     meta_height = max(1, round(small_font_size * 2.0))
     return f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="{cellpadding}" BGCOLOR="{_bgcolor(cp)}">
@@ -342,16 +356,28 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
         extra.append(html.escape(kind, quote=False))
     marked = ctx.headline_for(node)
     calc = marked[0] if marked is not None else ctx.prob(node.get("calculatedProbability"))
-    probs = "q=%s | Q=%s" % (ctx.prob(node.get("probability")), calc)
+    base = ctx.prob(node.get("probability"))
     if node.get("children") and _gate_type(node) != "TRANSFER":
         probs = "Q=%s" % calc
-    lines = [f'<FONT POINT-SIZE="12">{_padded(name_plain, name, ctx.pad)}</FONT>']
+    elif base == calc:
+        # An event's calculated value is its own: "q=0.01 | Q=0.01" said the
+        # same number twice, in the smallest type of the box. A leaf whose two
+        # values do differ (an event with links) still shows both.
+        probs = "q=%s" % base
+    else:
+        probs = "q=%s | Q=%s" % (base, calc)
+    lines = [f'<FONT POINT-SIZE="{SYMBOLS_NAME_PT}">{_padded(name_plain, name, ctx.pad)}</FONT>']
     for text in extra:
-        lines.append(f'<FONT POINT-SIZE="9">{_padded(html.unescape(text), text, ctx.pad)}</FONT>')
-    lines.append(f'<FONT POINT-SIZE="9">'
-                 f'{_padded(probs, html.escape(probs, quote=False), ctx.pad)}</FONT>')
+        lines.append(f'<FONT POINT-SIZE="{SYMBOLS_EXTRA_PT}">'
+                     f'{_padded(html.unescape(text), text, ctx.pad)}</FONT>')
+    # The number is what the diagram is read for: the largest row, and bold. <B> goes outside <FONT>, so the row is still one FONT element
+    # with nothing but its text inside, which is what every label reader
+    # (tests, the back-to-back suite) matches.
+    lines.append(f'<B><FONT POINT-SIZE="{SYMBOLS_PROB_PT}">'
+                 f'{_padded(probs, html.escape(probs, quote=False), ctx.pad)}</FONT></B>')
     if marked is not None:
-        lines.append(f'<FONT POINT-SIZE="8">{_padded(marked[1], marked[1], ctx.pad)}</FONT>')
+        lines.append(f'<FONT POINT-SIZE="{SYMBOLS_EXTRA_PT}">'
+                     f'{_padded(marked[1], marked[1], ctx.pad)}</FONT>')
     return "<" + "<BR/>".join(lines) + ">"
 
 
