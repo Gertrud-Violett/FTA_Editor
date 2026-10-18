@@ -64,6 +64,10 @@ out there the next AI request is refused with :class:`AiBusy` rather than being
 allowed to race it for the handler's conversation history. The thread is a
 daemon so a hung provider can never stop the process from exiting on Ctrl-C.
 
+:func:`cancel_ai_call` (Stop in the chat) frees the slot without waiting for
+the worker: the call is abandoned, and the process moves to a new handler so
+that the abandoned worker has nothing shared left to write to.
+
 
 The API key never leaves this process
 -------------------------------------
@@ -151,6 +155,10 @@ class AiBusy(AiError):
     """Another AI call is still in flight (possibly a timed-out zombie)."""
 
 
+class AiCancelled(AiError):
+    """The call was abandoned by :func:`cancel_ai_call` (Stop in the chat)."""
+
+
 class AiTimeout(AiError):
     """The provider did not answer within ``config.AI_TIMEOUT_SECONDS``."""
 
@@ -209,6 +217,16 @@ def get_handler() -> AIAgentHandler:
         return _handler
 
 
+def existing_handler() -> Optional[AIAgentHandler]:
+    """The handler if one has been created, else None -- without creating it.
+
+    For a read that must stay free of side effects (GET /api/ai/conversation
+    runs on every page load): creating a handler makes ``~/.fta_editor``.
+    """
+    with _handler_lock:
+        return _handler
+
+
 def reset_handler() -> AIAgentHandler:
     """Replace the handler with a fresh one and return it.
 
@@ -224,11 +242,56 @@ def reset_handler() -> AIAgentHandler:
 
 # ---- worker thread + timeout --------------------------------------------
 
-#: Single-slot mutex around the handler. Acquired by the request thread,
-#: released by the worker -- see the module docstring. A plain Lock, not an
-#: RLock, precisely because it is released by a different thread than the one
-#: that took it.
-_call_slot = threading.Lock()
+
+class _Call:
+    """One provider call in flight: what :func:`cancel_ai_call` needs of it."""
+
+    __slots__ = ("label", "request_id", "done", "abandoned", "outcome",
+                 "handler", "history", "history_len", "pending")
+
+    def __init__(self, label: str, request_id: Optional[str]) -> None:
+        self.label = label
+        self.request_id = request_id
+        #: Set when the worker returned, or when the call was abandoned.
+        self.done = threading.Event()
+        self.abandoned = False
+        self.outcome: Dict[str, Any] = {}
+        #: The handler the call works on, and what it held when the call
+        #: began (see cancel_ai_call).
+        self.handler: Optional[AIAgentHandler] = None
+        self.history: Any = None
+        self.history_len = 0
+        self.pending: List[Any] = []
+
+
+#: The call that holds the single AI slot, or None. Taken by the request
+#: thread and given back by the worker -- see the module docstring -- or by
+#: :func:`cancel_ai_call`, which abandons the call instead of waiting for it.
+_active: Optional[_Call] = None
+#: Guards ``_active`` and the handler swap of a cancel. Never held across a
+#: provider call.
+_active_lock = threading.Lock()
+
+
+class _CallSlot:
+    """The single slot, seen as the lock it used to be: ``locked()`` says
+    whether a call holds it."""
+
+    @staticmethod
+    def locked() -> bool:
+        return _active is not None
+
+
+_call_slot = _CallSlot()
+
+_next_request = threading.local()
+
+
+def tag_next_call(request_id: Optional[str]) -> None:
+    """Name the call this thread is about to make with :func:`run_ai_call`
+    (the ``requestId`` the page sent), so that a cancel can say which call it
+    means. One call only: :func:`run_ai_call` takes the name and clears it."""
+    _next_request.value = request_id
 
 
 def _timeout_seconds() -> float:
@@ -251,20 +314,42 @@ def run_ai_call(label: str, func: Callable[..., Any], *args: Any, **kwargs: Any)
         AiTimeout: the deadline passed. The worker keeps running and keeps the
             slot until it finishes, so the next request is refused rather than
             racing it.
+        AiCancelled: :func:`cancel_ai_call` abandoned this call. Whatever the
+            provider answers later is dropped.
         AiCallFailed: ``func`` raised.
     """
+    global _active
     timeout = _timeout_seconds()
+    request_id = getattr(_next_request, "value", None)
+    _next_request.value = None
 
-    if not _call_slot.acquire(blocking=False):
-        raise AiBusy(
-            "Another AI request is still running. The AI is answered one "
-            "request at a time so replies cannot interleave in the "
-            "conversation; wait for the current one to finish, or restart the "
-            "editor if the provider has stopped responding."
-        )
+    call = _Call(label, request_id)
+    with _active_lock:
+        if _active is not None:
+            raise AiBusy(
+                "Another AI request is still running. The AI is answered one "
+                "request at a time so replies cannot interleave in the "
+                "conversation; wait for the current one to finish, or restart the "
+                "editor if the provider has stopped responding."
+            )
+        _active = call
+        # What the handler holds now. A cancelled call's late answer must not
+        # stay in the conversation, and "what was there before" is how the
+        # cancel tells the two apart.
+        handler = existing_handler()
+        call.handler = handler
+        if handler is not None:
+            call.history = handler.conversation_history
+            call.history_len = len(call.history)
+            call.pending = list(handler.pending_changes)
 
-    outcome: Dict[str, Any] = {}
-    finished = threading.Event()
+    outcome = call.outcome
+
+    def release() -> None:
+        global _active
+        with _active_lock:
+            if _active is call:  # not when it was abandoned: the slot moved on
+                _active = None
 
     def worker() -> None:
         try:
@@ -272,21 +357,27 @@ def run_ai_call(label: str, func: Callable[..., Any], *args: Any, **kwargs: Any)
         except BaseException as exc:  # noqa: BLE001 - re-raised on the caller
             outcome["error"] = exc
         finally:
-            # Released before ``finished`` is set, so a caller that wakes up
+            # Released before ``done`` is set, so a caller that wakes up
             # immediately finds the slot free instead of a spurious AiBusy.
             # Safe in either order for the timed-out case: by the time this
             # runs the worker has stopped touching the handler.
-            _call_slot.release()
-            finished.set()
+            release()
+            call.done.set()
 
     thread = threading.Thread(target=worker, name="ai-%s" % label, daemon=True)
     try:
         thread.start()
     except BaseException:
-        _call_slot.release()
+        release()
         raise
 
-    if not finished.wait(timeout):
+    finished = call.done.wait(timeout)
+    if call.abandoned:
+        raise AiCancelled(
+            "The AI request was stopped. Nothing was changed, and whatever the "
+            "provider still answers to it is ignored."
+        )
+    if not finished:
         # Worth a log line: the slot stays held until this worker returns, so
         # the next AI request will be refused with AiBusy, and this is the only
         # place that explains why.
@@ -307,6 +398,59 @@ def run_ai_call(label: str, func: Callable[..., Any], *args: Any, **kwargs: Any)
         raise AiCallFailed(str(outcome["error"]) or outcome["error"].__class__.__name__) from outcome["error"]
 
     return outcome["value"]
+
+
+def cancel_ai_call(request_id: Optional[str] = None) -> bool:
+    """Abandon the provider call in flight, and free the slot at once.
+
+    The provider's HTTP call cannot be interrupted (Python cannot stop a
+    thread in a socket read), so the call is *abandoned*: its request is
+    answered :class:`AiCancelled` now, the next request is accepted now, and
+    whatever the provider answers later goes nowhere.
+
+    "Nowhere" needs one more step than a flag, because the vendored handler
+    itself writes the answer down: ``send_message`` appends the two turns to
+    ``conversation_history`` and the parsed proposals to ``pending_changes``
+    when the provider returns, on the worker, long after this function. So
+    the process gets a **new handler** that holds what the old one held when
+    the call began, and the worker is left with the old one, which nothing
+    reads any more. The next call cannot race the abandoned one for the
+    conversation either: they no longer share it.
+
+    ``request_id`` (when given) must be the id the call was started with:
+    Stop in one tab does not abandon a request another tab has made since.
+    A call that timed out and still holds the slot is abandoned the same way.
+
+    Returns whether a call was abandoned. False is not an error: the call
+    had finished, or there was none.
+    """
+    global _active, _handler
+    with _active_lock:
+        call = _active
+        if call is None:
+            return False
+        if request_id is not None and call.request_id != request_id:
+            return False
+        call.abandoned = True
+        _active = None
+        with _handler_lock:
+            old = _handler
+            if old is not None and old is call.handler:
+                fresh = WebAgentHandler()
+                history = old.conversation_history
+                if history is call.history:
+                    # Only the abandoned call appends while it runs.
+                    fresh.conversation_history = list(history[:call.history_len])
+                # else: the conversation was cleared during the call, and
+                # anything in it since is the abandoned call's. Left empty.
+                before = {id(change) for change in call.pending}
+                fresh.pending_changes = [change for change in list(old.pending_changes)
+                                         if id(change) in before]
+                fresh.on_message_callback = old.on_message_callback
+                _handler = fresh
+    call.done.set()
+    log.info("AI call %r was abandoned on request.", call.label)
+    return True
 
 
 # ---- secrets -------------------------------------------------------------

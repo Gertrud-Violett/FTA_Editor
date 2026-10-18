@@ -218,7 +218,7 @@ def _add_a_node(client, tmp_path, node_id):
 
 def _open_another_file(client, tmp_path, node_id):
     path = write_document(tmp_path / "plant_b.json")
-    assert client.post("/api/file/open", json={"path": str(path)}).status_code == 200
+    assert client.post("/api/file/open", json={"path": str(path), "force": True}).status_code == 200
 
 
 def _start_a_new_document(client, tmp_path, node_id):
@@ -311,7 +311,7 @@ class TestProposalsBelongToTheirDocument:
 
     def test_after_open_the_proposal_is_refused(self, client, proposed, tmp_path):
         path = write_document(tmp_path / "plant_b.json")
-        assert client.post("/api/file/open", json={"path": str(path)}).status_code == 200
+        assert client.post("/api/file/open", json={"path": str(path), "force": True}).status_code == 200
         before = children(client)
 
         response = client.post("/api/ai/changes/apply", json={"indices": [proposed]})
@@ -347,7 +347,7 @@ class TestProposalsBelongToTheirDocument:
         monkeypatch.setattr(provider, "send_message", replies(edit_reply(pump, "Pump fails")))
         index = body(client.post("/api/ai/analyze", json={}))["changes"][0]["index"]
         path = write_document(tmp_path / "plant_b.json")
-        client.post("/api/file/open", json={"path": str(path)})
+        client.post("/api/file/open", json={"path": str(path), "force": True})
 
         assert client.post("/api/ai/changes/apply", json={"indices": [index]}).status_code == 400
 
@@ -364,7 +364,7 @@ class TestProposalsBelongToTheirDocument:
         try:
             assert blocked.inside.wait(5)
             path = write_document(tmp_path / "plant_b.json")
-            client.post("/api/file/open", json={"path": str(path)})
+            client.post("/api/file/open", json={"path": str(path), "force": True})
         finally:
             blocked.release.set()
             thread.join(10)
@@ -528,7 +528,10 @@ def test_a_partial_apply_shows_what_was_rejected():
     ).group(1)
     assert "appliedCount(result, indices.length)" in body_src
     assert "Number(result.applied)" not in body_src
-    assert "showDiagnostics({ rejected: result.rejected })" in body_src
+    # Batch 3: each rejected suggestion is named with the server's reason
+    # (showRejected); the same records no longer follow as raw JSON.
+    assert "showRejected(result.rejected);" in body_src
+    assert "showDiagnostics({ rejected: result.rejected })" not in body_src
 
 
 # --------------------------------------------------------------------------

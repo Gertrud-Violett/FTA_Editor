@@ -905,7 +905,7 @@ def run_api(t: Transport, root: Path, name: str, ref: Dict[str, Any],
             per_node_limit: Optional[int] = None, report: bool = True,
             exports: bool = True, roundtrip: bool = True) -> Dict[str, Any]:
     """Every API view of one file, as a Result (plus private raw pieces)."""
-    doc = t.post_json("/api/file/open", {"path": str(root / name)})
+    doc = t.post_json("/api/file/open", {"path": str(root / name), "force": True})
     res: Dict[str, Any] = norm_tree(doc["tree"])
     res["meta"] = {"mode": doc["metadata"]["mode"], "title": doc["metadata"]["title"]}
     res["analysis"] = norm_analysis(doc["analysis"])
@@ -978,7 +978,7 @@ def run_api(t: Transport, root: Path, name: str, ref: Dict[str, Any],
     if roundtrip:
         out_name = "_rt_" + name
         t.post_json("/api/file/save-as", {"path": str(root / out_name)})
-        again = t.post_json("/api/file/open", {"path": str(root / out_name)})
+        again = t.post_json("/api/file/open", {"path": str(root / out_name), "force": True})
         rt = norm_tree(again["tree"])
         res["roundtrip.calc"] = rt["calc"]
         res["roundtrip.keys"] = norm_keys(again["tree"])
@@ -1343,7 +1343,7 @@ def override_rows(names: Sequence[str], t: Transport, root: Path, path: str,
         base = load_web(corpus_path(name))
         ref_cut = norm_cutsets(cutsets_mod.compute(copy.deepcopy(base.get_data()), base.analysis,
                                                    dict(OVERRIDE_LIMITS)))
-        t.post_json("/api/file/open", {"path": str(root / name)})
+        t.post_json("/api/file/open", {"path": str(root / name), "force": True})
         api_cut = norm_cutsets(t.post_json("/api/analysis/cutsets",
                                            dict(OVERRIDE_LIMITS, limit=100000)))
         settings = t.post_json("/api/analysis/settings", {"missionTime": OVERRIDE_MISSION})

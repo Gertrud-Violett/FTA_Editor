@@ -25,9 +25,11 @@ async function main(url, label, root) {
   await page.keyboard.press('Alt+N');
   const modal = page.locator('.fta-modal');
   await modal.waitFor({ state: 'visible', timeout: 4000 });
-  const okText = await modal.locator('.fta-btn.is-primary').textContent();
+  // The prompt has a third button since batch 2 ("Save and continue", the
+  // primary one); the button that discards is named by its role.
+  const okText = await modal.locator('[data-role="discard"]').textContent();
   L.check('Alt+N on a dirty doc asks, OK button says "Discard and start new"', okText.trim() === 'Discard and start new', okText);
-  await modal.locator('.fta-btn.is-primary').click();
+  await modal.locator('[data-role="discard"]').click();
   await page.waitForTimeout(600);
   let st = await app.api('get', '/state');
   L.check('Alt+N created a new document', (st.tree.children || []).length === 0 && !st.dirty, st.tree);
@@ -42,7 +44,7 @@ async function main(url, label, root) {
   // Open while dirty: consequence-named button
   await page.locator('.actionbar [data-action="load"]').click();
   await modal.waitFor({ state: 'visible', timeout: 4000 });
-  const openOk = (await modal.locator('.fta-btn.is-primary').textContent()).trim();
+  const openOk = (await modal.locator('[data-role="discard"]').textContent()).trim();
   L.check('Load on a dirty doc: OK button says "Discard and open"', openOk === 'Discard and open', openOk);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
@@ -78,7 +80,7 @@ async function main(url, label, root) {
 
   // ---- Aa popover: Escape closes, focus returns, toasts survive -------------------
   await page.evaluate(() => window.ftaShell.toast('sticky toast for escape test', 'info'));
-  await page.locator('#diagram-root .diagram__btn', { hasText: 'Aa' }).click();
+  await page.locator('#diagram-root [data-role="diagram-settings"]').click();
   const pop = page.locator('.diagram__popover');
   L.check('Aa opens the popover', await pop.isVisible());
   await pop.locator('select').first().focus();
@@ -86,14 +88,14 @@ async function main(url, label, root) {
   await page.waitForTimeout(150);
   const popState = await page.evaluate(() => ({
     hidden: document.querySelector('.diagram__popover').hidden,
-    focusAa: document.activeElement && document.activeElement.textContent === 'Aa',
+    focusAa: Boolean(document.activeElement && document.activeElement.dataset && document.activeElement.dataset.role === 'diagram-settings'),
     toasts: Array.from(document.querySelectorAll('#toasts .toast')).map((t) => t.textContent),
   }));
   L.check('Escape in the popover select closes it', popState.hidden, popState);
   L.check('focus returns to the Aa button', popState.focusAa, popState);
   L.check('Escape in the popover does not dismiss the toast', popState.toasts.some((x) => /sticky toast/.test(x)), popState.toasts);
   // Escape with focus on Aa (popover open) closes it too
-  await page.locator('#diagram-root .diagram__btn', { hasText: 'Aa' }).click();
+  await page.locator('#diagram-root [data-role="diagram-settings"]').click();
   await page.keyboard.press('Escape');
   L.check('Escape with focus on Aa closes the popover', await page.evaluate(() => document.querySelector('.diagram__popover').hidden));
 

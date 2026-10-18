@@ -18,7 +18,7 @@ async function main(url, label, root) {
   // open the GUI-built file
   await page.locator('.actionbar [data-action="load"]').click();
   await page.waitForTimeout(300);
-  if (await page.locator('.fta-modal:not(.fta-filedialog)').count()) await page.locator('.fta-modal:not(.fta-filedialog) .fta-btn.is-primary').click();
+  await L.discardIfAsked(page);
   await page.locator('.fta-filedialog').waitFor({ state: 'visible' });
   await page.locator('.fta-filedialog .fdlg-row').first().waitFor({ state: 'visible' });
   await page.waitForTimeout(300);
@@ -154,7 +154,7 @@ async function main(url, label, root) {
   await page.route('**/api/fs/list**', holdFirstListing);
   await page.locator('.actionbar [data-action="load"]').click();
   await page.waitForTimeout(300);
-  if (await page.locator('.fta-modal:not(.fta-filedialog)').count()) await page.locator('.fta-modal:not(.fta-filedialog) .fta-btn.is-primary').click();
+  await L.discardIfAsked(page);
   await page.locator('.fta-filedialog').waitFor({ state: 'visible' });
   const pathBox = page.locator('.fta-filedialog .fdlg-path');
   await pathBox.fill(typedDir);

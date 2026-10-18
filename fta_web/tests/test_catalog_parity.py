@@ -33,7 +33,6 @@ _IDENTICAL_OK = {
     "btn.excel",   # "Excel" is "Excel"
     "btn.json",    # file-format names, unchanged in Japanese engineering use
     "btn.xml",
-    "ai.chat.markdown",  # "MD", the Markdown switch: a format name as well
     "cap.excel.cmd",  # a shell command; translating it would break it
     "ai.provider.openai",     # brand names
     "ai.provider.anthropic",

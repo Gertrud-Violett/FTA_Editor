@@ -35,7 +35,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-__all__ = ["is_frozen", "resource_root", "app_root", "resource"]
+__all__ = ["is_frozen", "resource_root", "app_root", "resource", "launch_command"]
 
 
 def is_frozen() -> bool:
@@ -72,6 +72,25 @@ def app_root() -> Path:
     if is_frozen():
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
+
+
+def launch_command() -> str:
+    """What the user types (or double-clicks) to start the editor again.
+
+    Shown where the app has to say "start me again": the page of a tab that
+    has no session, and the refusal of a path outside the sandbox root. The
+    page used to say ``python3 fta_web/run.py`` to everybody, which is not a
+    command a user of the packaged app can run.
+
+    Frozen: the executable's file name only (``fta_editor.exe``), never its
+    folder. The page that shows it is served without the session token, so it
+    must not say where on the disk the app is installed.
+
+    Source: the command the README gives.
+    """
+    if is_frozen():
+        return Path(sys.executable).name
+    return "uv run python fta_web/run.py"
 
 
 def resource(*parts: str) -> Path:

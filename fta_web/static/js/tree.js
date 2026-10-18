@@ -283,14 +283,43 @@ const TREE_CSS = `
 .fta-tree-item[data-depth="6"] > .fta-tree-row { background: var(--fta-depth-6); }
 .fta-tree-item[data-depth="7"] > .fta-tree-row { background: var(--fta-depth-7); }
 
-/* Blue for zero probability, bold red for a base probability of exactly 1.0.
-   Red is listed last on purpose: a node that is both is red, matching the
-   desktop's "if is_full_prob ... elif is_zero" ordering. */
+/* Blue for zero probability, bold red for an EVENT whose base probability is
+   exactly 1.0 (certain to occur: nearly always a value left at its default).
+   A gate is never red for it: its base probability is not used, and every
+   gate of a tree built in the editor carried one of 1.0, so the whole upper
+   half of the tree shouted. Red is listed last on purpose: a node that is
+   both is red, matching the desktop's "if is_full_prob ... elif is_zero". */
 .fta-tree-row.is-zero { color: var(--fta-tree-zero-fg); }
 .fta-tree-row.is-full {
   color: var(--fta-tree-full-fg);
   font-weight: var(--fta-tree-full-weight);
 }
+/* What the row is and what it is worth, at the right of the name: the gate
+   of a node with inputs, and the probability (calculated for a gate, its own
+   for an event). Quiet on purpose: the name is what is read first. */
+.fta-tree-gate {
+  flex: 0 0 auto;
+  padding: 0 0.35em;
+  border: 1px solid var(--fta-border, #d7dde5);
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--fta-muted-fg, #5d6a78);
+  background: var(--fta-surface, #fff);
+}
+.fta-tree-prob {
+  flex: 0 0 auto;
+  min-width: 4.2em;
+  text-align: right;
+  font-size: 0.8em;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--fta-muted-fg, #5d6a78);
+}
+.fta-tree-row.is-full .fta-tree-prob { color: inherit; font-weight: inherit; }
+.fta-tree-row.is-zero .fta-tree-prob { color: inherit; }
 
 .fta-tree-twisty {
   flex: 0 0 1em;
@@ -1057,6 +1086,56 @@ export function initTree(container) {
 
   /* ---- rendering ---------------------------------------------------------- */
 
+  function isEtaDocument() {
+    try {
+      return String(store.metadata().mode || '').toUpperCase() === 'ETA';
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  /** The chip of a node that combines inputs: "AND", "OR", "2/3", "TRANSFER"... */
+  function gateLabel(node, isBranch) {
+    const type = String(node.gateType || '').toUpperCase();
+    if (type === 'TRANSFER') return 'TRANSFER';
+    if (!isBranch) return null;
+    if (type === 'KOFN') {
+      const n = node.children.filter(Boolean).length;
+      return (node.k === undefined || node.k === null ? '?' : String(node.k)) + '/' + n;
+    }
+    if (type) return type;
+    return String(node.logicGate || 'OR').toUpperCase() === 'AND' ? 'AND' : 'OR';
+  }
+
+  /** {text, key}: the number a row shows and the tooltip that says which it is. */
+  function rowProbability(node, isBranch, eta) {
+    const calc = node.calculatedProbability;
+    const own = node.probability;
+    const useCalc = isBranch || eta || String(node.gateType || '').toUpperCase() === 'TRANSFER';
+    const value = useCalc && calc !== undefined && calc !== null ? calc : own;
+    if (value === undefined || value === null || value === '' || !Number.isFinite(Number(value))) return null;
+    return {
+      text: formatProb(Number(value), getSigFigs()),
+      key: useCalc ? 'tree.probCalcTitle' : 'tree.probOwnTitle',
+    };
+  }
+
+  /**
+   * Tell the shell how many rows are selected (`fta:selection` {ids, lead}),
+   * whenever that set changes: the header of the bottom panel says "3
+   * selected" instead of naming one node as if it were the only one.
+   */
+  let announced = '';
+  function announceSelection() {
+    const ids = Array.from(selection);
+    const key = ids.join('\u0001');
+    if (key === announced) return;
+    announced = key;
+    window.dispatchEvent(new CustomEvent('fta:selection', {
+      detail: { ids: ids, lead: store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId) },
+    }));
+  }
+
   /** The label, with the matched run wrapped so it can be highlighted. */
   function labelContent(name) {
     if (!query) return [name];
@@ -1083,9 +1162,14 @@ export function initTree(container) {
     const open = hasChildren && isExpanded(id);
     const isZero = ctx.zeros.has(id);
     // `probability` is the *base* value; calculatedProbability is not consulted
-    // here, exactly as in _apply_zero_marks.
-    const isFull = Number(node.probability) === 1;
+    // here, exactly as in _apply_zero_marks. Only for an event: a gate's base
+    // probability is not used, and in an event tree a branch point of 1.0
+    // (the initiating event, a path taken for certain) is ordinary.
+    const isBranch = Array.isArray(node.children) && node.children.some(Boolean);
+    const isFull = Number(node.probability) === 1 && !isBranch;
     const name = sanitizeName(node.name);
+    const gateChip = ctx.eta ? null : gateLabel(node, isBranch);
+    const shown = rowProbability(node, isBranch, ctx.eta);
     const isSelected = selection.has(id);
     const isLead = id === ctx.selectedId;
     const isEditing = Boolean(editing && editing.id === id);
@@ -1136,7 +1220,13 @@ export function initTree(container) {
           text: hasChildren ? (open ? '▾' : '▸') : '',
         }),
         label,
+        gateChip
+          ? el('span', { class: 'fta-tree-gate', title: t('tree.gateTitle', { gate: gateChip }), text: gateChip })
+          : null,
         fvBar,
+        shown
+          ? el('span', { class: 'fta-tree-prob', title: t(shown.key, { value: shown.text }), text: shown.text })
+          : null,
         el('span', {
           class: 'fta-tree-mark',
           'aria-hidden': 'true',
@@ -1230,7 +1320,9 @@ export function initTree(container) {
       selectedId: selectedId,
       rootId: String(root.id),
       filter: filter,
+      eta: isEtaDocument(),
     };
+    announceSelection();
 
     if (filter && !filter.matches.size) {
       // An empty list under a search box is a shrug. Say what happened.
@@ -1280,8 +1372,10 @@ export function initTree(container) {
     // pointer is exactly that), so the indicator is repainted onto the new rows.
     host.classList.toggle('is-dragging', Boolean(dragging));
     if (dragging) {
-      const source = itemById(dragging.id);
-      if (source) source.classList.add('is-drag-source');
+      for (const one of dragging.ids) {
+        const source = itemById(one);
+        if (source) source.classList.add('is-drag-source');
+      }
       paintDrop();
     }
   }
@@ -1547,9 +1641,129 @@ export function initTree(container) {
 
   function queueKeyboardMove(id, direction) {
     keyboardMoves = keyboardMoves
-      .then(() => (destroyed ? undefined : moveByKeyboard(id, direction)))
+      .then(() => {
+        if (destroyed) return undefined;
+        // A wider selection that holds the focused row moves as one block.
+        return selection.size > 1 && selection.has(String(id))
+          ? moveSelectionByKeyboard(direction)
+          : moveByKeyboard(id, direction);
+      })
       .catch((err) => fail(err));
     return keyboardMoves;
+  }
+
+  /* ---- moving several nodes at once ---------------------------------------
+     Delete was the only thing that honoured a multi-selection: a drag or a
+     Ctrl+Shift+Arrow took one row and silently left the rest. Both now take
+     the selection, through POST /api/batch/move, which is one undo step. */
+
+  /**
+   * What a move of the selection would move: the root left out, and a node
+   * inside another selected node left out (it travels with that node), in
+   * the order the tree shows them.
+   */
+  function movableSelection() {
+    const root = rootId();
+    const order = new Map(store.flat().map((entry, at) => [String(entry.id), at]));
+    const ids = Array.from(selection).filter((id) => id !== root && store.findNode(id));
+    const chosen = new Set(ids);
+    return ids
+      .filter((id) => !ancestorsOf(id).some((parent) => chosen.has(parent)))
+      .sort((a, b) => (order.get(a) || 0) - (order.get(b) || 0));
+  }
+
+  /**
+   * POST the move of several nodes. `index` is the position in the new
+   * parent's children once all of them are detached; null appends.
+   */
+  async function requestMoveMany(ids, newParentId, index, focusId) {
+    if (!expanded) expanded = new Set();
+    expanded.add(String(newParentId));
+    if (!query) saveExpanded();
+
+    const shell = window.ftaShell;
+    const arriving = ids.some((id) => parentIdOf(id) !== String(newParentId));
+    const warn =
+      arriving && shell && typeof shell.firstChildWarning === 'function'
+        ? shell.firstChildWarning(String(newParentId))
+        : null;
+    const lead = focusId && ids.includes(String(focusId)) ? String(focusId) : ids[0];
+
+    const commit = (async () => {
+      try {
+        const result = await api.post('/batch/move', {
+          ids: ids,
+          newParentId: String(newParentId),
+          index: index === null || index === undefined ? null : index,
+        });
+        store.applyMutation(result);
+        setSelection(ids, lead);
+        if (warn) warn();
+        say(t('tree.movedMany', { n: ids.length, parent: nameOf(newParentId) }), 'ok');
+      } catch (err) {
+        fail(err);
+      }
+    })();
+    pending = commit;
+    await commit;
+    if (pending === commit) pending = null;
+    render();
+    focusById(lead);
+  }
+
+  /** Ctrl+Shift+Arrow with several rows selected: the block moves together. */
+  function moveSelectionByKeyboard(direction) {
+    const ids = movableSelection();
+    if (!ids.length) {
+      say(t('tree.moveRootRefused'), 'warn');
+      return undefined;
+    }
+    const focus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
+    if (ids.length === 1) return moveByKeyboard(ids[0], direction);
+    const parent = parentIdOf(ids[0]);
+    if (!parent || ids.some((id) => parentIdOf(id) !== parent)) {
+      // Rows under different parents have no one "up" or "in" in common.
+      say(t('tree.moveManyMixed'), 'info');
+      return undefined;
+    }
+    const chosen = new Set(ids);
+    const siblings = childIdsOf(parent);
+    const first = siblings.indexOf(ids[0]);
+    const last = siblings.indexOf(ids[ids.length - 1]);
+    const restBefore = (limit) => siblings.slice(0, limit).filter((id) => !chosen.has(id));
+
+    if (direction === 'up') {
+      const before = restBefore(first).length;
+      if (!before) {
+        say(t('tree.moveNoRoomUp'), 'info');
+        return undefined;
+      }
+      return requestMoveMany(ids, parent, before - 1, focus);
+    }
+    if (direction === 'down') {
+      const after = siblings.slice(last + 1).filter((id) => !chosen.has(id)).length;
+      if (!after) {
+        say(t('tree.moveNoRoomDown'), 'info');
+        return undefined;
+      }
+      return requestMoveMany(ids, parent, restBefore(last).length + 1, focus);
+    }
+    if (direction === 'in') {
+      const above = restBefore(first);
+      if (!above.length) {
+        say(t('tree.moveNoIndent'), 'info');
+        return undefined;
+      }
+      return requestMoveMany(ids, above[above.length - 1], null, focus);
+    }
+    // 'out': the block becomes the parent's next siblings.
+    const grandparent = parentIdOf(parent);
+    if (!grandparent) {
+      say(t('tree.moveNoOutdent'), 'info');
+      return undefined;
+    }
+    const parentAt = childIdsOf(grandparent).indexOf(parent);
+    return requestMoveMany(ids, grandparent, parentAt < 0 ? null : parentAt + 1, focus);
   }
 
   /* ---- drag and drop ------------------------------------------------------ */
@@ -1580,8 +1794,7 @@ export function initTree(container) {
     clearDropPaint();
     dropAt = null;
     if (dragging) {
-      const source = itemById(dragging.id);
-      if (source) source.classList.remove('is-drag-source');
+      for (const source of host.querySelectorAll('.is-drag-source')) source.classList.remove('is-drag-source');
     }
     dragging = null;
     host.classList.remove('is-dragging');
@@ -1604,6 +1817,8 @@ export function initTree(container) {
   function dropIsValid(targetId, mode) {
     if (!dragging) return false;
     if (targetId === dragging.id) return false;
+    // Dropping a block beside one of its own rows has no position to mean.
+    if (dragging.ids.length > 1 && dragging.ids.includes(String(targetId))) return false;
     // Between siblings means "into the target's parent". The root has none, so
     // there is no position beside it to drop into.
     const parent = mode === 'into' ? targetId : parentIdOf(targetId);
@@ -1635,9 +1850,21 @@ export function initTree(container) {
       event.preventDefault();
       return;
     }
-    dragging = { id: id, blocked: subtreeIds(id) };
+    // A row of a wider selection drags the whole selection; any other row
+    // drags itself (and the selection collapses to it on the drop).
+    const many = selection.size > 1 && selection.has(String(id)) ? movableSelection() : [];
+    const ids = many.length > 1 ? many : [String(id)];
+    const blocked = new Set();
+    for (const one of ids) for (const sub of subtreeIds(one)) blocked.add(sub);
+    dragging = { id: id, ids: ids, blocked: blocked };
     host.classList.add('is-dragging');
     item.classList.add('is-drag-source');
+    if (ids.length > 1) {
+      for (const one of ids) {
+        const other = itemById(one);
+        if (other) other.classList.add('is-drag-source');
+      }
+    }
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
       // Firefox starts no drag at all without payload.
@@ -1715,10 +1942,24 @@ export function initTree(container) {
     const id = dragging.id;
     const target = dropAt.id;
     const mode = dropAt.mode;
+    const block = dragging.ids.length > 1 ? dragging.ids.slice() : null;
     // Resolved before endDrag(), which clears the drag state these read.
     const wasParent = parentIdOf(id);
-    const spot = mode === 'into' ? null : dropIndex(target, mode);
+    const spot = mode === 'into' || block ? null : dropIndex(target, mode);
     endDrag();
+
+    if (block) {
+      // Several rows: under the target, or beside it among the rows that stay.
+      if (mode === 'into') {
+        requestMoveMany(block, target, null, id);
+        return;
+      }
+      const parent = parentIdOf(target);
+      const chosen = new Set(block);
+      const staying = childIdsOf(parent).filter((one) => !chosen.has(one));
+      requestMoveMany(block, parent, staying.indexOf(String(target)) + (mode === 'after' ? 1 : 0), id);
+      return;
+    }
 
     if (mode === 'into') {
       const siblings = childIdsOf(target);
@@ -1769,27 +2010,22 @@ export function initTree(container) {
     });
     if (!proceed) return;
 
-    // One request per node, because the API has no batch delete -- so this is
-    // N undo steps, not one, and the message says so rather than letting the
-    // user discover it at the third Ctrl+Z.
-    let done = 0;
+    // One request for all of them (POST /api/batch/delete): all or nothing,
+    // and one undo step. It was one request per node, so three nodes took
+    // three Ctrl+Z to bring back.
     let removedLinks = 0;
-    for (const id of ids) {
-      try {
-        const result = await api.del('/nodes/' + encodeURIComponent(id));
-        store.applyMutation(result);
-        if (result && Array.isArray(result.removedLinks)) removedLinks += result.removedLinks.length;
-        done += 1;
-      } catch (err) {
-        fail(err);
-        break;
-      }
+    try {
+      const result = await api.post('/batch/delete', { ids: ids });
+      store.applyMutation(result);
+      if (result && Array.isArray(result.removedLinks)) removedLinks = result.removedLinks.length;
+    } catch (err) {
+      fail(err);
+      return;
     }
     selection = new Set();
     setSelection([parent], parent);
-    if (done !== ids.length) say(t('tree.deletePartial', { done: done, total: ids.length }), 'warn');
-    else if (only) say(t('msg.deleted', { name: only }), 'ok');
-    else say(t('tree.deletedMany', { n: done }), 'ok');
+    if (only) say(t('msg.deleted', { name: only }), 'ok');
+    else say(t('tree.deletedMany', { n: ids.length }), 'ok');
     // Links from surviving nodes into the deleted subtrees went with them.
     if (removedLinks) sayShowValidation(t('msg.removedLinks', { n: removedLinks }));
   }

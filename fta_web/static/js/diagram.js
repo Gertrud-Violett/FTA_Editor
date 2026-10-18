@@ -541,7 +541,7 @@ export function initDiagram(container) {
     min: String(SCALE_MIN),
     max: String(SCALE_MAX),
     step: '1',
-    'aria-label': t('diagram.scaleLabel', 'Box scale'),
+    'aria-label': t('diagram.scaleLabel', 'Box padding (0-30)'),
     value: String(boxSettings.scale),
   });
 
@@ -581,23 +581,24 @@ export function initDiagram(container) {
     text: '×',
     onclick: () => closePopover(true),
   });
-  const popoverTitle = el('span', { text: t('diagram.fontSettings', 'Font & box size') });
+  const popoverTitle = el('span', { text: t('diagram.fontSettings', 'Diagram settings') });
   const fontLabel = el('span', { text: t('diagram.fontLabel', 'Font') });
-  const scaleLabel = el('span', { text: t('diagram.scaleLabel', 'Box scale') });
+  const scaleLabel = el('span', { text: t('diagram.scaleLabel', 'Box padding (0-30)') });
   const scaleHint = el('p', { class: 'diagram__popoverHint' }, [
-    t('diagram.scaleHint', 'If text still spills out of the boxes after auto-detect, raise the scale.'),
+    t('diagram.scaleHint', 'Blank space added around the text of every box. Raise it if text spills out of a box.'),
   ]);
   /** The popover's fixed texts, again after a language switch. */
   function relabelPopover() {
-    popoverTitle.textContent = t('diagram.fontSettings', 'Font & box size');
+    popoverTitle.textContent = t('diagram.fontSettings', 'Diagram settings');
     popoverCloseBtn.setAttribute('aria-label', t('diagram.fontSettingsClose', 'Close'));
     fontLabel.textContent = t('diagram.fontLabel', 'Font');
-    scaleLabel.textContent = t('diagram.scaleLabel', 'Box scale');
-    scaleHint.textContent = t('diagram.scaleHint', 'If text still spills out of the boxes after auto-detect, raise the scale.');
+    scaleLabel.textContent = t('diagram.scaleLabel', 'Box padding (0-30)');
+    scaleHint.textContent = t('diagram.scaleHint', 'Blank space added around the text of every box. Raise it if text spills out of a box.');
+    settingsText.textContent = t('diagram3.settingsButton', 'Settings');
     fontAutoOption.textContent = t('diagram17.fontAuto', 'Auto-detect');
     fontSystemOption.textContent = t('diagram17.fontSystem', 'System default');
     fontSelect.setAttribute('aria-label', t('diagram.fontLabel', 'Font'));
-    scaleInput.setAttribute('aria-label', t('diagram.scaleLabel', 'Box scale'));
+    scaleInput.setAttribute('aria-label', t('diagram.scaleLabel', 'Box padding (0-30)'));
   }
   const popoverHead = el('div', { class: 'diagram__popoverHead' }, [
     popoverTitle,
@@ -618,10 +619,17 @@ export function initDiagram(container) {
     ]
   );
 
-  const aaBtn = btn('Aa', 'diagram.fontSettings', 'Font & box size', () => {
+  // The button that opens it says what it is. It was "Aa", titled "Font &
+  // box size", and the two settings people look for (Style and Layout) were
+  // behind it with nothing to say so.
+  const settingsText = el('span', { text: t('diagram3.settingsButton', 'Settings') });
+  const aaBtn = btn('', 'diagram.fontSettings', 'Diagram settings', () => {
     if (popover.hidden) openPopover();
     else closePopover();
   });
+  aaBtn.dataset.role = 'diagram-settings';
+  aaBtn.setAttribute('aria-haspopup', 'dialog');
+  aaBtn.append(el('span', { 'aria-hidden': 'true', text: '⚙ ' }), settingsText);
 
   const POPOVER_MARGIN = 8;
 
@@ -774,6 +782,8 @@ export function initDiagram(container) {
     zoomLabel,
     btn('+', 'diagram.zoomIn', 'Zoom in', () => zoomBy(ZOOM_STEP)),
     btn('⤢', 'diagram.fit', 'Fit to window', () => fit()),
+    btn('1:1', 'diagram3.actualSize', 'Actual size (100%)', () => zoomTo(1)),
+    btn('◎', 'diagram3.toSelection', 'Show the selected node at a readable size', () => showSelection()),
     el('span', { class: 'diagram__spacer' }),
     aaBtn,
     btn('SVG', 'diagram.exportSvg', 'Export as SVG', () => exportSvg()),
@@ -815,14 +825,34 @@ export function initDiagram(container) {
     };
   }
 
+  /**
+   * The same settings for a file: always the light colours. A picture goes
+   * into a report or a slide with a white page behind it, whatever theme the
+   * editor is in; the dark preview exported as it was gave a dark PNG with a
+   * white strip where the canvas was larger than the drawing.
+   */
+  function exportBoxSettings() {
+    return { ...effectiveBoxSettings(), dark: false };
+  }
+
+  function dotUrl(box) {
+    const hideZero = !!(window.ftaShell && window.ftaShell.hideZero);
+    return `/dot?hideZero=${hideZero ? 'true' : 'false'}&font=${encodeURIComponent(box.font)}` +
+      `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}` +
+      `&style=${encodeURIComponent(box.style)}&rankdir=${encodeURIComponent(box.rankdir)}` +
+      `&sigFigs=${encodeURIComponent(box.sigFigs)}`;
+  }
+
   let scale = 1;
   let tx = 0;
   let ty = 0;
   let svgEl = null;
   let lastSvgText = '';
-  // What export uses: the raw Graphviz SVG for compact, the symbol-processed
-  // one for the symbols style (so exports show the true symbols).
+  // Set once a diagram is drawn (the fitted, symbol-processed SVG as text).
+  // Exports are built from the live SVG when they are asked for, see
+  // buildExportSvg(); this only says that there is something to export.
   let exportSvgText = '';
+  let renderedDark = false;      // the preview on screen was laid out in dark colours
   let dotIdMap = new Map();      // DOT node name -> node id, from /api/dot
   let fallbackIdMap = null;      // sanitizeId mirror, built lazily per render
   let resetView = false;         // re-fit after a style/layout switch
@@ -831,6 +861,7 @@ export function initDiagram(container) {
   // spilling off the stage at the old zoom.
   let autoFit = true;
   let pendingJump = null;
+  let pendingReveal = null;      // a selection made while a new diagram was on its way
   let renderer = 'wasm';
   let timer = null;
   let generation = 0;
@@ -874,6 +905,80 @@ export function initDiagram(container) {
     tx = px - ((px - tx) * next) / scale;
     ty = py - ((py - ty) * next) / scale;
     scale = next;
+    applyTransform();
+  }
+
+  /** Set the zoom to exactly `next` (1 = 100%), about zoomAnchor(). */
+  function zoomTo(next) {
+    if (!svgEl) return;
+    if (scale === next) {
+      autoFit = false;
+      return;
+    }
+    zoomBy(next / scale);
+    scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next)); // no 99.99999% from the division
+    applyTransform();
+  }
+
+  /** The main box of node `id` in the diagram on screen, or null. */
+  function mainGroupOf(id) {
+    const wanted = String(id);
+    const found = nodeGroups().find(({ g, id: gid }) => gid === wanted && isMainGroup(g));
+    return found ? found.g : null;
+  }
+
+  /**
+   * Move the diagram by the least that puts node `id` wholly on the stage
+   * (centred along an axis it is too large for). The zoom is not touched.
+   * Selecting a row in the tree did nothing for a zoomed diagram: the node
+   * was outlined somewhere off the stage. @returns {boolean} true when moved.
+   */
+  const REVEAL_MARGIN_PX = 8;
+  function panIntoView(id) {
+    const g = svgEl ? mainGroupOf(id) : null;
+    if (!g) return false;
+    const box = g.getBoundingClientRect();
+    const view = stage.getBoundingClientRect();
+    if (!view.width || !view.height || !box.width) return false;
+    const shift = (lo, hi, viewLo, viewHi) => {
+      const room = viewHi - viewLo - 2 * REVEAL_MARGIN_PX;
+      if (hi - lo > room) return (viewLo + viewHi) / 2 - (lo + hi) / 2;
+      if (lo < viewLo + REVEAL_MARGIN_PX) return viewLo + REVEAL_MARGIN_PX - lo;
+      if (hi > viewHi - REVEAL_MARGIN_PX) return viewHi - REVEAL_MARGIN_PX - hi;
+      return 0;
+    };
+    const dx = shift(box.left, box.right, view.left, view.right);
+    const dy = shift(box.top, box.bottom, view.top, view.bottom);
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return false;
+    autoFit = false;
+    tx += dx;
+    ty += dy;
+    applyTransform();
+    return true;
+  }
+
+  /**
+   * The selected node in the middle of the stage, at 100% or the current
+   * zoom if that is larger. With nothing selected (or the node not drawn,
+   * under Hide Zero), the whole diagram.
+   */
+  function showSelection() {
+    const id = store.selectedId;
+    const g = svgEl && id !== null && id !== undefined ? mainGroupOf(id) : null;
+    if (!g) {
+      fit();
+      return;
+    }
+    autoFit = false;
+    const next = Math.min(ZOOM_MAX, Math.max(1, scale));
+    const view = stage.getBoundingClientRect();
+    const box = g.getBoundingClientRect();
+    // The node's centre in diagram coordinates, then where the stage centre is.
+    const cx = (box.left + box.width / 2 - view.left - tx) / scale;
+    const cy = (box.top + box.height / 2 - view.top - ty) / scale;
+    scale = next;
+    tx = view.width / 2 - cx * scale;
+    ty = view.height / 2 - cy * scale;
     applyTransform();
   }
 
@@ -993,11 +1098,12 @@ export function initDiagram(container) {
     return fallbackIdMap.get(name) || null;
   }
 
-  /** [{g, id}] for every rendered node group. */
-  function nodeGroups() {
-    if (!svgEl) return [];
+  /** [{g, id}] for every node group of `root` (default: the diagram on screen). */
+  function nodeGroups(root) {
+    const from = root || svgEl;
+    if (!from) return [];
     const out = [];
-    svgEl.querySelectorAll('g.node').forEach((g) => {
+    from.querySelectorAll('g.node').forEach((g) => {
       const title = g.querySelector('title');
       const id = title ? resolveNodeId(title.textContent.trim()) : null;
       if (id !== null && id !== undefined) out.push({ g, id: String(id) });
@@ -1031,10 +1137,29 @@ export function initDiagram(container) {
     for (const { g, id } of nodeGroups()) g.classList.toggle('is-highlighted', ids.has(id));
   }
 
-  function applyOverlay() {
-    const values = overlay && overlay.values && typeof overlay.values === 'object' ? overlay.values : null;
+  function overlayValues(over) {
+    return over && over.values && typeof over.values === 'object' ? over.values : null;
+  }
+
+  /** The legend's three texts for an overlay: its title and the two ends. */
+  function legendTexts(over) {
+    const kind = String((over && over.kind) || '');
+    return {
+      title: kind === 'fv' ? t('diagram17.legendFv', 'Fussell-Vesely importance') : kind.toUpperCase(),
+      low: t('diagram17.legendLow', 'low') + ' 0',
+      high: formatProb(overlayMax(overlayValues(over)), currentSigFigs()) + ' ' + t('diagram17.legendHigh', 'high'),
+    };
+  }
+
+  /**
+   * Fill the event boxes of `root` by `over` (or clear the fills when it is
+   * null). The diagram on screen and the copy an export is made from are
+   * painted by the same code, so the file shows what the screen shows.
+   */
+  function paintOverlay(root, over) {
+    const values = overlayValues(over);
     const max = overlayMax(values);
-    for (const { g, id } of nodeGroups()) {
+    for (const { g, id } of nodeGroups(root)) {
       if (!isMainGroup(g)) continue;
       const shape = mainShape(g);
       if (!shape) continue;
@@ -1044,17 +1169,21 @@ export function initDiagram(container) {
         g.classList.add('has-overlay');
       } else {
         shape.style.removeProperty('fill');
+        if (!shape.getAttribute('style')) shape.removeAttribute('style');
         g.classList.remove('has-overlay');
       }
     }
+  }
+
+  function applyOverlay() {
+    const values = overlayValues(overlay);
+    paintOverlay(svgEl, overlay);
     legend.hidden = !values;
     if (values) {
-      const kind = String((overlay && overlay.kind) || '');
-      legendTitle.textContent = kind === 'fv'
-        ? t('diagram17.legendFv', 'Fussell-Vesely importance')
-        : kind.toUpperCase();
-      legendLow.textContent = t('diagram17.legendLow', 'low') + ' 0';
-      legendHigh.textContent = formatProb(max, currentSigFigs()) + ' ' + t('diagram17.legendHigh', 'high');
+      const texts = legendTexts(overlay);
+      legendTitle.textContent = texts.title;
+      legendLow.textContent = texts.low;
+      legendHigh.textContent = texts.high;
     }
   }
 
@@ -1070,10 +1199,9 @@ export function initDiagram(container) {
       pendingJump = id;
       return;
     }
-    const wanted = String(id);
-    const found = nodeGroups().find(({ g, id: gid }) => gid === wanted && isMainGroup(g));
-    if (!found) return;
-    const box = found.g.getBoundingClientRect();
+    const group = mainGroupOf(id);
+    if (!group) return;
+    const box = group.getBoundingClientRect();
     const view = stage.getBoundingClientRect();
     const inView = box.left >= view.left && box.right <= view.right
       && box.top >= view.top && box.bottom <= view.bottom;
@@ -1099,17 +1227,47 @@ export function initDiagram(container) {
     if (metaHost) metaHost.textContent = text;
   }
 
+  /**
+   * Graphviz's SVG text as an element of this document: parsed, sanitized,
+   * the gate symbols drawn (symbols style) and given a pixel size. Not yet
+   * attached anywhere, and its labels not yet fitted (that needs layout).
+   */
+  function svgFromText(svgText, style, rankdir) {
+    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    const parsed = doc.documentElement;
+    if (!parsed || parsed.nodeName === 'parsererror') throw new Error('Graphviz returned invalid SVG.');
+    sanitizeSvg(parsed);
+    // After sanitizing: the symbol paths are built from numbers only.
+    if (style === 'symbols') replaceGateShapes(parsed, rankdir);
+    const node = document.importNode(parsed, true);
+    // Give the SVG real intrinsic pixel size from its own viewBox rather
+    // than stripping width/height outright. .diagram__canvas is
+    // position:absolute with no explicit size (it shrink-wraps its child so
+    // the zoom transform has something concrete to scale), and a naked <svg>
+    // with only a viewBox inside such a parent has nothing to lay out
+    // against -- Chromium collapses it to 0x0 instead of falling back to a
+    // UA default, so the rendered diagram becomes invisible while still
+    // being fully present in the DOM (every existing check -- "does a <svg>
+    // exist", "does it contain this text" -- passes anyway). Zoom still
+    // comes entirely from .diagram__canvas's own `transform: scale()` in
+    // applyTransform(), which multiplies this intrinsic size, so fixing the
+    // collapse does not fight zoom.
+    const vb = node.viewBox && node.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      node.setAttribute('width', String(vb.width));
+      node.setAttribute('height', String(vb.height));
+    } else {
+      node.removeAttribute('width');
+      node.removeAttribute('height');
+    }
+    return node;
+  }
+
   async function render() {
     const mine = ++generation;
     try {
-      const hideZero = !!(window.ftaShell && window.ftaShell.hideZero);
       const box = effectiveBoxSettings();
-      const payload = await api.get(
-        `/dot?hideZero=${hideZero ? 'true' : 'false'}&font=${encodeURIComponent(box.font)}` +
-        `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}` +
-        `&style=${encodeURIComponent(box.style)}&rankdir=${encodeURIComponent(box.rankdir)}` +
-        `&sigFigs=${encodeURIComponent(box.sigFigs)}`
-      );
+      const payload = await api.get(dotUrl(box));
       if (mine !== generation || destroyed) return; // a newer render superseded this one
       renderer = payload.renderer || 'wasm';
       const idMap = new Map();
@@ -1123,38 +1281,14 @@ export function initDiagram(container) {
       if (mine !== generation || destroyed) return;
       lastSvgText = svgText;
 
+      const fresh = svgFromText(svgText, renderedStyle, renderedRankdir);
       clear(canvas);
-      const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-      const parsed = doc.documentElement;
-      if (!parsed || parsed.nodeName === 'parsererror') throw new Error('Graphviz returned invalid SVG.');
-      sanitizeSvg(parsed);
-      // After sanitizing: the symbol paths are built from numbers only.
-      if (renderedStyle === 'symbols') replaceGateShapes(parsed, renderedRankdir);
       dotIdMap = idMap;
       fallbackIdMap = null;
       captionOn = Boolean(payload.rootHeadline && payload.rootHeadline.method === 'mcub');
       renderCaption();
-      svgEl = document.importNode(parsed, true);
-      // Give the SVG real intrinsic pixel size from its own viewBox rather
-      // than stripping width/height outright. .diagram__canvas is
-      // position:absolute with no explicit size (it shrink-wraps its child so
-      // the zoom transform below has something concrete to scale), and a
-      // naked <svg> with only a viewBox inside such a parent has nothing to
-      // lay out against -- Chromium collapses it to 0x0 instead of falling
-      // back to a UA default, so the rendered diagram becomes invisible while
-      // still being fully present in the DOM (every existing check --
-      // "does a <svg> exist", "does it contain this text" -- passes anyway).
-      // Zoom still comes entirely from .diagram__canvas's own
-      // `transform: scale()` in applyTransform(), which multiplies this
-      // intrinsic size, so fixing the collapse does not fight zoom.
-      const vb = svgEl.viewBox && svgEl.viewBox.baseVal;
-      if (vb && vb.width > 0 && vb.height > 0) {
-        svgEl.setAttribute('width', String(vb.width));
-        svgEl.setAttribute('height', String(vb.height));
-      } else {
-        svgEl.removeAttribute('width');
-        svgEl.removeAttribute('height');
-      }
+      svgEl = fresh;
+      renderedDark = Boolean(box.dark);
       canvas.appendChild(svgEl);
       // Must run after appendChild: it measures the text with the page's
       // real font. Browser exports use the fitted SVG as well.
@@ -1170,6 +1304,11 @@ export function initDiagram(container) {
         const id = pendingJump;
         pendingJump = null;
         jumpTo(id);
+      }
+      if (pendingReveal !== null) {
+        const id = pendingReveal;
+        pendingReveal = null;
+        panIntoView(id);
       }
       setStatusMessage('');
       // What is on screen always comes from the in-browser renderer; a
@@ -1207,12 +1346,136 @@ export function initDiagram(container) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function exportSvg() {
-    if (!exportSvgText) {
+  /**
+   * The file name and the toast of a download, from the shell: the same name
+   * as the Render button gives (the open file's, or the title's) and the
+   * same sentence saying where a download goes. These buttons used to save
+   * "fta_diagram.png" without a word.
+   */
+  function exportName(extension) {
+    const shell = window.ftaShell;
+    try {
+      if (shell && typeof shell.exportFilename === 'function') return shell.exportFilename(extension);
+    } catch (_err) {
+      /* fall through */
+    }
+    return 'fta_diagram.' + extension;
+  }
+
+  function downloaded(name) {
+    const shell = window.ftaShell;
+    setStatusMessage('');
+    if (shell && typeof shell.toastDownloaded === 'function') shell.toastDownloaded(name);
+  }
+
+  /** A second, light-coloured layout of the diagram on screen, for a file. */
+  async function lightSvg() {
+    const box = exportBoxSettings();
+    const payload = await api.get(dotUrl(box));
+    const node = svgFromText(await layoutSvg(payload.dot), payload.style || box.style, payload.rankdir || box.rankdir);
+    // fitLabels measures: the copy has to be laid out, off the screen.
+    const bench = el('div', {
+      'aria-hidden': 'true',
+      style: 'position:fixed; left:-100000px; top:0; visibility:hidden; pointer-events:none;',
+    });
+    document.body.appendChild(bench);
+    try {
+      bench.appendChild(node);
+      fitLabels(node);
+    } finally {
+      bench.remove();
+    }
+    return node;
+  }
+
+  const LEGEND_HEIGHT = 46;
+  const LEGEND_MIN_WIDTH = 230;
+
+  /** The overlay's legend, drawn into the export under the diagram. */
+  function appendLegend(root, over, font) {
+    const vb = root.viewBox.baseVal;
+    const x0 = vb.x;
+    const y0 = vb.y;
+    const height = vb.height;
+    const width = Math.max(vb.width, LEGEND_MIN_WIDTH);
+    const top = y0 + height;
+    const texts = legendTexts(over);
+    const make = (tag, attrs, text) => {
+      const node = document.createElementNS(SVG_NS, tag);
+      for (const key of Object.keys(attrs)) node.setAttribute(key, String(attrs[key]));
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    const gradient = make('linearGradient', { id: 'fta-overlay-scale', x1: '0', y1: '0', x2: '1', y2: '0' });
+    gradient.append(
+      make('stop', { offset: '0', 'stop-color': scaleColor(0) }),
+      make('stop', { offset: '1', 'stop-color': scaleColor(1) })
+    );
+    const defs = make('defs', {});
+    defs.appendChild(gradient);
+    const x = x0 + 8;
+    const barWidth = 150;
+    const textAttrs = { 'font-family': font || 'sans-serif', 'font-size': '11', fill: '#10151c' };
+    const group = make('g', { class: 'fta-legend' });
+    group.append(
+      make('rect', { x: x0, y: y0, width, height: height + LEGEND_HEIGHT, fill: '#ffffff' }),
+    );
+    const key = make('g', { class: 'fta-legend-key' });
+    key.append(
+      make('text', { ...textAttrs, x, y: top + 13, 'font-weight': 'bold' }, texts.title),
+      make('rect', {
+        x, y: top + 19, width: barWidth, height: 8, fill: 'url(#fta-overlay-scale)', stroke: '#8a94a0', 'stroke-width': '0.5',
+      }),
+      make('text', { ...textAttrs, x, y: top + 40 }, texts.low),
+      make('text', { ...textAttrs, x: x + barWidth, y: top + 40, 'text-anchor': 'end' }, texts.high)
+    );
+    // The white sheet goes behind everything, the key on top.
+    root.insertBefore(group, root.firstChild);
+    root.insertBefore(defs, root.firstChild);
+    root.appendChild(key);
+    root.setAttribute('viewBox', `${x0} ${y0} ${width} ${height + LEGEND_HEIGHT}`);
+    root.setAttribute('width', String(width));
+    root.setAttribute('height', String(height + LEGEND_HEIGHT));
+  }
+
+  /**
+   * The diagram as a file: `{text, width, height}`, or null with nothing drawn.
+   *
+   * Built when it is asked for, from what is on screen: the fitted labels,
+   * the true symbols and the overlay colours with their legend (the SVG kept
+   * at render time was taken before the overlay was painted, so a diagram
+   * coloured by importance exported plain). Always in the light colours: a
+   * dark preview is laid out a second time for the file. The selection
+   * outline and the highlight are marks of the session and stay out.
+   *
+   * `options.overlay`: leave it out for the overlay on screen, null for
+   * none, or `{kind, values}` to colour the file by that (the report).
+   */
+  async function buildExportSvg(options) {
+    if (!svgEl) return null;
+    const over = options && Object.prototype.hasOwnProperty.call(options, 'overlay') ? options.overlay : overlay;
+    const copy = renderedDark ? await lightSvg() : svgEl.cloneNode(true);
+    for (const g of copy.querySelectorAll('g.node')) g.classList.remove('is-selected', 'is-highlighted');
+    paintOverlay(copy, over || null);
+    if (overlayValues(over)) appendLegend(copy, over, exportBoxSettings().font);
+    if (!copy.getAttribute('xmlns')) copy.setAttribute('xmlns', SVG_NS);
+    const vb = copy.viewBox && copy.viewBox.baseVal;
+    return {
+      text: new XMLSerializer().serializeToString(copy),
+      width: (vb && vb.width) || 1200,
+      height: (vb && vb.height) || 800,
+    };
+  }
+
+  async function exportSvg() {
+    const built = exportSvgText ? await buildExportSvg().catch(() => null) : null;
+    if (!built) {
       setStatusMessage(t('diagram.nothingToExport', 'Nothing to export yet.'), 'error');
       return;
     }
-    download(new Blob([exportSvgText], { type: 'image/svg+xml;charset=utf-8' }), 'fta_diagram.svg');
+    const name = exportName('svg');
+    download(new Blob([built.text], { type: 'image/svg+xml;charset=utf-8' }), name);
+    downloaded(name);
   }
 
   async function exportPng() {
@@ -1220,14 +1483,16 @@ export function initDiagram(container) {
       setStatusMessage(t('diagram.nothingToExport', 'Nothing to export yet.'), 'error');
       return;
     }
+    const name = exportName('png');
     const caps = (store.state && store.state.capabilities) || {};
     // The true gate symbols are drawn in the browser (fta_symbols.js); native
     // `dot` only knows the placeholder polygons, so a symbols-style PNG must
-    // come from the processed preview, never from /api/render.
-    if (caps.nativeDot && effectiveBoxSettings().style !== 'symbols') {
+    // come from the processed preview, never from /api/render. The same goes
+    // for a diagram coloured by an overlay: the server does not know it.
+    if (caps.nativeDot && effectiveBoxSettings().style !== 'symbols' && !overlayValues(overlay)) {
       // A real `dot` rasterises at 300 dpi; prefer it over a canvas upscale.
       try {
-        const box = effectiveBoxSettings();
+        const box = exportBoxSettings();
         const res = await api.post('/render', {
           format: 'png',
           hideZero: !!(window.ftaShell && window.ftaShell.hideZero),
@@ -1242,20 +1507,24 @@ export function initDiagram(container) {
         const bin = atob(res.data);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-        download(new Blob([bytes], { type: res.contentType || 'image/png' }), 'fta_diagram.png');
+        download(new Blob([bytes], { type: res.contentType || 'image/png' }), name);
+        downloaded(name);
         return;
       } catch (err) {
         // 503 here means `dot` vanished since startup; fall through to canvas.
         setStatusMessage(t('diagram.nativeFellBack', 'System Graphviz unavailable; exported from the browser renderer instead.'), 'warn');
       }
     }
-    await exportPngViaCanvas();
+    await exportPngViaCanvas(name);
   }
 
-  async function exportPngViaCanvas() {
+  async function exportPngViaCanvas(name) {
     const blob = await toPngBlob();
-    if (blob) download(blob, 'fta_diagram.png');
-    else setStatusMessage(t('diagram.pngFailed', 'Could not rasterise the diagram to PNG.'), 'error');
+    const file = name || exportName('png');
+    if (blob) {
+      download(blob, file);
+      downloaded(file);
+    } else setStatusMessage(t('diagram.pngFailed', 'Could not rasterise the diagram to PNG.'), 'error');
   }
 
   /**
@@ -1263,18 +1532,20 @@ export function initDiagram(container) {
    * Resolves null when nothing is rendered yet or rasterising fails. Used by
    * exportPngViaCanvas() and by window.ftaShell.diagramPng() (report export).
    */
-  function toPngBlob() {
+  async function toPngBlob(options) {
+    let built = null;
+    try {
+      built = exportSvgText ? await buildExportSvg(options) : null;
+    } catch (_err) {
+      built = null;
+    }
+    if (!built) return null;
     return new Promise((resolve) => {
-      if (!exportSvgText) {
-        resolve(null);
-        return;
-      }
       const scaleUp = 2;
-      const box = svgEl ? svgEl.viewBox.baseVal : null;
-      const w = (box && box.width) || 1200;
-      const h = (box && box.height) || 800;
+      const w = built.width;
+      const h = built.height;
       const img = new Image();
-      const svgBlob = new Blob([exportSvgText], { type: 'image/svg+xml;charset=utf-8' });
+      const svgBlob = new Blob([built.text], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(svgBlob);
       img.onload = () => {
         const c = document.createElement('canvas');
@@ -1301,10 +1572,21 @@ export function initDiagram(container) {
   // document state (every mutation, open, undo) re-fetches the DOT and
   // re-runs the layout -- 1.7.0 re-laid-out the whole diagram on every click.
   let renderedState;
+  let seenSelection = store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
   const unsubscribe = store.subscribe(() => {
     markSelection();
-    if (store.state === renderedState) return;
+    const selected = store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
+    const reselected = selected !== seenSelection;
+    seenSelection = selected;
+    if (store.state === renderedState) {
+      // A row picked in the tree (or a table): bring its box onto the stage.
+      if (reselected && selected) panIntoView(selected);
+      return;
+    }
     renderedState = store.state;
+    // The diagram for this state is not drawn yet; look for the node then.
+    // A fitted diagram shows every node, so only a zoomed one needs it.
+    if (reselected && selected && !autoFit) pendingReveal = selected;
     schedule();
   });
   const unsubscribeHighlight = typeof store.onHighlight === 'function'
@@ -1377,6 +1659,11 @@ export function initDiagram(container) {
     /** True once a diagram has been drawn (there is something to export). */
     hasDiagram: () => Boolean(exportSvgText),
     getBoxSettings: effectiveBoxSettings,
+    /** The settings a file is made with: the preview's, in the light colours. */
+    getExportSettings: exportBoxSettings,
+    buildExportSvg,
+    /** True while the diagram is coloured by an overlay (importance). */
+    hasOverlay: () => Boolean(overlayValues(overlay)),
     jumpTo,
     destroy() {
       destroyed = true;

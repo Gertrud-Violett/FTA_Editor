@@ -231,8 +231,14 @@ def test_svg_sanitiser_strips_script_navigation_and_off_box_loads():
 
 def test_sanitiser_runs_before_the_svg_is_imported():
     src = _read(STATIC / "diagram.js")
-    body = _braced(src, src.index("async function render()"))
+    # Batch 3: the screen and the light-coloured export copy are both made by
+    # svgFromText(), the one place Graphviz output enters the document.
+    body = _braced(src, src.index("function svgFromText(svgText, style, rankdir)"))
     assert body.index("sanitizeSvg(parsed);") < body.index("document.importNode(parsed, true)")
+    assert src.count("document.importNode(") == 1 and src.count("new DOMParser()") == 1
+    render = _braced(src, src.index("async function render()"))
+    assert "svgFromText(svgText, renderedStyle, renderedRankdir)" in render
+    assert "svgFromText(await layoutSvg(payload.dot)" in _braced(src, src.index("async function lightSvg()"))
 
 
 # ---- main.js: Load and Undo/Redo wait for the edit their click started ----------------
@@ -251,7 +257,9 @@ def test_load_waits_for_pending_commits_before_checking_dirty():
     body = _braced(src, src.index("async function actionLoad()"))
     assert "await flushPendingEdits();" in body
     assert body.index("await flushPendingEdits();") < body.index("store.state.dirty")
-    assert body.index("await flushPendingEdits();") < body.index("pickPath('open')")
+    # The picker is now asked for the document's other sources as well (the
+    # examples, a file on this computer), so the call carries an object.
+    assert body.index("await flushPendingEdits();") < body.index("pickPath({ mode: 'open'")
 
 
 def test_undo_redo_wait_for_pending_commits():
@@ -564,6 +572,9 @@ function say() {}
 function t(key) { return key; }
 function fail(err) { throw err; }
 let destroyed = false;
+// Batch 3: a wider selection moves as a block; here only one row is selected.
+const selection = new Set();
+function moveSelectionByKeyboard() { throw new Error('one row is not a block'); }
 // The round trip: the tree the next press reads changes only when it ends.
 function requestMove(id, newParentId, index) {
   return new Promise((resolve) => setTimeout(() => {
@@ -675,7 +686,7 @@ def test_parse_probability_accepts_decimal_text_only():
     got = dict(zip(cases, _node(script)))
     assert got == {
         "1e-6": 1e-6, "1E-6": 1e-6, " 0.5 ": 0.5, ".5": 0.5, "+0.5": 0.5, "-0": 0, "1": 1, "0": 0,
-        "1e-400": 0,
+        "1e-400": "REJECT",  # too small for a double: refused since 1.8.1, it was read as 0
         "0x1": "REJECT", "0x0": "REJECT", "0b1": "REJECT", "0o1": "REJECT", "0x10": "REJECT",
         # Read as the decimal they mean since the usability batch (both were
         # REJECT): a decimal comma and a percentage. The server is still sent
@@ -774,7 +785,8 @@ def test_ctrl_s_in_a_modal_is_claimed():
 def test_symbols_render_without_a_drawing_says_so():
     src = _read(STATIC / "main.js")
     body = _braced(src, src.index("async function actionRenderImage()"))
-    branch = _braced(body, body.index("if (box && box.style === 'symbols'"))
+    # Batch 3: a diagram coloured by an overlay takes the same branch.
+    branch = _braced(body, body.index("if (box && (box.style === 'symbols' || coloured)"))
     assert branch.rstrip()[:-1].rstrip().endswith("return;"), "no fall-through to /render"
     assert "'diagram.nothingToExport'" in branch and "'diagram.pngFailed'" in branch
     assert "diagramPanel.hasDiagram()" in branch
@@ -1039,6 +1051,14 @@ let starting = true;
 let pendingPath = null;
 let closed = false;
 let lastNavigateError = null;
+// What the dialog's code names since 1.8.1 (Change folder, and a Save As
+// confirmed before the folder is known), as far as this harness needs them:
+// it enters paths, and neither chooses a folder nor confirms a save.
+let canChooseRoot = false;
+let relaunchCommand = '';
+let pendingConfirm = false;
+function offerChangeRoot() {}
+function flushPendingConfirm() {}
 const errors = [];
 function setMessage(text, kind) { if (kind === 'error') errors.push(text); }
 function t(key) { return key; }

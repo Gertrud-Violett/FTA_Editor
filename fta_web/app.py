@@ -65,6 +65,7 @@ from werkzeug.exceptions import HTTPException  # noqa: E402
 
 import config  # noqa: E402  (also puts fta_web/core on sys.path)
 import errors  # noqa: E402
+import runtime_paths  # noqa: E402
 import security  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -271,7 +272,16 @@ def _register_index(app: Flask) -> None:
     def index():
         template = Path(app.template_folder) / "index.html"
         if template.is_file():
-            return render_template("index.html")
+            # The "this tab is not connected" screen names the command that
+            # starts the editor again. That screen is shown exactly when the
+            # page cannot call the API, so the command comes with the page.
+            # It is a file name or a fixed string, never a path: this route
+            # answers without the token.
+            return render_template(
+                "index.html",
+                relaunch_command=runtime_paths.launch_command(),
+                packaged=runtime_paths.is_frozen(),
+            )
         return (
             "<!doctype html><meta charset=utf-8>"
             "<title>FTA Editor</title>"

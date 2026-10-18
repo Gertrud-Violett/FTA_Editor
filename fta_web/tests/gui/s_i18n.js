@@ -41,7 +41,7 @@ async function main(url, label, root) {
   L.setSection('i18n[' + label + ']');
   const app = await L.openApp(url, { prefs: { 'fta.advanced': '1' }, viewport: { width: 1700, height: 1050 } });
   const { page } = app;
-  await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   await page.evaluate(() => window.ftaShell.refresh());
   const st = await app.api('get', '/state');
   const user = [];
@@ -51,6 +51,11 @@ async function main(url, label, root) {
   L.writeFmeaCsv(root);
   for (const cell of fs.readFileSync(path.join(root, 'b2b_fmea.csv'), 'utf8').split(/[\r\n,]+/)) if (cell.trim()) user.push(cell.trim());
   user.push(st.metadata.title, 'Cooling loss B2B', 'Graphviz', 'MCUB', 'b2b_', 'Gate: ', 'FMEA', 'Fussell', 'Birnbaum', 'Google Gemini', 'Monte Carlo', 'YYYY', 'WASM', 'REQ-');
+  // The status line shows the open file's folder: a path on this machine,
+  // not UI text. It used to be skipped only when the temporary folder's
+  // random name happened to hold a digit that is also a cell of the FMEA
+  // sheet above ("4", "5"), so this check failed for about half the names.
+  user.push(path.dirname(String(st.currentPath)));
   // mount everything in English first (incl. an uncertainty run and an FMEA preview)
   for (const id of TABS) {
     await app.clickTab(id);
@@ -75,8 +80,8 @@ async function main(url, label, root) {
     report[id] = await englishLeft(page, user);
   }
   // the diagram popover
-  await page.locator('#diagram-root .diagram__btn', { hasText: 'Aa' }).click();
-  report.popover = (await englishLeft(page, user)).filter((s) => /Font|Style|Layout|Box|scale|Close|Detected/i.test(s));
+  await page.locator('#diagram-root [data-role="diagram-settings"]').click();
+  report.popover = (await englishLeft(page, user)).filter((s) => /Font|Style|Layout|Box|scale|padding|Settings|Close|Detected/i.test(s));
   await page.keyboard.press('Escape');
   const all = Object.entries(report).filter(([, v]) => v.length);
   for (const [k, v] of all) L.info('ja after live switch, English left in ' + k, v);

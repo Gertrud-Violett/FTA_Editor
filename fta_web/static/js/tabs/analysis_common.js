@@ -78,6 +78,9 @@ const CSS = `
 .anl-derived b { font-size: var(--fs-md, 13.5px); }
 .anl-mono { font-family: var(--font-mono, monospace); color: var(--text-dim); }
 .anl-invalid { border-color: var(--danger) !important; }
+/* A limit typed for this tab's runs only (tabs/cutsets.js). */
+.anl-override { border-color: var(--accent) !important; background: var(--accent-soft); }
+.anl-toolbar .anl-badge[hidden], .anl-toolbar .btn[hidden] { display: none; }
 .anl-cols { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .anl-cols > .anl-section { flex: 1 1 300px; min-width: 260px; }
 .anl-statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; }

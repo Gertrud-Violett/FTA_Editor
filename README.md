@@ -5,7 +5,7 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 [![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.7.3-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.8.0-green.svg)](CHANGELOG.md)
 
 There are two ways to run it:
 
@@ -129,7 +129,7 @@ if the browser does not open by itself, paste that URL in. Press `Ctrl-C` to
 stop; quitting the server invalidates the token and every page holding it.
 
 ```bash
-python3 fta_web/run.py --port 8765     # fixed port instead of a free one
+python3 fta_web/run.py --port 8800     # another port than the default 8765 (0: any free port)
 python3 fta_web/run.py --no-browser    # just print the URL
 python3 fta_web/run.py --root ~/trees  # restrict the file browser to a directory
 ```
@@ -211,7 +211,7 @@ For detailed setup instructions, see [docs/QUICK_AI_SETUP.md](docs/QUICK_AI_SETU
 
 ### Quick Actions
 - **Analyze FTA**: Posts an assessment and suggestions to chat; does not modify your tree.
-- **Update FTA**: The AI is asked to keep the existing nodes and add to them, but the whole tree it returns replaces the current one once it passes verification. The chat then says how many nodes were added, changed and removed, and names the existing nodes that were changed or removed. One Ctrl+Z undoes the update, so review it before saving. If the AI output is invalid, nothing is changed and the chat shows what failed.
+- **Update FTA**: The AI is asked to rewrite the whole tree, keeping the existing nodes and adding to them. The button asks before it sends the tree. The answer is shown first as a list of the nodes it would add, change and remove; nothing is changed until you press **Apply update**, and **Discard** drops it. One Ctrl+Z undoes an applied update. If the AI output is invalid, nothing is changed and the chat shows what failed.
 
 Or type any question in the chat, for example:
 - "What root causes might be missing from this failure mode?"
@@ -250,14 +250,13 @@ the Kemeny Commission report for Three Mile Island. **The probabilities are
 illustrative.** They show how the tool computes; they are not from the
 reports, and neither file is a risk estimate.
 
+To open one, click **Open an example** in the hint a new analysis shows, or
+**Load** and then **Open an example…**, and pick it from the list. It opens
+as an untitled copy: **Save** asks where to put your version, and the example
+itself is never changed.
+
 The files are in `fta_web/examples/` in a source checkout and in
-`fta_editor\_internal\examples\` in the standalone build. Click **Load**, go
-to that folder (or type its path into the dialog) and pick a file. The dialog
-only reaches inside the editor's root folder, which is your home folder unless
-you start the editor with `--root`: if the editor is installed somewhere else,
-copy the `examples` folder into your home folder first, or start with
-`--root <that folder>`. **Save** writes back to the file you opened, so use
-**Save As** to keep the example as it was.
+`fta_editor\_internal\examples\` in the standalone build.
 
 ### Legacy desktop application (fallback)
 

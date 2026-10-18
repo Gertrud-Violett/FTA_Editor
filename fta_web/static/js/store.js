@@ -32,7 +32,8 @@
  *
  * State shape (from fta_web/state.py AppState.to_dict):
  *   tree, metadata {title, date, mode}, dirty, currentPath, nativeDot,
- *   aiConfigured, canUndo, canRedo, language, zeroNodes
+ *   aiConfigured, canUndo, canRedo, language, zeroNodes, revision,
+ *   documentSerial, prefs
  *
  * Node shape (from the vendored FTACore):
  *   {id, name, type, probability, calculatedProbability, logicGate, notes,
@@ -60,7 +61,16 @@ const MUTATION_KEYS = Object.freeze([
   'aiConfigured',
   'analysis',
   'sessionWarnings',
+  'prefs',
 ]);
+
+/**
+ * Which version of the document this tab holds (AppState.revision_fields).
+ * Taken only from an answer that carries the tree as well: a Save answers
+ * without one, and a tab whose tree is behind must not come to believe it is
+ * current because it saved.
+ */
+const REVISION_KEYS = Object.freeze(['revision', 'documentSerial']);
 
 const listeners = new Set();
 
@@ -210,6 +220,11 @@ export const store = {
     for (const key of MUTATION_KEYS) {
       if (Object.prototype.hasOwnProperty.call(payload, key)) {
         next[key] = payload[key];
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'tree')) {
+      for (const key of REVISION_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(payload, key)) next[key] = payload[key];
       }
     }
     this.state = next;

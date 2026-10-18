@@ -10,6 +10,8 @@
 import cat from '../i18n/imp.js';
 import {
   clear,
+  copyText,
+  csvCell,
   debounce,
   el,
   ensureStyles,
@@ -73,7 +75,10 @@ export function mount(panel, ctx) {
   const overlayBox = el('input', { type: 'checkbox', dataset: { role: 'fv-overlay' } });
   const overlayLabel = el('label', null, [overlayBox, el('span')]);
   const status = el('span', { class: 'anl-note', 'aria-live': 'polite' });
-  const toolbar = el('div', { class: 'anl-toolbar' }, [runBtn, overlayLabel, el('span', { class: 'anl-grow' }), status]);
+  // As on the Cut Sets tab: the table as CSV on the clipboard, for a
+  // spreadsheet or a report. The ranking had no way out of the editor.
+  const copyBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'copy' } });
+  const toolbar = el('div', { class: 'anl-toolbar' }, [runBtn, overlayLabel, el('span', { class: 'anl-grow' }), status, copyBtn]);
   const basis = el('p', { class: 'anl-note' });
   const warnings = el('ul', { class: 'anl-warnings' });
   const message = el('p', { class: 'anl-empty' });
@@ -132,7 +137,30 @@ export function mount(panel, ctx) {
     overlayBox.checked = overlayOn;
     overlayLabel.lastChild.textContent = t('imp.colorFv');
     overlayLabel.title = t('imp.colorFvTitle');
+    copyBtn.textContent = t('imp.copyCsv');
+    copyBtn.title = t('imp.copyCsvTitle');
+    copyBtn.disabled = !result || !(result.events || []).length;
     status.textContent = '';
+  }
+
+  /** The table as CSV: the rows as sorted on screen, the numbers in full. */
+  function csvText() {
+    const lines = [
+      [t('imp.col.event'), 'id', 'q', 'FV', 'Birnbaum', 'RAW', 'RRW', t('imp.col.cutSets')].map(csvCell).join(','),
+    ];
+    for (const row of sortedRows()) {
+      lines.push([
+        row.name || row.id,
+        row.id,
+        row.q,
+        row.fv,
+        row.birnbaum,
+        row.raw,
+        row.rrwInfinite ? 'inf' : row.rrw,
+        row.cutSetCount,
+      ].map(csvCell).join(','));
+    }
+    return lines.join('\r\n') + '\r\n';
   }
 
   function sortedRows() {
@@ -261,6 +289,13 @@ export function mount(panel, ctx) {
   runBtn.addEventListener('click', () => {
     runSoon.cancel();
     run();
+  });
+  copyBtn.addEventListener('click', async () => {
+    const n = result ? (result.events || []).length : 0;
+    if (!n) return;
+    const ok = await copyText(csvText());
+    if (ok) ctx.toast(t('imp.copied', { n }), 'info');
+    else ctx.toast(t('imp.copyFailed'), 'error');
   });
   overlayBox.addEventListener('change', () => {
     overlayOn = overlayBox.checked;

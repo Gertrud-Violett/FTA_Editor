@@ -9,7 +9,7 @@ async function main(url, label, root) {
   L.setSection('more[' + label + ']');
   const app = await L.openApp(url, { prefs: { 'fta.advanced': '1' }, viewport: { width: 1600, height: 1050 } });
   const { page } = app;
-  await app.api('post', '/file/open', { path: L.coreFile(root, label) });
+  await app.api('post', '/file/open', { path: L.coreFile(root, label), force: true });
   await page.evaluate(() => window.ftaShell.refresh());
   let st = await app.api('get', '/state');
   const byName = (name) => flatten(st.tree).find((n) => n.name === name);
@@ -133,7 +133,7 @@ async function main(url, label, root) {
   await page.waitForTimeout(400);
   await page.keyboard.press('Alt+N');
   await page.waitForTimeout(400);
-  if (await page.locator('.fta-modal').count()) await page.locator('.fta-modal .fta-btn.is-primary').click();
+  await L.discardIfAsked(page);
   await page.waitForTimeout(1500);
   const after = await page.evaluate(async () => {
     const { store } = await import('/static/js/store.js');

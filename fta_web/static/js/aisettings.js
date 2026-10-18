@@ -89,6 +89,15 @@ function toast(message, kind) {
  */
 const PROVIDER_META = [
   {
+    // First: "Microsoft Copilot (Azure OpenAI)" also contains "openai", and
+    // was given OpenAI's hint and OpenAI's key page. It needs neither: the
+    // key and the endpoint are those of the user's own Azure resource.
+    match: ['microsoft', 'azure', 'copilot'],
+    label: null,
+    hint: 'ai.hint.azure',
+    url: 'https://portal.azure.com/',
+  },
+  {
     match: ['anthropic', 'claude'],
     label: 'ai.provider.anthropic',
     hint: 'ai.hint.anthropic',
@@ -118,7 +127,18 @@ function metaFor(name) {
 
 function providerLabel(entry) {
   const meta = metaFor(entry.name);
-  return meta ? t(meta.label) : String(entry.name);
+  return meta && meta.label ? t(meta.label) : String(entry.name);
+}
+
+/**
+ * The provider ticked when nothing is configured yet: the one with a free
+ * tier (Google Gemini), so a first try costs nothing. It was simply the
+ * first in the server's list, which is a paid one. Never applied over a
+ * saved choice.
+ */
+export function defaultProvider(providers) {
+  const list = Array.isArray(providers) ? providers : [];
+  return list.find((row) => /google|gemini/i.test(String(row && row.name))) || list[0] || null;
 }
 
 /** Microsoft Copilot (Azure OpenAI): the endpoint is the user's own resource. */
@@ -285,8 +305,16 @@ export function openAiSettings() {
     dataset: { kind: 'idle' },
   });
 
+  // Said once, before a key is asked for: what leaves this computer.
+  const disclosure = el('p', {
+    class: 'aiset-note aiset-disclosure',
+    dataset: { role: 'disclosure' },
+    text: t('ai.disclosure'),
+  });
+
   const form = el('div', { class: 'aiset-form', hidden: true }, [
     intro,
+    disclosure,
     providerBlock,
     keyBlock,
     modelBlock,
@@ -790,7 +818,7 @@ export function openAiSettings() {
     const configured =
       saved.configured &&
       providers.find((row) => row.name.toLowerCase() === String(saved.provider).toLowerCase());
-    selectProvider(configured || providers[0], { fromUser: false });
+    selectProvider(configured || defaultProvider(providers), { fromUser: false });
     saveButton.disabled = false;
 
     if (saved.configured) {
