@@ -1,0 +1,7 @@
+- Role and host: Director, PC mode · Phase: spec ready for CEO approval
+- Done: SPEC.md v0.1 → v0.2 → v0.3 (writer), critic rounds 1 and 2 (reviews/spec-critic-1.md, -2.md), analyst check (reviews/spec-analyst-1.md: formulas verified with pages, reference cases). CEO answered fta-editor-1 (build after go-ahead).
+- Decided: decisions/20261022-roadmap-build-gate.md; Director rulings on critic round 2 recorded in SPEC revision history.
+- Next: on approval of fta-editor-2, record the decision, freeze SPEC (v1.0), spawn the PM to plan Phase 1 (F1 release 1.8.1) and, allowed before the go-ahead, Phase 2.
+- Waiting on: fta-editor-2 (spec approval); loop-engineering PR #18 (team start).
+- Risks: K4 (1.8.x drops CCF groups on save), provisional PERF bounds, native folder dialog never opened by a person.
+- Resume: read STATUS.md, then SPEC.md §1 and §9, then requests/fta-editor-2.md.
