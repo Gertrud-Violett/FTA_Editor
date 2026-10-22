@@ -1,281 +1,386 @@
 # Specification: FTA Editor (division project `fta-editor`)
 
-- Version: **v0.1 draft**, 2026-10-22. Not approved. Approval by the CEO freezes the UI, FN and PERF requirements.
+- Version: **v0.2 draft**, 2026-10-22. Not approved. Approval by the CEO freezes the UI, FN and PERF requirements.
 - Brief (CHARTER.md, verbatim): **"Release 1.8.1, then roadmap"**: "Ship the merged fixes as 1.8.1, then plan the next features from docs/ROADMAP_MECHANICAL_ENGINEERS.md".
-- Sources: `.division/research/R1-release-1.8.1.md`, `.division/research/R2-roadmap.md`, `docs/ROADMAP_MECHANICAL_ENGINEERS.md` (cited as "roadmap x.y"), `CHANGELOG.md` [Unreleased] and [1.8.0], `.division/DOMAIN.md`.
+- CEO answer to fta-editor-1 (decisions/20261022-roadmap-build-gate.md): "Build them after i give go ahead for all".
+- Sources: `.division/research/R1-release-1.8.1.md`, `R2-roadmap.md`, `reviews/spec-critic-1.md`, `reviews/spec-analyst-1.md`, `docs/ROADMAP_MECHANICAL_ENGINEERS.md` ("roadmap x.y"), `CHANGELOG.md`, `.division/DOMAIN.md`.
+- CCF sources, opened and checked by the analyst (pages are the printed page numbers):
+  - **[S1]** NUREG/CR-5485 (1998), Mosleh, Rasmuson, Marshall, *Guidelines on Modeling Common-Cause Failures in PRA*. https://nrcoe.inl.gov/publicdocs/CCF/NUREGCR-5485_Guidelines%20on%20Modeling%20Common-Cause%20Failures%20in%20PRA.pdf
+  - **[S2]** NUREG/CR-4780 Vol. 2 (1989), *Procedures for Treating Common Cause Failures in Safety and Reliability Studies*. https://www.osti.gov/servlets/purl/6564737
+  - **[S3]** NASA/SP-2011-3421, 2nd ed., *Probabilistic Risk Assessment Procedures Guide*. https://ntrs.nasa.gov/api/citations/20120001369/downloads/20120001369.pdf
 
 ## 1. Summary
 
-1. Phase 1: release what is already on `main` as **1.8.1** (recovery copy, Change folder, port 8765, `force`, server-side Stop), with notes, SHA-256 and a checked exe.
-2. Phase 2, in order: **F2** common-cause failure groups (beta factor, must; alpha factor, should), **F3** grid of basic events with paste from Excel, **F4** what-if sliders, **F5** semantics help and faster editing.
-3. Without CCF groups every result stays exactly as today; the pinned core and `desktop/` are not touched.
-4. Every CCF formula cites its source; tests reproduce a hand calculation and at least one published example. No claim of compliance with any standard.
-5. Your decisions: approve this spec, run a 3-step manual check of the 1.8.1 exe (about 15 minutes, by `.bat`), release 1.8.1, and merge each PR.
+1. **Phase 1, starts when you approve this spec:** release what is on `main` as **1.8.1** (recovery copy, Change folder, port 8765, `force`, server-side Stop) with notes, SHA-256 and an exe tested by the full GUI suite and a 15-minute manual check (`.bat`).
+2. **Phase 2 is specified here but built only after your separate go-ahead covering all of it:** F2 common-cause failure (CCF) groups, beta factor; F2A alpha factor (should); F3 grid with paste from Excel; F4 what-if sliders. Help and Tab-key editing (old F5) are cut.
+3. Files without CCF groups give the same results as 1.8.1; the pinned core and `desktop/` are untouched; a CCF group that cannot be applied is kept, flagged and reported, never dropped or silently ignored.
+4. Every CCF formula cites NUREG/CR-5485 or NUREG/CR-4780 Vol. 2 with page; no published numeric worked example exists, so you decide the acceptance basis (OQ-5).
+5. Your decisions: approve the spec and the open-question recommendations (section 9), run the 1.8.1 manual check, approve the 1.8.1 release, give the Phase 2 go-ahead, merge integration into `main`.
 
 ## 2. Goals and success measures
 
-| # | Goal | Measure (done when) |
-|---|---|---|
-| G1 | 1.8.1 is releasable with evidence | The release commit has: pytest 0 failures, GUI suite against the exe 0 FAIL, b2b against the exe 0 mismatches, manual check 3 of 3 passed, CI green. Evidence files under `.division/artifacts/release-1.8.1/`. |
-| G2 | Redundant trains are no longer shown as more reliable than they are | A tree with a beta-factor group reproduces the hand check (1.0081e-4) and one published worked example to the tolerance stated in FN-19; the CCF event appears in cut sets, importance, Monte Carlo, report and CLI. |
-| G3 | Nothing changes for users who do not use CCF | For every example file and reference model, CLI JSON output is byte-identical to 1.8.1; `test_vendor_integrity.py` passes; `git diff main -- fta_web/core desktop` is empty. |
-| G4 | Data entry from spreadsheets | 500 rows pasted from Excel are applied in at most 2 s as one undo step, with every refused row listed. |
-| G5 | What-if never changes the file | After any slider use and Reset all, Save writes a file byte-identical to the one saved before. |
+Every measure depends only on must items. G2, G4 and G5 can be measured only after the Phase 2 go-ahead.
+
+| # | Goal | Measure (done when) | Must items |
+|---|---|---|---|
+| G1 | 1.8.1 is releasable with evidence | On the release commit: pytest 0 failures, GUI suite against the exe 0 FAIL, b2b against the exe 0 mismatches, manual check 3 of 3 passed, CI green; evidence under `.division/artifacts/release-1.8.1/` | FN-1, FN-3, FN-5, FN-10 to FN-13, FN-17 |
+| G2 | Redundant trains are no longer shown as more reliable than they are | Reference cases R1, R1h, R2, R2h, R3, R4 (section 7.4) reproduced to their stated tolerance; the CCF event appears in cut sets, importance, Monte Carlo, the report and the CLI; a group that is not applied is reported in the GUI, the report and the CLI (exit 1) | FN-19, FN-21 to FN-26, FN-37 |
+| G3 | Nothing changes for users who do not use CCF | FN-28 passes: corpus outputs equal to 1.8.1 after removing `elapsedMs`; no diff under `fta_web/core` or `desktop` | FN-28 |
+| G4 | Data entry from spreadsheets | 500 rows × 3 columns pasted from Excel are applied in at most 2.0 s as one undo step, land on the intended events after any sort or filter, and every refused row is listed | PERF-6, FN-47, FN-50, UI-12 |
+| G5 | What-if never changes the file or any output | With a factor active, every output path of FN-53 equals its nominal output; after any reset the what-if top event equals the headline exactly | FN-53, FN-58 |
 
 ## 3. Users and use cases
 
 Users:
-- **Reliability and safety engineers** (mechanical, machinery, process) running the Windows exe or `uv run`, building fault trees of up to a few hundred events (roadmap 3.2).
+- **Reliability and safety engineers** (mechanical, machinery, process) running the Windows exe or `uv run`, with fault trees of up to a few hundred events (roadmap 3.2).
 - **Reviewers** who read the DOCX report.
 - **Batch users** of the CLI (`fta_editor quantify|cutsets|importance|mc|validate|report`).
-- **Katey (CEO)**, who releases, runs the manual check and merges.
+- **Katey (CEO)**, who runs the manual check, approves releases and the Phase 2 go-ahead, and merges integration into `main`.
 
 Use cases:
-- **U1** A user downloads 1.8.1, checks the SHA-256, and finds that their language, theme and diagram style survive a restart, and that unsaved work survives a crash.
-- **U2** An engineer models a 1oo2 pump train, groups the two pump failures in a CCF group with β = 0.1 from a cited data source, and sees the CCF cut set dominate the top event (roadmap 1.5).
+- **U1** A user downloads 1.8.1, checks the SHA-256, and finds that language, theme and diagram style survive a restart and unsaved work survives a crash.
+- **U2** An engineer models a 1oo2 pump train, groups the two pump failures with β = 0.1 from a cited data source, and sees the CCF cut set dominate the top event (roadmap 1.5).
 - **U3** An engineer copies 200 failure rates from an FMEA spreadsheet and pastes them into the grid in one step (roadmap 3.3).
-- **U4** A designer asks "what if this valve fails ten times as often?" and sees the top event move, without changing the file (roadmap 1.7).
-- **U5** A new user reads in the app how links combine with gates, and builds a tree with the keyboard (roadmap 3.6, 3.7).
+- **U4** A designer asks "what if this valve fails ten times as often?" and sees the top event move without changing the file (roadmap 1.7).
 
 ## 4. Requirements
 
-Format: **ID** statement | why | test: how it is checked | priority.
-"Hand calculation" marks a value derived by the division, not taken from a publication.
-Measurement conditions for every PERF item, unless stated otherwise: Katey's Windows PC, the dev server started with `uv run --frozen`, Chromium through the GUI suite harness, median of 5 runs, timings written to `.division/artifacts/`.
+Format: **ID** statement | why | test | priority. Retired IDs are listed at the end of each subsection and are never reused.
+Reference cases R1 to R11 (section 7.4) are the numeric oracles; each is labelled "published formula" with its source page or "hand calculation".
+
+**Measurement conditions for PERF items** (each item names one):
+- **In-process:** `uv run --frozen pytest` on Katey's PC, the Python function called directly, one discarded warm-up call, then the median of 5 timed calls.
+- **Browser:** the GUI suite harness, Chromium, dev server started with `uv run --frozen` on Katey's PC, app loaded and fixture opened before timing, median of 5.
+- Fixtures are committed files (section 7.6). Medians and all 5 runs are written to `.division/artifacts/perf/<ID>.json`. CI runs the same tests with every bound multiplied by 3 as a smoke check.
 
 ### 4.1 Phase 1: release 1.8.1 (F1)
 
-- **FN-1** The version reads 1.8.1 in `pyproject.toml`, `uv.lock`, `report_docx.TOOL_VERSION`, the README badge, QUICKSTART (with the release date), `.github/copilot-instructions.md` and the `--version` example in `build/README.md` | one version everywhere a user or a report sees it (R1) | test: a search for `1.8.0` in these seven files finds only history entries; reviewer lists each hit | must
-- **FN-2** The built exe prints `FTA Editor 1.8.1` for `--version` | proves the exe is the release build | test: run `fta_editor.exe --version` on the built exe; output saved to artifacts | must
-- **FN-3** `CHANGELOG.md` has `## [1.8.1] - <release date>` holding today's [Unreleased] text, with an empty `## [Unreleased]` above it | Keep a Changelog convention used by the repo | test: reviewer reads the diff; the [1.8.1] body equals the old [Unreleased] body | must
-- **FN-4** `fta_web/tests/test_known_issues_1_8.py` (line 1883, which slices from `## [Unreleased]` to `## [1.8.0]`) is updated in the same commit as FN-3 to read the [1.8.1] section | otherwise the suite breaks on the version commit (R1 trap) | test: `uv run --frozen pytest` 0 failures on that commit; `git show --stat` of the commit lists both files | must
-- **FN-5** The release notes name the five behaviour changes: port 8765 with fallback and `--port 0`; `force` on `/api/file/open`, `/api/examples/open`, `/api/import/json` (`409 UNSAVED_CHANGES`); the recovery folder `C:\Users\<you>\.fta_editor\recovery\`; Change folder…; Stop that frees the editor (`/api/ai/cancel`) | API clients and users must learn of changed behaviour (R1) | test: reviewer checklist of 5 items against the notes text | must
-- **FN-6** The release notes carry a new Known issues list: 1.8.0 items fixed in 1.8.1 removed, "No autosave" reworded to describe the recovery copy, and new items added for a custom `--root` that contains the home folder (recovery-folder guard) and two copies started at once racing for port 8765 | users see current limits, not 1.8.0's (R1 risks) | test: reviewer compares the list with the 1.8.0 notes and R1 | must
-- **FN-7** The release notes state the SHA-256 of the release zip | users can verify the download | test: `Get-FileHash -Algorithm SHA256` on the uploaded asset equals the stated value | must
-- **FN-8** The release notes have a "Not tested" list: the native folder dialog only by the manual check (FN-12), Ctrl-C cleanup, Firefox and WebKit only headless, the AI assistant only with a mock provider | honest scope of evidence (R1 "never verified") | test: reviewer checklist of 4 items | must
-- **FN-9** The release notes have a short Japanese section with the same five changes and the Known issues | en and ja for user-visible text (CHARTER) | test: reviewer reads it; the five items are present | should
-- **FN-10** The exe is built with PyInstaller (CPython 3.14) in a folder outside Dropbox, from the release commit, and launched once before testing | Dropbox locks break the build (machine memory); the exe must match the commit | test: build log records the build path (not under `K:\Dropbox`) and `git rev-parse HEAD` | must
-- **FN-11** The full GUI suite, all 18 sections, runs against the built exe (`FTA_GUI_EXE=<path>`) with 0 FAIL | the exe is what users run (CHARTER release rule) | test: `node run.mjs` with `FTA_GUI_EXE`; summary table saved to artifacts shows FAIL = 0 | must
-- **FN-12** The b2b suite runs against the new exe with `FTA_B2B_EXE` and `FTA_B2B_EXE_COMMIT` set explicitly to the new exe and the release commit, with 0 mismatches | the defaults point at 1.7.0 (`544492b`, `fta_build_170`) and would test the wrong build (R1) | test: `run_b2b.py` log shows both variables and 0 mismatches | must
-- **FN-13** Manual check 1, by a person on the exe: Change folder… opens the Windows folder chooser; picking a folder with a Japanese name makes the file dialog list it; a file saved there reopens; a second Change folder… ended with Cancel leaves the allowed folder unchanged | the native dialog was never opened by a person (STATUS top risk) | test: the person records pass or fail per step in `manual-check-1.8.1.txt` | must
-- **FN-14** Manual check 2: with unsaved edits, the exe is killed (`taskkill /F /IM fta_editor.exe`), restarted, shows **Unsaved work found**, and Restore brings back the edits as an untitled, modified analysis | recovery after a real kill was never verified (R1) | test: as FN-13 | must
-- **FN-15** Manual check 3: language, theme, significant figures and diagram style set in the exe are kept across two restarts | the port-8765 fix exists for this (CHANGELOG) | test: as FN-13 | must
-- **FN-16** The manual check is delivered as `manual-check-1.8.1.bat` that starts the exe, prints each step in English, and writes the answers to `manual-check-1.8.1.txt` | Katey runs Windows tasks from a `.bat` (global rule); see OQ-2 | test: reviewer runs the `.bat` once on a dev build | should
-- **FN-17** CI (`tests.yml`, `extended.yml`) is green on the head commit of the release PR | the merge gate | test: GitHub checks page | must
-- **PERF-1** Moving and deleting 4,800 nodes of a 4,860-node tree each take under 1.0 s | the CHANGELOG claims "well under a second"; the CI bound is 3 s | test: `test_3_a_batch_of_4800_nodes_moves_and_deletes_within_the_bound` printout on Katey's PC, saved to artifacts | should
+- **FN-1** The version reads 1.8.1 in `pyproject.toml`, `uv.lock`, `report_docx.TOOL_VERSION`, the README badge, QUICKSTART (with the release date), `.github/copilot-instructions.md` and the `--version` example in `build/README.md` | one version wherever a user or a report sees it (R1) | test: a search for `1.8.0` in these seven files finds only history entries; the reviewer lists each hit | must
+- **FN-3** `CHANGELOG.md` has `## [1.8.1] - <release date>` holding today's [Unreleased] text, with an empty `## [Unreleased]` above it; in the same commit `test_the_new_endpoints_are_in_the_api_reference_and_the_changelog` (`fta_web/tests/test_known_issues_1_8.py`, line 1883) is changed to slice the `## [1.8.1]` section | Keep a Changelog convention; the test would still pass on a slice from `[Unreleased]` to `[1.8.0]`, but it would then check a range that includes the empty [Unreleased] heading instead of the released section | test: the reviewer reads the diff (the [1.8.1] body equals the old [Unreleased] body; the test slices `## [1.8.1]` to `## [1.8.0]`); `uv run --frozen pytest` 0 failures on that commit | must
+- **FN-5** The release notes pass this checklist: (1) the five behaviour changes: port 8765 with fallback and `--port 0`; `force` on `/api/file/open`, `/api/examples/open`, `/api/import/json` (`409 UNSAVED_CHANGES`); the recovery folder `C:\Users\<you>\.fta_editor\recovery\`; Change folder…; Stop that frees the editor (`/api/ai/cancel`); (2) a new Known issues list: 1.8.0 items fixed in 1.8.1 removed, "No autosave" reworded to describe the recovery copy, new items for a custom `--root` that contains the home folder (recovery-folder guard) and two copies started at once racing for port 8765; (3) the SHA-256 recorded by FN-10; (4) a "Not tested" list: the native folder dialog only by the manual check (FN-13), Ctrl-C cleanup, Firefox and WebKit only headless, the AI assistant only with a mock provider; (5) a Japanese section with items 1 and 2 | users and API clients learn of changed behaviour and honest limits (R1); en and ja (CHARTER) | test: the reviewer ticks items 1 to 5 in `.division/artifacts/release-1.8.1/notes-checklist.txt` | must
+- **FN-10** The exe is built with PyInstaller (CPython 3.14) in a folder outside `K:\Dropbox`, from the release commit, and launched once; `fta_editor.exe --version` prints `FTA Editor 1.8.1`; `fta_editor-1.8.1-windows.zip` is made from that build folder, and its SHA-256 is computed with `Get-FileHash -Algorithm SHA256` on the local zip before upload | Dropbox locks break the build; the exe must match the commit; no step built the zip in v0.1 | test: the build log in artifacts records the build path, `git rev-parse HEAD`, the `--version` output and the hash; after upload, the hash of the downloaded asset equals the recorded hash | must
+- **FN-11** The full GUI suite, all 18 sections, runs against the built exe (`FTA_GUI_EXE=<path>`) with 0 FAIL | the exe is what users run (CHARTER) | test: `node run.mjs` with `FTA_GUI_EXE`; the summary table in artifacts shows FAIL = 0 | must
+- **FN-12** The b2b suite runs against the new exe with `FTA_B2B_EXE` and `FTA_B2B_EXE_COMMIT` set explicitly to the new exe and the release commit, with 0 mismatches | the defaults point at 1.7.0 (`544492b`, `fta_build_170`) (R1) | test: the `run_b2b.py` log shows both variables and 0 mismatches | must
+- **FN-13** A person runs `manual-check-1.8.1.bat` on the built exe; it starts the exe, prints each step in English and writes pass or fail per step to `manual-check-1.8.1.txt`. Steps: (1) Change folder… opens the Windows folder chooser; a folder with a Japanese name, once picked, is listed by the file dialog; a file saved there reopens; a second Change folder… ended with Cancel leaves the allowed folder unchanged; (2) with unsaved edits, `taskkill /F /IM fta_editor.exe`, restart, **Unsaved work found** appears, and Restore brings back the edits as an untitled, modified analysis; (3) language, theme, significant figures and diagram style set in the exe are kept across two restarts | the native dialog and recovery after a real kill were never verified (R1); Katey runs Windows tasks from a `.bat` (global rule); see OQ-2 | test: the txt file shows 3 of 3 pass; the reviewer ran the `.bat` once on a dev build before handing it over | must
+- **FN-17** CI (`tests.yml`, `extended.yml`) is green on the head commit of the PR from integration into `main` | the merge gate | test: GitHub checks page | must
+- **PERF-1** The batch move and delete of 4,800 nodes in a 4,860-node tree are measured and recorded (no pass threshold); if either median exceeds 1.0 s, the CHANGELOG phrase "well under a second" is corrected to the measured value | the CHANGELOG makes a claim the CI bound (3 s) does not prove | test: in-process, `test_3_a_batch_of_4800_nodes_moves_and_deletes_within_the_bound` timings in `artifacts/perf/PERF-1.json`; the reviewer compares them with the CHANGELOG text | should
+
+Retired in 4.1: FN-2 (merged into FN-10), FN-4 (merged into FN-3), FN-6, FN-7, FN-8, FN-9 (merged into FN-5; the hash computation into FN-10), FN-14, FN-15, FN-16 (merged into FN-13).
 
 ### 4.2 Phase 2: common-cause failures, beta factor (F2)
 
-- **UI-1** In Advanced mode a **CCF groups** tab lists every group with name, model, parameter value, member names, parameter source and status (Applied, or Not applied: <reason>) | the user sees what is modelled and what is ignored (roadmap 1.5) | test: GUI suite section `ccf` checks the columns on a 2-group file | must
-- **UI-2** The tab can create a group from the basic events selected in the tree, and edit a group's name, β, source and members, and delete it; each action is one undo step | groups must be editable without editing JSON | test: GUI suite creates, edits, deletes, and undoes each action | must
-- **UI-3** The β field shows "β (dimensionless, 0 to 1)" and an invalid entry shows its message next to the field | units next to every value; errors next to the field (DOMAIN) | test: GUI suite enters 1.5 and checks the message location and text in en and ja | must
-- **UI-4** While at least one group is applied, the headline reads as MCUB and says "includes CCF (n groups)" | the user must know the number is not the plain tree walk | test: GUI suite reads the headline on a 1-group file and on a no-group file | must
-- **UI-5** The cut-set table shows a CCF event as "CCF: <group name>"; clicking it highlights every member in the tree and diagram | the dominant cut set is often the CCF event (roadmap 1.5) | test: GUI suite clicks the row and counts highlighted members | should
-- **UI-6** Each member shows a CCF badge with its group name in its tree row and diagram box | the grouping is visible where the tree is edited | test: GUI suite screenshot looked at by the reviewer; DOM check for the badge | should
-- **UI-7** The CCF tab shows an Assumptions box: the model, its formula, its source with page, "a member's probability is its total failure probability Q_t", "beta factor: the common cause fails all members together", and the rare-event approximation used | results state their assumptions (DOMAIN) | test: reviewer reads the box in en and ja against section 7.3 | must
-- **FN-18** CCF groups are saved in the file under `analysis.ccfGroups` (section 7.1); save then load gives an identical object | groups are part of the analysis | test: pytest round trip on a 3-group file compares the JSON objects | must
-- **FN-19** Before cut-set generation, each member's variable in the compiled `Structure` is replaced by OR(independent part with q = (1 − β)·Q_t, one shared CCF event with q = β·Q_t) per group (formula and source in 7.3) | roadmap 1.5; a pre-pass reaches every analysis without editing the core (Director) | test: (a) hand calculation: Q_t = 1e-3, β = 0.1, two members under AND gives cut sets {A_ind, B_ind} = 8.1e-7 and {CCF} = 1e-4, rare-event sum 1.0081e-4 (relative tolerance 1e-12), MCUB 1.00809919e-4 (relative tolerance 1e-9), shown as 1.0081e-4 at 5 significant figures; (b) the published worked example chosen in OQ-5, to the tolerance implied by the digits the source prints | must
-- **FN-20** A member reached through links or transfers gets the same CCF event at every reference | the pre-pass acts on the compiled variable, so repeated references must not create several CCF events | test: pytest with a member linked under two gates; cut sets contain exactly one CCF event id | must
-- **FN-21** While at least one group is applied, `headlineMethod` is `mcub` and the headline includes the CCF events | the CCF event is shared, so the plain tree walk would be wrong | test: pytest on the FN-19 tree asserts method and value | must
-- **FN-22** Cut sets list each CCF event with id `ccf:<groupId>` and its probability | the primary FTA output must show the CCF contribution | test: pytest on the FN-19 tree | must
-- **FN-23** FV, Birnbaum, RAW and RRW are computed on the expanded structure, and the CCF event has its own row | importance must rank the CCF event (roadmap 1.2 with 1.5) | test: pytest on the FN-19 tree; FV of the CCF event = 1e-4 / 1.00809919e-4 within relative 1e-9 (hand calculation) | must
-- **FN-24** Monte Carlo samples the expanded structure, with the sampling rule decided in OQ-10 | uncertainty bounds must include CCF | test: pytest with a fixed seed and trial count; the mean is within 3 standard errors of the analytic MCUB for a tree with no uncertainty on β | must
-- **FN-25** The DOCX report has a CCF section: each group's name, model, parameters, source, members, the formulas with their sources, and the CCF events in the cut-set and importance tables | the report is the deliverable (roadmap 2.5) | test: pytest reads the DOCX text of a 1-group file and finds each item | must
-- **FN-26** The CLI commands `quantify`, `cutsets`, `importance` and `mc` with `--json` give the same numbers as the API for a file with groups | batch users get the same results (roadmap 2.6) | test: pytest compares CLI and API JSON on the FN-19 file | should
-- **FN-27** The Excel export lists CCF groups on the Analysis sheet and marks members on the Events sheet | spreadsheet users see the grouping | test: pytest opens the workbook and reads the cells | could
-- **FN-28** A tree without CCF groups gives results identical to 1.8.1 | engineers act on these numbers; nothing may move silently (Director) | test: for every file in `fta_web/examples/` and every reference model in `fta_web/tests/`, CLI `quantify`, `cutsets`, `importance`, `validate` with `--json`, and `mc` with a fixed seed and trial count, are byte-identical to the output of the 1.8.1 release commit; b2b suite 0 mismatches | must
-- **FN-29** No file under `fta_web/core/` or `desktop/` changes, and the core hash check stays green | hash-pinned core and frozen desktop (CHARTER) | test: `git diff main -- fta_web/core desktop` is empty; `test_vendor_integrity.py` passes | must
-- **FN-30** β = 0 gives the same top event (MCUB and rare-event) as the same tree without the group | edge case: no common cause | test: pytest, values equal to the last bit; cut sets equal after dropping zero-probability CCF sets | should
-- **FN-31** β = 1 gives independent parts of probability 0 | edge case: only common cause | test: pytest, Q_t = 1e-3, two members under AND, top = 1e-3 (hand calculation, relative 1e-12) | should
-- **FN-32** A β that is not a finite number in [0, 1] (including NaN, inf, `1e-400`, text) is refused with `400` and a message naming the field and the range; `-0` is read as 0 | inputs validated with helpful messages (DOMAIN) | test: pytest over these inputs | must
-- **FN-33** A member that is not a basic event (gate, house event, transfer, missing id) raises lint error `CCF_MEMBER_NOT_BASIC` | the model applies to component failures only | test: pytest per kind | must
-- **FN-34** Members whose probabilities Q_t differ by more than a relative 1e-6 raise lint error `CCF_UNEQUAL_Q` | the beta and alpha models assume identical components (R2) | test: pytest with 1e-3 and 1.1e-3; and with equal λ and T entered in different units (no error) | must
-- **FN-35** A group with fewer than 2 members raises lint error `CCF_TOO_FEW_MEMBERS` | a common cause needs two components | test: pytest | must
-- **FN-36** An event in two groups raises lint error `CCF_MEMBER_IN_TWO_GROUPS` | the expansion is defined for one group per event | test: pytest | must
-- **FN-37** A group with any lint error is not applied, and this is said in the headline note, in the tab status and in the Validation tab with click-to-jump | never silent (DOMAIN) | test: pytest asserts the note; GUI suite clicks the issue | must
-- **FN-38** Deleting a member node removes it from its group in the same undo step; undo restores both | no dangling members | test: pytest delete then undo | should
-- **FN-39** In ETA mode the CCF tab is greyed with the reason in its tooltip, and groups stay in the file | matches how 1.8.0 greys the other analysis tabs | test: GUI suite | should
-- **FN-40** Every CCF formula in code cites its source and page in the docstring, and `docs/CCF.md` holds the formulas, sources and the hand calculations | DOMAIN evidence rule | test: analyst review before merge | must
-- **PERF-2** With 10 beta groups of 3 members each on the 300-node tree built by GUI section `big`, the headline after an edit takes at most 2.0 s and at most 1.5 times the same tree without groups | the headline runs after every edit | test: pytest timing, both numbers saved to artifacts | must
-- **PERF-3** On the same tree with 10 groups, the GUI `big` budgets still hold: click to Details under 500 ms, the Add dialog under 3 s | no slowdown in normal editing | test: GUI section `big` variant with groups, 0 FAIL | must
-- **PERF-4** Monte Carlo with a fixed 10,000 trials on the same tree with 10 groups takes at most 1.5 times the time without groups | the run is time-capped, so a slowdown shows as fewer trials | test: pytest timing saved to artifacts | should
+- **UI-1** In Advanced mode a **CCF groups** tab lists every group with name, model, parameter values, member names, parameter source and status (`Applied`, or `Not applied: <reason>`); in ETA mode the tab is greyed with the reason in its tooltip and the groups stay in the file | the user sees what is modelled and what is ignored (roadmap 1.5); matches how 1.8.0 greys other analysis tabs | test: GUI section `ccf` on a 2-group file (one not applied) checks columns and both statuses; switches to ETA and checks the greyed tab and that Save keeps both groups | must
+- **UI-2** The tab creates a group from the basic events selected in the tree, edits a group's name, β, source and members, and deletes a group; each action is one undo step | groups must be editable without editing JSON | test: GUI section `ccf` creates, edits, deletes, and undoes each action | must
+- **UI-5** Each member shows a `CCF: <group name>` badge in its tree row and diagram box; the cut-set table shows the CCF event as `CCF: <group name>`, and clicking that row highlights every member in the tree and the diagram | the grouping is visible where the tree is edited; the dominant cut set is often the CCF event | test: GUI section `ccf` counts badges and highlighted members; a screenshot is looked at by the reviewer | should
+- **UI-7** The CCF tab shows an Assumptions box: the model and its formula with source and page (section 7.3); "a member's probability is its total failure probability Q_t at mission time"; "beta factor: the CCF event fails all members together"; "the split is applied to Q_t; splitting λ instead agrees only to first order in λT (S3 p. D-20)"; "the headline is the min-cut upper bound; the formulas in the sources use the rare-event approximation"; "β and α are not sampled in Monte Carlo" | results state their assumptions (DOMAIN) | test: the reviewer reads the box in en and ja against section 7.3 | must
+- **FN-18** CCF groups are saved under `analysis.ccfGroups` (section 7.1), and a file with at least one group also gets the top-level key `"fileFormatVersion": 2`; files without groups are saved exactly as in 1.8.1. Groups are read by a dedicated CCF loader (not `engine.coerce_analysis`, which drops unknown keys); a group with invalid values is kept verbatim and flagged not applied (FN-33), never dropped or coerced. A file whose `fileFormatVersion` is greater than 2 opens with the warning "This file was saved by a newer FTA Editor; saving may lose data" | engineers' modelling must never be lost on load or save (critic 8) | test: pytest loads and saves a 3-group file (one valid, one with `"beta": "abc"`, one with a missing member) and compares the `ccfGroups` JSON objects equal; a no-group file saved by the new version equals its 1.8.1 save byte for byte; a `fileFormatVersion: 3` file shows the warning | must
+- **FN-19** At compile time (`fta_web/logic.py` `compile_tree`, outside the pinned core), each member of an applied beta group has its variable replaced by OR(independent part, CCF event): the independent part keeps the member's event slot and id with q = (1 − β)·Q_t; the CCF event `ccf:<groupId>` has q = β·Q_t and is created once per group, so every reference to a member (links, transfers, repeated ids) reaches the same CCF event; the operator list stays in topological order (every operator refers only to earlier operators). Q_t is the member's q at mission time from its quantification model | roadmap 1.5; every analysis built on the compiled `Structure` sees the CCF event without a core change (analyst finding 6) | test: pytest reproduces R1, R1h (MCUB), R2, R2h, R3 and R4 to the tolerances in section 7.4; asserts topological order of the compiled operators; a member linked under two gates gives cut sets with exactly one `ccf:` id | must
+- **FN-21** While at least one group is applied: `headlineMethod` is `mcub`, the headline includes the CCF events, the GUI headline reads "MCUB, includes CCF (n groups)", and `engine.may_need_cut_sets` (given the analysis) returns true. If the cut sets fail, time out, or are cut short by the summary's own caps (`capped`), the headline value is `null`, `headlineMethod` is `incomplete`, `ccfIncomplete` is true, and the GUI shows "incomplete, CCF not included" with the tree-walk value only under the label "tree walk, without CCF"; never a plain number | the tree walk cannot include a shared event, and today's fallback (engine.py 801-805) would show a CCF-free number as the headline (critic 4) | test: pytest on the R1 file asserts method and value; with a 1 ms time budget asserts `incomplete`, `null` and the flag; GUI section `ccf` reads both headline texts | must
+- **FN-22** Cut sets list each CCF event with id `ccf:<groupId>`, label `CCF: <group name>` and its q; a member's variable appears under the member's id with the label `<name> (independent part)` and q = (1 − β)·Q_t; the member's Details panel and diagram box keep showing Q_t, with the independent part shown beside it | the user must know what each cut-set entry means after the expansion (critic 6, analyst) | test: pytest on the R1 file: cut sets {A, B} with q 8.1e-7 each labelled "(independent part)" (product of two 9e-4) and {ccf:g1} with q 1e-4; GUI reads the Details panel of A (Q_t 1e-3, independent part 9e-4) | must
+- **FN-23** FV, Birnbaum, RAW and RRW (definitions in `fta_web/importance.py`) are computed on the expanded structure; the CCF event has its own row; member rows are the independent parts, labelled as in FN-22; no row reports a combined component value (independent part plus CCF) | importance must rank the CCF event; a component-level RAW would be a different quantity (analyst) | test: pytest on the R1 file reproduces the R1h importance values: FV 0.991965076374, Birnbaum 0.99999919, RAW 9919.6588, RRW 124.45669 for `ccf:g1` | must
+- **FN-24** Monte Carlo samples the expanded structure: for each group, one draw per trial of the members' shared main parameter (members share model, parameters and uncertainty by FN-33) gives Q_t for that trial, and the independent parts and the CCF event follow as (1 − β)·Q_t and β·Q_t; the CCF event gets no uncertainty of its own (the members' `quant.unc` is not copied to it); β and α are fixed, and the Monte Carlo tab and the report say "β and α are not sampled" | uncertainty must include CCF without double sampling (analyst findings 2 and 7; closes OQ-10) | test: pytest (a) per trial, through the sampler's test hook: the CCF event q divided by the member Q_t equals β within relative 1e-12, and both members' independent parts are equal; (b) R11: n = 200,000, fixed seed, `--time-limit 3600`, the mean top event is within 3 of the run's own standard errors of 1.2696e-4 | must
+- **FN-25** When the file has groups, the DOCX report has a CCF section: per group the name, model, parameters, testing scheme (alpha), source, members and status; the formulas with S1/S2 sources and pages; the Assumptions of UI-7; the note on overlapping CCF events (section 7.3); the note of FN-67; each not-applied group with the line "Not applied: <reason>. Results exclude this group."; the headline line says "includes CCF (n groups)" or "incomplete, CCF not included"; the CCF events appear in the cut-set and importance tables | the report is the deliverable (roadmap 2.5); a silent report would hide a not-applied group (critic 9) | test: pytest reads the DOCX text of the R1 file and of a file with one not-applied group and finds each item | must
+- **FN-26** CLI `quantify`, `cutsets`, `importance` and `mc` with `--json` give the same numbers as the API for a file with groups and add a `ccf` block `{applied, notApplied: [{id, name, code, reason}], note}`; the text output prints one line per not-applied group; the exit code is 1 when any group is not applied or the headline is `incomplete`. Files without groups get no `ccf` block (FN-28) | batch users must not get a silent partial result (critic 9) | test: pytest compares CLI and API JSON on the R1 file; exit codes 0 (all applied), 1 (one not applied), 1 (incomplete headline) | must
+- **FN-28** A document without CCF groups (no `ccfGroups` key or an empty list) gives the same results as 1.8.1, and no file under `fta_web/core/` or `desktop/` changes | engineers act on these numbers (Director); hash-pinned core and frozen desktop (CHARTER) | test: corpus = `fta_web/examples/*.json` and `fta_web/tests/b2b/*.json` except `expected.json`. For each file, CLI `quantify`, `cutsets`, `importance`, `validate` with `--json`, and `mc --json --n 2000 --seed 1 --time-limit 3600`, are compared with golden outputs produced on the 1.8.1 release commit and committed under `fta_web/tests/golden_1_8_1/`. Comparison is parsed-JSON equality after removing the key `elapsedMs` at any depth (the only volatile key); both sides must have `truncatedByTime` false and no `"time"` in any `truncatedBy` (a file that times out at default limits is run with larger limits named per file in the test). b2b suite 0 mismatches. `git diff <1.8.1 tag> -- fta_web/core desktop` is empty and `test_vendor_integrity.py` passes | must
+- **FN-32** β is entered in a field labelled "β (dimensionless, 0 to 1)" and read by the shared number parser (FN-46); the API refuses a β that is not a finite number in [0, 1] (including NaN, inf, `1e-400`, text) with `400 INVALID_FIELD` naming `beta` and the range; `-0` is read as 0; the GUI shows the message next to the field | units next to every value, errors next to the field, inputs validated (DOMAIN). A β loaded from a file is handled by FN-18 and FN-33, not refused | test: pytest over these inputs; GUI section `ccf` enters 1.5 and checks message position and text in en and ja | must
+- **FN-33** The CCF lint checks below run with every validation; an **error** makes the group not applied, a **warning** leaves it applied. Each code has en and ja text and names the group and member | the beta and alpha models assume identical basic-event components with small Q_t (S1 p. 40-42; analyst findings 3, 7, 9) | test: one pytest per row asserting code, severity and the applied flag; plus members with equal λ entered as /y and /h give no lint; members under INHIBIT or KOFN, and a member referenced twice, give no lint | must
+
+  | Code | Condition | Severity |
+  |---|---|---|
+  | `CCF_MEMBER_NOT_BASIC` | member is a gate or has children, a house event, a conditioning event, a transfer, or an id not in the tree | error |
+  | `CCF_TOO_FEW_MEMBERS` | fewer than 2 distinct members | error |
+  | `CCF_MEMBER_IN_TWO_GROUPS` | an event belongs to two groups | error |
+  | `CCF_MEMBERS_DIFFER` | members differ in quantification model, in any model parameter or Q_t by more than relative 1e-6, or in uncertainty (distribution, median or mean, error factor) | error |
+  | `CCF_NO_PROBABILITY` | a member has no probability (q missing) | error |
+  | `CCF_Q_ONE` | a member's Q_t is 1 (the split would lower a certain failure: AND of 2 gives 0.829 for β = 0.1) | error |
+  | `CCF_BAD_PARAMETER` | β loaded from a file is not a finite number in [0, 1] | error |
+  | `CCF_MEMBER_RENAMED` | a member id was renamed by the loader's duplicate-id repair | error |
+  | `CCF_HIGH_Q` | a member's Q_t is above 0.01 | warning |
+  | `CCF_ZERO_Q` | the members' Q_t is 0 (the group has no effect) | warning |
+  | `CCF_ORDERED_GATE` | a member sits below a PAND or XOR gate | warning |
+
+- **FN-37** A group that is not applied is reported in the headline note ("n CCF groups not applied"), in its tab status, and in the Validation tab with click-to-jump to the group (report and CLI: FN-25, FN-26) | never silent (DOMAIN) | test: pytest asserts the note; GUI section `ccf` clicks the issue and lands on the group | must
+- **FN-38** Membership follows the tree: (a) every operation that removes a member node (tree delete, batch delete, AI update apply, FMEA re-import that replaces nodes, undo of the node's creation) removes it from its group in the same undo step, and undo restores both; (b) every operation that gives existing nodes new ids (import, duplicate-id repair on load) remaps members when the mapping is one to one, and otherwise flags the group `CCF_MEMBER_RENAMED`; (c) an operation that makes a member non-basic (adding a child, setting a gate) keeps the membership, and FN-33 flags the group | no dangling or wrong members (critic 8, 19) | test: pytest, one case per listed operation, checking the group's member list before, after and after undo | must
+- **FN-40** Every CCF formula in code cites its source and page in the docstring; `docs/CCF.md` holds the formulas with sources and pages (section 7.3), the source errors not to copy, the reference cases of section 7.4 with their labels and derivations, the assumptions of UI-7 and the overlapping-CCF-events note | DOMAIN evidence rule | test: the analyst reviews before merge and records PASS in `.division/reviews/` | must
+- **FN-66** A gate whose subtree contains a CCF member shows its min-cut upper bound from the cut-set expansion (`cutsets._Expander.memo`), labelled MCUB, in the diagram, Details, the report diagram and the Excel sheets; when no complete expansion is available it shows "n/a (CCF)" and no number; it never shows its tree-walk value | the tree-walk value of such a gate is about 100 times too low for R1 (analyst finding 4; closes OQ-11) | test: pytest on a tree root OR(G1 = AND(A, B), C) with A, B in a β = 0.1 group, Q_t = 1e-3, C q = 0: G1 shows 1.00809919e-4 (R1h, relative 1e-9); with a 1 ms time budget G1 shows "n/a (CCF)" | must
+- **FN-67** The CCF tab, the report's CCF section and the CLI `ccf.note` carry the note "Check CCF results with a qualified engineer before use." (ja: 「CCF の結果は、使用前に有資格の技術者が確認してください。」) | DOMAIN: results carry the note unless the CEO decides otherwise; scope in OQ-15 | test: GUI section `ccf` reads the note in en and ja; pytest finds it in the DOCX text and the CLI JSON | must
+- **PERF-2** In-process: `engine.summary` on `perf_ccf_301.json` (10 beta groups of 3) takes at most 1.0 s and returns `capped` false and `truncated` false | the headline runs after every edit within a 2 s budget; at 1.0 s it stays clear of the cap that would make it `incomplete` | test: pytest timing to `artifacts/perf/PERF-2.json` | must
+- **PERF-3** Browser: on `perf_ccf_301.json` the GUI `big` budgets hold: click to Details under 500 ms, Add dialog round trip under 3,000 ms | no slowdown in normal editing | test: GUI section `big` variant with the fixture, 0 FAIL | must
+- **PERF-4** In-process: Monte Carlo with n = 10,000 on `perf_ccf_301.json` completes within the default 30 s limit (`truncatedByTime` false); the time is recorded | the run is time-capped, so a slowdown shows as fewer trials | test: pytest, result to `artifacts/perf/PERF-4.json` | should
+
+Retired in 4.2: UI-3 (merged into FN-32), UI-4 (merged into FN-21), UI-6 (merged into UI-5), FN-20 (merged into FN-19), FN-27 (removed; see Non-goals), FN-29 (merged into FN-28), FN-30 and FN-31 (merged into FN-19 as R3, R4), FN-34, FN-35, FN-36 (merged into FN-33), FN-39 (merged into UI-1).
 
 ### 4.3 Phase 2: alpha factor for groups of 2 to 4 (F2A)
 
-- **UI-8** For the alpha model the group editor shows fields α1 … αm (dimensionless, 0 to 1) for m members and a testing scheme selector (staggered, non-staggered) | alpha needs one parameter per failure multiplicity | test: GUI suite on a 3-member group | should
-- **FN-41** The alpha model with non-staggered testing uses Q_k = k / C(m−1, k−1) · (α_k / α_t) · Q_t with α_t = Σ k·α_k, and one CCF event per subset of size k ≥ 2 | roadmap 1.5 "MGL/α-factor" | test: property test (hypothesis) that Σ_k C(m−1, k−1)·Q_k = Q_t within relative 1e-12; published example per OQ-5 | should
-- **FN-42** The alpha model with staggered testing uses Q_k = α_k / C(m−1, k−1) · Q_t | same | test: as FN-41 for the staggered form | should
-- **FN-43** An alpha group outside 2 to 4 members raises lint error `CCF_ALPHA_SIZE` | 2^m − 1 events per group stay at most 15 | test: pytest with 5 members | should
-- **FN-44** α values that are not finite in [0, 1] or whose sum differs from 1 by more than 1e-9 raise lint error `CCF_ALPHA_SUM` | the α_k are fractions of failures | test: pytest | should
-- **FN-45** For m = 2, the staggered alpha model with α1 = 1 − β and α2 = β gives the same cut-set probabilities as the beta model with β (hand derivation from FN-42: Q_1 = α1·Q_t, Q_2 = α2·Q_t) | cross-check between the two models | test: pytest, equal within relative 1e-12 for β in {0, 0.05, 0.1, 1} | should
-- **PERF-5** With 5 alpha groups of 4 members on the 300-node `big` tree, the headline takes at most 3.0 s | 15 events per group multiply cut sets | test: pytest timing saved to artifacts | should
+- **UI-8** For the alpha model the group editor shows fields α1 … αm "(dimensionless, 0 to 1)" for m members and a testing-scheme selector (staggered, non-staggered) with no preselected value | alpha needs one parameter per failure multiplicity; S1 p. 40 gives no default scheme | test: GUI section `ccf` on a 3-member group; the group shows `Not applied: testing scheme missing` until one is chosen | should
+- **FN-41** The non-staggered alpha model uses Q_k = k / C(m−1, k−1) · (α_k / α_t) · Q_t with α_t = Σ k·α_k (S1 Eq. 5.7-5.9 p. 41; S2 Eq. C.23-C.24 pp. C-10/C-11), with one CCF event per member subset of size k ≥ 2 (q = Q_k, id `ccf:<groupId>:<m1>+<m2>…`), and each member = OR(independent part with Q_1, every CCF event that contains it) | roadmap 1.5 "MGL/α-factor" | test: pytest reproduces R6, R6h, R9, R9h; hypothesis property test Σ_k C(m−1, k−1)·Q_k = Q_t within relative 1e-12 for m = 2 to 4 | should
+- **FN-42** The staggered alpha model uses Q_k = α_k / C(m−1, k−1) · Q_t (S1 Eq. 5.6 p. 40), with events as in FN-41 | same | test: pytest reproduces R5, R7, R8, R8h, R10h, and asserts R10h − R10 = 3·Q_2² within relative 1e-9; the property test of FN-41; for m = 2 with α = (1 − β, β) the cut-set probabilities equal the beta model within relative 1e-12 for β in {0, 0.05, 0.1, 1} (S1 p. E-2) | should
+- **FN-43** Alpha lint, added to the FN-33 table: `CCF_ALPHA_SIZE` (error) for fewer than 2 or more than 4 members; `CCF_ALPHA_SUM` (error) when an α_k is not finite in [0, 1], the list length is not m, or |Σα − 1| > 1e-3; `CCF_ALPHA_NORMALISED` (warning) when 1e-9 < |Σα − 1| ≤ 1e-3, in which case each α_k is divided by Σα and the note shows the original sum; `CCF_NO_TESTING` (error) when the testing scheme is missing | at most 15 events per group; published α sets are rounded and do not sum to exactly 1 (S1 Table 6-9 p. 104, analyst finding 5) | test: pytest per code; an α set copied from S1 Table 6-9 p. 104 (chosen by the analyst) is applied | should
+- **PERF-5** In-process: `engine.summary` on `perf_alpha_301.json` (5 staggered alpha groups of 4) takes at most 1.5 s and returns `capped` false | 15 events per group multiply cut sets | test: pytest timing to `artifacts/perf/PERF-5.json` | should
+
+Retired in 4.3: FN-44 (merged into FN-43), FN-45 (merged into FN-42).
 
 ### 4.4 Phase 2: grid of basic events with paste from Excel (F3)
 
-- **UI-9** A **Grid** tab shows one row per basic event with columns id (read-only), name, model, λ, T, τ, μ, q, source, tags; every numeric column header names its unit | engineers enter and check data in tables (roadmap 3.3) | test: GUI suite reads the headers in en and ja | should
-- **UI-10** The grid sorts by any column and filters by text | finding one row in 500 | test: GUI suite | should
-- **UI-11** q is read-only when the model is not fixed and is shown with the significant-figures preference | q is derived from the model (roadmap 1.3) | test: GUI suite | should
-- **UI-12** After a paste a summary beside the grid says how many rows were applied and lists each refused row with row number, column and message | bad rows are reported (R2) | test: GUI suite pastes 3 good and 2 bad rows | should
-- **UI-13** Selecting a grid row selects the node in the tree and the diagram | the grid and the tree stay linked | test: GUI suite | could
-- **FN-46** A cell edit goes through the same validator as the details panel (`node_schema.validate_quant`) and is one undo step | one validator (R2) | test: pytest sends the same bad values through both paths and compares the errors | should
-- **FN-47** Paste takes tab-separated text from the clipboard and fills cells from the selected cell rightwards and downwards in the visible column order | how Excel copies | test: GUI suite pastes a 3 × 3 block | should
-- **FN-48** A whole paste is one undo step | undo must not need 500 steps (R2) | test: GUI suite pastes 50 rows, one Ctrl+Z restores all | should
-- **FN-49** A row with any invalid cell is not applied at all; the valid rows are | a half-applied row would mix old and new data | test: pytest | should
-- **FN-50** Cells pasted into read-only columns or beyond the last row are reported and nothing is created | the tree is for structure (roadmap 3.3) | test: pytest | should
-- **FN-51** λ is read in the unit shown in its header (/h, /y or FIT) and stored per hour | units explicit (DOMAIN) | test: pytest: 1 FIT is stored as 1e-9 /h; 8.76 /y as 1e-3 /h (8,760 h per year) | should
-- **FN-52** A number with a decimal comma (`1,5E-06`) is refused with a message saying to use a decimal point | no guessing of locale | test: pytest | should
-- **PERF-6** Pasting 500 rows × 3 columns into a tree with 500 basic events is applied and redrawn in at most 2.0 s | G4 | test: GUI suite timing | should
-- **PERF-7** The grid opens with 500 rows in at most 1.0 s | G4 | test: GUI suite timing | should
+- **UI-9** A **Grid** tab shows one row per basic event with columns id (read-only), name, model, λ, T, τ, μ, q, source, tags. Headers name units: λ in the unit picked in its header (/h, /y or FIT), T and τ in h, μ in /h, q dimensionless; q is editable only when the model is `fixed` and is shown with the significant-figures preference; tags are shown and entered separated by `; ` | engineers enter and check data in tables (roadmap 3.3); units explicit (DOMAIN) | test: GUI section `grid` reads the headers in en and ja and checks that q is read-only on a `rate` row | must
+- **UI-10** The grid sorts by any column and filters by text | finding one row in 500 | test: GUI section `grid` | should
+- **UI-12** After a paste, a summary beside the grid gives the number of rows applied and lists each refused row with its clipboard row number, column and message | bad rows are reported (R2, G4) | test: GUI section `grid` pastes 3 good and 2 bad rows and reads the summary | must
+- **FN-46** One number parser for every entry path: the Add dialog, the Details panel, the CCF β field and the grid (typed or pasted) all read numbers with `parseNumberText` (`static/js/numfmt.js`), and the server validates with `node_schema.validate_quant`. The decimal-comma rule is the existing one: one comma and no point reads as a decimal sign (`0,05`, `1,5E-06`), a thousands-group shape (`1,000`) is refused | one parser and one validator, so the same text never means two things (critic 11) | test: a committed vector file `fta_web/tests/fixtures/number_inputs.json` of at least 30 inputs gives the same accept or refuse and the same value through the Add dialog, Details, grid typing and grid paste (GUI suite), and the same server message (pytest) | must
+- **FN-47** Paste fills cells from the selected cell rightwards over the visible columns and downwards over the rows currently visible, in their displayed order. Each target cell is sent as (node id, column key) together with the `revision` and `documentSerial` the grid was drawn from; if either has changed, the server answers `409 STALE_REVISION`, applies nothing, and the grid redraws and says "The analysis changed; paste again". A whole paste is one undo step | row indexes land on the wrong events after sort or filter (critic 10); undo must not need 500 steps | test: pytest posts a paste with a stale revision and gets 409 with no change; GUI section `grid` sorts by name descending, filters, pastes a 3 × 3 block and checks the three intended node ids; one Ctrl+Z after a 50-row paste restores all 50 | must
+- **FN-50** Paste cases behave as in this table | every case is defined before it is built (critic 10, 20) | test: one pytest or GUI check per row | must
+
+  | Case | Behaviour |
+  |---|---|
+  | empty cell | leaves that cell unchanged |
+  | row filtered out of view | receives nothing; the paste continues on the next visible row |
+  | trailing newline at the end of the clipboard | ignored; no empty row |
+  | quoted cell (Excel quoting, doubled quotes, embedded tab or newline) | unquoted; embedded tab or newline kept in text columns, refused in numeric columns |
+  | more cells than visible columns to the right | the extra cells are refused, reported once per row |
+  | more rows than visible rows below the anchor | the extra rows are refused and reported; no node is created |
+  | more than 2,000 clipboard rows | the whole paste is refused with a message; nothing is applied |
+  | id column | a value equal to the row's id is ignored; a different value refuses the row ("id does not match this row") |
+  | q column on a non-fixed model | a value equal to the shown q is ignored; a different value refuses the row ("q is computed from the model") |
+  | any invalid cell | the whole row is refused; valid rows are applied (OQ-13) |
+
+- **FN-51** λ is read in the unit shown in its header and stored per hour (8,760 h per year, 1 FIT = 1e-9 /h); T and τ are hours; μ is per hour | units explicit end to end (DOMAIN) | test: pytest: 1 FIT is stored as 1e-9 /h; 8.76 /y as 1e-3 /h | must
+- **PERF-6** Browser: pasting `perf_grid_500_paste.tsv` (500 rows × λ, T, source) into `perf_grid_500.json` is applied, and the paste summary and the headline are updated, within 2.0 s of the paste event | G4 | test: GUI section `grid` timing to `artifacts/perf/PERF-6.json` | must
+- **PERF-7** Browser: the Grid tab opens with the 500 rows of `perf_grid_500.json` drawn within 1.0 s | G4 | test: GUI section `grid` timing | should
+
+Retired in 4.4: UI-11 (merged into UI-9), UI-13 (removed; see Non-goals), FN-48 (merged into FN-47), FN-49 (merged into FN-50), FN-52 (replaced by the rule in FN-46).
 
 ### 4.5 Phase 2: what-if sliders (F4)
 
-- **UI-14** A **What-if** tab lets the user pick basic events and set a factor for each with a slider from 1/100 to 100 on a log scale, showing nominal q, what-if q, baseline top event, what-if top event and their ratio | roadmap 1.7 "slider or ±factor with the top event updating live" | test: GUI suite sets factor 10 on one event | should
-- **UI-15** While any factor is not 1, a banner says "What-if values, not saved", with Reset per event and Reset all | the user must not mistake what-if numbers for the analysis | test: GUI suite | should
-- **FN-53** What-if works on a copy: the document, its undo history and its modified flag are unchanged | R2 "on a copy" | test: pytest: Save before and after slider use and Reset all writes byte-identical files; `canUndo` and the modified flag unchanged | should
-- **FN-54** After Reset all the what-if top event equals the headline to the last bit | Reset must truly reset | test: pytest | should
-- **FN-55** A factor that would push q above 1 clamps q to 1 and says so beside the value | probabilities stay in [0, 1] | test: pytest with q = 0.5, factor 10 | should
-- **FN-56** The what-if top event uses the same method as the headline, including CCF groups | the comparison must be like for like | test: pytest on the FN-19 tree | should
-- **FN-57** A factor on a CCF member scales Q_t of every member of its group | otherwise the group fails `CCF_UNEQUAL_Q` | test: pytest | should
-- **FN-58** New, Load, a mode switch or any edit to the document resets all factors to 1 | the baseline changed | test: pytest | should
-- **PERF-8** On the 300-node `big` tree the what-if top event is shown within 300 ms of the last slider movement | "updating live" | test: GUI suite timing | should
+- **UI-14** A **What-if** tab lets the user pick basic events and set a factor for each with a slider from 1/100 to 100 on a log scale, showing the nominal and what-if main parameter, the nominal and what-if q, the baseline top event, the what-if top event and their ratio | roadmap 1.7 "slider or ±factor with the top event updating live" | test: GUI section `whatif` sets factor 10 on one event and reads the five values | must
+- **UI-15** While any factor is not 1, a banner on the What-if tab says "What-if values, not saved", with Reset per event and Reset all | the user must not mistake what-if numbers for the analysis | test: GUI section `whatif` | must
+- **FN-53** What-if works on a copy: the document, its undo history, the modified flag and `revision` are unchanged, and every output outside the What-if tab carries nominal values: Save, the recovery copy, the DOCX report, Excel and CSV export, diagram export, Copy CSV, and the AI context | what-if values must not leak into the analysis record (critic 12) | test: pytest and GUI with factor 10 active on one event: Save, recovery copy, CSV and Copy CSV are byte-identical to their output before the slider moved; DOCX text, Excel cell values and the exported diagram SVG are equal apart from creation timestamps; the AI context text is equal; `canUndo`, the modified flag and `revision` are unchanged | must
+- **FN-55** A factor f multiplies the event's main parameter, as Monte Carlo does (`uncertainty._q_function`): λ for the `rate`, `standby` and `repairable` models, q for `fixed`; q then follows from the model. A q above 1 is set to 1 and "clamped to 1" is shown beside it. A factor on a CCF member applies to every member of its group, and the tab says so | scaling λ keeps the model's physics; scaling one member alone would break FN-33 (critic 13) | test: pytest: `rate` λ = 1e-5 /h, T = 1,000 h, f = 10 gives q = 1 − exp(−0.1) = 0.0951626 (hand calculation, relative 1e-6); `fixed` q = 0.5, f = 10 gives 1 with the clamp flag; f = 10 on member A of the R1 file scales both members | must
+- **FN-56** The what-if top event uses the headline's method: when the headline is MCUB (always when a CCF group applies) it is the MCUB over the baseline's cut sets with the changed q values; when the headline is the tree walk it is the tree walk; when the headline is `incomplete` the what-if says so and shows no number. If the baseline cut sets were cut short by the document's cutoff, the tab notes "cut sets from nominal values" | like for like; reusing the baseline cut sets is what makes PERF-8 reachable | test: pytest on the R1 file: factor 1 gives the headline; factor 10 on A (q 1e-2 for both members) gives 1.080919e-3 (hand calculation: 8.1e-5 + 1e-3 − 8.1e-8, relative 1e-9) | must
+- **FN-58** All factors return to 1 on Reset all, New, Open, Import, an example, a mode switch, undo or redo, and any document change made in this or another browser tab (seen as a change of `revision` or `documentSerial`); after any reset the what-if top event equals the headline exactly (the same float) | the baseline changed; Reset must truly reset | test: pytest per trigger; GUI section `whatif` with two tabs: an edit in tab 2 resets tab 1 | must
+- **PERF-8** On `perf_ccf_301.json` with the baseline cut sets already computed: in-process, `POST /api/whatif` through the test client answers within 300 ms; browser, the what-if top event is shown within 500 ms of the last slider movement. The first what-if after an edit may take up to the PERF-2 bound because it computes the baseline | "updating live"; resolves the v0.1 conflict between 300 ms, CCF (FN-56) and a 2.0 s headline | test: pytest and GUI section `whatif` timings to `artifacts/perf/PERF-8.json` | should
 
-### 4.6 Phase 2: semantics help and editing (F5)
+Retired in 4.5: FN-54 (merged into FN-58), FN-57 (merged into FN-55).
 
-- **UI-16** A help button beside the gate selector explains in en and ja how a node combines its children, AND-links and OR-links (in a fixed order, not as gate inputs), and that a parent's own probability is ignored once it has children | every reviewer re-derived this (roadmap 3.7) | test: reviewer compares the text with `docs/USER_GUIDE.md` and `DIVERGENCE.md` | could
-- **UI-17** A help button beside the links editor gives the same explanation for links, and in ETA mode how branch probabilities propagate | same | test: as UI-16 | could
-- **FN-59** With focus on a tree row, Tab adds a child and starts its rename | roadmap 3.6; mapping per OQ-12 | test: GUI suite | could
-- **FN-60** With focus on a tree row, Shift-Tab adds a sibling and starts its rename | roadmap 3.6; mapping per OQ-12 | test: GUI suite | could
-- **FN-61** Tab and Shift-Tab anywhere else (fields, dialogs, buttons) keep the browser's focus movement | keyboard users must still be able to leave the tree | test: GUI suite tabs through the details panel | could
-- **FN-62** **Duplicate subtree** copies the selected node and its descendants as the next sibling with new ids, maps links inside the subtree to the copies and keeps links to nodes outside; one undo step | roadmap 3.6 | test: pytest on a subtree with an inner and an outer link | could
-- **FN-63** Duplicated basic events are not added to the originals' CCF groups, and a notice says so | membership is a modelling decision | test: pytest | could
+### 4.6 Phase 2: semantics help and editing (old F5)
+
+Retired: UI-16, UI-17, FN-59, FN-60, FN-61, FN-62, FN-63 (F5 removed; see Non-goals).
 
 ### 4.7 All phases
 
 - **UI-18** Every new user-visible text has an English and a Japanese string | CHARTER | test: `test_catalog_parity.py` and `test_i18n.py` pass with the new keys | must
-- **FN-64** No new text claims compliance with a standard; standards appear only as sources | compliance claims are CEO-only (DOMAIN) | test: a search of new strings for "compl", "conform", "certif", "準拠", "適合" finds none outside source citations; reviewer confirms | must
-- **FN-65** No test calls a live AI provider | CHARTER | test: CI runs without any provider key | must
+- **FN-64** No new text claims compliance with a standard; standards appear only as sources | compliance claims are CEO-only (DOMAIN) | test: a case-insensitive whole-word search of new en strings for comply, complies, compliant, compliance, conform, conforms, conformity, certified, certification, and of new ja strings for 準拠, 適合, 認証, finds no hit outside source citations; the reviewer confirms | must
+
+Retired in 4.7: FN-65 (moved to section 6 as a constraint with the same check).
 
 ## 5. Non-goals
 
-- **NOT gate** (roadmap 1.4): rejected by DIVERGENCE D5; it makes the tree non-coherent and changes the meaning of cut sets and importance (OQ-3).
-- **Component library** (2.2): needs cited reliability data the division cannot verify; deferred (R2).
-- **Revisions, review comments, diff and scenario compare** (2.4, second half of 1.7): needs a revision model in the file format; deferred (R2).
-- **Large-tree navigation** (3.2): the 300-node budgets hold today; a separate UI effort; deferred.
-- **ETA normalisation, consequences, bow-tie** (1.8): the ETA walk is in the pinned core, so this is a new module and new semantics (M to L); next round.
-- **PDF report and diagram paging** (2.5): needs a PDF library, a licence choice that is the CEO's; DOCX stays.
-- **AI items** (section 4): testing them needs a live provider with the CEO's key and approval (OQ-6).
-- **Dormant-with-coverage model, "cycles" unit** (1.3), **BDD backend** (1.1), copy and paste between files and inline editing in the diagram (rest of 3.6).
+- **Semantics help, Tab / Shift-Tab editing, Duplicate subtree** (roadmap 3.6, 3.7; old F5): cut to fit the $300 budget; roadmap P2.
+- **CCF groups on the Excel Analysis sheet and member marks on the Events sheet** (old FN-27). CCF events still appear wherever Excel shows cut sets, importance and gate values (FN-22, FN-23, FN-66).
+- **Selecting a grid row selects the node** (old UI-13).
+- **Sampling β or α in Monte Carlo**; CCF models other than beta and alpha (MGL, BFR).
+- **NOT gate** (roadmap 1.4): rejected by DIVERGENCE D5 (OQ-3).
+- **Component library** (2.2): needs cited reliability data the division cannot verify.
+- **Revisions, review comments, diff and scenario compare** (2.4, second half of 1.7): needs a revision model in the file format.
+- **Large-tree navigation** (3.2); **ETA normalisation, consequences, bow-tie** (1.8): the ETA walk is in the pinned core.
+- **PDF report and diagram paging** (2.5): needs a PDF library, a licence choice that is the CEO's.
+- **AI items** (section 4 of the roadmap): need a live provider with the CEO's key (OQ-6).
+- **Dormant-with-coverage model, "cycles" unit** (1.3), **BDD backend** (1.1), copy and paste between files, inline editing in the diagram.
 - **Writing what-if values into the document.**
 - **Back-porting to `desktop/`**, a multi-user server, and any claim of compliance with a standard.
 
 ## 6. Constraints
 
-- `fta_web/core/*.py` is hash-pinned (`fta_web/core/BASELINE.json`, `DIVERGENCE.md`) and `desktop/` is frozen; new behaviour goes in `fta_web/` beside the core.
-- Server stays loopback-only with token, Origin and Host checks; the sandbox root stays a security boundary (Change folder only by the native chooser).
-- Existing file keys and API responses for trees without CCF groups do not change; `analysis.ccfGroups` is optional.
-- 1.8.1 adds no feature. A defect found by the release checks is fixed only if it is in the merged 1.8.1 changes, and is named in the CHANGELOG; anything else becomes a Known issue (OQ-14).
+- **Phase gate:** Phase 1 (F1) starts on spec approval. Phase 2 (F2, F2A, F3, F4) is built only after a separate CEO go-ahead that covers all of it; spec approval alone does not start it (CEO, 2026-10-22).
+- **Merging:** feature teams work on feature branches; the PM merges feature branches into `division/fta-editor/integration`; Katey merges integration into `main` and approves every release. Nobody in the division pushes to `main` or merges into it.
+- `fta_web/core/*.py` is hash-pinned (`fta_web/core/BASELINE.json`, `DIVERGENCE.md`) and `desktop/` is frozen; new behaviour goes in `fta_web/` beside the core (checked by FN-28).
+- The server stays loopback-only with token, Origin and Host checks; the sandbox root stays a security boundary (Change folder only by the native chooser).
+- Existing file keys and API responses for documents without CCF groups do not change; `analysis.ccfGroups` and `fileFormatVersion` are optional and written only when a group exists.
+- 1.8.1 adds no feature. A defect found by the release checks is fixed only if it is in the merged 1.8.1 changes and is named in the CHANGELOG; anything else becomes a Known issue (OQ-14).
+- No test calls a live AI provider; check: CI runs with no provider key set (from old FN-65).
 - Windows PC in Dropbox: `uv run --frozen` always; build the exe outside Dropbox; Dropbox can lock git files.
 - No new runtime dependency without the CEO (licences are CEO-only).
-- No live AI call in tests.
-- Work on branches, PR into `division/fta-editor/integration`; the CEO merges into `main` and releases. Budget cap $300.
+- Budget cap $300 (API-equivalent usage) for the whole project.
 
 ## 7. Interfaces and data
 
 ### 7.1 File format addition (JSON analysis file)
 
 ```json
-"analysis": {
-  "ccfGroups": [
-    {"id": "g1", "name": "Feed pumps", "model": "beta", "beta": 0.1,
-     "alpha": null, "testing": null,
-     "members": ["n12", "n13"], "source": "free text, e.g. data handbook and page"}
-  ]
+{
+  "fileFormatVersion": 2,
+  "analysis": {
+    "ccfGroups": [
+      {"id": "g1", "name": "Feed pumps", "model": "beta", "beta": 0.1,
+       "alpha": null, "testing": null,
+       "members": ["n12", "n13"], "source": "free text, e.g. data handbook and page"},
+      {"id": "g2", "name": "Relief valves", "model": "alpha", "beta": null,
+       "alpha": [0.955, 0.034, 0.011], "testing": "staggered",
+       "members": ["n20", "n21", "n22"], "source": "..."}
+    ]
+  }
 }
 ```
-`model` is `beta` or `alpha`; for `alpha`, `alpha` is a list α1 … αm and `testing` is `staggered` or `nonStaggered`. Older versions and `desktop/` ignore the key or drop it on save (risk K4).
+`model` is `beta` or `alpha`. For `alpha`, `alpha` lists α1 … αm in member order and `testing` is `staggered` or `nonStaggered` (no default). Both keys are written only when at least one group exists. 1.8.x drops `ccfGroups` on load (it names the dropped key in its load warning) and loses it on save; `desktop/` ignores it (risk K4).
 
 ### 7.2 Units
 
 | Quantity | Unit | Range |
 |---|---|---|
 | q, Q_t, Q_k | dimensionless probability | [0, 1] |
-| β, α_k | dimensionless fraction | [0, 1]; Σ α_k = 1 |
+| β, α_k | dimensionless fraction | [0, 1]; Σ α_k = 1 within 1e-3 (normalised) |
 | λ | stored per hour; shown /h, /y (8,760 h) or FIT (1e-9 /h) | ≥ 0 |
-| T, τ | hours; shown in h, d or y | > 0 |
+| μ | per hour | ≥ 0 |
+| T, τ | hours | > 0 |
+| what-if factor f | dimensionless | [0.01, 100] |
 
 ### 7.3 Formulas and sources
 
-Page numbers below are **to be verified by the analyst before freeze**; R2 could not open the NRC PDFs.
-
 | Formula | Source |
 |---|---|
-| Beta factor: Q_ind = (1 − β)·Q_t, Q_CCF = β·Q_t; the CCF event fails all m members | NUREG/CR-4780 Vol. 1 (Mosleh et al.), beta-factor model, page to be verified; NUREG/CR-5485, page to be verified |
-| Alpha factor, non-staggered: Q_k = k / C(m−1, k−1) · (α_k / α_t) · Q_t, α_t = Σ k·α_k | NUREG/CR-5485 (Mosleh, Rasmuson, Marshall), page to be verified |
-| Alpha factor, staggered: Q_k = α_k / C(m−1, k−1) · Q_t | NUREG/CR-5485, page to be verified |
-| Hand check: Q_t = 1e-3, β = 0.1, two members under AND: 8.1e-7 + 1e-4 = 1.0081e-4 (rare event), MCUB 1.00809919e-4 | **hand calculation**, derivation in `docs/CCF.md` |
-| Published worked example | to be chosen (OQ-5) |
+| Beta factor: Q_1 = (1 − β)·Q_t (independent part), Q_m = β·Q_t (one event failing all m members) | S2 Table C-1 p. C-5 and Eq. C.10-C.13 p. C-6; S1 Eq. 5.11-5.13 p. 42 |
+| Alpha factor, non-staggered: Q_k = k / C(m−1, k−1) · (α_k / α_t) · Q_t, α_t = Σ k·α_k | S1 Eq. 5.7-5.9 p. 41; S2 Eq. C.23-C.24 pp. C-10/C-11 |
+| Alpha factor, staggered: Q_k = α_k / C(m−1, k−1) · Q_t | S1 Eq. 5.6 p. 40 |
+| Staggered alpha with m = 2, α2 = β equals the beta factor | S1 p. E-2 |
+| Splitting Q_t versus splitting λ agree only to first order in λT | S3 p. D-20 |
 
-### 7.4 API (proposed; names may change in design, behaviour may not)
+Source errors not to copy (derive from S1 Eq. 5.6 and 5.7 instead): S1 p. 41 Eq. 5.10 prints Q3 = 3α3·Q_t (should be α3·Q_t); S1 Tables 5-4 and 5-5 have the m = 4 rows swapped; S1 Table 5-5 "2 of 5" has a stray /4.
 
-- `GET /api/ccf/groups`, `POST /api/ccf/groups`, `PATCH /api/ccf/groups/<id>`, `DELETE /api/ccf/groups/<id>`: each change is one undo step.
-- Existing analysis responses gain a `ccf` block (groups applied, groups not applied with reason) and CCF event ids `ccf:<groupId>` (beta) or `ccf:<groupId>:<memberId>+<memberId>…` (alpha).
-- `POST /api/grid/paste` `{rows: [...], startRow, startColumn}` returns `{applied, refused: [{row, column, message}]}`.
-- `POST /api/whatif` `{factors: {nodeId: factor}}` returns `{baseline, whatIf, ratio, clamped}`; it never changes state.
-- New lint codes: `CCF_MEMBER_NOT_BASIC`, `CCF_UNEQUAL_Q`, `CCF_TOO_FEW_MEMBERS`, `CCF_MEMBER_IN_TWO_GROUPS`, `CCF_ALPHA_SIZE`, `CCF_ALPHA_SUM`, each with en and ja text.
+Overlapping CCF events: with alpha groups of 3 or 4, MOCUS keeps cut sets with two CCF events of the same group (for example {C_AB, C_AC}); S1 Table E-2 p. E-4 omits them. The editor keeps them: Boolean-correct and conservative (for 1-of-3 the difference is 3·Q_2², R10 versus R10h). `docs/CCF.md` and the report state this.
 
-### 7.5 Release artifacts
+Not cited: NUREG/CR-4780 Vol. 1 and NUREG/CR-6268 (not opened by the analyst).
 
-`fta_editor-1.8.1-windows.zip` with its SHA-256; `.division/artifacts/release-1.8.1/` holds the GUI summary, the b2b log, the build log, `--version` output and `manual-check-1.8.1.txt`.
+### 7.4 Reference cases (acceptance oracles)
+
+Q_t = 1e-3 unless stated. "Exact" values are compared with relative tolerance 1e-12 for rare-event sums and 1e-9 for MCUB and importance values (floating-point error of 1 − Π(1 − q)); "rounded" values to half a unit in the last digit shown.
+
+| # | Case | Expected | Label | Kind |
+|---|---|---|---|---|
+| R1 | beta, AND of 2, β = 0.1 | rare-event 1.0081e-4 | published formula, S1 Table 5-2 p. 49 (Case 1); S3 Eq. 7-3 p. 7-5 | exact |
+| R1h | same | MCUB 1.00809919e-4; for `ccf:g1`: FV 0.991965076374, Birnbaum 0.99999919, RAW 9919.6588, RRW 124.45669 | hand calculation | MCUB, Birnbaum exact; others rounded |
+| R2 | beta, OR of 2, β = 0.1 | rare-event 2·Q_1 + Q_2 = 1.9e-3 | published formula, S1 Table 5-2 p. 49 (Case 2) | exact |
+| R2h | same | MCUB 1.899010081e-3 | hand calculation | exact |
+| R3 | R1 tree with β = 0 | MCUB 1e-6, equal to the tree without the group; cut sets equal after dropping zero-probability CCF sets | hand calculation | exact |
+| R4 | R1 tree with β = 1 | top 1e-3 | hand calculation | exact |
+| R5 | staggered, m = 2, α = (0.9, 0.1) | Q_2 = 1e-4, equal to R1 | published formula, S1 Table 5-4 p. 53 | exact |
+| R6 | non-staggered, m = 2, α = (0.95, 0.05) | Q_2 = 9.5238095e-5 | published formula, S1 Table 5-5 p. 54 | rounded |
+| R6h | same, AND of 2 | Q_1 = 9.0476190e-4; rare-event 9.6056689e-5; MCUB 9.6056611e-5 | hand calculation | rounded |
+| R7 | staggered, m = 3, α = (0.955, 0.034, 0.011) (α from S3 p. 7-16) | CCF part 3·Q_2 + Q_3 = 6.2e-5 | published formula, S1 Table 5-4 p. 53 | exact |
+| R8 | same, 2-of-3 | 7 cut sets; rare-event 3·Q_1² + 3·Q_2 + Q_3 = 6.4736075e-5 | published formula, S1 Table 5-2 p. 49 (Case 4); cut sets S1 Table E-2 p. E-4 | exact |
+| R8h | same | MCUB 6.47344749e-5 | hand calculation | rounded |
+| R9 | non-staggered, m = 3, same α (α_t = 1.056) | CCF part 1.27841e-4 | published formula, S1 Table 5-5 p. 54 | rounded |
+| R9h | same, 2-of-3 | rare-event 1.302945e-4; MCUB 1.302880e-4 | hand calculation | rounded |
+| R10 | staggered, m = 3, same α, 1-of-3 (all three must fail) | Q_1³ + 3·Q_1·Q_2 + Q_3 = 1.10495760e-5 (overlapping CCF events omitted) | published formula, S1 Table 5-2 p. 49 (Case 3) | rounded |
+| R10h | same, as the editor computes it (overlapping CCF events kept) | rare-event 1.10504430e-5 = R10 + 3·Q_2² | hand calculation | rounded |
+| R11 | Monte Carlo, AND of 2, β = 0.1, members lognormal with median 1e-3, error factor 3 | E[top] ≈ β·E[Q_t] + (1 − β)²·E[Q_t²] = 1.2696e-4 | hand calculation | within 3 standard errors of the run |
+
+No published numeric worked example of a two- or three-train top event was found in S1, S2 or S3 (the S1 section 6 auxiliary feedwater example is asymmetric and time-dependent). See OQ-5.
+
+### 7.5 API (proposed; names may change in design, behaviour may not)
+
+- `GET /api/ccf/groups`, `POST /api/ccf/groups`, `PATCH /api/ccf/groups/<id>`, `DELETE /api/ccf/groups/<id>`: each change is one undo step and raises `revision`.
+- When the document has groups, analysis responses gain a `ccf` block `{applied: [...], notApplied: [{id, name, code, reason}], note}` and CCF event ids `ccf:<groupId>` (beta) or `ccf:<groupId>:<memberId>+<memberId>…` (alpha, members in group order). `headlineMethod` gains the value `incomplete` and the summary gains `ccfIncomplete` (FN-21).
+- `POST /api/grid/paste` `{revision, documentSerial, rows: [{clipRow, nodeId, cells: {columnKey: value}}]}` returns `{applied, refused: [{clipRow, column, message}]}`, or `409 STALE_REVISION` with nothing applied. Values arrive parsed by `parseNumberText` and in stored units.
+- `POST /api/whatif` `{revision, factors: {nodeId: f}}` returns `{baseline, whatIf, ratio, method, events: [{id, nominalParam, param, nominalQ, q, clamped, groupId}], note}`; it never changes state; `409 STALE_REVISION` on a stale revision.
+- New lint codes: those in FN-33 and FN-43, each with en and ja text.
+
+### 7.6 Performance fixtures
+
+Generated by the committed, deterministic `fta_web/tests/fixtures/make_perf_fixtures.py`; the outputs are committed beside it.
+- **`perf_ccf_301.json`**: the GUI `big` shape with fixed ids. Root `root` (OR); subsystems `S<i>`, i = 0..5 (AND if i is odd, else OR); modules `M<i>_<j>`, j = 0..6 (AND if i + j is odd, else OR); components `C<i>_<j>_<m>`, m = 0..5, model `fixed`, q = 1e-3·(m + 1). 301 nodes. Ten beta groups `G1`..`G10`, β = 0.1, members `C<i>_<j>_0`, `C<i>_<j>_1`, `C<i>_<j>_2` of the AND modules (i, j) = (0,1), (0,3), (0,5), (1,0), (1,2), (1,4), (1,6), (2,1), (2,3), (2,5) in that order; those members have q = 1e-3.
+- **`perf_alpha_301.json`**: the same tree; five staggered alpha groups `A1`..`A5`, α = (0.95, 0.03, 0.01, 0.01), members `C<i>_<j>_0` to `C<i>_<j>_3` of the first five modules above; those members have q = 1e-3.
+- **`perf_grid_500.json`**: root (OR); 25 OR gates `G00`..`G24`, each with 20 basic events `E<gg>_<nn>`, model `rate`, λ = 1e-6 /h, T = 8,760 h; 526 nodes, 500 basic events. **`perf_grid_500_paste.tsv`**: 500 rows of λ (in /y), T, source, in the grid's displayed order.
+
+### 7.7 Release artifacts
+
+`fta_editor-1.8.1-windows.zip` with its SHA-256; `.division/artifacts/release-1.8.1/` holds the GUI summary, the b2b log, the build log (path, commit, `--version`, hash), `notes-checklist.txt`, `manual-check-1.8.1.txt` and `perf/PERF-1.json`.
 
 ## 8. Risks and mitigations
 
 | # | Risk | Mitigation |
 |---|---|---|
-| K1 | CCF page numbers and the published example cannot be verified (NRC fetch failed) | Analyst verifies before freeze; if no published example can be read, the CEO decides (OQ-5) |
-| K2 | The pre-pass changes results of trees without groups | FN-28 byte-identical outputs over all examples and reference models, plus b2b |
-| K3 | A change slips into the pinned core | FN-29, `test_vendor_integrity.py` in CI |
-| K4 | A file with groups opened in 1.8.x or `desktop/` loses its groups on save | Test it, and say it in the release notes of the CCF release |
-| K5 | Gate values below the top are shown without CCF and misread | OQ-11 |
-| K6 | The Monte Carlo sampling rule for groups is a modelling choice | OQ-10, analyst review |
-| K7 | Recovery-folder guard with a custom `--root` containing home; two copies racing for 8765 | Known issues in 1.8.1 notes (FN-6) |
+| K1 | No published numeric worked example exists for the CCF formulas (DOMAIN asks for one) | Published-formula reference cases plus labelled hand calculations (section 7.4); the CEO decides (OQ-5) |
+| K2 | The CCF expansion changes results of trees without groups | FN-28 golden comparison over the whole corpus, plus b2b |
+| K3 | A change slips into the pinned core | FN-28 `git diff` check, `test_vendor_integrity.py` in CI |
+| K4 | A file with groups opened in 1.8.x or `desktop/` loses its groups on save | `fileFormatVersion` (FN-18); test that 1.8.x names the dropped key; say it in the release notes of the CCF release |
+| K5 | Gate values below the top shown without CCF | FN-66 (MCUB from the expansion or no value) |
+| K6 | Monte Carlo double-samples CCF members | FN-24 one draw per group, per-trial test |
+| K7 | Recovery-folder guard with a custom `--root` containing home; two copies racing for 8765 | Known issues in the 1.8.1 notes (FN-5) |
 | K8 | Five new endpoints in a patch release | OQ-1 |
 | K9 | Dropbox locks files during the build | Build outside Dropbox (FN-10) |
-| K10 | The manual check waits on Katey while travelling | `.bat` of about 15 minutes (FN-16); the release is a CEO gate anyway |
-| K11 | Tab in the tree traps keyboard users | FN-61 |
-| K12 | Budget ($300) runs out before F5 | Features ship in order as separate PRs; F5 is could |
+| K10 | The manual check waits on Katey while travelling | 15-minute `.bat` (FN-13); the release is a CEO gate anyway |
+| K11 | (removed with F5) | — |
+| K12 | Budget ($300) runs out in Phase 2 | F5 cut; features ship in order F2, F3, F4, F2A as separate branches; F2A is should and last |
+| K13 | Q_t near 1 makes the beta split lower a certain failure | `CCF_Q_ONE` error, `CCF_HIGH_Q` warning (FN-33) |
+| K14 | Overlapping CCF events make results differ from S1 Table E-2 | Kept on purpose (conservative), stated in docs and report; R10/R10h test the difference |
+| K15 | What-if values leak into saved or exported outputs | FN-53 checks every output path |
+| K16 | Paste lands on the wrong events after sort or filter | FN-47 node-id addressing with revision check |
+| K17 | The Phase 2 go-ahead comes late and the team context is lost | Phase 2 is fully specified now; work resumes from SPEC and PLAN |
 
 ## 9. Open questions
 
+Open, for the CEO (you can approve all recommendations in one reply):
+
 | # | Question | Recommended answer |
 |---|---|---|
-| OQ-1 | 1.8.1 or 1.9.0? Five new endpoints suggest a minor version by semver | **1.8.1**, the CEO's wording; the notes list the API change |
-| OQ-2 | Who runs the manual check (FN-13 to FN-15)? | **Katey**, with `manual-check-1.8.1.bat` |
+| OQ-1 | 1.8.1 or 1.9.0? Five new endpoints suggest a minor version by semver | **1.8.1**, your wording; the notes list the API change |
+| OQ-2 | Who runs the 15-minute manual check (FN-13)? | **Katey**, with `manual-check-1.8.1.bat` |
 | OQ-3 | Add a NOT gate? | **No**, keep DIVERGENCE D5 |
-| OQ-4 | Alpha factor in this project or later? | **In this project as should**, after beta is merged |
-| OQ-5 | Which published CCF example becomes the acceptance test of FN-19 (and FN-41)? | The **NUREG/CR-5485 two-train example** if the analyst can read it; otherwise the CEO picks between another published case and hand calculations only |
+| OQ-5 | Our rules ask every formula to be tested against a published worked example with numbers. The sources publish the CCF formulas, but none has a numeric example of a redundant train. Options: **A)** accept the published-formula cases plus labelled hand calculations (section 7.4) as the acceptance tests; **B)** require a published numeric example, and the CCF features wait until one is found | **A** |
 | OQ-6 | Run a live AI test? | **Defer**; no AI item is in scope |
-| OQ-7 | The brief says "plan the next features". Does that include building F2 to F5? | **Yes**: approving this spec starts F2; each feature is its own PR for CEO acceptance |
-| OQ-8 | Which version ships Phase 2? | **1.9.0** (new file key, new tabs); releasing it is a later CEO gate, not part of this project's done |
-| OQ-9 | DOMAIN asks for a "check by a qualified engineer" note on results; the app has none today | Add it **to the CCF tab and the report's CCF section only**; the CEO decides any wider use |
-| OQ-10 | Monte Carlo with groups: how are members sampled? | One Q_t draw per group per trial (members are identical components), β and α fixed; members must share the error factor or get a lint warning. Analyst to confirm |
-| OQ-11 | Gate values below the top with groups applied | Keep the tree-walk values and label them "without CCF", as 1.8.0 already marks MCUB vs tree walk |
-| OQ-12 | Tab / Shift-Tab mapping: roadmap 3.6 says "sibling / child (as in mind-map tools)", but mind-map tools use Tab for a child | **Tab = child, Shift-Tab = sibling** (mind-map convention the roadmap cites) |
-| OQ-13 | Paste from Excel: apply valid rows and refuse bad ones, or all-or-nothing? | **Apply valid rows**, refuse whole bad rows (FN-49), one undo step |
-| OQ-14 | A release check finds a defect: fix in 1.8.1 or list as known issue? | **Fix** if it is in the merged 1.8.1 changes; otherwise a Known issue |
+| OQ-8 | Which version ships Phase 2? | **1.9.0** (new file key, new tabs); releasing it is a later CEO gate |
+| OQ-13 | Paste from Excel: apply the valid rows and refuse the bad ones, or all-or-nothing? | **Apply valid rows**, refuse whole bad rows (FN-50), one undo step |
+| OQ-14 | A release check finds a defect: fix in 1.8.1 or list it as a known issue? | **Fix** if it is in the merged 1.8.1 changes; otherwise a Known issue |
+| OQ-15 | Our domain rules say every result carries "check by a qualified engineer". The app has no such note today. Put it on every result, or on CCF results only (FN-67)? | **CCF results only** |
+
+Closed in v0.2:
+- OQ-4 (alpha in this project?): Director ruling, F2A stays as should and is built last.
+- OQ-7 (build or plan?): answered by the CEO: Phase 2 is built after a separate go-ahead for all of it (section 6).
+- OQ-9 (scope of the engineer note): replaced by FN-67 and OQ-15.
+- OQ-10 (Monte Carlo sampling): settled by the analyst, now FN-24.
+- OQ-11 (gate values below the top): Director ruling, now FN-66.
+- OQ-12 (Tab / Shift-Tab mapping): retired with F5.
 
 ## 10. Proposed features
 
-- **F1** Release 1.8.1 covers FN-1 to FN-17, PERF-1, FN-65 depends on none
-- **F2** CCF groups, beta factor covers UI-1 to UI-7, FN-18 to FN-40, PERF-2 to PERF-4, UI-18, FN-64 depends on F1
-- **F2A** CCF alpha factor (groups of 2 to 4) covers UI-8, FN-41 to FN-45, PERF-5 depends on F2
-- **F3** Grid of basic events with paste from Excel covers UI-9 to UI-13, FN-46 to FN-52, PERF-6, PERF-7 depends on F1
-- **F4** What-if sliders covers UI-14, UI-15, FN-53 to FN-58, PERF-8 depends on F2
-- **F5** Semantics help and editing covers UI-16, UI-17, FN-59 to FN-63 depends on F1 (FN-63 needs F2)
+| Id | Title | Requirements covered | Depends on |
+|---|---|---|---|
+| F1 | Release 1.8.1 | FN-1, FN-3, FN-5, FN-10, FN-11, FN-12, FN-13, FN-17, PERF-1 | spec approval |
+| F2 | CCF groups, beta factor | UI-1, UI-2, UI-5, UI-7, FN-18, FN-19, FN-21 to FN-26, FN-28, FN-32, FN-33, FN-37, FN-38, FN-40, FN-66, FN-67, PERF-2 to PERF-4, UI-18, FN-64 | F1; Phase 2 go-ahead |
+| F3 | Grid of basic events with paste from Excel | UI-9, UI-10, UI-12, FN-46, FN-47, FN-50, FN-51, PERF-6, PERF-7, UI-18, FN-64 | F1; Phase 2 go-ahead |
+| F4 | What-if sliders | UI-14, UI-15, FN-53, FN-55, FN-56, FN-58, PERF-8, UI-18, FN-64 | F2 |
+| F2A | CCF alpha factor (groups of 2 to 4) | UI-8, FN-41, FN-42, FN-43, PERF-5, UI-18, FN-64 | F2 |
 
-Order: F1, F2, F2A, F3, F4, F5. The analyst reviews F2, F2A, F4 and the final review.
+Order: F1 on approval; after the go-ahead F2, F3, F4, F2A. The analyst reviews F2, F2A, F4 and the final review. The PM merges each feature branch into `division/fta-editor/integration`; Katey merges integration into `main`.
 
 ## 11. Revision history
 
 | Version | Date | By | Change |
 |---|---|---|---|
-| v0.1 draft | 2026-10-22 | spec writer for the Director | First draft from CHARTER, DOMAIN, R1, R2, the roadmap and the Director's scope decisions. Not approved. |
+| v0.1 draft | 2026-10-22 | spec writer for the Director | First draft from CHARTER, DOMAIN, R1, R2, the roadmap and the Director's scope decisions. |
+| v0.2 draft | 2026-10-22 | spec writer for the Director | Revision for critic round 1, analyst review 1, the CEO answer to fta-editor-1 and the Director's rulings. Details below. |
+
+v0.2 changes, Director rulings:
+- D1 Phase gate: OQ-7 removed (CEO answer); gate stated in sections 1, 6 and 10; Phase 1 starts on approval.
+- D2 Citations: S1/S2/S3 with pages from the analyst; every "page to be verified" removed; NUREG/CR-4780 Vol. 1 and NUREG/CR-6268 dropped; reference cases R1 to R11 are the oracles, each labelled (section 7.4).
+- D3 OQ-5 rewritten in plain words with options A (recommended) and B.
+- D4 Overlapping same-group CCF events kept, with a note in docs and report (section 7.3, FN-25, FN-40; R10/R10h).
+- D5 OQ-11: gate MCUB from the expansion, never the tree walk (new FN-66).
+- D6 Headline fallback with groups: "incomplete, CCF not included", `may_need_cut_sets` true (FN-21).
+- D7 Engineer note: new FN-67 on the CCF tab, report and CLI JSON; scope to the CEO as new OQ-15.
+- D8 One number parser and node-id + column-key + revision paste addressing with 409; paste cases defined (FN-46, FN-47, FN-50).
+- D9 What-if scales the main parameter; every output path nominal; reset on edits from any tab (FN-53, FN-55, FN-58).
+- D10 Data safety: invalid groups kept and flagged; members remapped or flagged; `fileFormatVersion`; CLI exit 1 with the `ccf` block; DOCX "not applied" line (FN-18, FN-38, FN-26, FN-25).
+- D11 PERF: committed fixtures with named member placement (7.6); in-process or browser conditions per item; PERF-1 a recorded measurement; PERF-8 versus FN-56 versus PERF-2 resolved by reusing the baseline cut sets.
+- D12 Goals use only must items: F3 and F4 core items raised to must (the CEO's answer says build all of them); G2 extended to not-applied reporting.
+- D13 Shrink: 91 to 55 requirements. Removed: FN-27, UI-13, FN-63, and all of F5 (UI-16, UI-17, FN-59 to FN-62) to Non-goals. F2A kept as should.
+- D14 Merging roles stated in sections 1, 6 and 10.
+
+v0.2 changes, critic round 1:
+- C1 Build vs plan: see D1. C2 FN-28/G3: named volatile key `elapsedMs`, MC with fixed `--n`, `--seed`, `--time-limit 3600`, `truncatedByTime` false, corpus named, goldens from the 1.8.1 commit. C3: see D2, D3. C4: see D6.
+- C5 FN-23 FV corrected to 0.991965076374 (code's definition). C6 Member meaning after expansion: FN-22 labels, FN-23 no component-level row. C7 FN-24 oracle and per-trial test replaced; OQ-10 closed. C8: see D10. C9: see D10.
+- C10, C11: see D8. C12, C13: see D9. C14: see D11. C15: see D12. C16: see D7.
+- C17 FN-3 (old FN-4) reason corrected: the test does not break; it is updated so it checks the released section. C18 Lint cases added: Q_t = 0, missing q, Q_t = 1, PAND/XOR warning, INHIBIT and KOFN allowed, differing error factor (FN-33). C19 FN-38 covers every membership change. C20 Grid read-only behaviour, units of T, τ, μ and the tags separator defined (UI-9, FN-50). C21 FN-10 builds the zip and hashes the local file. C22 PERF-1 recorded, merge roles stated. C23 FN-64 search narrowed to whole words. C24 Merges applied: release-notes checklist (FN-5), manual check (FN-13), lint table (FN-33), constraints (FN-65 to section 6, FN-29 into FN-28); cuts as in D13.
+
+v0.2 changes, analyst review 1:
+- A1 Citations replaced (D2); source errors not to copy listed (7.3). A2 FN-23 value (C5). A3 FN-24 oracle R11 and per-trial ratio test. A4 `CCF_MEMBERS_DIFFER` for model, parameters and uncertainty; "β and α are not sampled" in UI-7, FN-24, FN-25. A5 `CCF_HIGH_Q` warning, `CCF_Q_ONE` error, `CCF_ORDERED_GATE` warning. A6 Σα tolerance 1e-3 with normalisation note (FN-43). A7 No default testing scheme (UI-8, `CCF_NO_TESTING`). A8 Gate MCUB or no value (FN-66). A9 Compile-time expansion keeping topological order, with a test (FN-19). A10 Overlapping CCF events kept with a note (D4). A11 Member rows labelled "independent part", no component-level RAW (FN-22, FN-23). A12 OQ-5 to the CEO (D3). A13 Q_t versus λ splitting stated (UI-7, 7.3).
+
+Retired and merged IDs (never reused): FN-2 → FN-10; FN-4 → FN-3; FN-6, FN-7, FN-8, FN-9 → FN-5 (hash computation → FN-10); FN-14, FN-15, FN-16 → FN-13; UI-3 → FN-32; UI-4 → FN-21; UI-6 → UI-5; FN-20, FN-30, FN-31 → FN-19; FN-29 → FN-28; FN-34, FN-35, FN-36 → FN-33; FN-39 → UI-1; FN-44 → FN-43; FN-45 → FN-42; UI-11 → UI-9; FN-48 → FN-47; FN-49 → FN-50; FN-52 → replaced by FN-46's rule; FN-54 → FN-58; FN-57 → FN-55; FN-65 → section 6. Removed: FN-27, UI-13, FN-63, UI-16, UI-17, FN-59, FN-60, FN-61, FN-62. New: FN-66, FN-67. Removed open questions: OQ-7; closed: OQ-4, OQ-9, OQ-10, OQ-11, OQ-12; new: OQ-15.
