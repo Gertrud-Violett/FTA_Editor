@@ -1,0 +1,5 @@
+- Decision: The roadmap features (Phase 2) are specified in this spec and built, but only after a separate CEO go-ahead that covers all of them. Spec approval alone does not start them. Release 1.8.1 (Phase 1) proceeds on spec approval.
+- Why: CEO answer to fta-editor-1: "Build them after i give go ahead for all".
+- Alternatives considered: build on spec approval; plan only; build CCF only.
+- Decided by: CEO · Date: 2026-10-22
+- Affects: F2-F5, OQ-7, PLAN.md (Phase 2 features blocked on the go-ahead gate).
