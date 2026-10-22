@@ -167,3 +167,8 @@ test_output.png
 .loop/status.json
 .loop/iteration-result.json
 .loop/artifacts/
+.division/artifacts/
+.worktrees/
+.division/board/locks/
+.division/board/heartbeat/
+.claude/settings.local.json

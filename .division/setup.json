@@ -1,0 +1,13 @@
+{
+  "project": "fta-editor",
+  "title": "FTA Editor",
+  "domain": "me-tool",
+  "state": "code",
+  "budget_usd": 300,
+  "browser": false,
+  "desktop": [],
+  "dropbox_ignore": true,
+  "github": "none",
+  "team": "fta-editor-team",
+  "le_repo": "K:/Dropbox/NHI/GitHub/loop-engineering"
+}

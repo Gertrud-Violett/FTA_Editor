@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat .division/RESUME.md"
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat .division/RESUME.md"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv run --frozen pytest:*)",
+      "Bash(uv run --frozen python -m pytest:*)",
+      "Bash(uv run --frozen python fta_web/run.py:*)",
+      "Bash(uv run --frozen python fta_web/tests/b2b/run_b2b.py:*)",
+      "Bash(uv run --frozen --extra all --extra test python -m pytest:*)",
+      "Bash(uv sync --frozen:*)",
+      "Bash(node run.mjs:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git rev-parse:*)"
+    ]
+  }
+}
