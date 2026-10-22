@@ -1,0 +1,5 @@
+- Decision: SPEC.md approved as v1.0 with every recommended answer to OQ-1..OQ-18; frozen (changes now go through change requests). No work starts, Phase 1 included, until the CEO calls for it. Phase 2 additionally needs the go-ahead of decisions/20261022-roadmap-build-gate.md.
+- Why: CEO answer to fta-editor-2: "I approve but wait my call to start work".
+- Alternatives considered: approve and start Phase 1 at once; changes needed.
+- Decided by: CEO · Date: 2026-10-22
+- Affects: all features; the PM is not started until the call.

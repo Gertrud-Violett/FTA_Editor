@@ -1,0 +1,7 @@
+- Role and host: Director, PC mode · Phase: spec approved (v1.0), on hold
+- Done: CEO approved the spec with all recommendations (requests/fta-editor-2.md); SPEC.md set to v1.0 and frozen; decision recorded.
+- Decided: decisions/20261022-spec-approved.md (no work until the CEO's call).
+- Next: on the CEO's call to start, spawn the PM (division-pm) to plan Phase 1 (F1 release 1.8.1: PLAN.md, brief, prd.json with T0) and, as allowed, write Phase 2 plans; Director approves the plan.
+- Waiting on: CEO's call to start; Phase 2 go-ahead; loop-engineering PR #18.
+- Risks: as in the spec §8 (K4, provisional PERF, native folder dialog untested by a person).
+- Resume: read STATUS.md, then SPEC.md §1, §9, §10.

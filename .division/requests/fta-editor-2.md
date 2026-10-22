@@ -7,4 +7,4 @@
 - Recommendations: OQ-1 call it 1.8.1 · OQ-2 Katey runs the 15-min check with a .bat · OQ-3 no NOT gate · OQ-5 accept formula cases plus labelled hand calculations (no published numeric example exists) · OQ-6 defer the live AI test · OQ-8 Phase 2 ships as 1.9.0 · OQ-13 paste keeps good rows, refuses bad ones · OQ-14 fix defects found in the 1.8.1 changes, list others as known issues · OQ-15 engineer-check note on CCF results only · OQ-16 accept that 1.8.x and the desktop app drop CCF groups on save (1.9.0 notes warn) · OQ-17 Director may loosen an estimated speed limit once, to at most 2x the measured 1.8.1 time · OQ-18 F5 stays cut; F2A may be dropped if budget runs short
 - Meanwhile: nothing else proceeds; the PM can only start after approval.
 - Reminded: -
-- Answer:
+- Answer: "I approve but wait my call to start work" (2026-10-22). Spec approved with all recommendations; no work starts, Phase 1 included, until the CEO's call.
