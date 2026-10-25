@@ -1880,7 +1880,7 @@ def test_the_new_endpoints_refuse_a_request_without_the_token(
 def test_the_new_endpoints_are_in_the_api_reference_and_the_changelog():
     reference = _read(DOCS / "API_REFERENCE.md")
     changelog = _read(REPO / "CHANGELOG.md")
-    unreleased = changelog[changelog.index("## [Unreleased]"):changelog.index("## [1.8.0]")]
+    unreleased = changelog[changelog.index("## [1.8.1]"):changelog.index("## [1.8.0]")]
     for _method, path, _payload in NEW_ENDPOINTS:
         assert path in reference, path
         assert path in unreleased, path
@@ -1990,3 +1990,43 @@ def test_8_the_suite_can_drive_the_two_other_engines_and_ci_does_not():
     for workflow in (REPO / ".github" / "workflows").glob("*.yml"):
         text = _read(workflow)
         assert "FTA_GUI_BROWSER" not in text and "install firefox" not in text and "webkit" not in text, workflow.name
+
+
+def test_a_file_with_ccf_groups_loads_with_a_warning_and_saves_without_them(client, sandbox):
+    """FN-68: 1.8.x has no CCF groups.  A file whose ``analysis`` carries ``ccfGroups``
+    (the shape of SPEC section 7.1, with ``fileFormatVersion: 2``) loads, the load warnings
+    name the setting once as ``analysis_invalid`` ("reset to their defaults: ccfGroups"),
+    and the file saved again has no ``ccfGroups``.  This warning is the only protection a
+    1.8.x user gets, so it must not change unnoticed."""
+    members = [dict(_leaf(name, "pump " + name), type="Event", logicGate="OR", notes="", links=[], children=[])
+               for name in ("n12", "n13", "n20", "n21", "n22")]
+    document = {
+        "fileFormatVersion": 2,
+        "title": "CCF groups",
+        "mode": "FTA",
+        "tree": dict(_leaf("root", "Top", 1.0), type="Event", logicGate="OR", notes="", links=[],
+                     children=members),
+        "analysis": {"ccfGroups": [
+            {"id": "g1", "name": "Feed pumps", "model": "beta", "beta": 0.1, "alpha": None,
+             "testing": None, "members": ["n12", "n13"], "source": "data handbook, page 12"},
+            {"id": "g2", "name": "Relief valves", "model": "alpha", "beta": None,
+             "alpha": [0.955, 0.034, 0.011], "testing": "staggered",
+             "members": ["n20", "n21", "n22"], "source": "..."},
+        ]},
+    }
+    (sandbox / "ccf.json").write_text(json.dumps(document), encoding="utf-8")
+
+    opened = client.post("/api/file/open", json={"path": "ccf.json"})
+    assert opened.status_code == 200, body(opened)
+    doc = body(opened)
+    assert [child["id"] for child in doc["tree"]["children"]] == ["n12", "n13", "n20", "n21", "n22"]
+    invalid = [w for w in doc["warnings"] if w["kind"] == "analysis_invalid"]
+    assert len(invalid) == 1, doc["warnings"]
+    assert "reset to their defaults: ccfGroups" in invalid[0]["message"], invalid[0]
+
+    saved_to = sandbox / "again.json"
+    assert client.post("/api/file/save-as", json={"path": str(saved_to)}).status_code == 200
+    saved = json.loads(saved_to.read_text(encoding="utf-8"))
+    assert "ccfGroups" not in saved["analysis"]
+    assert "ccfGroups" not in saved_to.read_text(encoding="utf-8")
+    assert [child["id"] for child in saved["tree"]["children"]] == ["n12", "n13", "n20", "n21", "n22"]
