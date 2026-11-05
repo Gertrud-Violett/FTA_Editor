@@ -181,7 +181,7 @@ CCF グループを含むファイルを FTA Editor 1.8.x で保存すると CCF
 
 ### Fixed
 
-- **The selected tab is always fully in view, and the Grid tab is greyed in ETA mode.**
+- **The selected tab scrolls fully into view when you choose it, and the Grid tab is greyed in ETA mode.**
   Moving through the tab strip by keyboard or click scrolls the strip so the
   chosen tab is not cut off. In ETA mode the Grid tab is greyed like the
   What-if tab, with the same tooltip (the CCF groups tab is greyed too, with its
