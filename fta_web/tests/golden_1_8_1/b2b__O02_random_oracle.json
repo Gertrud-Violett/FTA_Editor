@@ -1,0 +1,502 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O02_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "o2_e7",
+         "name": "Event 7",
+         "q": 0.02639
+        },
+        {
+         "id": "o2_e8",
+         "name": "Event 8",
+         "q": 0.1876
+        }
+       ],
+       "order": 2,
+       "probability": 0.004950764,
+       "rank": 1,
+       "share": 0.36037942073433293
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e5",
+         "name": "Event 5",
+         "q": 0.01753
+        },
+        {
+         "id": "o2_e8",
+         "name": "Event 8",
+         "q": 0.1876
+        }
+       ],
+       "order": 2,
+       "probability": 0.003288628,
+       "rank": 2,
+       "share": 0.2393880729622151
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e0",
+         "name": "Event 0",
+         "q": 0.06045
+        },
+        {
+         "id": "o2_e7",
+         "name": "Event 7",
+         "q": 0.02639
+        }
+       ],
+       "order": 2,
+       "probability": 0.0015952755,
+       "rank": 3,
+       "share": 0.11612439223555664
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e0",
+         "name": "Event 0",
+         "q": 0.06045
+        },
+        {
+         "id": "o2_e5",
+         "name": "Event 5",
+         "q": 0.01753
+        }
+       ],
+       "order": 2,
+       "probability": 0.0010596885,
+       "rank": 4,
+       "share": 0.07713757468318712
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e3",
+         "name": "Event 3",
+         "q": 0.0367986472544
+        },
+        {
+         "id": "o2_e7",
+         "name": "Event 7",
+         "q": 0.02639
+        }
+       ],
+       "order": 2,
+       "probability": 0.000971116301043616,
+       "rank": 5,
+       "share": 0.07069016621187485
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e3",
+         "name": "Event 3",
+         "q": 0.0367986472544
+        },
+        {
+         "id": "o2_e5",
+         "name": "Event 5",
+         "q": 0.01753
+        }
+       ],
+       "order": 2,
+       "probability": 0.000645080286369632,
+       "rank": 6,
+       "share": 0.0469571282188013
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e1",
+         "name": "Event 1",
+         "q": 0.0169725
+        },
+        {
+         "id": "o2_e7",
+         "name": "Event 7",
+         "q": 0.02639
+        }
+       ],
+       "order": 2,
+       "probability": 0.00044790427500000004,
+       "rank": 7,
+       "share": 0.032604156281521676
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e1",
+         "name": "Event 1",
+         "q": 0.0169725
+        },
+        {
+         "id": "o2_e5",
+         "name": "Event 5",
+         "q": 0.01753
+        }
+       ],
+       "order": 2,
+       "probability": 0.00029752792500000006,
+       "rank": 8,
+       "share": 0.02165785750720254
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e2",
+         "name": "Event 2",
+         "q": 0.1151
+        },
+        {
+         "id": "o2_e6",
+         "name": "Event 6",
+         "q": 0.09528
+        },
+        {
+         "id": "o2_e7",
+         "name": "Event 7",
+         "q": 0.02639
+        }
+       ],
+       "order": 3,
+       "probability": 0.00028941195192,
+       "rank": 9,
+       "share": 0.021067074008480756
+      },
+      {
+       "events": [
+        {
+         "id": "o2_e2",
+         "name": "Event 2",
+         "q": 0.1151
+        },
+        {
+         "id": "o2_e5",
+         "name": "Event 5",
+         "q": 0.01753
+        },
+        {
+         "id": "o2_e6",
+         "name": "Event 6",
+         "q": 0.09528
+        }
+       ],
+       "order": 3,
+       "probability": 0.00019224674184000002,
+       "rank": 10,
+       "share": 0.013994157156827119
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.013663869351380618,
+     "nonCoherent": false,
+     "rareEvent": 0.013737643481173248,
+     "repeatedEvents": [
+      {
+       "id": "o2_e1",
+       "name": "Event 1"
+      }
+     ],
+     "total": 10,
+     "treeWalk": 0.0129252984546,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "O02 random (oracle)"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O02_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.2836404720303899,
+       "cutSetCount": 5,
+       "fv": 0.5993532905838622,
+       "id": "o2_e7",
+       "name": "Event 7",
+       "q": 0.02639,
+       "raw": 21.15907645843378,
+       "rrw": 2.495964590492455,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.04321898176705719,
+       "cutSetCount": 2,
+       "fv": 0.5985127386751783,
+       "id": "o2_e8",
+       "name": "Event 8",
+       "q": 0.1876,
+       "raw": 3.564499191228138,
+       "rrw": 2.4907390503504763,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.282853263810878,
+       "cutSetCount": 5,
+       "fv": 0.3973475583551441,
+       "id": "o2_e5",
+       "name": "Event 5",
+       "q": 0.01753,
+       "raw": 21.303469797037526,
+       "rrw": 1.6593312013648187,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.04297761866915442,
+       "cutSetCount": 2,
+       "fv": 0.19203796493660202,
+       "id": "o2_e0",
+       "name": "Event 0",
+       "q": 0.06045,
+       "raw": 3.9533096349225763,
+       "rrw": 1.23768191647957,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.04293294848180088,
+       "cutSetCount": 2,
+       "fv": 0.11680979437051857,
+       "id": "o2_e3",
+       "name": "Event 3",
+       "q": 0.0367986472544,
+       "raw": 4.025268586045412,
+       "rrw": 1.132258933156153,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.042895557305453545,
+       "cutSetCount": 2,
+       "fv": 0.053840060895655156,
+       "id": "o2_e1",
+       "name": "Event 1",
+       "q": 0.0169725,
+       "raw": 4.085501819676359,
+       "rrw": 1.0569037629585345,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.004125362847890661,
+       "cutSetCount": 2,
+       "fv": 0.034781610122457646,
+       "id": "o2_e2",
+       "name": "Event 2",
+       "q": 0.1151,
+       "raw": 1.2671360049983154,
+       "rrw": 1.036034964197968,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.004982473083006003,
+       "cutSetCount": 2,
+       "fv": 0.034781610122457646,
+       "id": "o2_e6",
+       "name": "Event 6",
+       "q": 0.09528,
+       "raw": 1.3298642273688503,
+       "rrw": 1.036034964197968,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "O02 random (oracle)"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O02_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "o2_e3",
+      "o2_e9",
+      "o2_e4",
+      "o2_e1",
+      "o2_e8",
+      "o2_e0",
+      "o2_e2",
+      "o2_e6",
+      "o2_e7",
+      "o2_e5"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.013663869351380618,
+       0.013663869351380618
+      ],
+      "logBins": false
+     },
+     "mean": 0.013663869351380618,
+     "median": 0.013663869351380618,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.013663869351380618,
+     "p95": 0.013663869351380618,
+     "pointEstimate": 0.013663869351380618,
+     "repeatedEvents": [
+      {
+       "id": "o2_e1",
+       "name": "Event 1"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "O02 random (oracle)"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O02_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.0367986472544,
+       "id": "o2_e3",
+       "model": "rate",
+       "name": "Event 3",
+       "q": 0.0367986472544
+      },
+      {
+       "calculated": 0.07379,
+       "id": "o2_e9",
+       "model": "fixed",
+       "name": "Event 9",
+       "q": 0.07379
+      },
+      {
+       "calculated": 0.1034,
+       "id": "o2_e4",
+       "model": "fixed",
+       "name": "Event 4",
+       "q": 0.1034
+      },
+      {
+       "calculated": 0.0169725,
+       "id": "o2_e1",
+       "model": "standby",
+       "name": "Event 1",
+       "q": 0.0169725
+      },
+      {
+       "calculated": 0.1876,
+       "id": "o2_e8",
+       "model": "fixed",
+       "name": "Event 8",
+       "q": 0.1876
+      },
+      {
+       "calculated": 0.06045,
+       "id": "o2_e0",
+       "model": "fixed",
+       "name": "Event 0",
+       "q": 0.06045
+      },
+      {
+       "calculated": 0.1151,
+       "id": "o2_e2",
+       "model": "fixed",
+       "name": "Event 2",
+       "q": 0.1151
+      },
+      {
+       "calculated": 0.09528,
+       "id": "o2_e6",
+       "model": "fixed",
+       "name": "Event 6",
+       "q": 0.09528
+      },
+      {
+       "calculated": 0.02639,
+       "id": "o2_e7",
+       "model": "fixed",
+       "name": "Event 7",
+       "q": 0.02639
+      },
+      {
+       "calculated": 0.01753,
+       "id": "o2_e5",
+       "model": "fixed",
+       "name": "Event 5",
+       "q": 0.01753
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.013663869351380618,
+      "headlineMethod": "mcub",
+      "mcub": 0.013663869351380618,
+      "nonCoherent": false,
+      "rareEvent": 0.013737643481173248,
+      "repeatedEvents": [
+       {
+        "id": "o2_e1",
+        "name": "Event 1"
+       }
+      ],
+      "treeWalk": 0.0129252984546,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "O02 random (oracle)"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O02_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "O02 random (oracle)"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/O02_random_oracle.json"
+}

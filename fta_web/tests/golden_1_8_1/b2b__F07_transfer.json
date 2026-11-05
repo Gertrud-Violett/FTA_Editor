@@ -1,0 +1,326 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F07_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "c",
+         "name": "c",
+         "q": 0.05
+        }
+       ],
+       "order": 1,
+       "probability": 0.05,
+       "rank": 1,
+       "share": 0.7142857142857143
+      },
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.1
+        },
+        {
+         "id": "b",
+         "name": "b",
+         "q": 0.2
+        }
+       ],
+       "order": 2,
+       "probability": 0.020000000000000004,
+       "rank": 2,
+       "share": 0.28571428571428575
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.069,
+     "nonCoherent": false,
+     "rareEvent": 0.07,
+     "repeatedEvents": [
+      {
+       "id": "a",
+       "name": "a"
+      },
+      {
+       "id": "b",
+       "name": "b"
+      },
+      {
+       "id": "c",
+       "name": "c"
+      }
+     ],
+     "total": 2,
+     "treeWalk": 0.133239,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": [
+      {
+       "code": "TRANSFER_MISSING",
+       "nodeId": "xfer_missing",
+       "params": {
+        "transferTo": "no_such_node"
+       }
+      },
+      {
+       "code": "TRANSFER_CYCLE",
+       "nodeId": "loop2",
+       "params": {
+        "transferTo": "loop1"
+       }
+      }
+     ]
+    },
+    "title": "F07 TRANSFER"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F07_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.98,
+       "cutSetCount": 1,
+       "fv": 0.7101449275362319,
+       "id": "c",
+       "name": "c",
+       "q": 0.05,
+       "raw": 14.492753623188404,
+       "rrw": 3.4499999999999997,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.19,
+       "cutSetCount": 1,
+       "fv": 0.2753623188405797,
+       "id": "a",
+       "name": "a",
+       "q": 0.1,
+       "raw": 3.4782608695652173,
+       "rrw": 1.38,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.095,
+       "cutSetCount": 1,
+       "fv": 0.2753623188405797,
+       "id": "b",
+       "name": "b",
+       "q": 0.2,
+       "raw": 2.101449275362319,
+       "rrw": 1.38,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F07 TRANSFER"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F07_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b",
+      "c"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.069,
+       0.069
+      ],
+      "logBins": false
+     },
+     "mean": 0.069,
+     "median": 0.069,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.069,
+     "p95": 0.069,
+     "pointEstimate": 0.069,
+     "repeatedEvents": [
+      {
+       "id": "a",
+       "name": "a"
+      },
+      {
+       "id": "b",
+       "name": "b"
+      },
+      {
+       "id": "c",
+       "name": "c"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "TRANSFER_MISSING",
+       "nodeId": "xfer_missing",
+       "params": {
+        "transferTo": "no_such_node"
+       }
+      },
+      {
+       "code": "TRANSFER_CYCLE",
+       "nodeId": "loop2",
+       "params": {
+        "transferTo": "loop1"
+       }
+      },
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F07 TRANSFER"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F07_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.9,
+       "id": "ignored",
+       "model": "fixed",
+       "name": "ignored",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.05,
+       "id": "c",
+       "model": "fixed",
+       "name": "c",
+       "q": 0.05
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.069,
+      "headlineMethod": "mcub",
+      "mcub": 0.069,
+      "nonCoherent": false,
+      "rareEvent": 0.07,
+      "repeatedEvents": [
+       {
+        "id": "a",
+        "name": "a"
+       },
+       {
+        "id": "b",
+        "name": "b"
+       },
+       {
+        "id": "c",
+        "name": "c"
+       }
+      ],
+      "treeWalk": 0.133239,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F07 TRANSFER"
+   }
+  },
+  "validate": {
+   "exitCode": 1,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F07_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 2,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "TRANSFER_MISSING",
+       "hintKey": "val.fix.TRANSFER_MISSING",
+       "message": "Transfer gate has no valid target (transferTo = 'no_such_node').",
+       "nodeId": "xfer_missing",
+       "nodeName": "xfer_missing",
+       "params": {
+        "transferTo": "no_such_node"
+       },
+       "severity": "error"
+      },
+      {
+       "code": "TRANSFER_CYCLE",
+       "hintKey": "val.fix.TRANSFER_CYCLE",
+       "message": "Transfer to 'loop1' leads back to itself; it is counted as 0.",
+       "nodeId": "loop2",
+       "nodeName": "loop2",
+       "params": {
+        "transferTo": "loop1"
+       },
+       "severity": "error"
+      },
+      {
+       "code": "TRANSFER_HAS_CHILDREN",
+       "hintKey": "val.fix.TRANSFER_HAS_CHILDREN",
+       "message": "Transfer gate has 1 children; they are ignored.",
+       "nodeId": "xfer_kids",
+       "nodeName": "xfer_kids",
+       "params": {
+        "n": 1
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "F07 TRANSFER"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F07_transfer.json"
+}

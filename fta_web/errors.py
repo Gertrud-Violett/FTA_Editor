@@ -104,3 +104,6 @@ AI_NOT_CONFIGURED = "AI_NOT_CONFIGURED"
 MODE_UNSUPPORTED = "MODE_UNSUPPORTED"
 NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
 EXPORT_UNAVAILABLE = "EXPORT_UNAVAILABLE"
+# F3: a paste carries the revision and document serial the grid was drawn from;
+# a difference answers 409 with this code (F4 uses the same string).
+STALE_REVISION = "STALE_REVISION"

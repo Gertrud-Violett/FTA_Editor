@@ -1,0 +1,199 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L12_top_not_root.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.5
+        }
+       ],
+       "order": 1,
+       "probability": 0.5,
+       "rank": 1,
+       "share": 1.0
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.5,
+     "nonCoherent": false,
+     "rareEvent": 0.5,
+     "repeatedEvents": [
+      {
+       "id": "a",
+       "name": "a"
+      }
+     ],
+     "total": 1,
+     "treeWalk": 0.3,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L12 top id TOP"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L12_top_not_root.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 1.0,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "a",
+       "name": "a",
+       "q": 0.5,
+       "raw": 2.0,
+       "rrw": null,
+       "rrwInfinite": true
+      }
+     ]
+    },
+    "title": "L12 top id TOP"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L12_top_not_root.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.5,
+       0.5
+      ],
+      "logBins": false
+     },
+     "mean": 0.5,
+     "median": 0.5,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.5,
+     "p95": 0.5,
+     "pointEstimate": 0.5,
+     "repeatedEvents": [
+      {
+       "id": "a",
+       "name": "a"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L12 top id TOP"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L12_top_not_root.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.5,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.2,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.2
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.5,
+      "headlineMethod": "mcub",
+      "mcub": 0.5,
+      "nonCoherent": false,
+      "rareEvent": 0.5,
+      "repeatedEvents": [
+       {
+        "id": "a",
+        "name": "a"
+       }
+      ],
+      "treeWalk": 0.3,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L12 top id TOP"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L12_top_not_root.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "LOAD_REPAIR",
+       "hintKey": "val.fix.LOAD_REPAIR",
+       "message": "Top-level node id 'TOP' was changed to 'root'.",
+       "nodeId": "root",
+       "nodeName": "Top with id TOP",
+       "params": {
+        "kind": "root_id",
+        "message": "Top-level node id 'TOP' was changed to 'root'.",
+        "new_id": "root",
+        "old_id": "TOP"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L12 top id TOP"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L12_top_not_root.json"
+}

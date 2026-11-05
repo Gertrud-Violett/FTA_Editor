@@ -1,0 +1,1401 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L06_deep_chain.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "s0",
+         "name": "s0",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 1,
+       "share": 0.21342029498953172
+      },
+      {
+       "events": [
+        {
+         "id": "s1",
+         "name": "s1",
+         "q": 0.9
+        },
+        {
+         "id": "s2",
+         "name": "s2",
+         "q": 0.01
+        }
+       ],
+       "order": 2,
+       "probability": 0.009000000000000001,
+       "rank": 2,
+       "share": 0.19207826549057855
+      },
+      {
+       "events": [
+        {
+         "id": "s1",
+         "name": "s1",
+         "q": 0.9
+        },
+        {
+         "id": "s3",
+         "name": "s3",
+         "q": 0.9
+        },
+        {
+         "id": "s4",
+         "name": "s4",
+         "q": 0.01
+        }
+       ],
+       "order": 3,
+       "probability": 0.008100000000000001,
+       "rank": 3,
+       "share": 0.1728704389415207
+      },
+      {
+       "events": [
+        {
+         "id": "s1",
+         "name": "s1",
+         "q": 0.9
+        },
+        {
+         "id": "s3",
+         "name": "s3",
+         "q": 0.9
+        },
+        {
+         "id": "s5",
+         "name": "s5",
+         "q": 0.9
+        },
+        {
+         "id": "s6",
+         "name": "s6",
+         "q": 0.01
+        }
+       ],
+       "order": 4,
+       "probability": 0.007290000000000001,
+       "rank": 4,
+       "share": 0.15558339504736865
+      },
+      {
+       "events": [
+        {
+         "id": "s1",
+         "name": "s1",
+         "q": 0.9
+        },
+        {
+         "id": "s3",
+         "name": "s3",
+         "q": 0.9
+        },
+        {
+         "id": "s5",
+         "name": "s5",
+         "q": 0.9
+        },
+        {
+         "id": "s7",
+         "name": "s7",
+         "q": 0.9
+        },
+        {
+         "id": "s8",
+         "name": "s8",
+         "q": 0.01
+        }
+       ],
+       "order": 5,
+       "probability": 0.006561000000000002,
+       "rank": 5,
+       "share": 0.14002505554263178
+      },
+      {
+       "events": [
+        {
+         "id": "s1",
+         "name": "s1",
+         "q": 0.9
+        },
+        {
+         "id": "s10",
+         "name": "s10",
+         "q": 0.01
+        },
+        {
+         "id": "s3",
+         "name": "s3",
+         "q": 0.9
+        },
+        {
+         "id": "s5",
+         "name": "s5",
+         "q": 0.9
+        },
+        {
+         "id": "s7",
+         "name": "s7",
+         "q": 0.9
+        },
+        {
+         "id": "s9",
+         "name": "s9",
+         "q": 0.9
+        }
+       ],
+       "order": 6,
+       "probability": 0.005904900000000002,
+       "rank": 6,
+       "share": 0.12602254998836862
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.04595628569724641,
+     "nonCoherent": false,
+     "rareEvent": 0.046855900000000006,
+     "repeatedEvents": [],
+     "total": 6,
+     "treeWalk": 0.092144536261,
+     "truncated": true,
+     "truncatedBy": [
+      "order"
+     ],
+     "warnings": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "by": [
+         "order"
+        ],
+        "cutoff": 1e-15,
+        "maxCount": 5000,
+        "maxOrder": 6
+       }
+      }
+     ]
+    },
+    "title": "L06 deep chain"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L06_deep_chain.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.039886397026073196,
+       "cutSetCount": 5,
+       "fv": 0.7824019098088429,
+       "id": "s1",
+       "name": "s1",
+       "q": 0.9,
+       "raw": 1.0855184719391342,
+       "rrw": 4.5956285697246395,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.03001668631599852,
+       "cutSetCount": 4,
+       "fv": 0.5885220114485222,
+       "id": "s3",
+       "name": "s3",
+       "q": 0.9,
+       "raw": 1.0646353501743095,
+       "rrw": 2.4302636540056266,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.021206117676931313,
+       "cutSetCount": 3,
+       "fv": 0.41560053010095194,
+       "id": "s5",
+       "name": "s5",
+       "q": 0.9,
+       "raw": 1.0458405405859672,
+       "rrw": 1.711158294124984,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.013334538285180825,
+       "cutSetCount": 2,
+       "fv": 0.2612317944871625,
+       "id": "s7",
+       "name": "s7",
+       "q": 0.9,
+       "raw": 1.028925211956459,
+       "rrw": 1.3536045440745796,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9636805194977309,
+       "cutSetCount": 1,
+       "fv": 0.20969504059712826,
+       "id": "s0",
+       "name": "s0",
+       "q": 0.01,
+       "raw": 21.7598090191157,
+       "rrw": 1.2653343346795736,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.8664372783778792,
+       "cutSetCount": 1,
+       "fv": 0.18853509704545038,
+       "id": "s2",
+       "name": "s2",
+       "q": 0.01,
+       "raw": 19.664974607499584,
+       "rrw": 1.232339188496006,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7790860052275739,
+       "cutSetCount": 1,
+       "fv": 0.16952762683217784,
+       "id": "s4",
+       "name": "s4",
+       "q": 0.01,
+       "raw": 17.783235056385603,
+       "rrw": 1.204133975204398,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7006052802195077,
+       "cutSetCount": 1,
+       "fv": 0.15245037095360525,
+       "id": "s6",
+       "name": "s6",
+       "q": 0.01,
+       "raw": 16.09258672440692,
+       "rrw": 1.1798719104214959,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.6300820492793586,
+       "cutSetCount": 1,
+       "fv": 0.13710465058691892,
+       "id": "s8",
+       "name": "s8",
+       "q": 0.01,
+       "raw": 14.57336040810497,
+       "rrw": 1.1588890827609324,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.5666995771919942,
+       "cutSetCount": 1,
+       "fv": 0.12331274570911407,
+       "id": "s10",
+       "name": "s10",
+       "q": 0.01,
+       "raw": 13.207961825202295,
+       "rrw": 1.1406576234632912,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.006296661968799935,
+       "cutSetCount": 1,
+       "fv": 0.12331274570911407,
+       "id": "s9",
+       "name": "s9",
+       "q": 0.9,
+       "raw": 1.0137014161899016,
+       "rrw": 1.1406576234632912,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L06 deep chain"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L06_deep_chain.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "deep_leaf",
+      "s119",
+      "s118",
+      "s117",
+      "s116",
+      "s115",
+      "s114",
+      "s113",
+      "s112",
+      "s111",
+      "s110",
+      "s109",
+      "s108",
+      "s107",
+      "s106",
+      "s105",
+      "s104",
+      "s103",
+      "s102",
+      "s101",
+      "s100",
+      "s99",
+      "s98",
+      "s97",
+      "s96",
+      "s95",
+      "s94",
+      "s93",
+      "s92",
+      "s91",
+      "s90",
+      "s89",
+      "s88",
+      "s87",
+      "s86",
+      "s85",
+      "s84",
+      "s83",
+      "s82",
+      "s81",
+      "s80",
+      "s79",
+      "s78",
+      "s77",
+      "s76",
+      "s75",
+      "s74",
+      "s73",
+      "s72",
+      "s71",
+      "s70",
+      "s69",
+      "s68",
+      "s67",
+      "s66",
+      "s65",
+      "s64",
+      "s63",
+      "s62",
+      "s61",
+      "s60",
+      "s59",
+      "s58",
+      "s57",
+      "s56",
+      "s55",
+      "s54",
+      "s53",
+      "s52",
+      "s51",
+      "s50",
+      "s49",
+      "s48",
+      "s47",
+      "s46",
+      "s45",
+      "s44",
+      "s43",
+      "s42",
+      "s41",
+      "s40",
+      "s39",
+      "s38",
+      "s37",
+      "s36",
+      "s35",
+      "s34",
+      "s33",
+      "s32",
+      "s31",
+      "s30",
+      "s29",
+      "s28",
+      "s27",
+      "s26",
+      "s25",
+      "s24",
+      "s23",
+      "s22",
+      "s21",
+      "s20",
+      "s19",
+      "s18",
+      "s17",
+      "s16",
+      "s15",
+      "s14",
+      "s13",
+      "s12",
+      "s11",
+      "s10",
+      "s9",
+      "s8",
+      "s7",
+      "s6",
+      "s5",
+      "s4",
+      "s3",
+      "s2",
+      "s1",
+      "s0"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.09214453626083419,
+       0.09214453626083419
+      ],
+      "logBins": false
+     },
+     "mean": 0.09214453626083419,
+     "median": 0.09214453626083419,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.09214453626083419,
+     "p95": 0.09214453626083419,
+     "pointEstimate": 0.09214453626083419,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L06 deep chain"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L06_deep_chain.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.5,
+       "id": "deep_leaf",
+       "model": "fixed",
+       "name": "deep_leaf",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.9,
+       "id": "s119",
+       "model": "fixed",
+       "name": "s119",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s118",
+       "model": "fixed",
+       "name": "s118",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s117",
+       "model": "fixed",
+       "name": "s117",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s116",
+       "model": "fixed",
+       "name": "s116",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s115",
+       "model": "fixed",
+       "name": "s115",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s114",
+       "model": "fixed",
+       "name": "s114",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s113",
+       "model": "fixed",
+       "name": "s113",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s112",
+       "model": "fixed",
+       "name": "s112",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s111",
+       "model": "fixed",
+       "name": "s111",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s110",
+       "model": "fixed",
+       "name": "s110",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s109",
+       "model": "fixed",
+       "name": "s109",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s108",
+       "model": "fixed",
+       "name": "s108",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s107",
+       "model": "fixed",
+       "name": "s107",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s106",
+       "model": "fixed",
+       "name": "s106",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s105",
+       "model": "fixed",
+       "name": "s105",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s104",
+       "model": "fixed",
+       "name": "s104",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s103",
+       "model": "fixed",
+       "name": "s103",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s102",
+       "model": "fixed",
+       "name": "s102",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s101",
+       "model": "fixed",
+       "name": "s101",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s100",
+       "model": "fixed",
+       "name": "s100",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s99",
+       "model": "fixed",
+       "name": "s99",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s98",
+       "model": "fixed",
+       "name": "s98",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s97",
+       "model": "fixed",
+       "name": "s97",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s96",
+       "model": "fixed",
+       "name": "s96",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s95",
+       "model": "fixed",
+       "name": "s95",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s94",
+       "model": "fixed",
+       "name": "s94",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s93",
+       "model": "fixed",
+       "name": "s93",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s92",
+       "model": "fixed",
+       "name": "s92",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s91",
+       "model": "fixed",
+       "name": "s91",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s90",
+       "model": "fixed",
+       "name": "s90",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s89",
+       "model": "fixed",
+       "name": "s89",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s88",
+       "model": "fixed",
+       "name": "s88",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s87",
+       "model": "fixed",
+       "name": "s87",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s86",
+       "model": "fixed",
+       "name": "s86",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s85",
+       "model": "fixed",
+       "name": "s85",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s84",
+       "model": "fixed",
+       "name": "s84",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s83",
+       "model": "fixed",
+       "name": "s83",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s82",
+       "model": "fixed",
+       "name": "s82",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s81",
+       "model": "fixed",
+       "name": "s81",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s80",
+       "model": "fixed",
+       "name": "s80",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s79",
+       "model": "fixed",
+       "name": "s79",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s78",
+       "model": "fixed",
+       "name": "s78",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s77",
+       "model": "fixed",
+       "name": "s77",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s76",
+       "model": "fixed",
+       "name": "s76",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s75",
+       "model": "fixed",
+       "name": "s75",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s74",
+       "model": "fixed",
+       "name": "s74",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s73",
+       "model": "fixed",
+       "name": "s73",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s72",
+       "model": "fixed",
+       "name": "s72",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s71",
+       "model": "fixed",
+       "name": "s71",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s70",
+       "model": "fixed",
+       "name": "s70",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s69",
+       "model": "fixed",
+       "name": "s69",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s68",
+       "model": "fixed",
+       "name": "s68",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s67",
+       "model": "fixed",
+       "name": "s67",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s66",
+       "model": "fixed",
+       "name": "s66",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s65",
+       "model": "fixed",
+       "name": "s65",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s64",
+       "model": "fixed",
+       "name": "s64",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s63",
+       "model": "fixed",
+       "name": "s63",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s62",
+       "model": "fixed",
+       "name": "s62",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s61",
+       "model": "fixed",
+       "name": "s61",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s60",
+       "model": "fixed",
+       "name": "s60",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s59",
+       "model": "fixed",
+       "name": "s59",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s58",
+       "model": "fixed",
+       "name": "s58",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s57",
+       "model": "fixed",
+       "name": "s57",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s56",
+       "model": "fixed",
+       "name": "s56",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s55",
+       "model": "fixed",
+       "name": "s55",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s54",
+       "model": "fixed",
+       "name": "s54",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s53",
+       "model": "fixed",
+       "name": "s53",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s52",
+       "model": "fixed",
+       "name": "s52",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s51",
+       "model": "fixed",
+       "name": "s51",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s50",
+       "model": "fixed",
+       "name": "s50",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s49",
+       "model": "fixed",
+       "name": "s49",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s48",
+       "model": "fixed",
+       "name": "s48",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s47",
+       "model": "fixed",
+       "name": "s47",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s46",
+       "model": "fixed",
+       "name": "s46",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s45",
+       "model": "fixed",
+       "name": "s45",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s44",
+       "model": "fixed",
+       "name": "s44",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s43",
+       "model": "fixed",
+       "name": "s43",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s42",
+       "model": "fixed",
+       "name": "s42",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s41",
+       "model": "fixed",
+       "name": "s41",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s40",
+       "model": "fixed",
+       "name": "s40",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s39",
+       "model": "fixed",
+       "name": "s39",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s38",
+       "model": "fixed",
+       "name": "s38",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s37",
+       "model": "fixed",
+       "name": "s37",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s36",
+       "model": "fixed",
+       "name": "s36",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s35",
+       "model": "fixed",
+       "name": "s35",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s34",
+       "model": "fixed",
+       "name": "s34",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s33",
+       "model": "fixed",
+       "name": "s33",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s32",
+       "model": "fixed",
+       "name": "s32",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s31",
+       "model": "fixed",
+       "name": "s31",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s30",
+       "model": "fixed",
+       "name": "s30",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s29",
+       "model": "fixed",
+       "name": "s29",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s28",
+       "model": "fixed",
+       "name": "s28",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s27",
+       "model": "fixed",
+       "name": "s27",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s26",
+       "model": "fixed",
+       "name": "s26",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s25",
+       "model": "fixed",
+       "name": "s25",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s24",
+       "model": "fixed",
+       "name": "s24",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s23",
+       "model": "fixed",
+       "name": "s23",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s22",
+       "model": "fixed",
+       "name": "s22",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s21",
+       "model": "fixed",
+       "name": "s21",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s20",
+       "model": "fixed",
+       "name": "s20",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s19",
+       "model": "fixed",
+       "name": "s19",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s18",
+       "model": "fixed",
+       "name": "s18",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s17",
+       "model": "fixed",
+       "name": "s17",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s16",
+       "model": "fixed",
+       "name": "s16",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s15",
+       "model": "fixed",
+       "name": "s15",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s14",
+       "model": "fixed",
+       "name": "s14",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s13",
+       "model": "fixed",
+       "name": "s13",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s12",
+       "model": "fixed",
+       "name": "s12",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s11",
+       "model": "fixed",
+       "name": "s11",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s10",
+       "model": "fixed",
+       "name": "s10",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s9",
+       "model": "fixed",
+       "name": "s9",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s8",
+       "model": "fixed",
+       "name": "s8",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s7",
+       "model": "fixed",
+       "name": "s7",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s6",
+       "model": "fixed",
+       "name": "s6",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s5",
+       "model": "fixed",
+       "name": "s5",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s4",
+       "model": "fixed",
+       "name": "s4",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s3",
+       "model": "fixed",
+       "name": "s3",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s2",
+       "model": "fixed",
+       "name": "s2",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.9,
+       "id": "s1",
+       "model": "fixed",
+       "name": "s1",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.01,
+       "id": "s0",
+       "model": "fixed",
+       "name": "s0",
+       "q": 0.01
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.092144536261,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.04595628569724641,
+      "nonCoherent": false,
+      "rareEvent": 0.046855900000000006,
+      "repeatedEvents": [],
+      "treeWalk": 0.092144536261,
+      "truncated": true,
+      "truncatedBy": [
+       "order"
+      ]
+     }
+    },
+    "title": "L06 deep chain"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L06_deep_chain.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "hintKey": "val.fix.CUTSETS_TRUNCATED",
+       "message": "The cut-set list was truncated (order); results may be underestimated.",
+       "nodeId": null,
+       "nodeName": null,
+       "params": {
+        "count": 6,
+        "reason": "order"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L06 deep chain"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L06_deep_chain.json"
+}

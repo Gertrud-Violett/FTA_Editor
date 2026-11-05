@@ -166,6 +166,9 @@ DARK_MUTED = "#8b949e"
 #: ``Gate:``; the diagram panel's caption explains them (en/ja).
 MCUB_MARK = "MCUB"
 TREE_WALK_MARK = "tree walk"
+#: Shown instead of a number for a gate above a CCF member when the cut sets
+#: are incomplete (FN-66); the same ASCII text in both languages.
+CCF_NA = "n/a (CCF)"
 
 #: Type sizes, in points. A fitted diagram of a real tree is drawn at 30-50 %,
 #: where the 9 pt probability row of 1.7 came out about 4 px high. In the
@@ -176,6 +179,8 @@ SYMBOLS_NAME_PT = 12
 SYMBOLS_PROB_PT = 14
 SYMBOLS_EXTRA_PT = 9
 COMPACT_META_PT = 11
+#: Blank line between the q row and the CCF badge of a symbols box (F2, R4).
+BADGE_GAP_PT = 8
 
 #: Weight of the box -> gate/event-symbol edge in the symbols style (tree
 #: edges keep Graphviz' default 1): the symbol hangs straight off its box.
@@ -224,8 +229,15 @@ class _Ctx:
     """What every label/shape helper needs, computed once per call."""
 
     def __init__(self, data, sig_figs, pad, dark, rankdir, font_name, root_headline=None,
-                 eta=False):
+                 eta=False, ccf=None):
         self.sig_figs = sig_figs
+        # CCF (FN-22, FN-66): ``{"gates": {node id: {"method", "value"}},
+        # "members": {node id: (Q_t, independent part)}}`` or None.
+        ccf = ccf if isinstance(ccf, dict) else {}
+        self.ccf_gates: Dict[str, Dict[str, Any]] = ccf.get("gates") or {}
+        self.ccf_members: Dict[str, Tuple[float, float]] = ccf.get("members") or {}
+        # ``"badges": {node id: ["CCF: <group>", ...]}``: the group badge row (UI-5).
+        self.ccf_badges: Dict[str, List[str]] = ccf.get("badges") or {}
         # An event tree: a branch point is not a gate, so no gate text
         # (compact) and no gate or event symbol (symbols) is drawn for it.
         self.eta = bool(eta)
@@ -276,8 +288,39 @@ class _Ctx:
         the root's id (a hand-edited file) is not the top event."""
         if self.root_headline is None or node is not self.root:
             return None
+        if self.ccf_calc(node) is not None:
+            return None  # the CCF gate value covers the root (FN-66)
         return ("%s (%s)" % (self.prob(self.root_headline.get("value")), MCUB_MARK),
                 "%s %s" % (TREE_WALK_MARK, self.prob(node.get("calculatedProbability"))))
+
+    def ccf_calc(self, node: Dict[str, Any]) -> Optional[Tuple[str, Any]]:
+        """``(text, value)`` shown instead of the tree-walk value of a gate above
+        a CCF member: ``"<v> (MCUB)"`` or ``"n/a (CCF)"``; None for any other
+        node. A leaf with links is a gate here too (FN-66); a bare leaf is never
+        replaced: a member keeps its Q_t."""
+        if not self.ccf_gates:
+            return None
+        gate = self.ccf_gates.get(str(node.get("id")))
+        if gate is None or not (node.get("children") or node.get("links")
+                                or _gate_type(node) == "TRANSFER"):
+            return None
+        if gate.get("method") == "mcub":
+            return ("%s (%s)" % (self.prob(gate.get("value")), MCUB_MARK), gate.get("value"))
+        return (CCF_NA, None)
+
+    def indep_text(self, node: Dict[str, Any]) -> Optional[str]:
+        """``"(indep. <q>)"``: the independent part beside the Q_t of a member
+        of an applied CCF group (FN-22), else None."""
+        parts = self.ccf_members.get(str(node.get("id")))
+        if parts is None or node.get("children"):
+            return None
+        return "(indep. %s)" % self.prob(parts[1])
+
+    def badge_text(self, node: Dict[str, Any]) -> Optional[str]:
+        """``"CCF: <group>"`` (``"... (off)"`` for a group that is not applied)
+        for a member of a CCF group, several joined by ``"; "``, else None."""
+        names = self.ccf_badges.get(str(node.get("id")))
+        return xml_safe("; ".join(names)) if names else None
 
     def gate_text(self, node: Dict[str, Any]) -> str:
         """``Gate: ...`` value for the compact meta row (unescaped)."""
@@ -336,6 +379,13 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     marked = ctx.headline_for(node)
     if marked is not None:
         cp_str = "%s | %s" % marked
+    ccf_calc = ctx.ccf_calc(node)
+    if ccf_calc is not None:
+        # A gate above a CCF member: the cut-set MCUB or n/a, never the tree walk.
+        cp_str, cp = ccf_calc[0], ccf_calc[1]
+    indep = ctx.indep_text(node)
+    if indep is not None:
+        p_str = "%s %s" % (p_str, indep)  # Q_t, then the independent part
     meta_plain = f"{head}P:{p_str} | P_calc:{cp_str}"
     name = html.escape(name_plain, quote=False)
     head = html.escape(head, quote=False)
@@ -343,9 +393,14 @@ def _compact_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     font_size, small_font_size, cellpadding = 14, COMPACT_META_PT, 6
     name_height = max(1, round(font_size * 1.7))
     meta_height = max(1, round(small_font_size * 2.0))
+    badge = ctx.badge_text(node)
+    badge_row = ""
+    if badge is not None:  # a member of a CCF group: a third row with the group (UI-5)
+        badge_row = (f'\n        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">'
+                     f'{_padded(badge, html.escape(badge, quote=False), ctx.pad)}</FONT></TD></TR>')
     return f'''<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="{cellpadding}" BGCOLOR="{_bgcolor(cp)}">
         <TR><TD HEIGHT="{name_height}"><FONT POINT-SIZE="{font_size}">{_padded(name_plain, name, ctx.pad)}</FONT></TD></TR>
-        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">{_padded(meta_plain, meta_text, ctx.pad)}</FONT></TD></TR>
+        <TR><TD HEIGHT="{meta_height}"><FONT POINT-SIZE="{small_font_size}">{_padded(meta_plain, meta_text, ctx.pad)}</FONT></TD></TR>{badge_row}
     </TABLE>>'''
 
 
@@ -364,6 +419,9 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
         extra.append(html.escape(kind, quote=False))
     marked = ctx.headline_for(node)
     calc = marked[0] if marked is not None else ctx.prob(node.get("calculatedProbability"))
+    ccf_calc = ctx.ccf_calc(node)
+    if ccf_calc is not None:
+        calc = ccf_calc[0]  # the cut-set MCUB or n/a (CCF), never the tree walk
     base = ctx.prob(node.get("probability"))
     if ctx.eta:
         # Every node of an event tree has its own branch probability (q) and
@@ -378,6 +436,10 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
         probs = "q=%s" % base
     else:
         probs = "q=%s | Q=%s" % (base, calc)
+    indep = ctx.indep_text(node)
+    if indep is not None and probs.startswith("q=%s" % base):
+        # A member of an applied CCF group: Q_t, then its independent part.
+        probs = "q=%s %s%s" % (base, indep, probs[len("q=%s" % base):])
     lines = [f'<FONT POINT-SIZE="{SYMBOLS_NAME_PT}">{_padded(name_plain, name, ctx.pad)}</FONT>']
     for text in extra:
         lines.append(f'<FONT POINT-SIZE="{SYMBOLS_EXTRA_PT}">'
@@ -390,6 +452,12 @@ def _box_label(node: Dict[str, Any], ctx: _Ctx) -> str:
     if marked is not None:
         lines.append(f'<FONT POINT-SIZE="{SYMBOLS_EXTRA_PT}">'
                      f'{_padded(marked[1], marked[1], ctx.pad)}</FONT>')
+    badge = ctx.badge_text(node)
+    if badge is not None:  # a member of a CCF group: the group on its own line (UI-5)
+        # A thin blank line keeps the small badge off the q line above it.
+        lines.append(f'<FONT POINT-SIZE="{BADGE_GAP_PT}"> </FONT>')
+        lines.append(f'<FONT POINT-SIZE="{SYMBOLS_EXTRA_PT}">'
+                     f'{_padded(badge, html.escape(badge, quote=False), ctx.pad)}</FONT>')
     return "<" + "<BR/>".join(lines) + ">"
 
 
@@ -604,6 +672,9 @@ def _symbols(nodes, edges, ctx: _Ctx, names: _Names) -> List[str]:
         box = names.plain(nid)
         group = sanitize_id(nid)  # the bare name, inside the quoted attribute
         cp = node.get("calculatedProbability")
+        ccf_calc = ctx.ccf_calc(node)
+        if ccf_calc is not None:
+            cp = ccf_calc[1]  # the box colour follows the CCF gate value
         gate = _gate_type(node)
         if is_conditioning(nid):
             body.append(
@@ -690,9 +761,16 @@ def build_dot_text2(
     rankdir: str = DEFAULT_RANKDIR,
     sig_figs: int = 3,
     root_headline: Optional[Dict[str, Any]] = None,
+    ccf: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, Dict[str, str]]:
     """``(dot_text, id_map)`` for the tree held by ``core``. Caller holds the
     lock, or passes a detached copy (:class:`DocView`).
+
+    ``ccf`` (:func:`document_dot` builds it) is ``{"gates": ..., "members":
+    ...}`` for a document with an applied CCF group: a gate above a member
+    then shows ``<v> (MCUB)`` or ``n/a (CCF)`` instead of its tree-walk value,
+    and a member shows its independent part beside its Q_t (``(indep. <q>)``).
+    None leaves every label as it always was, byte for byte.
 
     ``root_headline`` is ``engine.root_headline``'s answer for this same
     tree, computed by the caller (:func:`document_dot` does both from one
@@ -716,7 +794,8 @@ def build_dot_text2(
         nodes, edges = {}, []
 
     eta = str(metadata.get("mode") or "").strip().upper() == "ETA"
-    ctx = _Ctx(data, sig_figs, pad, dark, rankdir, font_name, root_headline, eta=eta)
+    ctx = _Ctx(data, sig_figs, pad, dark, rankdir, font_name, root_headline, eta=eta,
+               ccf=None if eta else ccf)
     names = _Names(nodes.keys())
     if style == "symbols":
         lines = _symbols(nodes, edges, ctx, names)
@@ -760,30 +839,60 @@ def document_dot(core, lock=None, **options
     expansion never holds the editor's lock.
 
     ``lock`` is ``state.lock``; None when the caller owns ``core`` (the CLI)
-    or passes a detached copy.
+    or passes a detached copy. A document with CCF groups also gets the gate
+    values and the independent parts (see :func:`document_dot_ccf`).
+    """
+    return document_dot_ccf(core, lock, **options)[:3]
+
+
+def document_dot_ccf(core, lock=None, **options
+                     ) -> Tuple[str, Dict[str, str], Optional[Dict[str, Any]], Optional[bool]]:
+    """:func:`document_dot` plus a fourth item: ``None`` when the document has
+    no CCF group, else whether the diagram shows CCF gate values
+    (``/api/dot`` ``ccfGates``).
+
+    With an applied CCF group (FN-66, FN-22) the summary behind the labels
+    carries ``ccfGates``: a gate above a member shows its cut-set MCUB or
+    ``n/a (CCF)``, never its tree-walk value, and a member box shows
+    ``(indep. <q>)`` beside its Q_t. The root's MCUB/tree-walk label is then
+    covered by the gate value, so the returned root headline is None.
     """
     try:
-        from . import engine
+        from . import ccf, engine
     except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+        import ccf  # type: ignore[no-redef]
         import engine  # type: ignore[no-redef]
 
     def read():
         metadata = dict(core.get_metadata() or {})
         tree = core.get_data() or {}
+        analysis = getattr(core, "analysis", None)
         if (engine.canonical_mode(metadata.get("mode")) == "ETA"
-                or not engine.may_need_cut_sets(tree)):
-            return build_dot_text2(core, **options), None
-        return None, (copy.deepcopy(tree), metadata,
-                      copy.deepcopy(getattr(core, "analysis", None)))
+                or not engine.may_need_cut_sets(tree, analysis)):
+            badges = ccf.diagram_badges(tree, analysis)
+            return (build_dot_text2(core, ccf={"badges": badges} if badges else None, **options),
+                    None, bool(ccf.groups_of(analysis)))
+        return None, (copy.deepcopy(tree), metadata, copy.deepcopy(analysis)), None
 
     if lock is not None:
         with lock:
-            drawn, snapshot = read()
+            drawn, snapshot, has_groups = read()
     else:
-        drawn, snapshot = read()
+        drawn, snapshot, has_groups = read()
     if drawn is not None:
-        return drawn[0], drawn[1], None
+        return drawn[0], drawn[1], None, (False if has_groups else None)
     tree, metadata, analysis = snapshot
-    headline = engine.diagram_headline(tree, analysis, metadata.get("mode"))
-    dot, id_map = build_dot_text2(DocView(tree, metadata), root_headline=headline, **options)
-    return dot, id_map, headline
+    if not ccf.groups_of(analysis):
+        headline = engine.diagram_headline(tree, analysis, metadata.get("mode"))
+        dot, id_map = build_dot_text2(DocView(tree, metadata), root_headline=headline, **options)
+        return dot, id_map, headline, None
+    summary = engine.diagram_summary(tree, analysis, metadata.get("mode"))
+    headline = engine.root_headline(summary)
+    gates = (summary or {}).get("ccfGates") or {}
+    members = ccf.diagram_members(tree, analysis)
+    badges = ccf.diagram_badges(tree, analysis)
+    info = ({"gates": gates, "members": members, "badges": badges}
+            if (gates or members or badges) else None)
+    dot, id_map = build_dot_text2(DocView(tree, metadata), root_headline=headline,
+                                  ccf=info, **options)
+    return dot, id_map, headline, bool(gates)

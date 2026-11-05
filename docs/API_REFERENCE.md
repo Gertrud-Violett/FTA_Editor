@@ -1,14 +1,15 @@
 # API Reference
 
-**Version**: 1.7.3 | **Updated**: October 11, 2026
+**Version**: 1.9.0 | **Updated**: November 5, 2026
 
 Complete API documentation for programmatic use of FTA/ETA Editor.
 
 ## Overview
 
 This document covers:
-- **The web app's HTTP API, 1.7 additions**: [below](#http-api-17-additions).
+- **The web app's HTTP API, 1.7 to 1.9**: [below](#http-api-17-to-19).
   The 1.6 endpoints are specified in [V1.6_WEB_SPEC.md §5](V1.6_WEB_SPEC.md#5-http-api).
+- **The CCF groups API (1.9)**: [below](#ccf-groups-api-19).
 - **The 1.7 Python analysis modules** (`WebCore`, cut sets, importance,
   uncertainty, lint): [below](#python-analysis-modules-17).
 - **FTACore**: Core business logic for FTA/ETA operations
@@ -17,7 +18,7 @@ This document covers:
 
 ---
 
-## HTTP API (1.7 additions)
+## HTTP API (1.7 to 1.9)
 
 Every endpoint is under `/api` and needs the launch token (the `X-FTA-Token`
 header). Every endpoint returns the 1.6 envelope:
@@ -446,6 +447,336 @@ It works in both modes and does not return `MODE_UNSUPPORTED`.
   `params`.
 - The codes and their severities are listed in the
   [User Guide](USER_GUIDE.md#validation) and in `fta_web/lint.py`.
+
+### CCF groups API (1.9)
+
+Common-cause failure groups with the beta-factor model and, for groups of 2 to
+4 members, the alpha-factor model. What a group means, the formulas and their
+sources are in [CCF.md](CCF.md); the screens are in the
+[User Guide](USER_GUIDE.md#ccf-groups-beta-factor-and-alpha-factor).
+
+Groups are stored in the document, as `analysis.ccfGroups` (a list), so the
+standard `POST /api/undo` and `POST /api/redo` restore them, and they are saved
+and loaded with the file. `POST /api/analysis/settings` does not accept
+`ccfGroups`; groups change only through the endpoints below. They work in both
+modes (in ETA mode the groups are data and are not applied).
+
+A stored group has exactly these keys:
+
+```json
+{"id": "g1", "name": "Feed pumps", "model": "beta", "beta": 0.1,
+ "alpha": null, "testing": null, "members": ["n12", "n13"], "source": "data handbook, p. 42"}
+```
+
+A beta group has a `beta` (a dimensionless number from 0 to 1) and `alpha` and
+`testing` of `null`. An alpha group has `"model": "alpha"`, `beta` of `null`,
+`alpha` (a list of numbers, one per member, `alpha[k-1]` being α_k, the fraction
+of failure events in which exactly k members fail) and `testing`
+(`"staggered"`, `"nonStaggered"` or `null` when no scheme is chosen):
+
+```json
+{"id": "g2", "name": "Relief valves", "model": "alpha", "beta": null,
+ "alpha": [0.955, 0.034, 0.011], "testing": "staggered",
+ "members": ["n20", "n21", "n22"], "source": ""}
+```
+
+Every body is read strictly: a body that is not a JSON object, or that holds
+the tokens `NaN`, `Infinity` or `-Infinity`, is `400 INVALID_JSON`. A number is
+a JSON number: `"0.1"` (a string), `true` and `null` are refused.
+
+**The status of a group.** Every group in every response carries `status`:
+
+```json
+{"applied": false, "code": "CCF_MEMBERS_DIFFER", "severity": "error",
+ "reason": {"en": "\"Pump B\" differs from \"Pump A\"", "ja": "..."},
+ "message": {"en": "CCF group \"Feed pumps\": ...", "ja": "..."},
+ "errors": [{"code": "CCF_MEMBERS_DIFFER", "severity": "error", "member": "Pump B", "memberId": "n13",
+             "reason": {"en": "...", "ja": "..."}, "message": {"en": "...", "ja": "..."}}],
+ "warnings": []}
+```
+
+For an applied group `code`, `severity`, `reason` and `message` are `null`,
+`errors` is empty and `warnings` lists the group's warnings (same item shape).
+`code` is the first error found, or `CCF_ETA_MODE` (severity `status`) in ETA
+mode; `errors` lists every error. The codes are listed in
+[CCF.md](CCF.md#applied-and-not-applied). The server sends both languages; the
+client picks one.
+
+#### `GET /api/ccf/groups`
+
+```json
+{"ok": true, "mode": "FTA", "revision": 4, "documentSerial": 1,
+ "groups": [{"id": "g1", "name": "Feed pumps", "model": "beta", "beta": 0.1,
+             "alpha": null, "testing": null, "members": ["n12", "n13"],
+             "memberNames": ["Pump A", "Pump B"], "source": "", "status": {"applied": true}}],
+ "ccf": {"applied": [{"id": "g1", "name": "Feed pumps", "model": "beta", "beta": 0.1,
+                      "members": ["n12", "n13"], "warnings": []}],
+         "notApplied": [],
+         "note": "Check CCF results with a qualified engineer before use."}}
+```
+
+- `memberNames` has one entry per member: the node's name, or `null` when the
+  id is not in the tree. (`status` is abbreviated above.)
+- A group with invalid stored values is returned as stored, with its status.
+- `ccf` is the block that analysis results carry (below).
+
+An alpha group in the list (the status is abbreviated: this one has a
+normalisation warning, so it is applied):
+
+```json
+{"id": "g2", "name": "Relief valves", "model": "alpha", "beta": null,
+ "alpha": [0.955, 0.034, 0.0115], "testing": "staggered",
+ "members": ["n20", "n21", "n22"], "source": "", "memberNames": ["V1", "V2", "V3"],
+ "status": {"applied": true, "code": null, "severity": null, "reason": null, "message": null,
+            "errors": [],
+            "warnings": [{"code": "CCF_ALPHA_NORMALISED", "severity": "warning",
+                          "member": "V1, V2, V3", "memberId": null,
+                          "reason": {"en": "...", "ja": "..."},
+                          "message": {"en": "...", "ja": "..."}}]}}
+```
+
+The item of an **applied** alpha group also has `alphaParts`, the probabilities of
+the group as the analysis uses them (the same numbers
+the expansion and the diagram use; the Details panel shows them):
+
+```json
+"alphaParts": {"independent": [0.000955, 0.000955, 0.000955],
+               "events": [{"members": ["n20", "n21"], "memberNames": ["V1", "V2"], "q": 1.7e-05},
+                          {"members": ["n20", "n22"], "memberNames": ["V1", "V3"], "q": 1.7e-05},
+                          {"members": ["n21", "n22"], "memberNames": ["V2", "V3"], "q": 1.7e-05},
+                          {"members": ["n20", "n21", "n22"], "memberNames": ["V1", "V2", "V3"], "q": 1.1e-05}]}
+```
+
+`independent` holds Q_1 of each member (in the order of `members`); `events` lists
+one CCF event per subset of two or more members, size ascending and then in group
+order, each with its Q_k. A beta group, and an alpha group that is not applied,
+have no `alphaParts` key. The key is in every group item that `GET`, `POST` and
+`PATCH /api/ccf/groups` return.
+
+#### `POST /api/ccf/groups`
+
+Body for the beta model: `{name, model: "beta", beta, members, source?}`. Body
+for the alpha model: `{name, model: "alpha", alpha, members, source?, testing?}`.
+The id (`g1`, `g2`, ... the smallest unused number) is assigned by the server.
+
+```json
+{"name": "Relief valves", "model": "alpha", "alpha": [0.955, 0.034, 0.011],
+ "testing": "staggered", "members": ["n20", "n21", "n22"], "source": ""}
+```
+
+The response is as for a beta group: `ok`, `group` (the new group with its
+status), `groups`, `ccf` and the mutation payload. When `testing` is left out the
+group is stored with `"testing": null` and its status is
+`CCF_NO_TESTING` (`Not applied: testing scheme missing`); it is not a refusal.
+
+| Field | Rule |
+|---|---|
+| `name` | string, white space normalised, not empty, at most 4,000 characters |
+| `model` | `"beta"` or `"alpha"`; any other value is refused |
+| `beta` | beta model: a JSON number in [0, 1]; `-0` is stored as `0`. Alpha model: absent or `null` |
+| `alpha` | alpha model: a list of JSON numbers, each in [0, 1] (`-0` is stored as `0`; the empty list is accepted). Its length and its sum are **not** refusals: they are lint (`CCF_ALPHA_SUM`, `CCF_ALPHA_NORMALISED`), so a group can be saved and shown with its reason. Beta model: absent or `null` |
+| `testing` | alpha model: `"staggered"`, `"nonStaggered"` (no hyphen) or `null`; optional. Beta model: absent or `null` |
+| `members` | a list of distinct non-empty node ids, all in the tree |
+| `source` | string or `null` (stored as `""`) |
+
+`alpha` checks: a list whose items are all numbers in [0, 1] (`[0.9, 0.1]`) is
+accepted; an item that is a string (`["0.1", 0.9]`), `true`, `null`, a list,
+`-0.1` or `1.5` gives `400 INVALID_FIELD` with `detail.field` `"alpha"` and
+`detail.index`, the 0-based position of the first bad item; a value that is not
+a list (`0.5`, `"x"`, `null`) gives `400 INVALID_FIELD` with `detail.field`
+`"alpha"` and no index. The tokens `NaN`, `Infinity` and `-Infinity` anywhere in
+the body give `400 INVALID_JSON`. A field of the other model that is not `null`
+(`alpha` or `testing` with `"model": "beta"`, `beta` with `"model": "alpha"`)
+gives `400 INVALID_FIELD` naming it. A `testing` that is not `"staggered"`,
+`"nonStaggered"` or `null` gives `400 INVALID_FIELD` with `detail.field`
+`"testing"`.
+
+Any other key (`id` included) is refused. A member that is already in another
+group, or is not a basic event, is accepted and shown in the group's `status`;
+it is not a refusal. The response is the mutation payload (tree, `analysis`,
+`dirty`, `canUndo`, `canRedo`, `sessionWarnings`, `revision`,
+`documentSerial`) plus `group` (the new group with its status), `groups` and
+`ccf`.
+
+#### `PATCH /api/ccf/groups/<id>`
+
+Body: any of `name`, `model`, `beta`, `alpha`, `testing`, `source`, `members`
+(the list replaces the old one). The fields are checked as for `POST`; the
+effective model is the `model` of the body, else the stored one, and a field of
+the other model that is not `null` is refused. Examples:
+
+```json
+{"testing": "nonStaggered"}
+{"alpha": [0.95, 0.04, 0.01]}
+{"model": "beta", "beta": 0.1}
+{"model": "alpha"}
+{"members": ["n20", "n21"]}
+```
+
+- A change of `model` is one request and one undo step: the fields of the old
+  model become `null` and those of the new model come from the body, else
+  `null`. `{"model": "alpha"}` alone makes a group with `alpha` and `testing` of
+  `null`, which is not applied; Undo restores the old model's values.
+- `{"alpha": [...]}` on a beta group without `"model": "alpha"` is
+  `400 INVALID_FIELD` (`alpha`). `{"alpha": null}` is refused (not a list); to
+  clear the values, change the model.
+- A change of `members` never edits `alpha`: a list whose length differs from
+  the number of members makes the group not applied (`CCF_ALPHA_SUM`, kind
+  `length`) until `alpha` is sent again.
+
+An empty body is
+`400 INVALID_FIELD` ("No group fields to update."). The response is that of
+`POST` plus `changed`: when no field differs from what is stored, `changed` is
+`false`, nothing is written, no undo step is made and `revision` does not
+change.
+
+#### `DELETE /api/ccf/groups/<id>`
+
+Response: the mutation payload plus `deletedId`, `groups` and `ccf`. When the
+last group is deleted the `ccfGroups` key is removed from `analysis`.
+
+**Undo and revision.** Each of `POST`, `PATCH` (with `changed: true`) and
+`DELETE` is one undo step and raises `revision` by one, as every other edit.
+
+**Errors.**
+
+| Code | HTTP | When | `detail` |
+|---|---|---|---|
+| `INVALID_JSON` | 400 | The body is not a JSON object, or holds `NaN`, `Infinity` or `-Infinity` | none |
+| `INVALID_FIELD` | 400 | A field is missing, has the wrong type or is out of range (`beta` outside [0, 1], a string, `true`; an item of `alpha` that is not a number in [0, 1], or `alpha` that is not a list; a `testing` other than `"staggered"`, `"nonStaggered"` or `null`; a field of the other model that is not `null`; a member id that is not in the tree; an unknown key; an empty `PATCH`) | `{field}`; for an item of `alpha` also `{index}` (0-based); for members `{field: "members", ids: [...]}`; for unknown keys `{field, fields}` |
+| `GROUP_NOT_FOUND` | 404 | `PATCH` or `DELETE` with an id that no stored group has | `{groupId}` |
+
+#### Membership follows the tree
+
+Deleting a node (single or batch), applying an AI update that removes nodes, or
+an FMEA re-import that replaces nodes removes the node from its group in the
+same undo step. Undo restores both. A file whose duplicate node ids were
+repaired on load flags the groups concerned `CCF_MEMBER_RENAMED`; a root id
+renamed on load is followed. Making a member a gate keeps it in the group and
+flags the group (`CCF_MEMBER_NOT_BASIC`).
+
+#### The `ccf` block and the new result fields
+
+When the document has at least one group, the results of
+`GET /api/analysis/summary`, `POST /api/analysis/cutsets`,
+`POST /api/analysis/importance` and `POST /api/analysis/uncertainty` carry the
+block (and the CLI `--json` output of the same commands carries it too):
+
+```json
+"ccf": {"applied": [{"id": "g1", "name": "Feed pumps", "model": "beta", "beta": 0.1,
+                     "members": ["n12", "n13"],
+                     "warnings": [{"code": "CCF_HIGH_Q", "member": "Pump A", "reason": "..."}]}],
+        "notApplied": [{"id": "g2", "name": "Valves", "code": "CCF_MEMBERS_DIFFER",
+                        "reason": "\"Valve D\" differs from \"Valve C\""}],
+        "note": "Check CCF results with a qualified engineer before use."}
+```
+
+The item of an applied alpha group adds four keys; a beta item has none of them:
+
+```json
+{"id": "g2", "name": "Relief valves", "model": "alpha", "beta": null,
+ "members": ["n20", "n21", "n22"], "warnings": [],
+ "alpha": [0.955, 0.034, 0.011], "testing": "staggered",
+ "alphaSum": 1.0, "alphaNormalised": false}
+```
+
+`alpha` and `testing` are the stored values, `alphaSum` is the sum of the stored
+α values (the original sum, before the division) and `alphaNormalised` is `true`
+when the group carries `CCF_ALPHA_NORMALISED`. A group without a testing scheme
+is in `notApplied` with code `CCF_NO_TESTING` and reason `testing scheme missing`.
+
+`reason` is English in the block. In ETA mode every group is in `notApplied`
+with code `CCF_ETA_MODE` and reason `ETA mode`. A document without groups gets
+none of the keys below, and its results are those of 1.8.1.
+
+`GET /api/analysis/summary` gains:
+
+| Key | Meaning |
+|---|---|
+| `ccf` | the block above |
+| `ccfIncomplete` | `true` when a group is applied and the cut sets could not be completed |
+| `ccfIncompleteReason` | only when `ccfIncomplete`: `"time"`, `"error"` or `"summary cap"` |
+| `ccfGates` | only when a group is applied: `{nodeId: {"method": "mcub", "value": v}}` for every gate whose subtree holds a member of an applied group, the root included, or `{"method": "na"}` when the cut sets are incomplete (shown as `n/a (CCF)`) |
+| `headlineMethod` | gains the value `incomplete` |
+
+- With a group applied, `headlineMethod` is `mcub` and `headline` includes the
+  CCF events, also when the tree has no repeated event. The cut sets are
+  always computed for it.
+- When the cut sets fail, run out of time, or are cut short by the summary's
+  own cap (`capped`), `headlineMethod` is `incomplete` and `headline`, `mcub`
+  and `rareEvent` are `null`. `treeWalk` is still sent: it does not include
+  CCF, and a client must show it only with that label.
+- Groups that are all not applied change no number: `headlineMethod` and
+  `headline` are those of the tree without them, and `ccfIncomplete` is
+  `false`.
+- `repeatedEvents` lists `ccf:<groupId>` with the name `CCF: <group name>`
+  (for an alpha group, the events of the group that more than one member
+  reaches, with their ids `ccf:<groupId>:<m1>+<m2>…`).
+
+`POST /api/analysis/cutsets` and `/importance`: an event that comes from a
+group has a `ccf` marker, and the CCF event has the id `ccf:<groupId>`:
+
+```json
+{"id": "ccf:g1", "name": "CCF: Feed pumps", "q": 1e-4,
+ "ccf": {"groupId": "g1", "role": "event", "members": ["n12", "n13"], "baseName": "Feed pumps"}}
+{"id": "n12", "name": "Pump A (independent part)", "q": 9e-4,
+ "ccf": {"groupId": "g1", "role": "independent", "baseName": "Pump A"}}
+```
+
+A member's variable keeps the member's id with `q = (1 − β)·Q_t`; the CCF
+event has `q = β·Q_t`. Events without a group have no `ccf` key.
+
+An alpha group has one CCF event for each subset of two or more members. The id
+is `ccf:<groupId>:<m1>+<m2>…` (member ids in the order of the group), `q` is
+`Q_k` for the size k of the subset, and the marker also carries `memberNames`;
+the independent part has `q = Q_1`:
+
+```json
+{"id": "ccf:g2:n20+n21", "name": "CCF: Relief valves (V1 + V2)", "q": 1.7e-5,
+ "ccf": {"groupId": "g2", "role": "event", "members": ["n20", "n21"],
+         "memberNames": ["V1", "V2"], "baseName": "Relief valves"}}
+```
+
+A group with 2, 3 or 4 members has 1, 4 or 11 such events. An event of a beta
+group has no `memberNames`. A group is not applied (`CCF_BAD_PARAMETER`, kind
+`event_id`) when two of its events, or an event of another group, would get the
+same id, which only ids that contain `+` or `:` can cause. Importance
+(FV, Birnbaum, RAW, RRW) is computed on this expanded structure; the CCF event
+has its own row and there is no combined row for a component.
+
+`POST /api/analysis/uncertainty` gains `ccf` (the block) and, when a group is
+applied, `ccfSampling`:
+
+```json
+"ccfSampling": {"groups": [{"id": "g1", "sampled": true}],
+                "note": "β and α are not sampled in Monte Carlo."}
+```
+
+`sampled` says whether the group's members have an uncertainty that is drawn
+(one draw per group per trial); β is never sampled.
+
+`GET /api/analysis/validate`: the lint codes of
+[CCF.md](CCF.md#applied-and-not-applied) are issues with `nodeId: null` and
+`params: {groupId, group, memberId, member, text}`, where
+`text.<lang>.{reason, message, fix}` holds the English and Japanese texts
+(they have no `val.code.*` entry). `CCF_ETA_MODE` is a status and is never an
+issue, and in ETA mode there is no CCF issue.
+
+`GET /api/dot` gains `ccfGates` (boolean): `true` when the diagram text holds
+gate values from the cut sets (MCUB, or `n/a (CCF)`) instead of tree-walk
+values, so a client can show the explanation. In ETA mode the diagram has no
+CCF badge and no CCF gate value.
+
+**Loading.** Opening a file with `fileFormatVersion` greater than 2 adds the
+load warning `{kind: "newer_format", message: "This file was saved by a newer
+FTA Editor; saving may lose data"}`. A `ccfGroups` that is not a list is
+ignored with the warning kind `ccf_invalid`. An invalid group inside the list
+is kept as it is and flagged; it is never an `analysis_invalid` warning.
+
+The CLI (`quantify`, `cutsets`, `importance`, `mc`) adds the same `ccf` block to
+`--json` and exits with 1 when a group is not applied or the headline is
+`incomplete`, in fault-tree mode only; see the
+[User Guide](USER_GUIDE.md#command-line-interface).
 
 ### Report and FMEA endpoints
 
@@ -895,6 +1226,255 @@ is set only at launch; no endpoint changes it.
 "not connected" screen: the executable's file name in the packaged app, never
 its folder, since this route answers without the token.
 
+### Grid paste
+
+**`POST /api/grid/paste`** applies a block pasted into the Grid tab. Needs the
+session token. The browser reads the clipboard text with each field's own
+parser and sends numbers; the server reads no text as a number.
+
+```json
+{ "revision": 41, "documentSerial": 2,
+  "rows": [ { "clipRow": 1, "nodeId": "E00_00",
+              "cells": { "lambda": 1e-06, "T": 8760, "source": "vendor data" } } ] }
+```
+
+- `revision` and `documentSerial` are the values the grid was drawn from
+  (non-negative integers). `rows` holds 0 to 2,000 entries; `clipRow` is the
+  1-based row of the clipboard (unique), `nodeId` is unique in the request.
+- `cells` has keys from `id, name, model, lambda, T, tau, mu, q, source,
+  tags`. An empty cell is left out, never sent as `""` or `null`. Numbers are
+  JSON numbers in stored units: `lambda` and `mu` per hour (>= 0), `T` and
+  `tau` in hours (> 0), `q` in [0, 1]. A number sent as a string, a bool or
+  `null` is refused, never converted. The browser converts the unit of the
+  λ header before sending (per year: divided by 8,760; FIT: times 1e-9), so
+  `8.76` per year arrives as `0.001`. `model` is `fixed`, `rate`, `standby`
+  or `repairable`. `tags` is one string, split on `;`, `；` and `、`. Text cells
+  (`id`, `name`, `model`, `source`, `tags`) must be strings.
+- Checks run in this order and nothing changes before they pass: a body that
+  is not a JSON object, or holds `NaN` or `Infinity`, is `400 INVALID_JSON`; a
+  wrong type, an unknown cell key or `model` name, a number out of range, a repeated `nodeId`
+  or `clipRow` or more than 2,000 rows is `400 INVALID_FIELD`
+  (`detail.field` names the key, `detail.clipRow` the row; for unknown cell
+  keys `detail.field` is `cells` and `detail.fields` lists them; for a
+  `rows` problem `detail.field` is `rows`); an ETA document is
+  `409 MODE_UNSUPPORTED`; a `revision` or `documentSerial` that is not the
+  document's is `409 STALE_REVISION` ("The analysis changed; paste again",
+  `detail {revision, documentSerial}` with the current values).
+- Per row, a refused row changes nothing and the other rows apply. Each
+  refused cell is listed as `{clipRow, column, code, message}`: `NOT_BASIC_EVENT`
+  (column `""`; not a leaf event, or the root, a house event or a transfer),
+  `ID_MISMATCH` (`id` differs from the row's id; an equal `id` is ignored),
+  `Q_COMPUTED` (`q` on a model other than `fixed` that differs from the
+  computed value; an equal one is ignored), `NOT_USED` (a value for a field the
+  row's model does not use: `lambda` on `fixed`, `T` unless `rate`, `tau`
+  unless `standby`, `mu` unless `repairable`) and `INVALID_TEXT` (a name,
+  source or tags text that cannot be saved, or an empty name). The refusals of
+  one row are listed in table order. The `model` cell counts first, so a row
+  may change the model and fill the new model's fields together. `message` is
+  the server's English text; the browser words the reasons itself in the
+  current language.
+- Answer: `{ok, applied, refused, ...}` and the usual mutation payload
+  (`tree`, `zeroNodes`, `dirty`, `canUndo`, `canRedo`, `analysis`,
+  `sessionWarnings`, `revision`, `documentSerial`). `applied` counts rows with
+  at least one cell written; a row holding only an equal `id` or an equal `q`
+  is neither applied nor refused. Probabilities are recalculated once.
+- The whole paste is **one undo step**. A paste that writes values already
+  stored (or nothing) makes no undo step, keeps the redo history and does not
+  mark the document modified.
+
+### What-if
+
+**`POST /api/whatif`** answers "what would the top event be if these basic
+events had a factor on their main parameter?" for the What-if tab. Needs the
+session token. It is a calculation on a private copy: it **never changes the
+document, its `revision`, the undo or redo history, the modified flag, a file
+or any other output** (Save, exports and the assistant's context do not see a
+factor), and the server keeps nothing of the factors; the browser sends them
+again with every request.
+
+```json
+{ "revision": 12, "documentSerial": 3,
+  "factors": { "E00_01": 10, "E00_02": 0.5, "E00_03": 1 } }
+```
+
+- `revision` is required and `documentSerial` is optional (the browser always
+  sends both); each is a non-negative integer, as for `POST /api/grid/paste`.
+  `factors` is an object (it may be empty) of at most 1,000 entries,
+  `{nodeId: factor}`. A factor is a JSON **number** from 0.01 to 100, both ends
+  included; `10` and `10.0` are the same. A string (`"0.1"`), a bool, `null`, a
+  list, `-0.1`, `0`, `0.009`, `101` and `1e999` are refused. A factor of 1
+  means "no change" and is accepted.
+- A factor multiplies the event's **main parameter**: λ for the models `rate`,
+  `standby` and `repairable`, q for `fixed` (T, τ and μ are never scaled), the
+  way Monte Carlo moves it. q then follows from the model and is **set to 1**
+  when it would be higher (`clamped: true`). A rate event with λ = 1e-5 /h and
+  T = 1,000 h at factor 10 goes from q = 0.00995017 to q = 0.0951626; a fixed
+  event with q = 0.5 at factor 10 gives `param` 5, `q` 1, `clamped: true`.
+- A factor on a member of an **applied CCF group** is a factor on the whole
+  group: every member is scaled, the independent parts and the shared CCF event
+  come from the CCF model's own probability function, and the other members
+  come back as rows with `viaGroup: true`. Two members of one group with
+  different factors (both not 1) are refused (`group_conflict`); a member with
+  factor 1 next to a member with factor 10 means a group factor of 10. A group
+  that is not applied (its status in the CCF groups tab) is ignored: its
+  members are scaled one by one, and `cautions` says so (`CCF_NOT_APPLIED`).
+- The top event uses the **headline's method**: the min-cut upper bound over
+  the baseline cut sets with the changed products (always with an applied CCF
+  group), the tree walk when the headline is the tree walk, and no number when
+  the headline is incomplete. The cut sets are those of the nominal values,
+  kept under the headline's own limits (the document's order, count and cutoff
+  limits, and the headline's cap of 2,000 sets and 2 s). The top event uses the
+  engine's q: the q of every model but `fixed` rounded to 12 significant
+  digits, as the engine stores it. So, when the group status and the cut sets
+  are the same, the result equals, to rounding, the headline of the same
+  document with the scaled parameter typed in (the cut-set sum runs in the
+  nominal rank order, so the last bits can differ). They differ when the factor
+  changes the group status (a group not applied at baseline stays out of the
+  what-if; see `cautions`), when the cutoff, the document's count limit or the 2,000-set cap
+  decides which cut sets exist, and when a member is raised to 1; see "Limits
+  of the what-if values" in the
+  [User Guide](USER_GUIDE.md#the-what-if-tab). With no factor other than 1,
+  `whatIf` is the baseline itself (the same number).
+- Checks run in this order. Before the baseline is touched: a body that is not
+  a JSON object, or holds `NaN`, `Infinity` or `-Infinity`, is
+  `400 INVALID_JSON`; then `400 INVALID_FIELD` for `revision`
+  (`detail.field: "revision"`), `documentSerial` (`"documentSerial"`),
+  `factors` that is not an object or has more than 1,000 entries (`"factors"`)
+  and a bad factor value (`detail.field: "factor"`, `detail.id` the node id);
+  an ETA document is `409 MODE_UNSUPPORTED` (`detail.mode: "ETA"`); a
+  `revision` or `documentSerial` that is not the document's is
+  `409 STALE_REVISION` (`detail {revision, documentSerial}` with the current
+  values; the browser then starts again from factor 1); then each id must be a
+  basic event (`400 INVALID_FIELD`, `detail {field: "factors", id, reason}`
+  with `reason` `unknown_event`, or `not_basic_event` for a gate, the root, a
+  house event or a transfer). The last two checks run after the baseline has
+  been built or found in memory, because they need the CCF groups and the
+  models of the events: two members of one applied group with different
+  factors are `400 INVALID_FIELD` with `detail {field: "factors", reason:
+  "group_conflict", groupId, ids}`; and an event with a factor other than 1
+  whose model lacks a parameter (or whose scaled parameter is not a finite
+  number) is `422 WHATIF_NOT_EVALUABLE` with `detail {id, missing}`. Even a
+  request that ends in one of these two errors has built (or used) the
+  baseline.
+
+Answer (200):
+
+```json
+{ "ok": true, "revision": 12, "documentSerial": 3,
+  "baseline": 0.000100809919, "whatIf": 0.001080919, "ratio": 10.72234766898285,
+  "method": "mcub", "note": null, "truncatedBy": [], "cautions": [],
+  "cache": "hit", "baselineMs": 0.0,
+  "groups": [ { "id": "g1", "name": "Feed pumps", "model": "beta", "members": ["A", "B"] } ],
+  "events": [ { "id": "A", "name": "Pump A", "model": "fixed", "paramKey": "q",
+                "nominalParam": 0.001, "param": 0.01, "nominalQ": 0.001, "q": 0.01,
+                "clamped": false, "factor": 10.0, "groupId": "g1",
+                "viaGroup": false, "evaluable": true } ] }
+```
+
+The answer above is for the request `{"revision": 12, "documentSerial": 3,
+"factors": {"A": 10}}` on a document whose fixed events A and B (q = 0.001
+each) sit under an AND gate and form the beta group `g1` (β = 0.1); its
+`events` list also holds the row of member B (`viaGroup: true`), which is cut
+here.
+
+- `baseline` is the headline of the document with no factor, the number
+  `GET /api/analysis/summary` returns. `whatIf` is the top event with the
+  factors. `ratio` is `whatIf / baseline`; it is `1.0` when both are 0 and
+  `null` when the baseline is 0 and `whatIf` is above 0, when either number is
+  `null`, or when the quotient is not finite.
+- `method` is the headline's method, verbatim: `mcub`, `treeWalk` or
+  `incomplete`. `incomplete` happens only with an applied CCF group whose cut
+  sets could not be completed (time, an error, or the headline's own cap of
+  2,000 sets); then `baseline`, `whatIf` and `ratio` are `null` and `note` is
+  `"incomplete"`, and the event rows are still returned. A cut-set list that
+  an order or count limit of the document shortened still gives a number.
+- `note` is one machine-readable value or `null`: `"incomplete"` as above, or
+  `"cutsets_from_nominal"` when the method is `mcub` and the cutoff left out
+  cut sets that have a probability above 0 at nominal values (a set that would
+  pass the cutoff only after a factor is not in the what-if number; the tab
+  says "cut sets from nominal values"). `truncatedBy` is the baseline's list of
+  the **document's** limits that cut the cut sets short (`order`, `count`,
+  `cutoff`; `time` or `error` when they could not be completed) and is for
+  diagnostics; only the cutoff gives a note. The headline's own cap of 2,000
+  sets is **not** listed there, and the response has no `capped` field: without
+  an applied group the cap adds nothing to `truncatedBy` or `note`, so read
+  `capped` from `GET /api/analysis/summary`. The document's own limits still
+  appear: `order`, `count` (only when the document's count limit is 2,000 or
+  less; above that the cut is the cap) and `cutoff`, which with an `mcub`
+  headline also gives the note `cutsets_from_nominal`. An applied group whose
+  cut sets were capped gives the note `incomplete`. With an `mcub` headline, a
+  factor on an event only in cut sets that the order limit, the count limit or
+  the cap left out changes nothing (`ratio` 1.0); `note` does not say so, but
+  `cautions` does (`CUTSETS_TRUNCATED`, below). An order limit or the cutoff
+  only drops sets, so the headline reads below
+  the full MCUB, though it can still be above the exact value; a count limit or
+  the cap usually reads low too but works inside each gate, so on a tree with
+  repeated events (a shared CCF event counts as one) it can also read high.
+  Treat it as an estimate, not a bound.
+- `cautions` is a list (always present, `[]` when nothing applies) of
+  machine-coded cautions about the **what-if values**, worked out for each
+  request from data the endpoint already holds (nothing is stored, so a cache
+  hit and a miss answer the same list). It follows three of the warnings a
+  typed document gets (`CCF_Q_ONE`, `CCF_HIGH_Q`, `STANDBY_LARGE_LT`, but not
+  `RATE_IMPLAUSIBLE`) and adds two cautions of its own, `CCF_NOT_APPLIED` and
+  `CUTSETS_TRUNCATED`; it is independent of `note`. At most one entry per
+  code, in this order:
+  `{"code": "CCF_NOT_APPLIED", "groupIds": ["g3"]}` (a factor other than 1 sits
+  on a member of a CCF group that is not applied at baseline, whatever the
+  reason; the what-if scales that member alone, with no CCF event; no
+  `limit`),
+  `{"code": "CCF_Q_ONE", "groupIds": ["g1"]}` (an applied group that the
+  request scales has a member with q of 1 or more; typed into a document, the
+  group would not be applied; `>=`),
+  `{"code": "CCF_HIGH_Q", "groupIds": ["g2"], "limit": 0.01}` (the same kind of
+  group, not listed under `CCF_Q_ONE`, whose largest member `Q_t` is above
+  `limit`, the editor's high-q threshold; strict `>`),
+  `{"code": "STANDBY_LARGE_LT", "eventIds": ["S1"], "limit": 0.2}` (a
+  **scaled** standby row, including the `viaGroup` ones, has λ'·τ above
+  `limit`, with λ' the scaled λ before any clamp; strict `>`; it is λτ, not
+  λτ/2) and
+  `{"code": "CUTSETS_TRUNCATED", "by": ["order", "count"]}` (the method is
+  `mcub` and the document's order limit or count limit, or the headline's own
+  cap of 2,000 sets, cut the cut sets short; `by` lists `order` and `count`
+  in that order, and the cap counts as `count`). `groupIds` follow the order of
+  `groups` (for `CCF_NOT_APPLIED`, the order of the groups in the document, and
+  `groupIds` may be `[]` when the group's id is missing or empty); `eventIds`
+  follow the order of `events`. The cutoff alone gives no
+  caution (it is the note `cutsets_from_nominal`), nor does a tree-walk or
+  `incomplete` headline give `CUTSETS_TRUNCATED`. **No factor other than 1
+  gives `[]`**: a document that already warns at nominal values is silent until
+  a factor is set, and a group that is not applied is never listed under
+  `CCF_Q_ONE` or `CCF_HIGH_Q`; its members give `CCF_NOT_APPLIED`. An entry
+  holds ids and the threshold only, no value of the user's data. Example for
+  the document above with `{"A": 20}`:
+  `"cautions": [{"code": "CCF_HIGH_Q", "groupIds": ["g1"], "limit": 0.01}]`.
+- `groups` lists every applied CCF group (always present, `[]` when none).
+- `events` has one row per entry of `factors`, in request order, then, when a
+  requested member of an applied group has a factor other than 1, the other
+  members of that group in group order with `viaGroup: true`. A row has
+  `id`, `name`, `model`, `paramKey` (`"lambda"` per hour, or `"q"`),
+  `nominalParam` and `param` (the main parameter before and after the factor,
+  before any clamp), `nominalQ` and `q` (the event's total probability; for a
+  CCF member its `Q_t`), `clamped` (the unclamped q is above 1; also true at
+  factor 1 for a standby event whose λτ/2 is above 1), `factor` (the effective
+  factor, 1 when unchanged), `groupId` (the applied group, else `null`),
+  `viaGroup` and `evaluable`. An event with factor 1 whose model lacks a
+  parameter gets a row with `evaluable: false` and `null` numbers; the same
+  event with a factor other than 1 is the 422 above. Numbers are plain JSON
+  numbers and are not rounded.
+- **Speed.** The baseline (cut sets, the q of every event, the CCF plan) is
+  computed once per document version and kept (one entry; a new `revision` or
+  `documentSerial`, or any difference in the document, replaces it), except
+  that a baseline whose summary ran out of time is not kept, so every call
+  then builds it again and answers `"cache": "miss"`. The first call after an
+  edit builds it (`"cache": "miss"`); `baselineMs` is the time of the
+  headline's summary inside that build, not of the whole call, and `0.0` on a
+  hit. Later calls (`"cache": "hit"`) do the work of the factors only: with the
+  `mcub` method they recompute the cut sets that hold a changed event, with the
+  `treeWalk` method they walk a copy of the whole tree again. On the 301-node
+  test file (252 basic events, ten CCF groups, method `mcub`) a call with the
+  baseline in memory answers in well under 300 ms (about 1 ms in-process).
+
 ### File browser: `ext` filter
 
 `GET /api/fs/list` takes an optional `ext` query parameter: a comma-separated
@@ -911,10 +1491,12 @@ case is ignored.
 
 ### Excel export
 
-`GET /api/export/xlsx[?sigFigs=N]` writes the 1.6 `FTA` sheet unchanged, plus
+`GET /api/export/xlsx[?sigFigs=N]` writes the 1.6 `FTA` sheet, plus
 an **Events** sheet (one row per node; the columns are
 `excel_events.EVENT_COLUMNS`) and an **Analysis** sheet (settings and, in FTA
-mode, the headline figures). `sigFigs` sets the scientific number format of
+mode, the headline figures; for a file with CCF groups also the rows
+`CCF groups applied` and `CCF groups not applied`, each with the number of
+groups and, in the note column, their names and the reasons). `sigFigs` sets the scientific number format of
 the probability cells; it is clamped to 1–6, and a missing or unparseable
 value gives 3. The UI sends the top bar's significant-figures setting.
 Text stays text in every sheet: a value that starts with `=` (a node named
@@ -924,17 +1506,26 @@ characters other than tab, line feed and carriage return); the
 whitespace-like ones become a space. The document is not changed.
 
 The Events sheet's *Calculated probability* is the tree-walk value of every
-node. When the headline is the MCUB (`engine.root_headline`), the root's cell
-in that column carries a comment with the headline, and the Analysis sheet's
-*Tree walk* row is noted as the value the Events sheet shows for the top
+node (CCF exception below). When the headline is the MCUB
+(`engine.root_headline`), the root's cell in that column carries a comment
+with the headline, and the Analysis sheet's *Tree walk* row is noted as the value the Events sheet shows for the top
 event (1.7.3). `POST /api/report/docx` draws its own diagram with the root's
 headline label and puts a sentence under the picture.
+
+**CCF groups (1.9).** With at least one group applied, a gate above a member
+of a group shows its MCUB instead of its tree-walk value: in the `FTA` sheet's
+`Calc:` text as `<value> (MCUB, CCF)` and in the Events sheet's *Calculated
+probability* as the number. When the cut sets are incomplete, both show
+`n/a (CCF)`, and the Events cell has a comment that says why. A member keeps
+its `Q_t`. `POST /api/report/docx` writes a CCF section after Assumptions for
+a file with groups (also in ETA mode) and a sentence under the diagram about
+the gate values.
 
 ### New error codes
 
 | Code | HTTP | When | `detail` |
 |---|---|---|---|
-| `MODE_UNSUPPORTED` | 409 | An analysis or FMEA endpoint on an ETA document | `{mode: "ETA"}` |
+| `MODE_UNSUPPORTED` | 409 | An analysis or FMEA endpoint, `POST /api/grid/paste` or `POST /api/whatif`, on an ETA document | `{mode: "ETA"}` |
 | `BUSY` | 409 | A Monte Carlo run is already in progress | `{}` |
 | `ANALYSIS_TOO_LARGE` | 422 | A voting gate over 20,000 combinations, or the cut-set time budget ran out | `{reason: "kofn"\|"time", nodeId?, k?, n?, combinations?, limit?}` |
 | `EXPORT_UNAVAILABLE` | 503 | An optional package is missing: `python-docx` for the report, `openpyxl` for xlsx export or FMEA import | `{format, package, install, feature?}` |
@@ -944,11 +1535,16 @@ headline label and puts a sentence under the picture.
 | `UNSAVED_CHANGES` | 409 | New, Open, an example, an import or a recovery restore over unsaved changes without `force` | none |
 | `PICKER_UNAVAILABLE` | 501 | `POST /api/fs/root/choose` where no folder chooser can be opened | `{reason, relaunch}` |
 | `PICKER_BUSY` | 409 | `POST /api/fs/root/choose` while a chooser is already open | none |
+| `STALE_REVISION` | 409 | `POST /api/grid/paste` or `POST /api/whatif` with a `revision` or `documentSerial` other than the document's | `{revision, documentSerial}` (current) |
+| `WHATIF_NOT_EVALUABLE` | 422 | `POST /api/whatif` with a factor other than 1 on an event whose model lacks a parameter, or whose scaled parameter is not a finite number | `{id, missing}` |
+| `GROUP_NOT_FOUND` | 404 | `PATCH` or `DELETE /api/ccf/groups/<id>` with an id no stored group has | `{groupId}` |
 
 Messages for these codes are localised like every other error. The English
 text is the server's own message; `fta_web/i18n.py` supplies the Japanese:
 
 - `BUSY` has a Japanese text.
+- `STALE_REVISION` has a Japanese text, the same words as the Grid tab's own
+  summary of a stale paste (「解析が変更されました。もう一度貼り付けてください」).
 - `ANALYSIS_TOO_LARGE` has one generic text, plus specific texts keyed on
   `detail.reason` (`kofn`, `time`).
 - The DOCX `EXPORT_UNAVAILABLE` message gives the install command
@@ -1451,6 +2047,10 @@ if zero_nodes:
     }
 }
 ```
+
+A file with CCF groups (1.9) also has the top-level key `"fileFormatVersion": 2`
+and the groups under `analysis.ccfGroups`; see
+[CCF.md](CCF.md#the-file-format). A file without groups has neither.
 
 ## Error Handling
 

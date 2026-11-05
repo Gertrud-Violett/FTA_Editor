@@ -1,0 +1,100 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'cutsets' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/examples/tmi2_eta_en.json",
+    "mode": "ETA",
+    "title": "Three Mile Island Unit 2 accident (1979), event tree: illustrative probabilities"
+   }
+  },
+  "importance": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'importance' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/examples/tmi2_eta_en.json",
+    "mode": "ETA",
+    "title": "Three Mile Island Unit 2 accident (1979), event tree: illustrative probabilities"
+   }
+  },
+  "mc": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'mc' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/examples/tmi2_eta_en.json",
+    "mode": "ETA",
+    "title": "Three Mile Island Unit 2 accident (1979), event tree: illustrative probabilities"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/tmi2_eta_en.json",
+    "mode": "ETA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.98,
+       "id": "root_0",
+       "model": "fixed",
+       "name": "Relief valve closes again",
+       "q": 0.98
+      },
+      {
+       "calculated": 0.01,
+       "id": "root_1_0",
+       "model": "fixed",
+       "name": "Block valve closed in time",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.005,
+       "id": "root_1_1_0",
+       "model": "fixed",
+       "name": "Injection left running",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.00495,
+       "id": "root_1_1_1_0",
+       "model": "fixed",
+       "name": "Containment holds (actual)",
+       "q": 0.99
+      },
+      {
+       "calculated": 5e-05,
+       "id": "root_1_1_1_1",
+       "model": "fixed",
+       "name": "Containment fails",
+       "q": 0.01
+      }
+     ],
+     "summary": {
+      "headline": 1.0,
+      "headlineMethod": "treeWalk",
+      "treeWalk": 1.0
+     }
+    },
+    "title": "Three Mile Island Unit 2 accident (1979), event tree: illustrative probabilities"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/tmi2_eta_en.json",
+    "mode": "ETA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "Three Mile Island Unit 2 accident (1979), event tree: illustrative probabilities"
+   }
+  }
+ },
+ "file": "fta_web/examples/tmi2_eta_en.json"
+}

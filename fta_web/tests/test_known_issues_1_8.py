@@ -20,6 +20,7 @@ for every test here. The whole flow is driven in a real browser by
 import copy
 import json
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -1918,6 +1919,22 @@ def test_the_new_modules_are_in_the_packaged_app():
     assert out.returncode == 0 and out.stdout.split() == ["recovery", "folder_picker"], out.stderr
 
 
+def test_every_fta_web_module_is_named_in_the_packaged_apps_hidden_imports():
+    """The blueprints are loaded by a string (app.py) and the other modules are
+    imported under try/except pairs, so a frozen build misses any module the spec
+    does not name. A module added to fta_web/ (CCF groups added ccf, ccf_schema,
+    ccf_text, strict_input and routes.ccf) must be added to the spec too."""
+    spec = _read(REPO / "build" / "fta_editor.spec")
+    start = spec.index("hiddenimports = [")
+    hidden = spec[start:spec.index("\n]", start)]
+    named = set(re.findall(r'^\s*"([A-Za-z0-9_.]+)",', hidden, re.MULTILINE))
+    web = REPO / "fta_web"
+    expected = {p.stem for p in web.glob("*.py") if p.stem not in ("run", "__init__")}
+    expected |= {"routes." + p.stem for p in (web / "routes").glob("*.py") if p.stem != "__init__"}
+    missing = sorted(expected - named)
+    assert not missing, "not in build/fta_editor.spec hiddenimports: %s" % ", ".join(missing)
+
+
 def test_5_with_the_home_folder_as_root_the_recovery_folder_is_still_out_of_reach(
         client, tmp_path, per_user_home, recovering):
     """The default root is the home directory, and the per-user folder is in
@@ -1992,12 +2009,12 @@ def test_8_the_suite_can_drive_the_two_other_engines_and_ci_does_not():
         assert "FTA_GUI_BROWSER" not in text and "install firefox" not in text and "webkit" not in text, workflow.name
 
 
-def test_a_file_with_ccf_groups_loads_with_a_warning_and_saves_without_them(client, sandbox):
-    """FN-68: 1.8.x has no CCF groups.  A file whose ``analysis`` carries ``ccfGroups``
-    (the shape of SPEC section 7.1, with ``fileFormatVersion: 2``) loads, the load warnings
-    name the setting once as ``analysis_invalid`` ("reset to their defaults: ccfGroups"),
-    and the file saved again has no ``ccfGroups``.  This warning is the only protection a
-    1.8.x user gets, so it must not change unnoticed."""
+def test_a_file_with_ccf_groups_loads_without_a_warning_and_saves_them_in_version_2(client, sandbox):
+    """FN-68 pinned how 1.8.1 treats ``analysis.ccfGroups`` (``analysis_invalid``, "reset to
+    their defaults: ccfGroups", groups dropped on save).  FN-18 replaces that from the CCF
+    release on: the dedicated CCF loader keeps the groups, there is no such warning, and the
+    file saved again carries them with ``fileFormatVersion`` 2.  The 1.8.1 behaviour stays
+    pinned on the 1.8.x release commit."""
     members = [dict(_leaf(name, "pump " + name), type="Event", logicGate="OR", notes="", links=[], children=[])
                for name in ("n12", "n13", "n20", "n21", "n22")]
     document = {
@@ -2020,13 +2037,11 @@ def test_a_file_with_ccf_groups_loads_with_a_warning_and_saves_without_them(clie
     assert opened.status_code == 200, body(opened)
     doc = body(opened)
     assert [child["id"] for child in doc["tree"]["children"]] == ["n12", "n13", "n20", "n21", "n22"]
-    invalid = [w for w in doc["warnings"] if w["kind"] == "analysis_invalid"]
-    assert len(invalid) == 1, doc["warnings"]
-    assert "reset to their defaults: ccfGroups" in invalid[0]["message"], invalid[0]
+    assert not [w for w in doc["warnings"] if w["kind"] == "analysis_invalid"], doc["warnings"]
 
     saved_to = sandbox / "again.json"
     assert client.post("/api/file/save-as", json={"path": str(saved_to)}).status_code == 200
     saved = json.loads(saved_to.read_text(encoding="utf-8"))
-    assert "ccfGroups" not in saved["analysis"]
-    assert "ccfGroups" not in saved_to.read_text(encoding="utf-8")
+    assert saved["analysis"]["ccfGroups"] == document["analysis"]["ccfGroups"]
+    assert saved["fileFormatVersion"] == 2
     assert [child["id"] for child in saved["tree"]["children"]] == ["n12", "n13", "n20", "n21", "n22"]

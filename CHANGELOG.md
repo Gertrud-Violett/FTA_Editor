@@ -7,6 +7,186 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-05
+
+FTA Editor 1.9 adds common-cause failure (CCF) groups with a beta factor or an
+alpha factor, a Grid tab that edits every basic event in one table and takes a
+paste from Excel, and a What-if tab.
+
+**Before you upgrade.** A file saved by 1.9 that contains CCF groups opens in
+FTA Editor 1.8.x without the groups. Files with CCF groups lose the groups when
+saved by FTA Editor 1.8.x (it warns 'reset to their defaults: ccfGroups'), and
+lose all analysis settings when saved by the desktop app. Keep a copy of such a
+file, and do not save it with an older program.
+
+**アップグレード前の注意。** 1.9 で保存した CCF グループを含むファイルを FTA Editor 1.8.x で開くと、グループは読み込まれません。
+CCF グループを含むファイルを FTA Editor 1.8.x で保存すると CCF グループが失われます（1.8.x は 'reset to their defaults: ccfGroups' と警告します）。デスクトップ版で保存すると解析設定がすべて失われます。
+そのようなファイルは控えを残し、古いプログラムでは保存しないでください。
+
+### Added
+
+- **A What-if tab: try a factor on an event and watch the top event move.** Pick
+  a basic event and set a factor from 1/100 to 100 with a log-scale slider (or
+  type it in the field). The factor multiplies the event's main parameter, as
+  the Monte Carlo run does: λ for the rate, standby and repairable models, q for
+  the fixed model (T, τ and μ are not scaled); q follows from the model and is
+  set to 1 when it would be higher, with "clamped to 1" shown. The tab shows the
+  nominal and the what-if main parameter, the nominal and the what-if q, the
+  baseline top event, the what-if top event and their ratio. While any factor is
+  not 1 the banner **What-if values, not saved** is shown, with **Reset** per
+  event and **Reset all**. The what-if values are never saved, exported or sent
+  to the assistant: the file, the undo history, the modified flag and every
+  output stay as they were, and the factors go back to 1 on every change of
+  the document (New, Open, Import, an example, a mode switch, Undo, Redo, any
+  edit, in this or another browser window). A factor on a member of an applied
+  CCF group applies to every member of the group, and the tab says so. The top
+  event uses the headline's method (MCUB over the baseline cut sets, or the
+  tree walk); when the cutoff left cut sets out, the tab notes "cut sets from
+  nominal values", and when the headline is incomplete there is no what-if
+  number. The tab is in Advanced mode, after Uncertainty, and is greyed in ETA
+  mode. See the [User Guide](docs/USER_GUIDE.md#the-what-if-tab), including
+  its limits: the warning `RATE_IMPLAUSIBLE` is not raised for what-if values
+  (the tab shows a caution line for `CCF_NOT_APPLIED`, `CCF_HIGH_Q`,
+  `CCF_Q_ONE` and `STANDBY_LARGE_LT`, see the next entry); a CCF group that is
+  not applied at baseline stays out of the what-if, which can then read far
+  below (or slightly above) the same values typed into the document (the tab
+  shows a caution); and a factor on an event outside
+  the cut sets kept (with an MCUB headline: the document's order and count
+  limits, the headline's 2,000-set cap) shows no change, and a
+  limited or capped MCUB is an estimate, not a bound (an order limit or the
+  cutoff only lowers it; a count limit or the cap usually does, but can raise
+  it).
+- **What-if caution line.** The What-if tab shows one line (English and
+  Japanese) when you scale a member of a CCF group that is not applied at
+  baseline, when a member of a CCF group you scaled reaches probability 1 or
+  goes above 0.01, when the λτ of a scaled standby event goes above 0.2, or
+  when the cut sets are limited by max order or max count; a small "Caution"
+  badge in the table head points to it. `POST /api/whatif` gets the field `cautions`.
+- **New endpoint `POST /api/whatif`.** Takes `{revision, documentSerial,
+  factors}` with at most 1,000 factors from 0.01 to 100 and answers the
+  baseline, the what-if top event, their ratio, one row per event and
+  `cautions` (a list, empty when nothing applies; see the What-if caution line
+  entry above). It reads strict JSON and checks every factor (a JSON number
+  from 0.01 to 100 only; a string, `NaN`, `Infinity`, `-0.1` or `101` is
+  refused with `INVALID_JSON` or `INVALID_FIELD`); `409 STALE_REVISION` when
+  the document changed since the revision sent, `409 MODE_UNSUPPORTED` for an event tree, and
+  `422 WHATIF_NOT_EVALUABLE` for an event whose model lacks a parameter. It
+  never changes the document, its revision or its undo history. The first call
+  after an edit builds the baseline (the headline's cut sets); when it is kept,
+  later calls only redo the factors and answer in a fraction of a second (when
+  the headline's time budget ran out nothing is kept and every call takes as
+  long as the headline). See
+  [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
+- **A Grid tab with every basic event in one table.** One row per basic event
+  with the columns ID (read-only), Name, Model, λ, T, τ, μ, q, Source and
+  Tags. The headers name the units: λ in the unit chosen in its header (/h,
+  /y or FIT), T and τ in hours, μ per hour, q without a unit. q is editable
+  only for the model Fixed probability and is shown with the significant-figures
+  setting; on the other models it is computed. Tags are shown and typed
+  separated by `; `. A comma does not separate tags here (unlike the
+  Traceability tab); use `;`. A cell takes the same text as the matching field in the
+  Details and Quantification tabs and means the same number. Values are stored
+  per hour (8,760 h per year, 1 FIT = 1e-9 per hour).
+- **Sort and filter in the Grid.** Click a header to sort by that column; the
+  filter box keeps the rows that contain the text in any visible column. The tab says
+  how many of the events are shown.
+- **Paste from Excel into the Grid.** Select a cell and press Ctrl+V. The block
+  fills from that cell to the right over the visible columns and downwards over
+  the visible rows in the order shown, so it lands on the intended events after
+  any sort or filter. Excel quoting, a trailing line break and empty cells are
+  handled; an empty cell leaves the value as it is. Cells beyond the last
+  visible column and rows beyond the last visible row are refused and listed;
+  no event is created. A clipboard of more than 2,000 rows is refused as a
+  whole.
+- **One undo step per paste.** A 500-row paste is applied at once and one Undo
+  restores all of it. A paste that changes nothing makes no undo step.
+- **A summary of every paste.** Beside the grid the tab gives the number of rows
+  applied and lists each refused row with its clipboard row number, the column
+  and the reason (for example "id does not match this row" or "q is computed
+  from the model"). One invalid cell refuses its whole row; the other rows are
+  applied.
+- **A stale paste is refused as a whole.** If the analysis changed between the
+  moment the grid was drawn and the paste (an edit, an undo or another
+  document), nothing is applied, the grid is redrawn and the tab says "The
+  analysis changed; paste again". The Grid tab is not available for an event
+  tree (ETA mode).
+- **New endpoint `POST /api/grid/paste`.** One undo step; `409 STALE_REVISION` when the
+  document changed; refused rows are listed with clipboard row, column and message.
+- **Common-cause failure (CCF) groups, beta factor.** Redundant basic events
+  can be put in a CCF group with a beta factor β (a fraction from 0 to 1). The
+  editor replaces each member by an independent part, `(1 − β)·Q_t`, and one
+  shared CCF event, `β·Q_t` (NUREG/CR-4780 Vol. 2 Table C-1 p. C-5 and
+  Eq. C.10-C.13 p. C-6; NUREG/CR-5485 Eq. 5.11-5.13 p. 42), so the CCF event
+  appears in the headline, the cut sets, the gate values, importance, Monte
+  Carlo, the DOCX report and the command line. Formulas, sources with pages,
+  assumptions and worked examples are in [docs/CCF.md](docs/CCF.md). Check CCF
+  results with a qualified engineer before use.
+  - **New file format version 2.** Groups are saved under
+    `analysis.ccfGroups`, and a file with at least one group also gets
+    `"fileFormatVersion": 2`. A file without groups is saved exactly as in
+    1.8.1. A file with a `fileFormatVersion` greater than 2 opens with the
+    warning "This file was saved by a newer FTA Editor; saving may lose data".
+  - **A CCF groups tab** (Advanced mode): create a group from the basic
+    events selected in the tree, edit its name, β, source and members, delete
+    it; each action is one undo step. A group that cannot be applied (members
+    that differ, a member that is not a basic event, ETA mode and so on, 12
+    checks in all) is kept in the file and shown as `Not applied: <reason>`
+    in the tab, in the headline note, in the Validation tab and in the
+    report. Members show a `CCF: <group name>` badge in the tree and in the
+    diagram. With a group applied the headline is the min-cut upper bound and
+    reads "MCUB, includes CCF"; when the cut sets cannot be completed it reads
+    "incomplete, CCF not included" and shows no number. A gate above a member
+    shows its MCUB, or `n/a (CCF)`, never its tree-walk value.
+  - **Command line.** `quantify`, `cutsets`, `importance` and `mc` add a `ccf`
+    block (`applied`, `notApplied`, `note`) to `--json` for a file with groups,
+    and exit with 1 when a group is not applied or the headline is
+    incomplete. Files without groups give the same output as 1.8.1.
+  - **API.** New `GET`, `POST`, `PATCH` and `DELETE /api/ccf/groups`; the
+    analysis results gain `ccf`, `ccfIncomplete`, `ccfIncompleteReason`,
+    `ccfGates` and the headline method `incomplete`, and `/api/dot` gains
+    `ccfGates`. See [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
+  - **Deleting a member.** Deleting a node that is a member of a group (one
+    node or several, an AI update, an FMEA re-import that replaces nodes)
+    removes it from its group in the same undo step; one Undo restores both. A
+    group left with fewer than two members is kept and reported, not deleted.
+  - **Monte Carlo.** The run draws one value of `Q_t` per group per trial; the
+    members and the CCF events follow from that one draw, so the members move
+    together. β and α are not sampled, and the result says so.
+  - **Excel export.** A gate above a member of an applied group shows its MCUB,
+    never its tree-walk value: in the `Calc:` text of the FTA sheet as
+    `<value> (MCUB, CCF)` and in the Calculated probability column of the Events
+    sheet as the number. When the cut sets are incomplete, both read
+    `n/a (CCF)`, and the Events cell has a comment that says why. The Analysis
+    sheet gets the rows *CCF groups applied* and *CCF groups not applied*.
+- **Alpha-factor model for CCF groups of 2 to 4 members.** A CCF group can use
+  the alpha-factor model: you enter α1 … αm and choose staggered or
+  non-staggered testing (there is no default; a group without a scheme reads
+  `Not applied: testing scheme missing`). The editor makes one CCF event per
+  member subset of two or more members, id `ccf:<groupId>:<m1>+<m2>…`, with
+  `Q_k = α_k / C(m−1, k−1)·Q_t` (staggered, NUREG/CR-5485 Eq. 5.6 p. 40) or
+  `Q_k = k / C(m−1, k−1)·(α_k / α_t)·Q_t` (non-staggered, Eq. 5.7-5.9 p. 41;
+  NUREG/CR-4780 Vol. 2 Eq. C.23-C.24 pp. C-10/C-11). A sum within 0.001 of 1
+  is accepted and every α is divided by the sum (with a warning when it differs
+  from 1 by more than 1e-9); further off, the group is not applied. New lint
+  codes `CCF_ALPHA_SIZE`, `CCF_ALPHA_SUM`, `CCF_ALPHA_NORMALISED` and
+  `CCF_NO_TESTING`. The alpha values and the scheme show in the report and in
+  the `ccf` block of the command line's `--json` output;
+  `POST` and `PATCH /api/ccf/groups` take `model`, `alpha` and `testing`.
+  Formulas with pages, the source errors not copied and the reference cases
+  are in [docs/CCF.md](docs/CCF.md).
+  - **New refusal.** A group is not applied (`CCF_BAD_PARAMETER`, kind
+    `event_id`) when its group or member ids contain `+` or `:` in a way that
+    would make the same CCF event id twice, in the group or with another group.
+    Ordinary ids are not affected.
+
+### Fixed
+
+- **The selected tab is always fully in view, and the Grid tab is greyed in ETA mode.**
+  Moving through the tab strip by keyboard or click scrolls the strip so the
+  chosen tab is not cut off. In ETA mode the Grid tab is greyed like the
+  What-if tab, with the same tooltip (the CCF groups tab is greyed too, with its
+  own).
+
 ## [1.8.1] - 2026-10-26
 
 The known issues of 1.8.0.

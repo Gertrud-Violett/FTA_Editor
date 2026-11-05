@@ -54,6 +54,7 @@ import {
   validateGate,
 } from './dialogs.js';
 import { BASIC_GATES, EVENT_KINDS, GATE_TYPES, isAdvancedNode } from './schema.js';
+import { groupsOf, memberMap } from './ccf_util.js';
 
 const DETAILS_CSS = `
 .fta-details {
@@ -121,6 +122,14 @@ const DETAILS_CSS = `
 }
 .fta-details-extras { display: flex; flex-direction: column; gap: 0.5rem; }
 .fta-details-note { margin: 0; font-size: 0.78rem; color: var(--fta-muted-fg); }
+/* A member of a CCF group (F2): its total probability and how it splits. */
+.fta-details-ccf { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; margin: 0 0 6px;
+  border-left: 3px solid var(--accent, #2b6cb0); background: var(--accent-soft, #e6effa); font-size: 0.85rem; }
+.fta-details-ccf[hidden] { display: none; }
+.fta-details-ccf__group { font-weight: 600; }
+.fta-details-ccf__line { display: flex; gap: 6px; }
+.fta-details-ccf__line b { font-variant-numeric: tabular-nums; }
+.fta-details-ccf__status { color: var(--fta-muted-fg); }
 .fta-details input[readonly] { background: var(--fta-surface-2, #f4f6f8); color: var(--fta-muted-fg); }
 /* The base probability of a node with children: kept in the file, not used
    in the calculation. Greyed, with a note, but still editable. */
@@ -326,6 +335,71 @@ export function initDetails(container) {
   gateWrapper.parentNode.insertBefore(extras.root, gateWrapper.nextSibling);
   const probNote = el('p', { class: 'fta-details-note', hidden: true });
   fields.probability.control.parentNode.appendChild(probNote);
+
+  /* ---- CCF groups (F2): created the first time a member is shown, so a
+     document without groups gets no element at all ---- */
+  let ccfRow = null;
+  function updateCcfRow(node) {
+    const groups = memberMap(store.state && store.state.analysis).get(String(node.id));
+    if (!groups || !groups.length) {
+      if (ccfRow) ccfRow.hidden = true;
+      return;
+    }
+    if (!ccfRow) {
+      // Right under the "Calculated probability" line, so it is in view without
+      // scrolling the form (the panel is short): Q_t and its split belong with it.
+      ccfRow = el('div', { class: 'fta-details-ccf', hidden: true });
+      panel.insertBefore(ccfRow, banner);
+    }
+    const shell = window.ftaShell;
+    const state = shell && typeof shell.ccfState === 'function' ? shell.ccfState() : null;
+    const lang = shell && shell.language === 'ja' ? 'ja' : 'en';
+    const stored = groupsOf(store.state && store.state.analysis);
+    clear(ccfRow);
+    for (const g of groups) {
+      ccfRow.appendChild(el('div', { class: 'fta-details-ccf__group', text: t('ccf.details.group', { group: g.name }) }));
+      const off = state ? state.notApplied.find((n) => n.id === g.id) : null;
+      if (off) {
+        const reason = off.reason ? off.reason[lang] || off.reason.en || '' : '';
+        ccfRow.appendChild(el('div', {
+          class: 'fta-details-ccf__status',
+          dataset: { ccf: 'status' },
+          text: t('ccf.details.notApplied', { reason }),
+        }));
+        continue;
+      }
+      const group = stored.find((x) => x.id === g.id);
+      const qt = Number(node.probability);
+      const line = (label, key, value) =>
+        el('div', { class: 'fta-details-ccf__line' }, [
+          el('span', { text: label }),
+          el('b', { dataset: { ccf: key }, text: formatProbability(value) }),
+        ]);
+      if (group && group.model === 'alpha') {
+        // An alpha group has no beta (it is null): the numbers are the server's own
+        // (event_probabilities, as the diagram shows them), never a formula here.
+        const live = state ? state.applied.find((x) => x.id === g.id) : null;
+        const parts = live && state.fresh ? live.alphaParts : null;
+        const position = parts && Array.isArray(live.members) ? live.members.indexOf(String(node.id)) : -1;
+        const q1 = position >= 0 ? Number(parts.independent[position]) : NaN;
+        if (!Number.isFinite(qt) || !Number.isFinite(q1)) continue; // the answer for this tree has not come yet
+        ccfRow.append(line(t('ccf.details.qt'), 'qt', qt), line(t('ccf.details.independent'), 'independent', q1));
+        for (const ev of parts.events) {
+          if (!Array.isArray(ev.members) || !ev.members.includes(String(node.id))) continue;
+          ccfRow.appendChild(line(t('ccf.details.subset', { members: ev.memberNames.join(' + ') }), 'event', Number(ev.q)));
+        }
+        continue;
+      }
+      const beta = group ? Number(group.beta) : NaN;
+      if (!state || !Number.isFinite(beta) || !Number.isFinite(qt)) continue;
+      ccfRow.append(
+        line(t('ccf.details.qt'), 'qt', qt),
+        line(t('ccf.details.independent'), 'independent', (1 - beta) * qt),
+        line(t('ccf.details.event'), 'event', beta * qt)
+      );
+    }
+    ccfRow.hidden = false;
+  }
 
   function buildExtras() {
     const chipText = el('span', { class: 'fta-details-chip' });
@@ -884,6 +958,7 @@ export function initDetails(container) {
 
     if (!node) {
       renderedId = null;
+      if (ccfRow) ccfRow.hidden = true;
       empty.hidden = false;
       form.hidden = true;
       linksSection.hidden = true;
@@ -918,6 +993,22 @@ export function initDetails(container) {
     calcNote.textContent = head ? ' ' + t('details.calcMcub', { walk: formatProbability(calculated) }) : '';
     if (head) calcNote.title = t('details.calcMcubTitle');
     else calcNote.removeAttribute('title');
+    // A gate above a CCF member shows the cut-set value including CCF, n/a
+    // (CCF), or a dash while that is loading -- never its tree-walk value (F2).
+    // A leaf with links is such a gate too (FN-66).
+    const hasBelow = (node.children && node.children.length) || (Array.isArray(node.links) && node.links.length);
+    if (shell && typeof shell.ccfGate === 'function' && hasBelow) {
+      const gate = shell.ccfGate(node.id);
+      if (gate) {
+        calcOut.textContent = gate.method === 'mcub' ? formatProbability(gate.value) : t('details.ccfNa');
+        calcNote.hidden = gate.method !== 'mcub';
+        calcNote.textContent = gate.method === 'mcub' ? ' ' + t('details.ccfMcub') : '';
+        calcNote.removeAttribute('title');
+      } else if (typeof shell.ccfGatePending === 'function' && shell.ccfGatePending(node.id)) {
+        calcOut.textContent = '—';
+      }
+    }
+    updateCcfRow(node);
 
     const zeroNodes = (store.state && store.state.zeroNodes) || [];
     zeroFlag.hidden = !(Array.isArray(zeroNodes) && zeroNodes.map(String).indexOf(String(node.id)) !== -1);
@@ -961,8 +1052,11 @@ export function initDetails(container) {
     const node = currentNode();
     const tree = store.state && store.state.tree;
     if (node && tree && String(tree.id) === String(node.id)) update();
+    else if (node && memberMap(store.state && store.state.analysis).size) update();
   };
   window.addEventListener('fta:headline', onHeadline);
+  // CCF groups (F2): which groups are applied arrives after the tree does.
+  window.addEventListener('fta:ccf', onHeadline);
 
   return {
     refresh: update,
@@ -972,6 +1066,7 @@ export function initDetails(container) {
       window.removeEventListener('fta:flush', onFlush);
       window.removeEventListener('fta:advanced', onAdvanced);
       window.removeEventListener('fta:headline', onHeadline);
+      window.removeEventListener('fta:ccf', onHeadline);
       clear(panel);
       if (panel.parentNode === container) container.removeChild(panel);
     },

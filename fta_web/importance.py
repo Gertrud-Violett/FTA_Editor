@@ -19,6 +19,7 @@ small contributions keep their digits.
 """
 from __future__ import annotations
 
+import copy
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -79,7 +80,13 @@ def _clean(value: Optional[float]) -> Optional[float]:
 
 def compute(cutset_result: Dict[str, Any]) -> List[Dict[str, Any]]:
     """``[{id, name, q, fv, birnbaum, raw, rrw, rrwInfinite, cutSetCount}]``,
-    sorted by FV (largest first), for every event in the cut sets."""
+    sorted by FV (largest first), for every event in the cut sets.
+
+    No formula is specific to CCF (FN-23): with CCF groups the cut sets come
+    from the expanded structure, so the CCF event ``ccf:<groupId>`` has its own
+    row and a member's row is its independent part; there is no combined row.
+    A row gains a ``ccf`` marker (copied from the cut-set event) only for those
+    events, so a document without groups keeps the 1.8.1 row keys (FN-28)."""
     cut_sets = cutset_result.get("cutSets") or []
     events: Dict[str, Dict[str, Any]] = {}
     order: List[str] = []
@@ -91,6 +98,8 @@ def compute(cutset_result: Dict[str, Any]) -> List[Dict[str, Any]]:
             if eid not in events:
                 events[eid] = {"id": eid, "name": ev.get("name", ""),
                                "q": float(ev.get("q") or 0.0), "index": len(order)}
+                if ev.get("ccf") is not None:  # a CCF event or an independent part (FN-23)
+                    events[eid]["ccf"] = copy.deepcopy(ev["ccf"])
                 order.append(eid)
             idx.append(events[eid]["index"])
         members.append(idx)
@@ -150,7 +159,7 @@ def compute(cutset_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         else:
             rrw = None
             rrw_infinite = top > 0
-        out.append({
+        row = {
             "id": eid,
             "name": info["name"],
             "q": info["q"],
@@ -160,6 +169,9 @@ def compute(cutset_result: Dict[str, Any]) -> List[Dict[str, Any]]:
             "rrw": _clean(rrw),
             "rrwInfinite": rrw_infinite,
             "cutSetCount": len(inverted[i]),
-        })
+        }
+        if "ccf" in info:  # only for a document with applied groups, else the 1.8.1 keys
+            row["ccf"] = info["ccf"]
+        out.append(row)
     out.sort(key=lambda r: (-(r["fv"] if r["fv"] is not None else -1.0), r["name"], r["id"]))
     return out

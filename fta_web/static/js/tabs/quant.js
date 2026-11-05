@@ -25,7 +25,7 @@ import {
   etaNotice,
   formatPlain,
   isEta,
-  parseNumber,
+  numberParser as sharedNumberParser,
   renderWarnings,
   reportError,
   translator,
@@ -39,11 +39,11 @@ export const advanced = true;
 const MODELS = ['fixed', 'rate', 'standby', 'repairable'];
 const TIME_FACTORS = { h: 1, d: 24, y: 8760 };
 /** λ display units -> divide the shown value by this to get per hour (division keeps 2000 FIT = 2e-6 exact). */
-const LAMBDA_UNITS = { h: 1, y: 8760, FIT: 1e9 };
-const LAMBDA_LABELS = { h: '/h', y: '/y', FIT: 'FIT' };
+export const LAMBDA_UNITS = { h: 1, y: 8760, FIT: 1e9 };
+export const LAMBDA_LABELS = { h: '/h', y: '/y', FIT: 'FIT' };
 const LAMBDA_UNIT_KEY = 'fta.lambdaUnit';
 
-function readLambdaUnit() {
+export function readLambdaUnit() {
   try {
     const raw = window.localStorage.getItem(LAMBDA_UNIT_KEY);
     return Object.prototype.hasOwnProperty.call(LAMBDA_UNITS, raw) ? raw : 'h';
@@ -52,7 +52,7 @@ function readLambdaUnit() {
   }
 }
 
-function writeLambdaUnit(unit) {
+export function writeLambdaUnit(unit) {
   try {
     window.localStorage.setItem(LAMBDA_UNIT_KEY, unit);
   } catch (_err) {
@@ -214,16 +214,7 @@ export function mount(panel, ctx) {
 
   function numberParser(min, { exclusive = false, max = Infinity, allowBlank = true } = {}) {
     const message = () => t(invalidKey({ exclusive, max }), { min, max });
-    return (raw) => {
-      const value = parseNumber(raw);
-      if (value === null) {
-        return allowBlank ? { ok: true, value: null } : { ok: false, message: message() };
-      }
-      if (Number.isNaN(value) || value < min || (exclusive && value === min) || value > max) {
-        return { ok: false, message: message() };
-      }
-      return { ok: true, value };
-    };
+    return sharedNumberParser(min, { exclusive, max, allowBlank }, message);
   }
 
   // ---- document settings ----------------------------------------------------------

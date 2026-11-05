@@ -28,7 +28,7 @@ from typing import Any, Dict, Tuple
 from flask import Blueprint, request
 
 try:  # normal package import: ``import fta_web.routes.analysis``
-    from .. import cutsets, engine, importance, uncertainty
+    from .. import ccf, cutsets, engine, importance, uncertainty
     from ..errors import (
         INVALID_FIELD,
         INVALID_JSON,
@@ -39,6 +39,7 @@ try:  # normal package import: ``import fta_web.routes.analysis``
     )
     from ..state import get_state
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]
     import cutsets  # type: ignore[no-redef]
     import engine  # type: ignore[no-redef]
     import importance  # type: ignore[no-redef]
@@ -86,7 +87,7 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
-        "analysis": copy.deepcopy(core.analysis),
+        "analysis": ccf.public_analysis(core.analysis),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
         **state.revision_fields(),
     }
@@ -249,7 +250,8 @@ def post_importance():
     """Body as ``/cutsets`` (``limit`` ignored). Returns ``{events: [{id, name,
     q, fv, birnbaum, raw, rrw, rrwInfinite, cutSetCount}], basis: "mcub",
     topValue, cutSetTotal, truncated, truncatedBy, warnings}``; events sorted
-    by FV, largest first."""
+    by FV, largest first. A document with CCF groups adds the ``ccf`` block
+    and a ``ccf`` marker on the rows of CCF events and independent parts."""
     payload = _body()
     limits = _cutset_limits(payload)
     tree, analysis = document_copy()
@@ -257,6 +259,7 @@ def post_importance():
         result = cutsets.compute(tree, analysis, limits)
     except cutsets.CutsetError as exc:
         raise _too_large(exc)
+    extra = {"ccf": result["ccf"]} if "ccf" in result else {}  # only with CCF groups (FN-26)
     return ok_response(
         events=importance.compute(result),
         basis="mcub",
@@ -265,6 +268,7 @@ def post_importance():
         truncated=result["truncated"],
         truncatedBy=result["truncatedBy"],
         warnings=result["warnings"],
+        **extra,
     )
 
 

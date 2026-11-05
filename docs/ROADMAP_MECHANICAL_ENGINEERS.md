@@ -51,6 +51,13 @@ roadmap item changed status.
 - a NOT gate (1.4)
 - a BDD backend for very large trees (1.1)
 
+**Status — release 1.9.0:** three items of that list moved. Common-cause failure
+groups (1.5) are done with the beta factor and the alpha factor, without MGL.
+The what-if factor on a basic event (1.7) is done, without scenario compare.
+The grid view of basic events with paste-from-Excel (3.3) is done. They are
+marked **◐ 1.9.0** (partly) and **✅ 1.9.0** below; the list above is
+otherwise as it was after 1.7.2.
+
 The proposals are grouped by what an engineer is trying to do, ranked within each
 group, and summarised in a priority table at the end. Each item says what the tool
 does today, what is missing, and roughly what it would take.
@@ -161,7 +168,12 @@ another gate input.
 Each of these needs an engine rule, a validation rule, a symbol (see 3.1) and an
 export mapping; k-of-n and house events give the most value for the least work.
 
-### 1.5 Common-cause failures  (P1) — ⬜ open
+### 1.5 Common-cause failures  (P1) — ◐ 1.9.0 (beta and alpha factor; no MGL)
+
+> **Done in 1.9.0:** CCF groups with a beta factor or an alpha factor (staggered
+> or non-staggered testing, 2 to 4 members), in the headline, cut sets,
+> importance, Monte Carlo, the report and the command line; see
+> [CCF.md](CCF.md). **Not done:** the multiple Greek letter (MGL) model.
 
 Group basic events into a CCF group with a β-factor (or MGL/α-factor) model; the engine
 adds the implied common-cause event to every cut set that contains members of the
@@ -179,7 +191,11 @@ Per basic event: a distribution (lognormal with error factor is the convention) 
 of a point value. Monte Carlo through the cut sets gives mean / median / 5–95 % bounds
 on the top event. Display as a small histogram beside the top-event number.
 
-### 1.7 Sensitivity and what-if  (P1) — ⬜ open
+### 1.7 Sensitivity and what-if  (P1) — ◐ 1.9.0 (what-if factor; no scenario compare)
+
+> **Done in 1.9.0:** the What-if tab: a factor from 1/100 to 100 on a basic
+> event with the top event updating, never saved. **Not done:** scenario
+> compare.
 
 - A slider or ±factor on any basic event with the top event updating live.
 - "Scenario compare": open two saved files (or two revisions, see 2.4) side by side
@@ -299,10 +315,12 @@ that shows the selected node with its ancestors and descendants; a minimap; sear
 that highlights matches in the diagram; and page-break hints for printing. Trees with
 a few hundred events are normal in this field.
 
-### 3.3 Table (grid) view of basic events  (P1) — ⬜ open
+### 3.3 Table (grid) view of basic events  (P1) — ✅ 1.9.0
 
-> 1.7.0 has a read-only basic-event table in the Quantification tab and an
-> editable traceability grid, but no editable λ/q grid and no paste-from-Excel.
+> **Done in 1.9.0:** the Grid tab: one row per basic event with editable name,
+> model, λ, T, τ, μ, q, source and tags, sort, filter and paste from Excel.
+> Before it, 1.7.0 had a read-only basic-event table in the Quantification tab
+> and an editable traceability grid.
 
 A spreadsheet-like grid beside the tree — one row per basic event, editable cells for
 name, λ/T/q, source, tags, with sort/filter and paste-from-Excel. Engineers enter and
@@ -377,7 +395,7 @@ user never saw) was fixed in 1.6.3, so this area can be extended safely.
 
 ## 5. Priority summary
 
-| Priority | Item | Value | Effort | 1.7.0 |
+| Priority | Item | Value | Effort | Status |
 |---|---|---|---|---|
 | **P0** | 3.4 Number formatting / significant figures (with review B-2 rounding fix) | correctness | S | ✅ |
 | **P0** | 1.3 Failure-rate inputs with mission time | correctness, adoption | M | ◐ |
@@ -385,14 +403,14 @@ user never saw) was fixed in 1.6.3, so this area can be extended safely.
 | **P0** | 1.4 Gate types: k-of-n, house, undeveloped, transfer (XOR/INHIBIT/PAND next) | modelling power | M–L | ◐ |
 | **P0** | 3.1 Standard FTA symbols + top-down layout | credibility with reviewers | M | ✅ |
 | P1 | 1.2 Importance measures | design decisions | S (after 1.1) | ✅ |
-| P1 | 1.5 Common-cause failure groups | correctness for redundancy | M | ⬜ |
-| P1 | 1.7 Sensitivity / scenario compare | design decisions | M | ⬜ |
+| P1 | 1.5 Common-cause failure groups | correctness for redundancy | M | ◐ 1.9.0 (beta and alpha factor; no MGL) |
+| P1 | 1.7 Sensitivity / scenario compare | design decisions | M | ◐ 1.9.0 (what-if factor; no scenario compare) |
 | P1 | 1.8 ETA normalisation, consequences, bow-tie | process/machinery safety | M–L | ⬜ |
 | P1 | 2.1 FMEA import/link | workflow | M | ✅ |
 | P1 | 2.3 Traceability fields | audits | S | ✅ |
 | P1 | 2.5 Report export + flat event table | deliverables | M | ◐ |
 | P1 | 3.2 Large-tree navigation | usability | M | ⬜ |
-| P1 | 3.3 Grid view of basic events | data entry | M | ⬜ |
+| P1 | 3.3 Grid view of basic events | data entry | M | ✅ 1.9.0 |
 | P1 | 3.5 Lint panel | error prevention | S–M | ✅ |
 | P2 | 1.6 Uncertainty (Monte Carlo) | rigour | M | ✅ |
 | P2 | 2.2 Component library | speed | M | ⬜ |
@@ -400,7 +418,7 @@ user never saw) was fixed in 1.6.3, so this area can be extended safely.
 | P2 | 2.6 CLI / batch | automation | S | ✅ |
 | P2 | 3.6 Editing ergonomics, 3.7 in-app semantics help, JA completion | polish | S–M | ◐ (3.7 partly) |
 
-✅ implemented in 1.7.0 · ◐ partly · ⬜ open
+✅ implemented (in 1.7.0 unless a version is given) · ◐ partly · ⬜ open
 
 Effort: S ≈ days, M ≈ 1–3 weeks, L ≈ more, for one developer familiar with the code.
 

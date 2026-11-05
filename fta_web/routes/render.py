@@ -62,7 +62,7 @@ try:  # normal package import: ``import fta_web.routes.render``
         render_native,
         sanitize_font_name,
     )
-    from ..diagram_dot import RANKDIRS, STYLES, build_dot_text2, document_dot
+    from ..diagram_dot import RANKDIRS, STYLES, build_dot_text2, document_dot_ccf
     from ..numfmt import clamp_sig_figs
     from ..state import get_state
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
@@ -84,7 +84,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         sanitize_font_name,
     )
     from diagram_dot import (  # type: ignore[no-redef]
-        RANKDIRS, STYLES, build_dot_text2, document_dot,
+        RANKDIRS, STYLES, build_dot_text2, document_dot_ccf,
     )
     from numfmt import clamp_sig_figs  # type: ignore[no-redef]
     from state import get_state  # type: ignore[no-redef]
@@ -193,8 +193,9 @@ def _diagram_options(source) -> Dict[str, Any]:
 
 def _dot_source(hide_zero: bool, font_name: str, scale: int, dark: bool,
                 style: str = "compact", rankdir: str = "LR", sig_figs: int = 3):
-    """The current document as ``(dot, id_map, root_headline)``, read once
-    under the state lock.
+    """The current document as ``(dot, id_map, root_headline, ccf_gates)``,
+    read once under the state lock. ``ccf_gates`` is None for a document
+    without CCF groups, else whether the diagram shows CCF gate values.
 
     The lock is held for the whole walk, not just for a ``get_data()`` call:
     ``gather_nodes`` traverses the live tree, so a concurrent mutation
@@ -205,7 +206,7 @@ def _dot_source(hide_zero: bool, font_name: str, scale: int, dark: bool,
     box then shows the headline and ``root_headline`` says so.
     """
     state = get_state()
-    return document_dot(
+    return document_dot_ccf(
         state.core, state.lock, hide_zero=hide_zero, font_name=font_name, scale=scale,
         dark=dark, style=style, rankdir=rankdir, sig_figs=sig_figs,
     )
@@ -235,8 +236,14 @@ def get_dot():
     scale = clamp_scale(request.args.get("scale"))
     dark = _as_bool(request.args.get("dark"), "dark")
     options = _diagram_options(request.args)
-    dot_text, id_map, root_headline = _dot_source(hide_zero, font_name, scale, dark, **options)
+    dot_text, id_map, root_headline, ccf_gates = _dot_source(
+        hide_zero, font_name, scale, dark, **options)
     renderer, _path = describe_renderer()
+    extra: Dict[str, Any] = {}
+    if ccf_gates is not None:
+        # Only for a document with CCF groups: True when gates above a member
+        # show the cut-set MCUB or "n/a (CCF)" instead of the tree walk (FN-66).
+        extra["ccfGates"] = ccf_gates
     return ok_response(
         dot=dot_text, renderer=renderer, hideZero=hide_zero, font=font_name, scale=scale, dark=dark,
         style=options["style"], rankdir=options["rankdir"], sigFigs=options["sig_figs"],
@@ -244,6 +251,7 @@ def get_dot():
         # {"method": "mcub", "value", "treeWalk"} when the root's box shows
         # the MCUB headline instead of its tree-walk value, else null.
         rootHeadline=root_headline,
+        **extra,
     )
 
 
@@ -266,7 +274,7 @@ def post_render():
     dark = _as_bool(payload.get("dark"), "dark")
     options = _diagram_options(payload)
 
-    dot_text, _id_map, _headline = _dot_source(hide_zero, font_name, scale, dark, **options)
+    dot_text, _id_map, _headline, _ccf = _dot_source(hide_zero, font_name, scale, dark, **options)
 
     try:
         image = render_native(dot_text, fmt, high_quality=high_quality)

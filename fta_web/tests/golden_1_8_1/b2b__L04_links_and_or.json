@@ -1,0 +1,332 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L04_links_and_or.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "d",
+         "name": "d",
+         "q": 0.4
+        }
+       ],
+       "order": 1,
+       "probability": 0.4,
+       "rank": 1,
+       "share": 0.5479452054794521
+      },
+      {
+       "events": [
+        {
+         "id": "c",
+         "name": "c",
+         "q": 0.3
+        }
+       ],
+       "order": 1,
+       "probability": 0.3,
+       "rank": 2,
+       "share": 0.410958904109589
+      },
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.1
+        },
+        {
+         "id": "e",
+         "name": "e",
+         "q": 0.5
+        },
+        {
+         "id": "f",
+         "name": "f",
+         "q": 0.6
+        }
+       ],
+       "order": 3,
+       "probability": 0.03,
+       "rank": 3,
+       "share": 0.0410958904109589
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.5926,
+     "nonCoherent": false,
+     "rareEvent": 0.73,
+     "repeatedEvents": [
+      {
+       "id": "a",
+       "name": "a"
+      },
+      {
+       "id": "c",
+       "name": "c"
+      },
+      {
+       "id": "e",
+       "name": "e"
+      },
+      {
+       "id": "f",
+       "name": "f"
+      }
+     ],
+     "total": 3,
+     "treeWalk": 0.607193068,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L04 links"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L04_links_and_or.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.679,
+       "cutSetCount": 1,
+       "fv": 0.4583192710091124,
+       "id": "d",
+       "name": "d",
+       "q": 0.4,
+       "raw": 1.6874789065136686,
+       "rrw": 1.8461059190031153,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.582,
+       "cutSetCount": 1,
+       "fv": 0.2946338170772865,
+       "id": "c",
+       "name": "c",
+       "q": 0.3,
+       "raw": 1.6874789065136686,
+       "rrw": 1.4177033492822966,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.12599999999999997,
+       "cutSetCount": 1,
+       "fv": 0.021262234222072216,
+       "id": "a",
+       "name": "a",
+       "q": 0.1,
+       "raw": 1.19136010799865,
+       "rrw": 1.0217241379310344,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.025199999999999993,
+       "cutSetCount": 1,
+       "fv": 0.021262234222072216,
+       "id": "e",
+       "name": "e",
+       "q": 0.5,
+       "raw": 1.021262234222072,
+       "rrw": 1.0217241379310344,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.021,
+       "cutSetCount": 1,
+       "fv": 0.021262234222072216,
+       "id": "f",
+       "name": "f",
+       "q": 0.6,
+       "raw": 1.0141748228147147,
+       "rrw": 1.0217241379310344,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L04 links"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L04_links_and_or.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.5926,
+       0.5926
+      ],
+      "logBins": false
+     },
+     "mean": 0.5926,
+     "median": 0.5926,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.5926,
+     "p95": 0.5926,
+     "pointEstimate": 0.5926,
+     "repeatedEvents": [
+      {
+       "id": "a",
+       "name": "a"
+      },
+      {
+       "id": "c",
+       "name": "c"
+      },
+      {
+       "id": "e",
+       "name": "e"
+      },
+      {
+       "id": "f",
+       "name": "f"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L04 links"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L04_links_and_or.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.3,
+       "id": "c",
+       "model": "fixed",
+       "name": "c",
+       "q": 0.3
+      },
+      {
+       "calculated": 0.4,
+       "id": "d",
+       "model": "fixed",
+       "name": "d",
+       "q": 0.4
+      },
+      {
+       "calculated": 0.5,
+       "id": "e",
+       "model": "fixed",
+       "name": "e",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.6,
+       "id": "f",
+       "model": "fixed",
+       "name": "f",
+       "q": 0.6
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.5926,
+      "headlineMethod": "mcub",
+      "mcub": 0.5926,
+      "nonCoherent": false,
+      "rareEvent": 0.73,
+      "repeatedEvents": [
+       {
+        "id": "a",
+        "name": "a"
+       },
+       {
+        "id": "c",
+        "name": "c"
+       },
+       {
+        "id": "e",
+        "name": "e"
+       },
+       {
+        "id": "f",
+        "name": "f"
+       }
+      ],
+      "treeWalk": 0.607193068,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L04 links"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L04_links_and_or.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "L04 links"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L04_links_and_or.json"
+}

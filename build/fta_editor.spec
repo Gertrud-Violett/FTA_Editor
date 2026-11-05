@@ -130,6 +130,9 @@ hiddenimports = [
     "routes.validate",
     "routes.report",
     "routes.fmea",
+    "routes.ccf",
+    "routes.grid",
+    "routes.whatif",
     # -- fta_web's own modules. Most are reachable statically through run.py,
     #    but every cross-module import in this package is written as
     #    ``try: from ..x import y / except ImportError: from x import y``, and
@@ -168,6 +171,20 @@ hiddenimports = [
     # dialog (PowerShell on Windows: tkinter stays excluded below).
     "recovery",
     "folder_picker",
+    # 1.9 common-cause failure groups: routes.ccf is loaded by name like the other
+    # blueprints; the others are imported under try/except pairs, and strict_input
+    # (the strict JSON reader) is reached only through them.
+    "ccf",
+    "ccf_schema",
+    "ccf_text",
+    "strict_input",
+    # 1.9 grid of basic events: routes.grid is loaded by name; grid_schema is
+    # imported under a try/except pair.
+    "grid_schema",
+    # F4 what-if: routes.whatif is loaded by name; whatif and whatif_schema are
+    # imported under try/except pairs.
+    "whatif",
+    "whatif_schema",
 ]
 
 # ---------------------------------------------------------------------------

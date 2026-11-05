@@ -22,6 +22,14 @@ Commands
 
 Exit codes: 0 ok, 1 validation errors / analysis failure, 2 usage error,
 3 unreadable input file. With several inputs the highest code wins.
+
+CCF groups (FN-26): for a file with groups, ``quantify``, ``cutsets``,
+``importance`` and ``mc`` add a ``ccf`` block (``applied``, ``notApplied``, the
+FN-67 note) to ``--json`` and print one line per group not applied plus the
+note. In fault-tree mode they exit 1 when a group is not applied or the
+headline is ``incomplete``; in ETA mode ``quantify`` lists every group as
+``CCF_ETA_MODE`` and exits 0, the other three keep their ETA refusal. A file
+without groups gets no ``ccf`` key (FN-28).
 """
 from __future__ import annotations
 
@@ -39,11 +47,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:  # normal package import: ``import fta_web.cli``
-    from . import report_docx
+    from . import ccf, report_docx
     from .engine import AnalysisError, WebCore
     from .excel_events import event_row, iter_nodes, node_kind
     from .numfmt import clamp_sig_figs, format_prob
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path (run.py, frozen)
+    import ccf  # type: ignore[no-redef]
     import report_docx  # type: ignore[no-redef]
     from engine import AnalysisError, WebCore  # type: ignore[no-redef]
     from excel_events import event_row, iter_nodes, node_kind  # type: ignore[no-redef]
@@ -196,6 +205,54 @@ def _require_fta(core, command: str) -> None:
         raise AnalysisFailure("'%s' applies to fault trees only; this file is in ETA mode." % command)
 
 
+def _ccf_fails(block: Optional[Dict[str, Any]], incomplete: bool) -> bool:
+    """FN-26: exit 1 when a group is not applied or the headline is incomplete.
+
+    Called only in FTA mode for the four commands; ETA mode never fails because of
+    groups. ``block`` is the ``ccf`` block (None: the document has no group)."""
+    if block is None:
+        return False
+    return bool(block.get("notApplied")) or incomplete
+
+
+#: Said next to "incomplete" for cutsets, importance and mc: the headline is judged by
+#: engine.summary under its own, smaller limits (2 s, 2000 cut sets), so the command's
+#: own run may well be complete (R4, engineering concern C2). English only, like the CLI.
+SUMMARY_LIMIT_NOTE = ("The headline comes from a quick summary with its own limits "
+                      "(2 s, 2000 cut sets), not from this command's run, which may be complete.")
+
+
+class _Result(dict):
+    """A command's ``results`` that also remembers, outside the data, that the CCF
+    headline is incomplete (for the text output; ``--json`` is the plain dict)."""
+
+    ccf_incomplete = False
+
+
+def _ccf_status(core, results: Dict[str, Any], block: Optional[Dict[str, Any]]
+                ) -> Tuple[Dict[str, Any], int]:
+    """``(results, exit code)`` of ``cutsets``, ``importance`` and ``mc`` for a document
+    with groups.
+
+    The headline is read from ``engine.summary``, computed only when at least one
+    group is applied (a group that is not applied changes no number, so the summary
+    cannot be ``incomplete``). ``--json`` stays the API's numbers plus the ``ccf``
+    block; the incomplete headline is told on stderr and in the text output."""
+    if block is None:
+        return results, EXIT_OK
+    incomplete = False
+    if block.get("applied"):
+        summary = _call("engine", "summary", copy.deepcopy(core.get_data()),
+                        copy.deepcopy(core.analysis))
+        incomplete = summary.get("headlineMethod") == "incomplete"
+    if incomplete:
+        results = _Result(results)
+        results.ccf_incomplete = True
+        print("warning: the cut sets are incomplete, so CCF is not included in the headline. "
+              + SUMMARY_LIMIT_NOTE, file=sys.stderr)
+    return results, (EXIT_FAIL if _ccf_fails(block, incomplete) else EXIT_OK)
+
+
 def _call(module: str, fn: str, *a: Any, **kw: Any) -> Any:
     result, reason = report_docx.try_call(module, fn, *a, **kw)
     if result is None:
@@ -219,13 +276,23 @@ def cmd_quantify(core, args) -> Tuple[Dict[str, Any], List[Dict[str, Any]], int]
         row = event_row(node, parent, depth)
         events.append({"id": row["Id"], "name": row["Name"], "model": row["Model"],
                        "q": row["Base probability"], "calculated": row["Calculated probability"]})
+    results: Dict[str, Any] = {}
+    status = EXIT_OK
     if (core.mode or "FTA") == "ETA":
         summary = {"treeWalk": tree.get("calculatedProbability") if isinstance(tree, dict) else None}
         summary["headline"] = summary["treeWalk"]
         summary["headlineMethod"] = "treeWalk"
+        # FN-26: in ETA mode every group is "not applied: ETA mode" and the exit code stays 0.
+        block = ccf.eta_block(tree, core.analysis)
+        if block is not None:
+            results["ccf"] = block
     else:
         summary = _call("engine", "summary", tree, copy.deepcopy(core.analysis))
-    return {"summary": summary, "events": events}, events, EXIT_OK
+        if "ccf" in summary:  # only a document with groups has the key (FN-28)
+            results["ccf"] = copy.deepcopy(summary["ccf"])
+            if _ccf_fails(results["ccf"], summary.get("headlineMethod") == "incomplete"):
+                status = EXIT_FAIL
+    return dict({"summary": summary, "events": events}, **results), events, status
 
 
 def cmd_cutsets(core, args):
@@ -246,7 +313,8 @@ def cmd_cutsets(core, args):
             "events": ";".join(str(e.get("id")) for e in c.get("events") or []),
             "names": ";".join(str(e.get("name", "")) for e in c.get("events") or []),
         })
-    return result, rows, EXIT_OK
+    result, status = _ccf_status(core, result, result.get("ccf"))
+    return result, rows, status
 
 
 def cmd_importance(core, args):
@@ -259,7 +327,11 @@ def cmd_importance(core, args):
         measures = measures[: max(1, args.top)]
     rows = [{k: m.get(k) for k in ("id", "name", "q", "fv", "birnbaum", "raw", "rrw", "cutSetCount")}
             for m in measures]
-    return {"measures": measures}, rows, EXIT_OK
+    results: Dict[str, Any] = {"measures": measures}
+    if "ccf" in cut:  # the same block as the API's (FN-26)
+        results["ccf"] = copy.deepcopy(cut["ccf"])
+    results, status = _ccf_status(core, results, cut.get("ccf"))
+    return results, rows, status
 
 
 def cmd_mc(core, args):
@@ -270,7 +342,8 @@ def cmd_mc(core, args):
                    time_limit=args.time_limit)
     row = {k: result.get(k) for k in ("pointEstimate", "mean", "median", "p05", "p95", "std",
                                        "requested", "completed", "seed", "method")}
-    return result, [row], EXIT_OK
+    result, status = _ccf_status(core, result, result.get("ccf"))
+    return result, [row], status
 
 
 def cmd_validate(core, args):
@@ -415,6 +488,35 @@ def _looks_numeric(text: str) -> bool:
         return text == "—"
 
 
+def _ccf_lines(res: Dict[str, Any], command: str) -> List[str]:
+    """The text lines of a result with a ``ccf`` block (FN-26, FN-67): the state of
+    the headline (``quantify``), one line per group that is not applied, and the
+    note. Nothing for a document without groups."""
+    block = res.get("ccf")
+    if not isinstance(block, dict):
+        return []
+    lines: List[str] = []
+    summary = res.get("summary") if command == "quantify" else None
+    if isinstance(summary, dict):
+        if summary.get("headlineMethod") == "incomplete":
+            lines.append("CCF: incomplete, CCF not included")
+        elif block.get("applied"):
+            n = len(block["applied"])
+            lines.append("CCF: includes CCF (%d group%s)" % (n, "" if n == 1 else "s"))
+    elif getattr(res, "ccf_incomplete", False):  # cutsets, importance, mc (same wording)
+        lines.append("CCF: incomplete, CCF not included")
+        lines.append(SUMMARY_LIMIT_NOTE)
+    sampling = res.get("ccfSampling") if command == "mc" else None
+    if isinstance(sampling, dict) and sampling.get("note"):  # FN-24
+        lines.append(str(sampling["note"]))
+    for group in block.get("notApplied") or []:
+        lines.append("CCF group not applied: %s (%s): %s" % (
+            _printable(group.get("name")), _printable(group.get("id")),
+            _printable(group.get("reason"))))
+    lines.append("Note: %s" % block.get("note"))
+    return lines
+
+
 def human_block(entry: Dict[str, Any], command: str, rows: List[Dict[str, Any]], sf: int) -> str:
     lines = ["== %s  [%s] %s" % (_printable(entry["file"]), _printable(entry.get("mode") or ""),
                                  _printable(entry.get("title") or ""))]
@@ -442,6 +544,7 @@ def human_block(entry: Dict[str, Any], command: str, rows: List[Dict[str, Any]],
     elif command == "report":
         lines.append("wrote %s (%d bytes)" % (res.get("out"), res.get("bytes", 0)))
         return "\n".join(lines)
+    lines.extend(_ccf_lines(res, command))
     lines.append(human_table(rows, sf))
     return "\n".join(lines)
 

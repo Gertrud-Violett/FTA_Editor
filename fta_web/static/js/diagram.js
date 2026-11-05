@@ -512,6 +512,7 @@ export function initDiagram(container) {
   // tree-walk value (/api/dot `rootHeadline`): what the two numbers are.
   const caption = el('div', { class: 'diagram__caption', hidden: true });
   let captionOn = false;
+  let captionCcf = false; // CCF gate values on show (F2): the caption says what they are
   const stage = el('div', { class: 'diagram__stage', tabindex: '0' });
   const canvas = el('div', { class: 'diagram__canvas' });
   stage.appendChild(canvas);
@@ -805,8 +806,10 @@ export function initDiagram(container) {
   container.appendChild(status);
 
   function renderCaption() {
-    caption.hidden = !captionOn;
-    caption.textContent = captionOn
+    caption.hidden = !(captionOn || captionCcf);
+    caption.textContent = captionCcf
+      ? t('diagram.ccfGates', 'Boxes above or linking to a CCF member show the min-cut upper bound (MCUB) of the expanded tree, or n/a (CCF) when the cut sets are incomplete. Other boxes show tree-walk values. indep. = independent part.')
+      : captionOn
       ? t('diagram17.rootMcub', 'Top box: top-event probability by MCUB (repeated events counted once), with its tree-walk value. Other boxes: tree-walk values.')
       : '';
   }
@@ -1286,6 +1289,7 @@ export function initDiagram(container) {
       dotIdMap = idMap;
       fallbackIdMap = null;
       captionOn = Boolean(payload.rootHeadline && payload.rootHeadline.method === 'mcub');
+      captionCcf = payload.ccfGates === true;
       renderCaption();
       svgEl = fresh;
       renderedDark = Boolean(box.dark);
@@ -1324,6 +1328,7 @@ export function initDiagram(container) {
       exportSvgText = '';
       clear(canvas);
       captionOn = false;
+      captionCcf = false;
       renderCaption();
       const msg = err instanceof ApiError ? err.message : String((err && err.message) || err);
       setStatusMessage(t('diagram.error', 'Could not render the diagram: ') + msg, 'error');

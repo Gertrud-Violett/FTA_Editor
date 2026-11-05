@@ -1285,6 +1285,14 @@ html[data-booting] .tabstrip { pointer-events: none; }
   cursor: help;
 }
 .headline__marker[hidden] { display: none; }
+/* CCF groups (F2): what the headline includes, the tree-walk value beside an
+   incomplete one, and the count of groups that are not applied. */
+.headline__ccf, .headline__walk, .headline__note { font-size: var(--fs-xs); }
+.headline__ccf { color: var(--accent-hover); }
+.headline__walk, .headline__note { color: var(--text-dim); }
+.headline__walk-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.headline__sep { color: var(--text-dim); }
+.headline__ccf[hidden], .headline__walk[hidden], .headline__note[hidden], .headline__sep[hidden] { display: none; }
 
 /* ---- bottom panel: tab strip + panels ------------------------------------- */
 .panel__head--tabs {
@@ -1369,6 +1377,15 @@ html[data-booting] .tabstrip { pointer-events: none; }
 @media (max-width: 900px) {
   .topbar { padding-left: var(--s-4); padding-right: var(--s-4); }
   .headline { order: 10; }
+  /* The CCF phrases make the headline long: let it wrap instead of clipping. */
+  .headline {
+    height: auto;
+    min-height: var(--ctl-h);
+    white-space: normal;
+    flex-wrap: wrap;
+    border-radius: var(--r-md, 8px);
+    padding: 2px 10px;
+  }
 }
 
 /* ---- 1.7 integration: Validation tab badge, toast action ------------------ */

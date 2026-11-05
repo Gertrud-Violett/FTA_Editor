@@ -45,7 +45,7 @@ from typing import Any, Dict
 from flask import Blueprint, request
 
 try:  # normal package import: ``import fta_web.routes.fmea``
-    from .. import engine, fmea_import, fsbrowser
+    from .. import ccf, engine, fmea_import, fsbrowser
     from ..config import MAX_UPLOAD_BYTES
     from ..errors import (
         EXPORT_UNAVAILABLE,
@@ -59,7 +59,9 @@ try:  # normal package import: ``import fta_web.routes.fmea``
         ok_response,
     )
     from ..state import get_state
+    from ..tree_ops import all_ids
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]
     import engine  # type: ignore[no-redef]
     import fmea_import  # type: ignore[no-redef]
     import fsbrowser  # type: ignore[no-redef]
@@ -76,6 +78,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         ok_response,
     )
     from state import get_state  # type: ignore[no-redef]
+    from tree_ops import all_ids  # type: ignore[no-redef]
 
 fmea_bp = Blueprint("fmea", __name__, url_prefix="/api/fmea")
 
@@ -214,7 +217,7 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
-        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "analysis": ccf.public_analysis(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
         **state.revision_fields(),
     }
@@ -343,8 +346,12 @@ def post_import():
         changed = analysis_changed or tree != core.get_data()
         if changed:
             state.push_undo()
+            old_ids = all_ids(core)
             core.set_data(tree)
             core.analysis = analysis
+            # FN-38 (a): an import normally removes no node; if one did, its
+            # membership goes in the same undo step.
+            ccf.remove_members(core, old_ids - all_ids(core))
             core.recalculate_probabilities()
             state.mark_dirty()
         return ok_response(

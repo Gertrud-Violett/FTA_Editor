@@ -1,0 +1,353 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F12_uncertainty.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.001
+        }
+       ],
+       "order": 1,
+       "probability": 0.001,
+       "rank": 1,
+       "share": 0.5847953387366477
+      },
+      {
+       "events": [
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.0005
+        }
+       ],
+       "order": 1,
+       "probability": 0.0005,
+       "rank": 2,
+       "share": 0.29239766936832384
+      },
+      {
+       "events": [
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.01
+        },
+        {
+         "id": "D",
+         "name": "D",
+         "q": 0.02
+        }
+       ],
+       "order": 2,
+       "probability": 0.0002,
+       "rank": 3,
+       "share": 0.11695906774732953
+      },
+      {
+       "events": [
+        {
+         "id": "R",
+         "name": "R",
+         "q": 9.99995000017e-06
+        }
+       ],
+       "order": 1,
+       "probability": 9.99995000017e-06,
+       "rank": 4,
+       "share": 0.005847924147698955
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.0017091830580841297,
+     "nonCoherent": false,
+     "rareEvent": 0.0017099999500001701,
+     "repeatedEvents": [],
+     "total": 4,
+     "treeWalk": 0.00170918305808,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F12 uncertainty"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F12_uncertainty.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9992901070489648,
+       "cutSetCount": 1,
+       "fv": 0.5846594970167189,
+       "id": "A",
+       "name": "A",
+       "q": 0.001,
+       "raw": 585.0748375197022,
+       "rrw": 2.407663092853368,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9987902120479398,
+       "cutSetCount": 1,
+       "fv": 0.29218351051510866,
+       "id": "B",
+       "name": "B",
+       "q": 0.0005,
+       "raw": 585.0748375197022,
+       "rrw": 1.4127955689867346,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.019969810300898498,
+       "cutSetCount": 1,
+       "fv": 0.11683833517097461,
+       "id": "C",
+       "name": "C",
+       "q": 0.01,
+       "raw": 12.566995181926487,
+       "rrw": 1.1322955239385237,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.009984905150449249,
+       "cutSetCount": 1,
+       "fv": 0.11683833517097461,
+       "id": "D",
+       "name": "D",
+       "q": 0.02,
+       "raw": 6.725078423377758,
+       "rrw": 1.1322955239385237,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9983007999,
+       "cutSetCount": 1,
+       "fv": 0.005840777579038191,
+       "id": "R",
+       "name": "R",
+       "q": 9.99995000017e-06,
+       "raw": 585.0748375197022,
+       "rrw": 1.005875092688689,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F12 uncertainty"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F12_uncertainty.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       11,
+       55,
+       133,
+       223,
+       233,
+       237,
+       252,
+       158,
+       150,
+       131,
+       93,
+       78,
+       58,
+       39,
+       37,
+       20,
+       23,
+       16,
+       12,
+       8,
+       4,
+       6,
+       5,
+       2,
+       2,
+       3,
+       3,
+       1,
+       3,
+       1,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1
+      ],
+      "edges": [
+       0.0006402541228976,
+       0.0010439980753183455,
+       0.001447742027739091,
+       0.0018514859801598365,
+       0.0022552299325805823,
+       0.0026589738850013277,
+       0.003062717837422073,
+       0.003466461789842819,
+       0.0038702057422635642,
+       0.00427394969468431,
+       0.004677693647105055,
+       0.005081437599525801,
+       0.005485181551946546,
+       0.005888925504367292,
+       0.006292669456788038,
+       0.006696413409208783,
+       0.007100157361629529,
+       0.007503901314050274,
+       0.00790764526647102,
+       0.008311389218891766,
+       0.008715133171312511,
+       0.009118877123733255,
+       0.009522621076154002,
+       0.009926365028574748,
+       0.010330108980995492,
+       0.010733852933416239,
+       0.011137596885836983,
+       0.01154134083825773,
+       0.011945084790678476,
+       0.01234882874309922,
+       0.012752572695519966,
+       0.013156316647940711,
+       0.013560060600361457,
+       0.013963804552782203,
+       0.014367548505202948,
+       0.014771292457623694,
+       0.015175036410044439,
+       0.015578780362465185,
+       0.01598252431488593,
+       0.01638626826730668,
+       0.016790012219727424
+      ],
+      "logBins": false
+     },
+     "mean": 0.0036155658795424743,
+     "median": 0.0032340740586106476,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.0015786102635051923,
+     "p95": 0.006868600028886884,
+     "pointEstimate": 0.0017091830580842071,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0017623589775347221,
+     "truncatedByTime": false,
+     "uncertainEvents": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "R"
+     ],
+     "warnings": []
+    },
+    "title": "F12 uncertainty"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F12_uncertainty.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.001,
+       "id": "A",
+       "model": "fixed",
+       "name": "A",
+       "q": 0.001
+      },
+      {
+       "calculated": 0.0005,
+       "id": "B",
+       "model": "fixed",
+       "name": "B",
+       "q": 0.0005
+      },
+      {
+       "calculated": 0.01,
+       "id": "C",
+       "model": "fixed",
+       "name": "C",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.02,
+       "id": "D",
+       "model": "fixed",
+       "name": "D",
+       "q": 0.02
+      },
+      {
+       "calculated": 9.99995000017e-06,
+       "id": "R",
+       "model": "rate",
+       "name": "R",
+       "q": 9.99995000017e-06
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.00170918305808,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.0017091830580841297,
+      "nonCoherent": false,
+      "rareEvent": 0.0017099999500001701,
+      "repeatedEvents": [],
+      "treeWalk": 0.00170918305808,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F12 uncertainty"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F12_uncertainty.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "F12 uncertainty"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F12_uncertainty.json"
+}

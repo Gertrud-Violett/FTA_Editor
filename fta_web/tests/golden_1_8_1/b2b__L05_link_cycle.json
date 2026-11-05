@@ -1,0 +1,304 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L05_link_cycle.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "S",
+         "name": "S",
+         "q": 0.05
+        }
+       ],
+       "order": 1,
+       "probability": 0.05,
+       "rank": 1,
+       "share": 0.625
+      },
+      {
+       "events": [
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.02
+        }
+       ],
+       "order": 1,
+       "probability": 0.02,
+       "rank": 2,
+       "share": 0.25
+      },
+      {
+       "events": [
+        {
+         "id": "x",
+         "name": "x",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 3,
+       "share": 0.125
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.07831,
+     "nonCoherent": false,
+     "rareEvent": 0.08,
+     "repeatedEvents": [
+      {
+       "id": "x",
+       "name": "x"
+      },
+      {
+       "id": "B",
+       "name": "B"
+      },
+      {
+       "id": "S",
+       "name": "S"
+      }
+     ],
+     "total": 3,
+     "treeWalk": 0.158982668461,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L05 link cycle"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L05_link_cycle.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9702,
+       "cutSetCount": 1,
+       "fv": 0.6194611160771294,
+       "id": "S",
+       "name": "S",
+       "q": 0.05,
+       "raw": 12.769761205465457,
+       "rrw": 2.6278523489932883,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9405,
+       "cutSetCount": 1,
+       "fv": 0.24019920827480526,
+       "id": "B",
+       "name": "B",
+       "q": 0.02,
+       "raw": 12.769761205465457,
+       "rrw": 1.3161344537815125,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.931,
+       "cutSetCount": 1,
+       "fv": 0.11888647682288342,
+       "id": "x",
+       "name": "x",
+       "q": 0.01,
+       "raw": 12.769761205465457,
+       "rrw": 1.134927536231884,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L05 link cycle"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L05_link_cycle.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "x",
+      "B",
+      "S"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.07831,
+       0.07831
+      ],
+      "logBins": false
+     },
+     "mean": 0.07831,
+     "median": 0.07831,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.07831,
+     "p95": 0.07831,
+     "pointEstimate": 0.07831,
+     "repeatedEvents": [
+      {
+       "id": "x",
+       "name": "x"
+      },
+      {
+       "id": "B",
+       "name": "B"
+      },
+      {
+       "id": "S",
+       "name": "S"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L05 link cycle"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L05_link_cycle.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.01,
+       "id": "x",
+       "model": "fixed",
+       "name": "x",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.0298,
+       "id": "B",
+       "model": "fixed",
+       "name": "B",
+       "q": 0.02
+      },
+      {
+       "calculated": 0.0975,
+       "id": "S",
+       "model": "fixed",
+       "name": "S",
+       "q": 0.05
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.07831,
+      "headlineMethod": "mcub",
+      "mcub": 0.07831,
+      "nonCoherent": false,
+      "rareEvent": 0.08,
+      "repeatedEvents": [
+       {
+        "id": "x",
+        "name": "x"
+       },
+       {
+        "id": "B",
+        "name": "B"
+       },
+       {
+        "id": "S",
+        "name": "S"
+       }
+      ],
+      "treeWalk": 0.158982668461,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L05 link cycle"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L05_link_cycle.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 3
+     },
+     "issues": [
+      {
+       "code": "CYCLIC_LINK",
+       "hintKey": "val.fix.CYCLIC_LINK",
+       "message": "Link to 'B' creates a loop; the calculation skips it, so the result is approximate.",
+       "nodeId": "G",
+       "nodeName": "G",
+       "params": {
+        "relation": "OR",
+        "targetId": "B",
+        "targetName": "B"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "CYCLIC_LINK",
+       "hintKey": "val.fix.CYCLIC_LINK",
+       "message": "Link to 'G' creates a loop; the calculation skips it, so the result is approximate.",
+       "nodeId": "B",
+       "nodeName": "B",
+       "params": {
+        "relation": "OR",
+        "targetId": "G",
+        "targetName": "G"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "CYCLIC_LINK",
+       "hintKey": "val.fix.CYCLIC_LINK",
+       "message": "Link to 'S' creates a loop; the calculation skips it, so the result is approximate.",
+       "nodeId": "S",
+       "nodeName": "S",
+       "params": {
+        "relation": "OR",
+        "targetId": "S",
+        "targetName": "S"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L05 link cycle"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L05_link_cycle.json"
+}

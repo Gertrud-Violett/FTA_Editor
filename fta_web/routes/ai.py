@@ -82,7 +82,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import Blueprint, request
 
 try:  # normal package import: ``import fta_web.routes.ai``
-    from .. import ai_bridge
+    from .. import ai_bridge, ccf
     from ..errors import (
         AI_NOT_CONFIGURED,
         INVALID_FIELD,
@@ -97,6 +97,7 @@ try:  # normal package import: ``import fta_web.routes.ai``
     from ..tree_ops import all_ids, strip_references_to
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import ai_bridge  # type: ignore[no-redef]
+    import ccf  # type: ignore[no-redef]
     from errors import (  # type: ignore[no-redef]
         AI_NOT_CONFIGURED,
         INVALID_FIELD,
@@ -321,6 +322,7 @@ def _strip_references_to_removed(state, old_tree: Any) -> None:
     gone = all_ids(_TreeHolder(old_tree)) - all_ids(state.core)
     if not gone:
         return
+    ccf.remove_members(state.core, gone)  # FN-38 (a): same undo step
     removed = strip_references_to(state.core, gone)
     if removed:
         issues = []
@@ -344,7 +346,7 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
-        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "analysis": ccf.public_analysis(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
         **state.revision_fields(),
     }

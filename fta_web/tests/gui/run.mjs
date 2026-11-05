@@ -42,7 +42,7 @@ const REPO = path.resolve(HERE, '..', '..', '..');
 // Run order. core builds a tree through the GUI and saves it as
 // b2b_core_<label>.json in the sandbox root; the sections in NEEDS_CORE open it.
 const SECTIONS = ['core', 'fit', 'treeclick', 'fixes', 'ux1', 'ux2', 'ux3', 'ki', 'tabs', 'files', 'diagram', 'more',
-  'stale', 'race', 'view', 'big', 'i18n', 'misc'];
+  'stale', 'race', 'view', 'big', 'i18n', 'misc', 'grid', 'gridr1', 'gridr2', 'ccf', 'bigccf', 'ccflayout', 'ccf_alpha', 'ccf_alpha_kbd', 'ccf_alpha_details', 'whatif', 'whatifr1', 'whatifr2', 'finalfix', 'tabstrip'];
 const NEEDS_CORE = new Set(['tabs', 'files', 'diagram', 'more', 'stale', 'race', 'view', 'i18n', 'misc']);
 
 const env = process.env;

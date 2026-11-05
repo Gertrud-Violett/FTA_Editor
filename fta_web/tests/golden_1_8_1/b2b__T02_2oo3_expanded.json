@@ -1,0 +1,279 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T02_2oo3_expanded.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 1,
+       "share": 0.3333333333333333
+      },
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 2,
+       "share": 0.3333333333333333
+      },
+      {
+       "events": [
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.1
+        },
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 3,
+       "share": 0.3333333333333333
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.029701000000000005,
+     "nonCoherent": false,
+     "rareEvent": 0.030000000000000006,
+     "repeatedEvents": [
+      {
+       "id": "A",
+       "name": "A"
+      },
+      {
+       "id": "B",
+       "name": "B"
+      },
+      {
+       "id": "C",
+       "name": "C"
+      }
+     ],
+     "total": 3,
+     "treeWalk": 0.029701,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "T02 2oo3 expanded (repeated events)"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T02_2oo3_expanded.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.1881,
+       "cutSetCount": 2,
+       "fv": 0.663310999629642,
+       "id": "A",
+       "name": "A",
+       "q": 0.1,
+       "raw": 6.669809097336789,
+       "rrw": 2.9701000000000004,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.1881,
+       "cutSetCount": 2,
+       "fv": 0.663310999629642,
+       "id": "B",
+       "name": "B",
+       "q": 0.1,
+       "raw": 6.669809097336789,
+       "rrw": 2.9701000000000004,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.1881,
+       "cutSetCount": 2,
+       "fv": 0.663310999629642,
+       "id": "C",
+       "name": "C",
+       "q": 0.1,
+       "raw": 6.669809097336789,
+       "rrw": 2.9701000000000004,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "T02 2oo3 expanded (repeated events)"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T02_2oo3_expanded.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "A",
+      "B",
+      "C"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.029701000000000005,
+       0.029701000000000005
+      ],
+      "logBins": false
+     },
+     "mean": 0.029701000000000005,
+     "median": 0.029701000000000005,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.029701000000000005,
+     "p95": 0.029701000000000005,
+     "pointEstimate": 0.029701000000000005,
+     "repeatedEvents": [
+      {
+       "id": "A",
+       "name": "A"
+      },
+      {
+       "id": "B",
+       "name": "B"
+      },
+      {
+       "id": "C",
+       "name": "C"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "T02 2oo3 expanded (repeated events)"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T02_2oo3_expanded.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "A",
+       "model": "fixed",
+       "name": "A",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "B",
+       "model": "fixed",
+       "name": "B",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "C",
+       "model": "fixed",
+       "name": "C",
+       "q": 0.1
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.029701000000000005,
+      "headlineMethod": "mcub",
+      "mcub": 0.029701000000000005,
+      "nonCoherent": false,
+      "rareEvent": 0.030000000000000006,
+      "repeatedEvents": [
+       {
+        "id": "A",
+        "name": "A"
+       },
+       {
+        "id": "B",
+        "name": "B"
+       },
+       {
+        "id": "C",
+        "name": "C"
+       }
+      ],
+      "treeWalk": 0.029701,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "T02 2oo3 expanded (repeated events)"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T02_2oo3_expanded.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "T02 2oo3 expanded (repeated events)"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/T02_2oo3_expanded.json"
+}

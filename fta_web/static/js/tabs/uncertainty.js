@@ -90,6 +90,9 @@ export function mount(panel, ctx) {
   const stats = el('div', { class: 'anl-statgrid' });
   const meta = el('p', { class: 'anl-note' });
   const warnings = el('ul', { class: 'anl-warnings' });
+  // CCF groups (F2): beta is not sampled. The server's note is English only,
+  // so the catalog text is shown (ccf.assume.sampling).
+  const ccfNote = el('p', { class: 'anl-note', hidden: true, dataset: { role: 'ccf-sampling' } });
   const chartBox = el('div');
   panel.appendChild(root);
 
@@ -360,7 +363,9 @@ export function mount(panel, ctx) {
       root.appendChild(etaNotice(ctx));
       return;
     }
-    root.append(toolbar, message, stats, meta, warnings, noSpread, chartBox);
+    root.append(toolbar, message, stats, meta, warnings, ccfNote, noSpread, chartBox);
+    ccfNote.hidden = !(result && result.ccfSampling);
+    ccfNote.textContent = result && result.ccfSampling ? t('ccf.assume.sampling') : '';
     paintToolbar();
     message.hidden = Boolean(result);
     message.textContent = t('unc.notRun');

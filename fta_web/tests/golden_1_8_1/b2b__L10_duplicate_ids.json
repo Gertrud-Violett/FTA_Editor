@@ -1,0 +1,280 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L10_duplicate_ids.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "e1_dup2",
+         "name": "e1",
+         "q": 0.9
+        }
+       ],
+       "order": 1,
+       "probability": 0.9,
+       "rank": 1,
+       "share": 0.72
+      },
+      {
+       "events": [
+        {
+         "id": "e2",
+         "name": "e2",
+         "q": 0.5
+        },
+        {
+         "id": "e2_dup2",
+         "name": "e2",
+         "q": 0.5
+        }
+       ],
+       "order": 2,
+       "probability": 0.25,
+       "rank": 2,
+       "share": 0.2
+      },
+      {
+       "events": [
+        {
+         "id": "e1",
+         "name": "e1",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 3,
+       "share": 0.08
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.9325,
+     "nonCoherent": false,
+     "rareEvent": 1.25,
+     "repeatedEvents": [],
+     "total": 3,
+     "treeWalk": 0.9325,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L10 duplicate ids"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L10_duplicate_ids.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.675,
+       "cutSetCount": 1,
+       "fv": 0.6514745308310993,
+       "id": "e1_dup2",
+       "name": "e1",
+       "q": 0.9,
+       "raw": 1.0723860589812333,
+       "rrw": 2.8692307692307693,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.04499999999999999,
+       "cutSetCount": 1,
+       "fv": 0.024128686327077743,
+       "id": "e2",
+       "name": "e2",
+       "q": 0.5,
+       "raw": 1.0241286863270778,
+       "rrw": 1.0247252747252746,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.04499999999999999,
+       "cutSetCount": 1,
+       "fv": 0.024128686327077743,
+       "id": "e2_dup2",
+       "name": "e2",
+       "q": 0.5,
+       "raw": 1.0241286863270778,
+       "rrw": 1.0247252747252746,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.075,
+       "cutSetCount": 1,
+       "fv": 0.00804289544235925,
+       "id": "e1",
+       "name": "e1",
+       "q": 0.1,
+       "raw": 1.0723860589812333,
+       "rrw": 1.008108108108108,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L10 duplicate ids"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L10_duplicate_ids.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "e1",
+      "e1_dup2",
+      "e2",
+      "e2_dup2"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.9325,
+       0.9325
+      ],
+      "logBins": false
+     },
+     "mean": 0.9325,
+     "median": 0.9325,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.9325,
+     "p95": 0.9325,
+     "pointEstimate": 0.9325,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L10 duplicate ids"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L10_duplicate_ids.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "e1",
+       "model": "fixed",
+       "name": "e1",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.9,
+       "id": "e1_dup2",
+       "model": "fixed",
+       "name": "e1",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.5,
+       "id": "e2",
+       "model": "fixed",
+       "name": "e2",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.5,
+       "id": "e2_dup2",
+       "model": "fixed",
+       "name": "e2",
+       "q": 0.5
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.9325,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.9325,
+      "nonCoherent": false,
+      "rareEvent": 1.25,
+      "repeatedEvents": [],
+      "treeWalk": 0.9325,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L10 duplicate ids"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L10_duplicate_ids.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 2
+     },
+     "issues": [
+      {
+       "code": "LOAD_REPAIR",
+       "hintKey": "val.fix.LOAD_REPAIR",
+       "message": "Duplicate node id 'e1' ('e1') was renamed to 'e1_dup2'.",
+       "nodeId": "e1_dup2",
+       "nodeName": "e1",
+       "params": {
+        "kind": "duplicate_id",
+        "message": "Duplicate node id 'e1' ('e1') was renamed to 'e1_dup2'.",
+        "name": "e1",
+        "new_id": "e1_dup2",
+        "old_id": "e1"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "LOAD_REPAIR",
+       "hintKey": "val.fix.LOAD_REPAIR",
+       "message": "Duplicate node id 'e2' ('e2') was renamed to 'e2_dup2'.",
+       "nodeId": "e2_dup2",
+       "nodeName": "e2",
+       "params": {
+        "kind": "duplicate_id",
+        "message": "Duplicate node id 'e2' ('e2') was renamed to 'e2_dup2'.",
+        "name": "e2",
+        "new_id": "e2_dup2",
+        "old_id": "e2"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L10 duplicate ids"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L10_duplicate_ids.json"
+}

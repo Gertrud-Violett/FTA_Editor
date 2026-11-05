@@ -1,6 +1,6 @@
 # FTA/ETA Editor - User Guide
 
-**Version**: 1.7.3 | **Updated**: October 11, 2026
+**Version**: 1.9.0 | **Updated**: November 5, 2026
 
 Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor with AI Assistant.
 
@@ -29,12 +29,15 @@ Complete guide for using the Fault Tree Analysis and Event Tree Analysis Editor 
   - [Minimal cut sets](#minimal-cut-sets)
   - [Importance measures](#importance-measures)
   - [Uncertainty (Monte Carlo)](#uncertainty-monte-carlo)
+  - [The What-if tab](#the-what-if-tab)
   - [Validation](#validation)
   - [Traceability and tree search](#traceability-and-tree-search)
+  - [The Grid tab: every basic event, paste from Excel](#the-grid-tab-every-basic-event-paste-from-excel)
   - [FMEA import](#fmea-import)
   - [Report (DOCX) and Excel sheets](#report-docx-and-excel-sheets)
   - [The top box: headline and tree walk](#the-top-box-headline-and-tree-walk)
   - [Diagram styles and layout](#diagram-styles-and-layout)
+  - [CCF groups (beta factor and alpha factor)](#ccf-groups-beta-factor-and-alpha-factor)
 - [Command-line interface](#command-line-interface)
 - [Desktop app compatibility](#desktop-app-compatibility)
 - [Export Options](#export-options)
@@ -622,7 +625,7 @@ removes data.
 
 | | Basic (switch off) | Advanced (switch on) |
 |---|---|---|
-| Bottom tabs | **Details** and **Validation** | all nine tabs |
+| Bottom tabs | **Details** and **Validation** | all twelve tabs |
 | Gate selector | AND / OR | AND, OR, k-out-of-n, XOR, INHIBIT, Priority-AND, Transfer |
 | Event kind (leaves) | hidden while it is *basic* | basic, house, undeveloped, conditioning |
 | Probability entry | typed directly | typed directly, or derived from a model in the Quantification tab |
@@ -676,10 +679,13 @@ when you return to it after the tree has changed.
 | Tab | Mode | Purpose |
 |---|---|---|
 | **Details** | basic | The selected node: name, type, probability, gate, event kind, notes, links. |
+| **Grid** | advanced | One row per basic event with name, model, λ, T, τ, μ, q, source and tags in one table. Sort, filter, edit in place, and paste a block from Excel. |
 | **Quantification** | advanced | The mission time, and the selected event's model (fixed / rate / standby / repairable), parameters, data source and uncertainty. Also a table of all basic events. |
+| **CCF groups** | advanced | Common-cause failure groups with a beta factor or alpha factors: list, create from the selected basic events, edit, delete, status (`Applied` or `Not applied: <reason>`), the assumptions. See [CCF groups](#ccf-groups-beta-factor-and-alpha-factor). |
 | **Cut Sets** | advanced | Minimal cut sets ranked by probability, with their share, MCUB, rare-event and tree-walk values. Click a row to highlight its events. |
 | **Importance** | advanced | Fussell-Vesely, Birnbaum, RAW and RRW per event. An optional FV colour overlay on the diagram. |
 | **Uncertainty** | advanced | Monte Carlo on the lognormal parameter uncertainties: mean, median, 5th and 95th percentiles, standard deviation and a histogram. |
+| **What-if** | advanced | Multiply the main parameter of chosen basic events by a factor from 1/100 to 100 and see the nominal and what-if parameter, q, top event and their ratio. Nothing is saved or exported. See [The What-if tab](#the-what-if-tab). |
 | **Validation** | basic | Issues found in the tree, each with a plain-language message and a one-line fix. Click an issue to jump to its node. |
 | **Traceability** | advanced | A grid of requirement, test reference, owner, status, evidence and tags for every node, edited in place. |
 | **FMEA** | advanced | Import failure modes from a CSV or XLSX sheet as basic events, with column mapping and an occurrence-rank table. |
@@ -746,8 +752,8 @@ The toasts that report a load repair, or links removed by a delete (including
 a multi-select delete), have a **Show in Validation** button that opens the
 tab.
 
-**Traceability, FMEA and Report tabs** are described in their own sections
-below.
+**Grid, Traceability, FMEA and Report tabs** are described in their own
+sections below.
 
 ### Quantification models
 
@@ -900,11 +906,13 @@ repeated events correctly because they are Boolean.
   badge.
 
 **Truncation.** Cut sets are limited by *max order* (default 6), *max count*
-(default 5,000) and *cutoff probability* (default 1e-15). Truncation only
-drops sets, so a truncated MCUB or rare-event value **underestimates** the
-exact value. Truncation by order or cutoff is usually negligible because the
-dropped sets are the least probable ones. Truncation by count keeps the most
-probable sets, but it is reported as an approximation. When a result is
+(default 5,000) and *cutoff probability* (default 1e-15). Truncation by
+order or cutoff only drops sets, so a truncated MCUB or rare-event value reads
+below the full analysis, though it can still be above the exact value. This is
+usually negligible because the dropped sets are the least probable ones.
+Truncation by count keeps the most probable sets at each gate and is an
+approximation: it usually reads low too, but on a tree with repeated events, a
+shared CCF event included, it can read high. When a result is
 truncated, the Cut Sets tab shows a *Truncated* badge, and the report and the
 CLI show it too.
 
@@ -1045,6 +1053,222 @@ How to interpret the results:
   share a data source are really correlated (a "state-of-knowledge"
   dependence), which widens the true spread. This effect is not modelled.
 
+### The What-if tab
+
+The **What-if** tab answers "what would the top event be if this valve failed
+ten times as often?" without touching the document. You multiply the
+parameter of one or more basic events by a factor and watch the top event
+move. It works on a copy: nothing is written to the file, the undo history or
+any export. The tab is in Advanced mode, after **Uncertainty**, and works on
+fault trees only. In ETA mode its tab button is greyed and struck through and
+opening it shows the same notice as the other analysis tabs; in Basic mode the
+tab is hidden.
+
+**Try a factor.**
+
+1. Open the **What-if** tab and pick a basic event in the **Event** list. The
+   list starts at the event selected in the tree, and selecting another basic
+   event in the tree moves the list to it; choosing in the list never changes
+   the tree selection.
+2. Move the **Factor** slider, or type a number in the field beside it. The
+   slider is logarithmic, from 1/100 to 100, with the factor 1 in the middle
+   (exactly 1, with no rounding). Left and Right move it by a small step, Home
+   and End go to the ends, and **PageUp** and **PageDown** move by one decade,
+   so 0.1, 1, 10 and 100 are reached exactly; in between the factor has four
+   significant figures (3.162, say). The field takes `10`, `1e1`, `0.1`, `.5`
+   and `1,5` (a decimal comma, as 1.5). It refuses a number outside 0.01 to
+   100, `0`, a blank field, text, and text that could be read two ways such as
+   `1,500`; a message appears under the field and the factor stays as it was.
+   The field commits when you press Enter or leave it, and **Esc** puts the
+   current factor back.
+
+**What the factor means.** The factor multiplies the event's **main
+parameter**, as the Monte Carlo run does (see
+[Uncertainty (Monte Carlo)](#uncertainty-monte-carlo)): λ for the models
+*rate*, *standby* and *repairable*, and q for *fixed*. T, τ and μ are not
+scaled. The event's probability q then follows from its model. A q above 1 is
+set to 1 and **clamped to 1** is shown beside it. Several events can carry a
+factor at the same time; each stays active when you pick another event, and the
+top event reflects all of them.
+
+**The seven numbers.** For the picked event the table shows, for the
+**Nominal** value and the **What-if** value: the main parameter (λ in the unit
+chosen in the Quantification tab, /h, /y or FIT, or q for the fixed model), the
+probability q, and the **Top event**, and then the **Ratio** of the what-if top
+event to the baseline top event. The **baseline** is the headline of the
+document with no factor, the number in the top bar. The q cells, the top event
+and the ratio use the significant-figures setting; the λ cells follow the λ
+unit instead and are not rounded to the setting. The top event is worked out
+with the headline's own method (see
+[Top-event value](#top-event-value-tree-walk-mcub-and-rare-event)):
+
+- **MCUB** over the document's cut sets with the changed probabilities. This
+  is always the method when a CCF group is applied. The cut sets are those
+  found with the nominal values. When the document's **cutoff** left out cut
+  sets that have a probability above 0, the tab says **cut sets from nominal
+  values**: a set that would pass the cutoff only after the factor is not in
+  the what-if number.
+- The **tree walk**, when that is the headline's method.
+- **No number**, when the headline is incomplete. That happens when a CCF
+  group is applied and the cut sets could not be completed (time, an error, or
+  the headline's own cap of 2,000 sets). The tab then says so and shows the
+  event's own numbers only.
+
+The ratio shows a dash when the baseline is 0 and the what-if value is not.
+
+**The banner and Reset.** While any factor is not 1, the banner **What-if
+values, not saved** is shown above the controls. It lists one chip per changed
+event (`name × factor`) with its own **Reset**, and a **Reset all** button. The
+chip strip scrolls when many factors are active. Reset puts that event back to
+1; Reset all puts every event back, and the what-if top event is then exactly
+the baseline.
+
+**CCF groups.** A factor on a member of an *applied*
+[CCF group](#ccf-groups-beta-factor-and-alpha-factor) applies to **every member** of the group,
+and the tab says so under the table ("This event is in the CCF group ... The
+factor applies to every member: ..."). The sliders of all its members show the
+same factor, and moving it on another member replaces it. The shared CCF event
+and the independent parts are worked out with the group's own formula from the
+new total probabilities. A group that is not applied is ignored: its members
+are scaled one by one (with a caution).
+
+**What is never changed.** The factors live in the browser only. They are not
+saved in the file or the recovery copy, not in a CSV, Excel, DOCX or diagram
+export, and not in what is sent to the assistant. A what-if makes no undo step
+and does not mark the document modified; Save writes the nominal values even
+while factors are active. To keep a value, type it into the document.
+
+**When the factors go back to 1.** Every factor returns to 1 when the document
+changes: New, Open, Import, an example, a mode switch, Undo, Redo, any edit (in
+the Details, tree, Quantification, Grid, CCF groups or settings, or the
+assistant's changes), and any change made in **another browser window** of the
+same editor (noticed when you come back to this window, or at your next move of
+the slider). When factors are dropped this way the tab says **The document
+changed, so the factors were reset to 1.** until your next input, Reset or
+picking another event. Save is not a change, and switching Advanced off and on
+keeps the factors.
+
+**Speed.** The first what-if after an edit has to build the baseline, which
+means finding the cut sets (also when the headline is the tree walk), so the
+tab shows "Computing the baseline…" for about as long as the headline takes.
+The baseline is then kept for that version of the document, and the top event
+follows the slider in a fraction of a second. On the 301-node test file (252
+basic events, ten CCF groups) it took about 0.1 s or less after the slider
+stopped. If the headline's own time budget (2 s) ran out, no baseline is kept:
+every move then takes as long as the headline, about 2 s, because the baseline
+is built again each time.
+
+**The caution line.** While a factor is not 1, the tab can show a short
+caution about the what-if values, in English or Japanese. A small **Caution**
+badge appears in the empty top-left cell of the table (it takes no room and
+moves nothing); the full line is under the table. Click the badge, or press
+Enter or Space on it, to bring the line into view; hovering the badge shows
+every caution. The line shows when, for the values with the factors applied:
+
+- a member of a CCF group that is not applied at baseline, whatever the reason,
+  has a factor other than 1; the what-if scales it alone, without the CCF
+  event;
+- a member of a CCF group that you scaled reaches a total probability of 1 or
+  more. Typed into the document, the group would not be applied;
+- a member of such a group has a total probability Q_t above 0.01, where the
+  CCF model for small probabilities becomes rough;
+- a scaled standby event has λ·τ above 0.2, where the λτ/2 formula is poor;
+- the cut sets are limited by the document's **max order** or **max count**
+  (or by the headline's own cap of 2,000 sets), so some may be missing from the
+  what-if number. The cutoff alone is not this: it has its own note, **cut sets
+  from nominal values**, above.
+
+The line names the first caution and adds "(and N more)" when there are
+several; the badge title lists them all. It is a hint, not a result and not the
+list of warnings: type the value into the document to see the full Validation
+message. Only events and groups you scaled count, and nothing shows while every
+factor is 1 or after **Reset all**, even if the document's own values would
+raise the same warnings.
+
+**Limits of the what-if values.** Read these before you trust a what-if number
+that is far from the baseline. They are the assumptions of the calculation, not
+errors in it.
+
+- *Warnings.* The document's own values raise warnings (in the Validation
+  tab, and for groups also in the CCF groups tab). The tab shows a caution (see
+  above) for `CCF_Q_ONE`, `CCF_HIGH_Q` and `STANDBY_LARGE_LT`, but not the
+  full Validation message. `CCF_NOT_APPLIED` is not one of these warnings: it
+  is a caution the tab adds for a group that is not applied at baseline.
+  `RATE_IMPLAUSIBLE` is still not raised for what-if values: a λ above 1e-2 /h,
+  or a *rate* event whose q is 0.999 or more (most likely a unit mix-up).
+
+  To see the full warnings, type the value into the document. Undo takes it
+  back. For a CCF group every member needs the value: typing it into one member
+  makes the members differ and the group is then *Not applied*, so
+  `CCF_HIGH_Q` does not appear. A Grid paste can put the value into all members
+  in one undo step; otherwise it is one step per member.
+- *A group that is not applied at baseline.* A group can be left out for a
+  reason such as a member with Q_t = 1, or members that differ. The what-if
+  does not switch it on: it scales the members alone and leaves the CCF event
+  out, whatever the factors do. The tab shows a caution for it
+  (`CCF_NOT_APPLIED`). The number can then be far **below** (or slightly above)
+  the same document typed in by hand, where the group is applied. Examples, for
+  an AND of two members of a beta-factor group with β = 0.1:
+  - Members at q = 1 (group not applied, top event 1). A factor of 0.5 on both
+    gives 0.25 in the what-if; typed into the document (q = 0.5 on both) the
+    top event is 0.242375. A factor of 0.01 on both gives 1e-4 in the what-if
+    and 0.001080919 typed (q = 0.01 on both), 10.8 times higher.
+  - Members that differ, A at 1e-3 and B at 2e-3 (group not applied, top event
+    2e-6). A factor of 2 on A gives 4e-6 in the what-if; typed into the
+    document (A and B both 2e-3) the group is applied and the top event is
+    2.03239352e-4, 50.8 times higher.
+- *A factor that raises a member to 1.* In an applied group the q reaches 1
+  (**clamped to 1** is shown when the value would pass 1), but the group stays
+  applied and splits that value with its β, so each member fails through its
+  independent part (0.9) and the shared CCF event (0.1) and not with
+  certainty. Two members at q = 0.5 with β = 0.1 and a factor of 10 give q = 1
+  for both and the top event 0.829 for the AND of the two. The tab shows the
+  caution line for it (`CCF_Q_ONE`). Typing q = 1 into
+  the document would leave the group not applied and the top
+  event would be 1: the what-if is 17.1 % **lower**, so it is not a
+  conservative figure.
+- *Cut sets.* With an MCUB headline the cut sets come from the nominal
+  values and the cutoff gets the note above. Cut sets can also be left
+  out by the document's **order** limit, its **count** limit, or the headline's
+  own cap of 2,000 sets. A factor on an event that is only in cut sets left out
+  for any of these reasons changes nothing: the ratio stays 1, and the tab shows
+  the caution line (not for the cutoff alone: that is the note above). The
+  Cut Sets tab shows an order or count limit that left sets out, and the
+  **≈** marker in the top bar (see
+  [Top-event value](#top-event-value-tree-walk-mcub-and-rare-event)) shows the
+  2,000-set cap. An order limit or the cutoff only drops sets, so that MCUB
+  reads below the full MCUB, though it can still be above the exact value. A
+  count limit or the 2,000-set cap usually reads low too, but it works inside
+  each gate, so on a tree with repeated events it can also read high. A shared
+  CCF event counts as a repeated event, so a count limit can do this with an
+  applied group too. Treat the number as an estimate, not a bound, in the
+  baseline and in the what-if alike. Example, with a count limit of 1: the top
+  event is A OR (B AND C), with A = 1e-3 and B = C = 0.1, and B has an OR link
+  to A, so A is a repeated event and the headline is the MCUB. The cut sets are
+  {A} at 1e-3 and {B, C} at 0.01, and the limit keeps only {B, C}, so the
+  baseline is 0.01. A factor of 100 on A leaves the top event at 0.01 (ratio
+  1), while A typed into the document at 0.1 gives 0.1, ten times higher.
+  Without the limit the baseline is 0.01099 and the factor gives 0.109. With an
+  applied CCF group, the 2,000-set cap, a time-out or an error give no number
+  at all. Without an applied group, when the time budget runs out or the cut
+  sets fail there are no cut sets, and the headline and the what-if use the
+  tree walk, which moves with the factor but, on a tree with repeated events,
+  is the number the
+  [Top-event value](#top-event-value-tree-walk-mcub-and-rare-event) section
+  warns about.
+- *The MCUB itself.* It is close to exact when the cut-set probabilities are
+  small and loosens as they grow, in the baseline and in the what-if alike. For
+  (A AND B) OR (A AND C) with every event at 0.5 the MCUB is 0.4375, where the
+  exact value is 0.375.
+- *Only what you move moves.* A factor changes the chosen event (and the other
+  members of its applied group) and nothing else. Events stay independent of
+  one another, so events that share a cause or a data source do not move
+  together unless they are in an applied CCF group. The group's beta stays as
+  stored, so a factor scales its independent and common parts together.
+- *The factor field.* The field shows the factor with four significant digits.
+  If you edit it, type the displayed text back and press Enter, the field
+  commits that displayed (rounded) text as the new factor.
+
 ### Validation
 
 `GET /api/analysis/validate` runs the rules below. They run in the Validation
@@ -1069,12 +1293,22 @@ tab, the DOCX report and `cli validate`. Each code has a fixed severity.
 | `STANDBY_LARGE_LT` | warning | Standby λτ > 0.2, where λτ/2 is inaccurate. | Shorten τ, or use the rate model. |
 | `RATE_IMPLAUSIBLE` | warning | A rate, standby or repairable event has λ above 1e-2 /h (an MTBF under 100 h), or a rate event's q is 0.999 or more. This is almost always a unit mix-up, for example FIT or per-year values entered (or imported) as per hour. `params: {lambda, unit, q, model}`. | Check the unit: 1 FIT = 1e-9 /h, 1 /y = 1/8760 /h. Re-enter λ, or re-import with the right λ unit. |
 | `NONCOHERENT_XOR` | warning | The tree has XOR gate(s), so cut-set results are approximate. | Use OR if both events can happen together. |
-| `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so the results may be underestimated. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
+| `CUTSETS_TRUNCATED` | warning | The cut sets, expanded with the document's limits, were truncated, so values from the cut sets can read low or high. Shown in the Validation tab, `validate` and the DOCX report. | In the Cut Sets tab, raise the limits and click **Save as document defaults**. |
 | `ETA_BRANCH_SUM` | warning | ETA only: the children's probabilities do not sum to 1 (±1e-6). | Adjust the branch probabilities. |
 | `LOAD_REPAIR` | warning | The file was repaired on load: a duplicate id renamed, the top id changed, an invalid analysis setting reset, a stale gate type dropped, a repeated link dropped (it was counted twice), text that cannot be saved (an unpaired surrogate, half of an emoji) replaced with U+FFFD, or an advanced gate name written into the old AND/OR field promoted to that gate. Or an AI edit left a stale gate type that was dropped, or wrote an advanced gate name into the AND/OR field. | Check the node, and save to keep the repair. |
 | `LINKS_REMOVED` | warning | Deleting a node (by hand or by the AI assistant) removed links or transfer targets (`transferTo`) that pointed to it. | Re-add the link or transfer target if the dependency still exists. |
 | `UNDEVELOPED_EVENT` | info | The leaf is marked undeveloped. | Nothing needed, or develop it later. |
 | `PAND_APPROX` | info | A Priority-AND gate is evaluated as AND × 1/n!. | Nothing needed; note the approximation in your report. |
+
+The CCF groups (1.9) add the codes `CCF_MEMBER_NOT_BASIC`, `CCF_TOO_FEW_MEMBERS`,
+`CCF_MEMBER_IN_TWO_GROUPS`, `CCF_MEMBERS_DIFFER`, `CCF_NO_PROBABILITY`,
+`CCF_Q_ONE`, `CCF_BAD_PARAMETER` and `CCF_MEMBER_RENAMED` (errors: the group is
+not applied), and `CCF_HIGH_Q`, `CCF_ZERO_Q` and `CCF_ORDERED_GATE` (warnings: the
+group stays applied). The alpha-factor model adds `CCF_ALPHA_SIZE`,
+`CCF_ALPHA_SUM` and `CCF_NO_TESTING` (errors) and `CCF_ALPHA_NORMALISED` (a
+warning). Their texts name the group and the member in English and
+Japanese; the table is in [CCF.md](CCF.md#applied-and-not-applied). Clicking
+one opens the group in the CCF groups tab. They are not listed in ETA mode.
 
 The top event is never `SINGLE_INPUT_GATE`, because a top event that restates
 its one cause is normal practice. An empty document is never
@@ -1124,6 +1358,84 @@ with no value, such as `tag:`, matches every node that has that field. Matches
 are shown with their ancestors, so the path to each match stays visible.
 Press Enter in the search box to select the first match, Enter again for the
 next and Shift+Enter for the one before; the caret stays in the box.
+
+### The Grid tab: every basic event, paste from Excel
+
+The **Grid** tab (Advanced mode) shows one row per basic event: a leaf that is
+not the top event, a house event or a transfer. Use it to read and edit many
+events at once, or to paste a block of values from a spreadsheet. It is not
+available for an event tree (ETA mode); its tab is greyed and says so.
+
+| Column | Content | Unit |
+|---|---|---|
+| ID | The node id. Read-only. | |
+| Name | The event name. | |
+| Model | The model name as in the Quantification tab (Fixed probability, Failure rate, ...). A paste also accepts `fixed`, `rate`, `standby` or `repairable` and the names in either language (see [Quantification models](#quantification-models)). | |
+| λ | The failure rate. | /h, /y or FIT, as chosen in the unit picker in its header |
+| T | The exposure time of the `rate` model (blank: the mission time). | h |
+| τ | The test interval of the `standby` model. | h |
+| μ | The repair rate of the `repairable` model. | /h |
+| q | The probability. Editable only for the model `fixed`; on the other models it is computed from the model and read-only. Shown with your significant-figures setting. | none |
+| Source | The data source. | |
+| Tags | Free tags, shown and typed separated by `; `. A comma does not separate tags here (unlike the Traceability tab); use `;`. The full-width `；` and `、` also separate tags. | |
+
+The headers name the units. Whatever unit the λ picker shows, the value is
+stored per hour (8,760 h per year, 1 FIT = 1e-9 per hour); the picker is the
+same setting as in the Quantification tab. A cell that the event's model does
+not use is greyed out. A blank T falls back to the mission time. The
+**Columns** button hides or shows columns; a paste fills only the visible
+ones.
+
+**Typing in a cell.** Click a cell and press Enter or F2 (or double-click it)
+to edit it; Enter or leaving the cell saves, Escape cancels. A cell takes the same text as
+the matching field elsewhere, and means the same number: for q, what the
+Details tab takes; for λ, T, τ and μ, what the Quantification tab takes. A
+value the field would refuse is refused here too, with the reason.
+
+**Sort and filter.** Click a column header to sort by it (ascending first), and
+again to reverse the order. Rows with an empty cell in that column come last.
+The filter box keeps the rows that contain the text in any visible column;
+the line above the table says how many of the events are shown.
+
+**Paste from Excel.**
+
+1. Copy the cells in Excel. Leave out the header row.
+2. In the Grid, click the cell where the block should start, then press
+   Ctrl+V.
+3. The block fills from that cell to the right over the visible columns and
+   downwards over the visible rows, **in the order the grid shows them**. Each
+   value goes to the event of its row, so a sort or a filter does not send a
+   value to the wrong event. Rows hidden by the filter receive nothing.
+4. The paste is one step: **Undo** (Ctrl+Z) restores all of it.
+
+An empty cell leaves that value unchanged. A line break at the end of the
+clipboard is ignored, and Excel's quoting of cells with tabs or line breaks is
+read (such a cell is kept in a text column and refused in a number column).
+In the ID column a value equal to the row's id is ignored. In the q column of
+a model other than `fixed`, a value equal to the shown q is ignored.
+
+**The summary.** Beside the grid, **Last paste** gives the number of rows
+applied and lists every refused row with its row number on the clipboard, the
+column and the reason. One invalid cell refuses the whole row and nothing of
+that row is applied; the other rows are applied. Typical reasons:
+
+| Message | Meaning |
+|---|---|
+| id does not match this row | The pasted id differs from the id of the event in that row. |
+| q is computed from the model | q was pasted onto an event whose model is not `fixed`, with a value other than the shown q. |
+| *column* is not used by the model of this row | For example a λ for a `fixed` event. |
+| A value the field does not accept | The same reason the field would give, for example a probability above 1. |
+| Extra cells or rows | Cells right of the last visible column and rows below the last visible row are refused; no event is created. |
+
+A clipboard with more than 2,000 rows is refused as a whole, with a message.
+
+**If the analysis changed.** If the analysis changed between the moment the
+grid was drawn and the paste (for example an edit, an undo or another
+document), nothing is applied, the grid is redrawn, and the tab says "The
+analysis changed; paste again". Paste again from the cell you want.
+
+The same paste is available to scripts as `POST /api/grid/paste`; see the
+[API reference](API_REFERENCE.md#grid-paste).
 
 ### FMEA import
 
@@ -1232,7 +1544,8 @@ Sections (tick the ones you want; the choice is remembered):
 | Metadata | Title, analysis date, mode, generation time, tool version |
 | Headline | Top-event probability, the method (MCUB or tree walk) and the alternative value |
 | Assumptions | Mission time, the models used (with formulas and counts), approximations, non-coherence, repeated events, cut-set limits |
-| Diagram | The diagram image (see below). When the top box shows the MCUB headline, a sentence under the picture says so and gives both values |
+| CCF groups | Written after Assumptions whenever the file has CCF groups; it has no tick box. Per group: name, model, parameters, testing scheme, source, members and status; the line `Not applied: <reason>. Results exclude this group.` for each group left out; the formulas with sources and pages, the assumptions and a note to check the results with a qualified engineer. Also written in ETA mode, where every group is not applied |
+| Diagram | The diagram image (see below). When the top box shows the MCUB headline, a sentence under the picture says so and gives both values. With CCF groups applied, a sentence says that the gates above a member show their MCUB, or `n/a (CCF)` |
 | Events | The basic-event table: id, name, kind, model, parameters (λ, T, τ, μ, MTTR), q, calculated value and source (data provenance) |
 | Cut sets | The top 50 by default, with totals, MCUB, rare-event value and a truncation note |
 | Importance | The top 30 by FV, by default |
@@ -1253,7 +1566,9 @@ say they do not apply.
 **Excel export** (**Export Excel** here, or **Excel** in the action bar) writes
 three sheets:
 
-- **FTA**: the 1.6 hierarchical sheet, unchanged.
+- **FTA**: the 1.6 hierarchical sheet. With CCF groups applied, the `Calc:`
+  text of a gate above a member reads `<value> (MCUB, CCF)` or `n/a (CCF)`,
+  not its tree-walk value.
 - **Events**: one row per node in tree order. The columns are Id, Name, Parent
   Id, Depth, Node type, Gate type, k, Event kind, House state, Transfer to,
   Model, λ (/h), T (h), τ (h), μ (/h), MTTR (h), Base probability, Calculated
@@ -1265,13 +1580,20 @@ three sheets:
 - **Analysis**: the document settings (mission time, cut-set limits, Monte
   Carlo settings). In FTA mode it also has the headline, tree walk, MCUB,
   rare-event value, repeated-event count, non-coherence, the number of
-  approximations and the truncation flag.
+  approximations and the truncation flag. A file with CCF groups adds the rows
+  *CCF groups applied* and *CCF groups not applied*: the number of groups, and
+  in the note column their names, and for a group not applied its reason.
 
 *Calculated probability* in the Events sheet is the tree-walk value of every
-node, the top event included, so the column is one quantity. When the
-headline is the MCUB, the top event's cell has a comment that gives the
-headline and points to the Analysis sheet, and the *Tree walk* row there
+node, the top event included, so the column is one quantity (the CCF
+exception below applies). When the headline is the MCUB, the top event's
+cell has a comment that gives the headline and points to the Analysis sheet, and the *Tree walk* row there
 notes that it is the value the Events sheet shows for the top event.
+
+**CCF exception.** With CCF groups applied, a gate above a member of a group
+shows its MCUB instead of its tree-walk value, because the tree walk cannot see
+the shared CCF event. When the cut sets are incomplete, the cell reads
+`n/a (CCF)` and has a comment that says why. A member itself keeps its `Q_t`.
 
 **Export events CSV** builds the same per-event table as a CSV in the browser.
 
@@ -1288,8 +1610,9 @@ for scripts and is not changed this way.
 ### The top box: headline and tree walk
 
 Every box in the diagram shows its node's calculated probability, which is
-the tree-walk value. For most trees the top box is then the headline. For a
-tree with repeated events (links, transfers) or an XOR gate the headline is
+the tree-walk value (with one exception, see below). For most trees the top
+box is then the headline. For a tree with repeated events (links, transfers)
+or an XOR gate the headline is
 the MCUB, and until 1.7.3 the top box showed the root's tree-walk value
 instead, so the diagram disagreed with the top bar (0.0349 against 0.0684 in
 the Challenger example).
@@ -1309,16 +1632,18 @@ This holds in both layouts and both themes, in the SVG and PNG exports and in
 `POST /api/render`. A line above the diagram says what the top box shows
 while it shows the MCUB.
 
-**Only the top event.** Every other box keeps its tree-walk value. A cut-set
-value for each gate would need one cut-set expansion per gate, and it would
-be a different quantity: the tree-walk values are the ones that combine along
-the edges you see, child to parent.
+**Only the top event.** Every other box keeps its tree-walk value, with one
+exception: with CCF groups applied, a gate above a member shows its MCUB, or
+`n/a (CCF)` (see [CCF groups](#ccf-groups-beta-factor-and-alpha-factor)). A
+cut-set value for each gate would need one cut-set expansion per gate, and it
+would be a different quantity: the tree-walk values are the ones that combine
+along the edges you see, child to parent.
 
 **When the top box stays a tree-walk value:** when the headline is the tree
 walk (no repeated events and no XOR), in ETA mode, and when the cut sets
 could not be had in the headline's 2 s budget or were cut short by the
 headline's own cap of 2,000 sets (the **≈** marker with *Quick estimate*).
-In the last case the top bar shows a bound from the first sets, and the box
+In the last case the top bar shows an estimate from the sets the cap kept, and the box
 does not repeat it.
 
 ### Diagram styles and layout
@@ -1410,7 +1735,10 @@ height there is, leaving a strip of the diagram; **▽** puts it back.
   event**).
 - **Quantification**, **Cut Sets**, **Importance** and **Uncertainty** work
   on the gates of a fault tree. In ETA mode their tabs are greyed and struck
-  through, and the tooltip says why; opening one shows the same notice.
+  through, and the tooltip says why; opening one shows the same notice. The
+  **Grid** and **What-if** tabs are greyed the same way, with the same
+  tooltip, and **CCF groups** is greyed with its own tooltip (the groups stay
+  in the file but are not applied).
 - The diagram draws no gate or event symbols, and the tree rows no gate.
 - The assistant's buttons read **Analyze ETA** and **Update ETA**.
 - Switching the mode says what it did (*Switched to ETA (event tree)...*).
@@ -1534,6 +1862,225 @@ folder instead.
   A card made for another analysis is switched off when you press New or
   open a file.
 
+### CCF groups (beta factor and alpha factor)
+
+Redundant components can fail together for one cause. A **CCF group** (common-cause
+failure group) lists basic events that are identical redundant components, such as
+two feed pumps, and gives one number, the **beta factor β**: the fraction of a
+component's total failure probability `Q_t` that is common to the whole group. (For
+groups of 2 to 4 members the **alpha-factor model** is the other choice; it is
+described [below](#alpha-factor-groups).) With a
+group applied, the top-event value, the cut sets, the importance, the Monte Carlo
+run, the report and the command line all include a shared CCF event. The formulas,
+their sources with pages, the assumptions and worked examples are in
+[CCF.md](CCF.md).
+
+**Check CCF results with a qualified engineer before use.** The editor does not
+judge whether β suits your components or whether they are really identical.
+
+**Two models are included**: the beta-factor model and the alpha-factor model. CCF
+groups are available in the web app; the frozen desktop app does not know them.
+
+**Create a group.** (This is the beta-factor model, the default of a new group; see
+[Alpha-factor groups](#alpha-factor-groups) for the other.)
+
+1. Switch **Advanced** on and select two or more basic events in the tree
+   (Ctrl+click or Shift+click). Only basic events can be members, and an event
+   can be in one group only.
+2. Open the **CCF groups** tab and press **New group from selection**. The editor
+   below the table opens with a name (**CCF group 1**, which you can change) and
+   the selected events as members.
+3. Enter **β (dimensionless, 0 to 1)**. There is no default: you must choose it.
+   The field reads `0.1`, `1e-1`, `10%` (as 0.1) and a simple fraction like the
+   other number fields; a value outside 0 to 1, or text, gives a message beside
+   the field and nothing is created. Optionally enter the **Source** (the data
+   handbook and page β came from).
+4. Press **Create group**.
+
+To change a group, select its row and edit the name, β, source or members (each
+member has an **×** to remove it; **Add selected events** adds the events selected
+in the tree). To remove a group press **Delete group**. Each create, change and
+delete is one undo step, and Undo brings a deleted group back.
+
+**The table.** One row per group: name, model, parameters (`β = 0.1`), member
+names, source and **status**.
+
+- **Applied**: the group is in every number.
+- `Not applied: <reason>`: the group is kept in the file but left out of every
+  result, and nothing in the results hides that. The reason names the member, for
+  example *"Valve D" differs from "Valve C"*. Typical reasons: a member is not a
+  basic event or is not in the tree; fewer than two members; an event is in two
+  groups; the members differ in model, parameters, probability or uncertainty
+  (more than 1e-6 relative); a member has no probability or a probability of 1; β
+  from a file is not a number from 0 to 1; or the document is in ETA mode. The full
+  list of 12 checks is in [CCF.md](CCF.md#applied-and-not-applied).
+- An applied group can carry a **Warning** line: a member's probability above
+  0.01 (NUREG/CR-5485 p. 44 lists an independent event unavailability of 10^-2
+  or less among the conditions of the beta-factor approximation, so check the
+  result),
+  a probability of 0 (the group has no effect), or a member below a PAND or XOR
+  gate.
+
+In **ETA mode** the tab is greyed and every status reads *Not applied: ETA mode*;
+you can still open it, edit the groups and save, and the groups stay in the file.
+
+The box under the table, **Assumptions**, states the six assumptions of the model
+(the formula with its source and page, what `Q_t` is, what the CCF event does, that
+the split is applied to `Q_t`, that the headline is the min-cut upper bound, and that
+β and α are not sampled in Monte Carlo), ending with the engineer note. A seventh
+item, the alpha-factor formulas, is added while the document has an alpha group.
+
+In **Basic mode** the tab is hidden, but badges, the headline and
+the Validation issues still show.
+
+**What you see elsewhere.**
+
+- **Tree and diagram.** Each member shows a `CCF: <group name>` badge. A group that
+  is not applied reads `CCF: <group name> (off)`. Diagram badges are drawn in
+  fault-tree mode only, not in ETA mode. A tree label keeps its width before the
+  badge; the badge is shortened with an ellipsis when the name is long, and the full
+  text is in its tooltip.
+- **Headline.** With a group applied the top-event value is the min-cut upper bound
+  and reads **MCUB, includes CCF (n groups)** (one group: *1 group*). When the cut
+  sets cannot be completed (time, an error, or the summary's own cap) it reads
+  **incomplete, CCF not included** and shows no number; the tree-walk value, which
+  has no CCF in it, appears only under the label *tree walk, without CCF; cut sets
+  cut short (time)* (or *error*, *summary cap*). When a group is left out the note
+  **n CCF groups not applied** appears beside it, in Basic and Advanced mode.
+- **Details.** The Details panel of a member keeps showing `Q_t` as the probability.
+  A block under the **Calculated probability** line adds **CCF group**, **Q_t
+  (total)**, **Independent part** (`(1 − β)·Q_t`) and **CCF event** (`β·Q_t`). For a
+  member of an alpha group it shows the independent part `Q_1` and one **CCF event
+  (alpha factor)** line for each CCF event that contains the member, with that
+  event's probability. For a member of a group that is not applied it shows the
+  reason instead.
+- **Gates above a member.** A gate whose subtree holds a member shows its MCUB from
+  the cut sets, marked *(MCUB, includes CCF)*, or **n/a (CCF)** when the cut sets
+  are incomplete (a dash while the value loads). It never shows its tree-walk
+  value, which is far too low for such a gate. In the diagram, the box of a member
+  shows its `Q_t` with the independent part beside it, `(indep. 9.00e-4)`, and a
+  line explains the gate values.
+- **Cut Sets and Importance.** The CCF event is listed as `CCF: <group name>`; the
+  member's variable as `<name> (independent part)`. Clicking a CCF cut-set row
+  highlights every member in the tree and the diagram. Importance has a row for the
+  CCF event and rows for the independent parts, and no row for the component as a
+  whole.
+- **Validation.** Every error or warning of a group is an issue with the group and
+  the member named, in English or Japanese. Clicking it opens the group in the CCF
+  groups tab (in Basic mode a message asks you to switch Advanced on). In ETA mode no
+  CCF issue is listed; the status and the headline note say it.
+- **Uncertainty.** The Monte Carlo run draws one value per group per trial for the
+  members' shared uncertainty, so the members move together, and states that **β and
+  α are not sampled**.
+- **Report and Excel.** The DOCX report has a CCF section (always written when the
+  file has groups): per group the name, model, β, source, members and status, the
+  formulas with sources and pages, the assumptions, the engineer note, and `Not applied: <reason>. Results exclude this group.` for each group
+  left out. The Excel
+  Analysis sheet has the rows *CCF groups applied* and *CCF groups not applied*, and
+  gate values are the MCUB or `n/a (CCF)`.
+
+**Saving.** A file with groups is saved with `"fileFormatVersion": 2` and the groups
+under `analysis.ccfGroups`; a file without groups is saved exactly as before. **Do
+not save a file that has CCF groups with FTA Editor 1.8.x or with the desktop app:**
+1.8.x drops the groups (it warns *reset to their defaults: ccfGroups*), and the
+desktop app drops every analysis setting, groups included. A file saved by a newer
+version opens with the warning *This file was saved by a newer FTA Editor; saving
+may lose data*.
+
+**Command line.** For a file with groups, `quantify`, `cutsets`, `importance` and
+`mc` add a `ccf` block to `--json` and print one line per group not applied. In
+fault-tree mode they exit with **1** when a group is not applied or the headline is
+incomplete, so a batch run cannot miss it. In ETA mode `quantify` lists every group
+as not applied (`CCF_ETA_MODE`) and exits 0, and the other three keep their ETA
+refusal.
+
+**Limits.** The model is for small probabilities and identical members. Members
+that differ are not averaged; the group is not applied. A member below a PAND or
+XOR gate is read as AND or OR in the cut sets. The value of a gate is the MCUB of
+the cut sets kept under the document's own order, count and cutoff limits. See
+[CCF.md](CCF.md#assumptions-and-limits).
+
+#### Alpha-factor groups
+
+The alpha-factor model is for a group of **2 to 4** identical members and covers
+partial common-cause failures (some members fail together, the others do not).
+Instead of one β you enter **α1 … αm**: α_k is the fraction of the failure events
+of the group in which exactly k of the m members fail. They are numbers from 0 to
+1 that should add up to 1, and you choose how the data behind them were tested
+(**staggered** or **non-staggered**). The formulas with their sources and pages
+are in [CCF.md](CCF.md#the-alpha-factor-model).
+
+**Create an alpha group.**
+
+1. Select 2 to 4 basic events and press **New group from selection**, as above.
+2. In the editor set **Model** to **Alpha factor**. The β field is replaced by
+   one field per member, **α1 (dimensionless, 0 to 1)**, **α2 …**, and a
+   **Testing scheme** selector appears. The fields read the same texts as β
+   (`0.05`, `5%`, a fraction); a value outside 0 to 1, or text, gives a message
+   under the field and nothing is created. Below the fields a line shows the
+   **Sum of α**.
+3. Enter the α values from your data source.
+4. Choose the **Testing scheme**: **Staggered testing** (the components behind the
+   α values were tested one after another at different times) or **Non-staggered
+   testing** (they were all tested at the same time). **There is no default**: the
+   selector starts at *Choose a testing scheme*, and the editor does not choose
+   for you. Choose the scheme that matches the source of your α values; the
+   result differs between the two. The help line under the selector names the
+   sources (NUREG/CR-5485 p. 40; NASA/SP-2011-3421 pp. 7-9, 7-14).
+5. Press **Create group**.
+
+A group created without a scheme is kept, and its status reads **Not applied:
+testing scheme missing** (in the table, in the editor and in the Validation tab)
+until you choose one; it is left out of every result until then.
+
+**The sum.** If the α values add up to 1 within 0.000000001 the sum line only shows
+it. If the sum is off by up to 0.001 the group stays applied, each α is divided by
+the sum, the line says so and lists the values used, and the group shows the
+**Warning** *α values add up to …; divided by the sum* with the original sum.
+Published α sets are rounded, so this is common. If the sum is further than 0.001
+from 1 the sum line turns red and the group is not applied (*Not applied: α
+values add up to …, not 1*).
+
+**Change an alpha group.** Edit the α fields and press **Save α values** (or press
+Enter in a field): one request and one undo step for the whole list; leaving a
+field only checks it. Choose another scheme from the selector: one undo step. Undo
+and Redo bring the editor back to the earlier values.
+
+**Members and α.** Adding or removing a member does **not** change the stored α
+values. If the number of α values then differs from the number of members, the
+status reads *Not applied: α values: 3, members: 2* (for example), the editor shows
+one field per member with a hint, and you check the fields and press **Save α
+values**. A group with fewer than 2 or more than 4 members shows that the
+alpha-factor model needs 2 to 4 members and is not applied.
+
+**Switch between the models.** Choosing the other model in the selector changes
+only what the editor shows; nothing is stored until you commit the new model's
+values (**Save α values** for alpha, the β field for beta). The change is one
+undo step, and the values of the old model are removed from the group; Undo brings
+them back.
+
+**What you see elsewhere.**
+
+- **Cut Sets and Importance** list one CCF event for each subset of two or more
+  members, named `CCF: <group name> (<member names joined by " + ">)`, for example
+  `CCF: Relief valves (V1 + V2)`: 1 event for 2 members, 4 for 3, 11 for 4.
+  Clicking a row highlights exactly the members of that event.
+- **Assumptions** (CCF groups tab) gets a seventh item with the alpha formulas
+  while the document has an alpha group.
+- The **report** shows the α values and the testing scheme of each group, and the
+  command line's `--json` output carries them in its `ccf` block. With 3 or 4
+  members an applied group gets a line under the note on overlapping CCF events
+  in the report (see [CCF.md](CCF.md#overlapping-ccf-events)). A group without a
+  scheme is listed as not applied and the command line exits with 1.
+- **Monte Carlo** does not sample α (nor β).
+- **Ids with `+` or `:`.** CCF event ids join group and member ids with `+` and `:`.
+  If ids that contain these characters would give the same event id twice, the
+  groups concerned are not applied (`CCF_BAD_PARAMETER`); rename those ids.
+
+The Validation tab lists four more codes for alpha groups: `CCF_ALPHA_SIZE`,
+`CCF_ALPHA_SUM` and `CCF_NO_TESTING` (errors: the group is not applied) and
+`CCF_ALPHA_NORMALISED` (a warning); see [CCF.md](CCF.md#alpha-lint-codes).
+
 ## Command-line interface
 
 The same analyses can run without a browser. Nothing starts a server:
@@ -1568,6 +2115,16 @@ Options:
 | `--sections LIST`, `--lang en\|ja`, `--uncertainty` | report | Comma-separated sections, the report language, and whether to run Monte Carlo (n ≤ 5,000) and include it (also when `--sections` leaves it out). |
 
 Wildcards are expanded by the tool itself, so `*.json` works in `cmd.exe` too.
+
+**CCF groups.** For a file with CCF groups, `quantify`, `cutsets`, `importance` and
+`mc` add a `ccf` block (`applied`, `notApplied` with `id`, `name`, `code`, `reason`,
+and `note`) to `--json`, print one line `CCF group not applied: <name> (<id>): <reason>` per group
+not applied, and print the engineer note. They exit with **1**
+when the document is in fault-tree mode and a group is not applied or the headline
+is `incomplete`. In ETA mode, `quantify` lists every group in `notApplied` with the
+code `CCF_ETA_MODE` and exits 0; `cutsets`, `importance` and `mc` keep their ETA
+refusal. A file without groups gets no `ccf` block and the output of 1.8.1. See
+[CCF groups](#ccf-groups-beta-factor-and-alpha-factor).
 
 Text tables show control characters from the input files (in names, titles
 and messages) as `\xNN`, so a crafted file cannot send escape sequences to
@@ -1637,6 +2194,10 @@ Saving from the desktop app:
   keys it knows. Its node edit merges the changed fields into the existing
   node, and it saves a deep copy of the tree. So `gateType`, `quant`, `trace`,
   `fmea` and the other node keys survive a desktop open-edit-save round trip.
+- **CCF groups are lost** with the rest of the `analysis` block (they are stored
+  in `analysis.ccfGroups`), and the desktop app does not apply them. Do not save a
+  file with CCF groups there; FTA Editor 1.8.x also drops them. See
+  [CCF groups](#ccf-groups-beta-factor-and-alpha-factor).
 - **The `analysis` block is lost.** The desktop app writes only `title`,
   `date`, `mode` and `tree`. The mission time, cut-set limits, Monte Carlo
   settings and a custom FMEA occurrence table revert to their defaults the

@@ -1,0 +1,568 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F03_kofn.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "b2",
+         "name": "b2",
+         "q": 0.3
+        }
+       ],
+       "order": 1,
+       "probability": 0.3,
+       "rank": 1,
+       "share": 0.5054759898904801
+      },
+      {
+       "events": [
+        {
+         "id": "b1",
+         "name": "b1",
+         "q": 0.2
+        }
+       ],
+       "order": 1,
+       "probability": 0.2,
+       "rank": 2,
+       "share": 0.33698399326032014
+      },
+      {
+       "events": [
+        {
+         "id": "c1",
+         "name": "c1",
+         "q": 0.5
+        },
+        {
+         "id": "c2",
+         "name": "c2",
+         "q": 0.4
+        },
+        {
+         "id": "c3",
+         "name": "c3",
+         "q": 0.3
+        }
+       ],
+       "order": 3,
+       "probability": 0.06,
+       "rank": 3,
+       "share": 0.10109519797809603
+      },
+      {
+       "events": [
+        {
+         "id": "a1",
+         "name": "a1",
+         "q": 0.1
+        },
+        {
+         "id": "a2",
+         "name": "a2",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 4,
+       "share": 0.01684919966301601
+      },
+      {
+       "events": [
+        {
+         "id": "a1",
+         "name": "a1",
+         "q": 0.1
+        },
+        {
+         "id": "a3",
+         "name": "a3",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 5,
+       "share": 0.01684919966301601
+      },
+      {
+       "events": [
+        {
+         "id": "a2",
+         "name": "a2",
+         "q": 0.1
+        },
+        {
+         "id": "a3",
+         "name": "a3",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 6,
+       "share": 0.01684919966301601
+      },
+      {
+       "events": [
+        {
+         "id": "d3",
+         "name": "d3",
+         "q": 0.03
+        },
+        {
+         "id": "d4",
+         "name": "d4",
+         "q": 0.04
+        }
+       ],
+       "order": 2,
+       "probability": 0.0012,
+       "rank": 7,
+       "share": 0.0020219039595619206
+      },
+      {
+       "events": [
+        {
+         "id": "d2",
+         "name": "d2",
+         "q": 0.02
+        },
+        {
+         "id": "d4",
+         "name": "d4",
+         "q": 0.04
+        }
+       ],
+       "order": 2,
+       "probability": 0.0008,
+       "rank": 8,
+       "share": 0.0013479359730412806
+      },
+      {
+       "events": [
+        {
+         "id": "d2",
+         "name": "d2",
+         "q": 0.02
+        },
+        {
+         "id": "d3",
+         "name": "d3",
+         "q": 0.03
+        }
+       ],
+       "order": 2,
+       "probability": 0.0006,
+       "rank": 9,
+       "share": 0.0010109519797809603
+      },
+      {
+       "events": [
+        {
+         "id": "d1",
+         "name": "d1",
+         "q": 0.01
+        },
+        {
+         "id": "d4",
+         "name": "d4",
+         "q": 0.04
+        }
+       ],
+       "order": 2,
+       "probability": 0.0004,
+       "rank": 10,
+       "share": 0.0006739679865206403
+      },
+      {
+       "events": [
+        {
+         "id": "d1",
+         "name": "d1",
+         "q": 0.01
+        },
+        {
+         "id": "d3",
+         "name": "d3",
+         "q": 0.03
+        }
+       ],
+       "order": 2,
+       "probability": 0.0003,
+       "rank": 11,
+       "share": 0.0005054759898904802
+      },
+      {
+       "events": [
+        {
+         "id": "d1",
+         "name": "d1",
+         "q": 0.01
+        },
+        {
+         "id": "d2",
+         "name": "d2",
+         "q": 0.02
+        }
+       ],
+       "order": 2,
+       "probability": 0.0002,
+       "rank": 12,
+       "share": 0.00033698399326032014
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.49101985567840756,
+     "nonCoherent": false,
+     "rareEvent": 0.5935,
+     "repeatedEvents": [],
+     "total": 12,
+     "treeWalk": 0.490079215116,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F03 k-out-of-n"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F03_kofn.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.727114491887989,
+       "cutSetCount": 1,
+       "fv": 0.44424750861656254,
+       "id": "b2",
+       "name": "b2",
+       "q": 0.3,
+       "raw": 2.0365775201053125,
+       "rrw": 1.7993621540241687,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.6362251804019904,
+       "cutSetCount": 1,
+       "fv": 0.25914438002632817,
+       "id": "b1",
+       "name": "b1",
+       "q": 0.2,
+       "raw": 2.0365775201053125,
+       "rrw": 1.349790665063103,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.06497618863679903,
+       "cutSetCount": 1,
+       "fv": 0.06616452255991358,
+       "id": "c1",
+       "name": "c1",
+       "q": 0.5,
+       "raw": 1.0661645225599135,
+       "rrw": 1.0708524404548108,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.08122023579599878,
+       "cutSetCount": 1,
+       "fv": 0.06616452255991358,
+       "id": "c2",
+       "name": "c2",
+       "q": 0.4,
+       "raw": 1.0992467838398705,
+       "rrw": 1.0708524404548108,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.10829364772799839,
+       "cutSetCount": 1,
+       "fv": 0.06616452255991358,
+       "id": "c3",
+       "name": "c3",
+       "q": 0.3,
+       "raw": 1.1543838859731317,
+       "rrw": 1.0708524404548108,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.09866975555668049,
+       "cutSetCount": 2,
+       "fv": 0.021046722426380702,
+       "id": "a1",
+       "name": "a1",
+       "q": 0.1,
+       "raw": 1.179901883654641,
+       "rrw": 1.0214992103387672,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.09866975555668049,
+       "cutSetCount": 2,
+       "fv": 0.021046722426380702,
+       "id": "a2",
+       "name": "a2",
+       "q": 0.1,
+       "raw": 1.179901883654641,
+       "rrw": 1.0214992103387672,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.09866975555668049,
+       "cutSetCount": 2,
+       "fv": 0.021046722426380702,
+       "id": "a3",
+       "name": "a3",
+       "q": 0.1,
+       "raw": 1.179901883654641,
+       "rrw": 1.0214992103387672,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.030054061244788176,
+       "cutSetCount": 3,
+       "fv": 0.002491938337017405,
+       "id": "d4",
+       "name": "d4",
+       "q": 0.04,
+       "raw": 1.0587154871819864,
+       "rrw": 1.0024981636066812,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.03499355211674391,
+       "cutSetCount": 3,
+       "fv": 0.0021800823549591123,
+       "id": "d3",
+       "name": "d3",
+       "q": 0.03,
+       "raw": 1.0690869992346352,
+       "rrw": 1.002184845498078,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.039821140597960936,
+       "cutSetCount": 3,
+       "fv": 0.001660391697742758,
+       "id": "d2",
+       "name": "d2",
+       "q": 0.02,
+       "raw": 1.0794384480690173,
+       "rrw": 1.0016631531834805,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.044537151995376105,
+       "cutSetCount": 3,
+       "fv": 0.0009334901812955373,
+       "id": "d1",
+       "name": "d1",
+       "q": 0.01,
+       "raw": 1.0897698723820008,
+       "rrw": 1.0009343623994211,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F03 k-out-of-n"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F03_kofn.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a1",
+      "a2",
+      "a3",
+      "b1",
+      "b2",
+      "c1",
+      "c2",
+      "c3",
+      "d1",
+      "d2",
+      "d3",
+      "d4"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.490079215115776,
+       0.490079215115776
+      ],
+      "logBins": false
+     },
+     "mean": 0.490079215115776,
+     "median": 0.490079215115776,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.490079215115776,
+     "p95": 0.490079215115776,
+     "pointEstimate": 0.490079215115776,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F03 k-out-of-n"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F03_kofn.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "a1",
+       "model": "fixed",
+       "name": "a1",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "a2",
+       "model": "fixed",
+       "name": "a2",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "a3",
+       "model": "fixed",
+       "name": "a3",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "b1",
+       "model": "fixed",
+       "name": "b1",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.3,
+       "id": "b2",
+       "model": "fixed",
+       "name": "b2",
+       "q": 0.3
+      },
+      {
+       "calculated": 0.5,
+       "id": "c1",
+       "model": "fixed",
+       "name": "c1",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.4,
+       "id": "c2",
+       "model": "fixed",
+       "name": "c2",
+       "q": 0.4
+      },
+      {
+       "calculated": 0.3,
+       "id": "c3",
+       "model": "fixed",
+       "name": "c3",
+       "q": 0.3
+      },
+      {
+       "calculated": 0.01,
+       "id": "d1",
+       "model": "fixed",
+       "name": "d1",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.02,
+       "id": "d2",
+       "model": "fixed",
+       "name": "d2",
+       "q": 0.02
+      },
+      {
+       "calculated": 0.03,
+       "id": "d3",
+       "model": "fixed",
+       "name": "d3",
+       "q": 0.03
+      },
+      {
+       "calculated": 0.04,
+       "id": "d4",
+       "model": "fixed",
+       "name": "d4",
+       "q": 0.04
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.490079215116,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.49101985567840756,
+      "nonCoherent": false,
+      "rareEvent": 0.5935,
+      "repeatedEvents": [],
+      "treeWalk": 0.490079215116,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F03 k-out-of-n"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F03_kofn.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "F03 k-out-of-n"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F03_kofn.json"
+}

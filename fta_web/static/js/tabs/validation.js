@@ -41,6 +41,23 @@ const ADVANCED_CODES = new Set([
   'PAND_APPROX',
   'UNDEVELOPED_EVENT',
   'RATE_IMPLAUSIBLE',
+  // CCF groups (F2): the fix is in the CCF groups tab, which is Advanced only.
+  'CCF_TOO_FEW_MEMBERS',
+  'CCF_MEMBER_NOT_BASIC',
+  'CCF_MEMBER_IN_TWO_GROUPS',
+  'CCF_MEMBERS_DIFFER',
+  'CCF_NO_PROBABILITY',
+  'CCF_Q_ONE',
+  'CCF_BAD_PARAMETER',
+  'CCF_MEMBER_RENAMED',
+  // F2A (FN-43): the alpha-factor model.
+  'CCF_ALPHA_SIZE',
+  'CCF_ALPHA_SUM',
+  'CCF_ALPHA_NORMALISED',
+  'CCF_NO_TESTING',
+  'CCF_HIGH_Q',
+  'CCF_ZERO_Q',
+  'CCF_ORDERED_GATE',
 ]);
 const DEBOUNCE_MS = 400;
 const HIGHLIGHT_SOURCE = 'validation';
@@ -356,7 +373,16 @@ export function mount(panel, ctx) {
     return out;
   }
 
+  /** A CCF issue carries its texts in both languages (params.text, from fta_web/ccf_text.py). */
+  function ccfText(issue) {
+    const text = issue.params && issue.params.text;
+    if (!text || typeof text !== 'object') return null;
+    return text[lang()] || text.en || null;
+  }
+
   function messageFor(issue) {
+    const own = ccfText(issue);
+    if (own && own.message) return own.message;
     const vars = displayParams(issue);
     const kind = issue.params && typeof issue.params.kind === 'string' ? issue.params.kind : null;
     if (kind) {
@@ -398,12 +424,24 @@ export function mount(panel, ctx) {
     }
   }
 
+  /** Open a CCF group in its tab; in Basic mode the tab is hidden, so say how to get it. */
+  function openGroup(groupId) {
+    try {
+      const opened = typeof ctx.openTab === 'function' && ctx.openTab('ccf', { groupId });
+      if (!opened && typeof ctx.toast === 'function') ctx.toast(t('val.ccfNeedsAdvanced'), 'info');
+    } catch (err) {
+      if (typeof ctx.showError === 'function') ctx.showError(err);
+    }
+  }
+
   function renderItem(issue) {
     const li = document.createElement('li');
     const sev = SEVERITIES.includes(issue.severity) ? issue.severity : 'warning';
     li.className = 'val-item val-item--' + sev;
     li.dataset.code = issue.code;
     if (issue.nodeId !== null && issue.nodeId !== undefined) li.dataset.nodeId = issue.nodeId;
+    const groupId = issue.params && typeof issue.params.groupId === 'string' ? issue.params.groupId : null;
+    if (groupId !== null) li.dataset.group = groupId;
 
     const icon = document.createElement('span');
     icon.className = 'val-item__icon';
@@ -416,7 +454,12 @@ export function mount(panel, ctx) {
     const nodeBtn = document.createElement('button');
     nodeBtn.type = 'button';
     nodeBtn.className = 'val-item__node';
-    if (label) {
+    if (groupId !== null) {
+      // A CCF issue names its group; the button opens it in the CCF groups tab.
+      nodeBtn.textContent = String(issue.params.group || groupId);
+      nodeBtn.title = t('val.jumpGroupTitle');
+      nodeBtn.addEventListener('click', () => openGroup(groupId));
+    } else if (label) {
       nodeBtn.textContent = label.text;
       if (label.exists) {
         nodeBtn.title = t('val.jumpTitle');
@@ -439,7 +482,8 @@ export function mount(panel, ctx) {
 
     li.append(icon, head, msg);
 
-    const fix = lookup('val.fix.' + issue.code);
+    const ownFix = ccfText(issue);
+    const fix = ownFix && ownFix.fix ? ownFix.fix : lookup('val.fix.' + issue.code);
     if (fix) {
       const fixEl = document.createElement('p');
       fixEl.className = 'val-item__fix';

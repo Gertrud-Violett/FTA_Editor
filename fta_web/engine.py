@@ -63,12 +63,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.engine``
     from . import config  # noqa: F401  (puts fta_web/core on sys.path)
+    from . import ccf
     from .node_schema import project_logic_gate  # noqa: F401  (re-exported)
     from .node_schema import (
         canonical_mode, drop_duplicate_links, reconcile_gate_types, repair_unsavable_text,
     )
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
     import config  # type: ignore[no-redef]  # noqa: F401
+    import ccf  # type: ignore[no-redef]
     from node_schema import project_logic_gate  # type: ignore[no-redef]  # noqa: F401
     from node_schema import (  # type: ignore[no-redef]
         canonical_mode, drop_duplicate_links, reconcile_gate_types, repair_unsavable_text,
@@ -486,8 +488,22 @@ class WebCore(FTACore):
         # "eta" was computed as a fault tree; recalculated below as stored.
         self.mode = canonical_mode(self.mode)
         raw = _read_document(file_path)
+        group_warnings: List[Dict[str, Any]] = []
         if isinstance(raw, dict) and "tree" in raw and "analysis" in raw:
-            self.analysis, problems = coerce_analysis(raw.get("analysis"))
+            # CCF groups (FN-18) are taken out before coerce_analysis, which
+            # would drop them and name them as invalid; they are kept verbatim.
+            rest, raw_groups = ccf.take_groups(raw.get("analysis"))
+            self.analysis, problems = coerce_analysis(rest)
+            groups, group_warnings = ccf.load_groups(raw_groups)
+            if groups is not None:
+                self.analysis[ccf.ANALYSIS_KEY] = groups
+                # FN-38 (b): follow the ids the core just repaired (root id one
+                # to one; a repeated id cannot be followed and is flagged).
+                renamed = ccf.remap_loaded_members(
+                    groups, self.last_load_warnings,
+                    {str(n.get("id")) for n in self._walk(self.fta_data)})
+                if renamed:
+                    self.analysis[ccf.RENAMED_KEY] = renamed
             if problems:
                 self.last_load_warnings.append({
                     "kind": "analysis_invalid",
@@ -497,6 +513,9 @@ class WebCore(FTACore):
                     "message": "Invalid analysis setting(s) were reset to their "
                                "defaults: %s." % ", ".join(problems),
                 })
+        self.last_load_warnings.extend(group_warnings)
+        # A file saved by a newer FTA Editor may hold data this one drops (FN-18).
+        self.last_load_warnings.extend(ccf.format_version_warnings(raw))
         # Text that cannot be encoded (an unpaired surrogate) blocks every save.
         self.last_load_warnings.extend(repair_unsavable_text(self))
         # A repeated link would be counted twice.
@@ -507,9 +526,9 @@ class WebCore(FTACore):
         return True, None
 
     def prepare_export_data(self):
-        data = super().prepare_export_data()
-        data["analysis"] = copy.deepcopy(self.analysis)
-        return data
+        # No group: title, date, mode, tree, analysis -- byte for byte 1.8.1.
+        # With a group: fileFormatVersion 2 is added (FN-18, see ccf.py).
+        return ccf.export_document(super().prepare_export_data(), self.analysis)
 
     # ---- probability ---------------------------------------------------------
 
@@ -770,6 +789,13 @@ def summary(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None) -> 
     If the cut sets fail (a voting gate too large) or time out, the tree walk
     is the headline, ``mcub``/``rareEvent`` are None and ``truncated`` is True
     (as in 1.7.0); a timeout also sets ``capped``.
+
+    With an applied CCF group the headline is always the MCUB (FN-21). If the
+    cut sets fail, time out or are ``capped``, ``headline``, ``mcub`` and ``rareEvent`` are
+    None, ``headlineMethod`` is ``incomplete``, and ``ccfIncomplete`` and
+    ``ccfIncompleteReason`` are set (the tree walk is not the headline then). A
+    document with groups also gets ``ccf`` and, when a group is applied,
+    ``ccfGates``.
     """
     return summary_with_cut_sets(tree, analysis)[0]
 
@@ -793,8 +819,23 @@ def summary_with_cut_sets(tree: Dict[str, Any], analysis: Optional[Dict[str, Any
     doc_max_count = _summary_doc_max_count(analysis)
     limits["maxCount"] = min(doc_max_count, SUMMARY_LIMITS["maxCount"])
     timed_out = False
+    # FN-21: a document with an APPLIED CCF group is compiled once here, and the
+    # expander's memo is kept for the gate values. Any other document (also one
+    # whose groups are all not applied) takes the 1.8.1 call unchanged.
+    applied = ccf.any_applied(tree, analysis, "FTA")
+    structure = None
+    expanders: List[Any] = []
     try:
-        result = _cutsets.compute(tree, analysis, limits)
+        if applied:
+            try:
+                from . import logic as _logic
+            except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+                import logic as _logic  # type: ignore[no-redef]
+            structure = _logic.compile_tree(tree, analysis)
+            result = _cutsets.compute(tree, analysis, limits, structure=structure,
+                                      on_expanded=expanders.append)
+        else:
+            result = _cutsets.compute(tree, analysis, limits)
     except Exception as exc:  # noqa: BLE001 -- the headline must never fail
         timed_out = getattr(exc, "reason", None) == "time"
         result = None
@@ -803,10 +844,14 @@ def summary_with_cut_sets(tree: Dict[str, Any], analysis: Optional[Dict[str, Any
         out["truncated"] = True
         out["truncatedBy"] = ["time"] if timed_out else ["error"]
         out["capped"] = timed_out
+        failure = "time" if timed_out else "error"
     else:
+        failure = None
         repeated = result["repeatedEvents"]
         non_coherent = result["nonCoherent"]
-        method = "mcub" if (repeated or non_coherent) else "treeWalk"
+        # With an applied CCF group the headline is the MCUB of the cut sets,
+        # which include the CCF events, also when no event is repeated (FN-21).
+        method = "mcub" if (repeated or non_coherent or applied) else "treeWalk"
         tree_walk = result["treeWalk"]
         by = list(result.get("truncatedBy") or [])
         # A count truncation is the document's own only when the document's
@@ -827,6 +872,25 @@ def summary_with_cut_sets(tree: Dict[str, Any], analysis: Optional[Dict[str, Any
             "truncatedBy": by,
             "capped": capped,
         }
+        if capped:
+            failure = "summary cap"
+    # FN-37: the CCF block (which groups are applied, which are not and why) and
+    # ``ccfIncomplete``. Added only for a document with groups (FN-28).
+    fields = ccf.summary_fields(tree, analysis, failure)
+    out.update(fields)
+    if applied:
+        if fields.get("ccfIncomplete"):
+            # FN-21: the cut sets are incomplete, so CCF is not in any number:
+            # no headline at all (never the tree walk), the tree walk stays
+            # as its own labelled field, and no gate above a member shows a value.
+            out.update({"headline": None, "headlineMethod": "incomplete",
+                        "mcub": None, "rareEvent": None})
+            out["ccfGates"] = ccf.na_gates(structure) if structure is not None else {}
+        elif structure is not None and expanders and result is not None:
+            # Computed after ``compute`` returned, so the top uses the headline's own MCUB.
+            out["ccfGates"] = ccf.gate_values(structure, expanders[0], result["mcub"])
+        else:
+            out["ccfGates"] = ccf.na_gates(structure) if structure is not None else {}
     out["elapsedMs"] = round((_time.perf_counter() - started) * 1000.0, 1)
     return out, result
 
@@ -855,24 +919,32 @@ def root_headline(summary_: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]
     None -- the root keeps its tree-walk label -- when the headline is the
     tree walk (which includes cut sets that failed or timed out), when only
     the summary's own caps cut the cut sets short (``capped``: the number is
-    then a bound from the first 2000 sets, not the document's result), or
+    then an estimate from the sets the cap kept, not the document's result), or
     when the value is not a finite number.
     """
     if not isinstance(summary_, dict) or summary_.get("headlineMethod") != "mcub":
         return None
     if summary_.get("capped"):
         return None
+    if summary_.get("ccfGates"):
+        return None  # the root's box is covered by the CCF gate values (FN-66)
     value = summary_.get("headline")
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         return None
     return {"method": "mcub", "value": float(value), "treeWalk": summary_.get("treeWalk")}
 
 
-def may_need_cut_sets(tree: Any) -> bool:
+def may_need_cut_sets(tree: Any, analysis: Optional[Dict[str, Any]] = None) -> bool:
     """False when ``tree`` certainly has no repeated event and no XOR gate,
     so its headline is the tree walk and no cut sets need expanding to know
     it. Conservative: an id used twice, a link, a transfer or an XOR (in
-    either gate field) answers True. One pass, no recursion."""
+    either gate field) answers True. One pass, no recursion.
+
+    With ``analysis`` (the document's, raw) it also answers True when a CCF
+    group is applied: the headline is then the MCUB with the CCF events
+    (FN-21), whatever the tree looks like."""
+    if analysis is not None and ccf.any_applied(tree, analysis, "FTA"):
+        return True
     seen = set()
     stack = [tree] if isinstance(tree, dict) and tree else []
     while stack:
@@ -909,11 +981,20 @@ def diagram_headline(tree: Any, analysis: Optional[Dict[str, Any]] = None,
     at most its 2 s budget, remembered for the next call with the same
     document. A summary that ran out of time is not remembered.
     """
-    if canonical_mode(mode) == "ETA" or not may_need_cut_sets(tree):
+    return root_headline(diagram_summary(tree, analysis, mode))
+
+
+def diagram_summary(tree: Any, analysis: Optional[Dict[str, Any]] = None,
+                    mode: Any = "FTA") -> Optional[Dict[str, Any]]:
+    """The :func:`summary` behind the diagram's labels (the headline and,
+    with CCF groups, ``ccfGates``), or None where :func:`diagram_headline` is
+    None: ETA mode, a tree whose headline is the tree walk, a failed summary.
+    Same cache, same rules."""
+    if canonical_mode(mode) == "ETA" or not may_need_cut_sets(tree, analysis):
         return None
     with _headline_lock:
         if _headline_cache and _headline_cache[0] == tree and _headline_cache[1] == analysis:
-            return root_headline(_headline_cache[2])
+            return _headline_cache[2]
     try:
         result = summary_with_cut_sets(tree, analysis)[0]
     except Exception:  # noqa: BLE001 -- a label must never fail the diagram
@@ -922,7 +1003,7 @@ def diagram_headline(tree: Any, analysis: Optional[Dict[str, Any]] = None,
         entry = [copy.deepcopy(tree), copy.deepcopy(analysis), result]
         with _headline_lock:
             _headline_cache[:] = entry
-    return root_headline(result)
+    return result
 
 
 def _summary_doc_max_count(analysis: Optional[Dict[str, Any]]) -> int:

@@ -44,8 +44,9 @@ from AI_agent_handler import AICredentialManager  # noqa: E402
 from FTA_Editor_core import FTACore  # noqa: E402,F401  (kept for importers)
 
 try:  # normal package import
-    from . import user_prefs  # noqa: E402
+    from . import ccf, user_prefs  # noqa: E402
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]  # noqa: E402
     import user_prefs  # type: ignore[no-redef]  # noqa: E402
 
 try:  # normal package import
@@ -464,7 +465,7 @@ class AppState:
                 "canRedo": self.can_redo,
                 "language": self.language,
                 "zeroNodes": self.core.get_zero_probability_nodes(),
-                "analysis": copy.deepcopy(getattr(self.core, "analysis", None)),
+                "analysis": ccf.public_analysis(getattr(self.core, "analysis", None)),
                 "sessionWarnings": copy.deepcopy(self.session_warnings),
                 "revision": self.revision,
                 "documentSerial": self.document_serial,

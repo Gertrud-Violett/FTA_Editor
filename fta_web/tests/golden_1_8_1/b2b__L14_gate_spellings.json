@@ -1,0 +1,433 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L14_gate_spellings.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "p8",
+         "name": "p8",
+         "q": 0.3
+        }
+       ],
+       "order": 1,
+       "probability": 0.3,
+       "rank": 1,
+       "share": 0.2608695652173913
+      },
+      {
+       "events": [
+        {
+         "id": "p1",
+         "name": "p1",
+         "q": 0.5
+        },
+        {
+         "id": "p2",
+         "name": "p2",
+         "q": 0.5
+        },
+        {
+         "id": "p7",
+         "name": "p7 (no probability: 1.0)",
+         "q": 1.0
+        }
+       ],
+       "order": 3,
+       "probability": 0.25,
+       "rank": 2,
+       "share": 0.2173913043478261
+      },
+      {
+       "events": [
+        {
+         "id": "p6",
+         "name": "p6",
+         "q": 0.2
+        }
+       ],
+       "order": 1,
+       "probability": 0.2,
+       "rank": 3,
+       "share": 0.1739130434782609
+      },
+      {
+       "events": [
+        {
+         "id": "p3",
+         "name": "p3",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 4,
+       "share": 0.08695652173913045
+      },
+      {
+       "events": [
+        {
+         "id": "p4",
+         "name": "p4",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 5,
+       "share": 0.08695652173913045
+      },
+      {
+       "events": [
+        {
+         "id": "p5",
+         "name": "p5",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 6,
+       "share": 0.08695652173913045
+      },
+      {
+       "events": [
+        {
+         "id": "p6b",
+         "name": "p6b",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 7,
+       "share": 0.08695652173913045
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.724438,
+     "nonCoherent": false,
+     "rareEvent": 1.15,
+     "repeatedEvents": [],
+     "total": 7,
+     "treeWalk": 0.724438,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L14 gate spellings"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L14_gate_spellings.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.39366,
+       "cutSetCount": 1,
+       "fv": 0.16302016183579546,
+       "id": "p8",
+       "name": "p8",
+       "q": 0.3,
+       "raw": 1.380380377616856,
+       "rrw": 1.1947719101494212,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.18370799999999998,
+       "cutSetCount": 1,
+       "fv": 0.12679345920561869,
+       "id": "p1",
+       "name": "p1",
+       "q": 0.5,
+       "raw": 1.1267934592056186,
+       "rrw": 1.145204431348248,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.18370799999999998,
+       "cutSetCount": 1,
+       "fv": 0.12679345920561869,
+       "id": "p2",
+       "name": "p2",
+       "q": 0.5,
+       "raw": 1.1267934592056186,
+       "rrw": 1.145204431348248,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.09185399999999999,
+       "cutSetCount": 1,
+       "fv": 0.12679345920561869,
+       "id": "p7",
+       "name": "p7 (no probability: 1.0)",
+       "q": 1.0,
+       "raw": 1.0,
+       "rrw": 1.145204431348248,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.3444525,
+       "cutSetCount": 1,
+       "fv": 0.09509509440421403,
+       "id": "p6",
+       "name": "p6",
+       "q": 0.2,
+       "raw": 1.380380377616856,
+       "rrw": 1.1050884947315032,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.30618,
+       "cutSetCount": 1,
+       "fv": 0.0422644864018729,
+       "id": "p3",
+       "name": "p3",
+       "q": 0.1,
+       "raw": 1.380380377616856,
+       "rrw": 1.0441296013375228,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.30618,
+       "cutSetCount": 1,
+       "fv": 0.0422644864018729,
+       "id": "p4",
+       "name": "p4",
+       "q": 0.1,
+       "raw": 1.380380377616856,
+       "rrw": 1.0441296013375228,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.30618,
+       "cutSetCount": 1,
+       "fv": 0.0422644864018729,
+       "id": "p5",
+       "name": "p5",
+       "q": 0.1,
+       "raw": 1.380380377616856,
+       "rrw": 1.0441296013375228,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.30618,
+       "cutSetCount": 1,
+       "fv": 0.0422644864018729,
+       "id": "p6b",
+       "name": "p6b",
+       "q": 0.1,
+       "raw": 1.380380377616856,
+       "rrw": 1.0441296013375228,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L14 gate spellings"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L14_gate_spellings.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "p1",
+      "p2",
+      "p7",
+      "p3",
+      "p4",
+      "p5",
+      "p6",
+      "p6b",
+      "p8"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.7244379999999999,
+       0.7244379999999999
+      ],
+      "logBins": false
+     },
+     "mean": 0.7244379999999999,
+     "median": 0.7244379999999999,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.7244379999999999,
+     "p95": 0.7244379999999999,
+     "pointEstimate": 0.7244379999999999,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L14 gate spellings"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L14_gate_spellings.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.5,
+       "id": "p1",
+       "model": "fixed",
+       "name": "p1",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.5,
+       "id": "p2",
+       "model": "fixed",
+       "name": "p2",
+       "q": 0.5
+      },
+      {
+       "calculated": 1.0,
+       "id": "p7",
+       "model": "fixed",
+       "name": "p7 (no probability: 1.0)",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.1,
+       "id": "p3",
+       "model": "fixed",
+       "name": "p3",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "p4",
+       "model": "fixed",
+       "name": "p4",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "p5",
+       "model": "fixed",
+       "name": "p5",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "p6",
+       "model": "fixed",
+       "name": "p6",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.1,
+       "id": "p6b",
+       "model": "fixed",
+       "name": "p6b",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.3,
+       "id": "p8",
+       "model": "fixed",
+       "name": "p8",
+       "q": 0.3
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.724438,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.724438,
+      "nonCoherent": false,
+      "rareEvent": 1.15,
+      "repeatedEvents": [],
+      "treeWalk": 0.724438,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L14 gate spellings"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L14_gate_spellings.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 3
+     },
+     "issues": [
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "p7",
+       "nodeName": "p7 (no probability: 1.0)",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "SINGLE_INPUT_GATE",
+       "hintKey": "val.fix.SINGLE_INPUT_GATE",
+       "message": "OR gate has only one input, so it does nothing.",
+       "nodeId": "none_gate",
+       "nodeName": "None gate",
+       "params": {
+        "gate": "OR"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "SINGLE_INPUT_GATE",
+       "hintKey": "val.fix.SINGLE_INPUT_GATE",
+       "message": "OR gate has only one input, so it does nothing.",
+       "nodeId": "not_gate",
+       "nodeName": "NOT gate",
+       "params": {
+        "gate": "OR"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L14 gate spellings"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L14_gate_spellings.json"
+}

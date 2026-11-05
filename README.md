@@ -5,7 +5,7 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 [![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.8.1-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.9.0-green.svg)](CHANGELOG.md)
 
 There are two ways to run it:
 
@@ -44,6 +44,20 @@ Details are in
 - **Multiple Export Formats** (JSON, XML, Excel with hierarchical structure)
 - **Zero-Probability Node Highlighting** for quick issue identification
 - **Secure Credential Storage**: API keys stored locally, never in repository
+
+New in **1.9** (web app):
+
+- **Before you upgrade:** files with CCF groups lose the groups when saved by
+  FTA Editor 1.8.x (it warns 'reset to their defaults: ccfGroups' when it opens
+  the file), and lose all analysis settings when saved by the desktop app.
+- **CCF groups**: common-cause failure groups with a beta factor or an alpha
+  factor, in the headline, the cut sets, importance, Monte Carlo, the report and
+  the command line. See [CCF groups](docs/CCF.md).
+- **Grid tab**: every basic event in one table, with sort, filter and paste
+  from Excel. See [the Grid tab](docs/USER_GUIDE.md#the-grid-tab-every-basic-event-paste-from-excel).
+- **What-if tab**: scale an event's main parameter by a factor from 1/100 to 100
+  and watch the top event move, without changing the file. See
+  [the What-if tab](docs/USER_GUIDE.md#the-what-if-tab).
 
 New in **1.7** (web app), for reliability and safety engineers:
 
@@ -367,6 +381,7 @@ python -m pytest desktop/tests/    # the frozen legacy suite
   - [Microsoft Copilot Setup](docs/MICROSOFT_COPILOT_SETUP.md) - Azure OpenAI configuration
   - [Multi-Provider Setup](docs/MULTI_PROVIDER_SETUP.md) - OpenAI, Claude, Gemini
 - [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
+- [CCF groups (beta factor and alpha factor)](docs/CCF.md) - Common-cause failure groups: formulas, sources, assumptions, worked examples
 - [API Reference](docs/API_REFERENCE.md) - Programming interface
 - [Code Review 2026-09](docs/CODE_REVIEW_2026-09.md) - Known defects, ranked, with fix order
 - [Code Review 2026-10](docs/CODE_REVIEW_2026-10.md) - October 2026 review: what was fixed, what is left open, feature status

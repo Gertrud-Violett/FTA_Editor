@@ -27,20 +27,25 @@ from __future__ import annotations
 
 import copy
 import datetime as _dt
+import decimal
 import importlib
 import io
+import json
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.report_docx``
+    from . import ccf, ccf_text
     from .excel_events import event_row, iter_nodes, node_kind, xml_text
     from .numfmt import clamp_sig_figs, format_prob
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]
+    import ccf_text  # type: ignore[no-redef]
     from excel_events import event_row, iter_nodes, node_kind, xml_text  # type: ignore[no-redef]
     from numfmt import clamp_sig_figs, format_prob  # type: ignore[no-redef]
 
 #: Shown on the title page. The frozen build has no pyproject to read, so the
 #: release number lives here; the integrator bumps it with the release.
-TOOL_VERSION = "1.8.1"
+TOOL_VERSION = "1.9.0"
 
 SECTIONS = (
     "metadata", "headline", "assumptions", "diagram", "events", "cutsets",
@@ -228,6 +233,56 @@ def _truncation_signal(tree: Any, analysis: Dict[str, Any], cut_result: Optional
     return signal
 
 
+#: The reason of an incomplete headline -> its key in ``ccf_text.TEXT`` (FN-21).
+_INCOMPLETE_REASON_KEYS = {"time": "headline.reason.time", "error": "headline.reason.error",
+                           "summary cap": "headline.reason.cap"}
+
+
+def _ccf_report_data(groups: List[Any], tree: Any, analysis: Dict[str, Any], mode: str,
+                     names: Dict[str, str], summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """The CCF section's data (FN-25): one row per stored group with its status
+    in both languages, and the headline line's state. Pure; the groups are
+    judged by ``ccf.assess`` (FTA or ETA mode), so a group that is not applied
+    is listed with its reason whatever sections the report has."""
+    assessments = ccf.assess(groups, tree, analysis, mode)
+    rows = []
+    for raw, assessment in zip(groups, assessments):
+        raw = raw if isinstance(raw, dict) else {}
+        primary = assessment.primary
+        reasons = None
+        fixes = None
+        if not assessment.applied and primary is not None:
+            texts = primary.text()
+            reasons = {lang: texts[lang]["reason"] for lang in ccf_text.LANGS}
+            # What to do about it: the lint fix; the ETA status has none, so it gets a hint.
+            fixes = {lang: texts[lang]["fix"] or ccf_text.text(lang, "report.etaHint")
+                     for lang in ccf_text.LANGS}
+        rows.append({
+            "id": assessment.id,
+            "name": assessment.name,
+            "model": assessment.model,
+            "beta": assessment.beta,
+            "alpha": assessment.alpha,
+            "alphaSum": assessment.alpha_sum,
+            "alphaNormalised": any(f.code == "CCF_ALPHA_NORMALISED" for f in assessment.findings),
+            "testing": raw.get("testing"),
+            "source": raw.get("source"),
+            "members": [names.get(m, m) for m in assessment.members],
+            "applied": assessment.applied,
+            "reasons": reasons,
+            "fixes": fixes,
+        })
+    block = ccf.block(assessments)
+    headline = None
+    if summary and "ccf" in summary:
+        if summary.get("headlineMethod") == "incomplete":
+            headline = {"state": "incomplete", "reason": summary.get("ccfIncompleteReason"),
+                        "treeWalk": summary.get("treeWalk")}
+        elif block["applied"]:
+            headline = {"state": "includes", "n": len(block["applied"])}
+    return {"groups": rows, "block": block, "headline": headline}
+
+
 def collect_report_data(core, session_warnings: Optional[List[Dict[str, Any]]] = None,
                         options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Everything the report shows, as plain data. Does not modify ``core``."""
@@ -269,6 +324,13 @@ def collect_report_data(core, session_warnings: Optional[List[Dict[str, Any]]] =
     # value, when that is the headline: the caption under the picture says so.
     root_headline, _reason = try_call("engine", "root_headline", summary)
     data["rootHeadline"] = root_headline
+    # A document with CCF groups: the CCF section is always part of the report (DESIGN D7),
+    # also in ETA mode (every group "Not applied: ETA mode") and with any chosen sections.
+    # No group, no key: the report of a file without groups is the 1.8.1 report (FN-28).
+    ccf_groups = ccf.groups_of(analysis)
+    if ccf_groups:
+        data["ccf"] = _ccf_report_data(ccf_groups, tree, analysis, mode, names, summary)
+        data["ccfGates"] = bool((summary or {}).get("ccfGates"))
 
     if "assumptions" in wanted:
         formulas = _formulas()
@@ -590,6 +652,109 @@ def _xml_safe(value: Any) -> Any:
     return value
 
 
+#: The six sentences of UI-7 (SPEC 7.3), in the order of the Assumptions box.
+_ASSUMPTION_KEYS = ("assume.model", "assume.qt", "assume.beta", "assume.split",
+                    "assume.headline", "assume.sampling")
+
+
+def _beta_text(beta: Any) -> str:
+    """beta for the Parameters cell: three significant figures for a number
+    (0.1 reads ``0.1``, 1/3 reads ``0.333``), anything else as it is stored. Never
+    raises: an int too big for a float (``10 ** 400``, a hand-edited file) reads
+    ``1.00e+400``."""
+    if isinstance(beta, (int, float)) and not isinstance(beta, bool):
+        try:
+            return "%.3g" % beta
+        except OverflowError:
+            return "{:.3g}".format(decimal.Decimal(beta))
+    return str(beta)
+
+
+def _alpha_text(g: Dict[str, Any], tx: Callable[..., str]) -> str:
+    """The Parameters cell of an alpha group (F2A DESIGN 5): ``α = (0.955,
+    0.034, 0.011)`` with the stored numbers, and ``; sum 1.0005, each α
+    divided by the sum`` when the group was normalised. The numbers print with
+    12 significant digits (like the sum), so a 7-digit published value keeps
+    all its digits. A stored list that is not a list of numbers from 0 to 1
+    reads as the JSON it is, a missing one as ``—``."""
+    alpha = g.get("alpha")
+    if alpha is None:
+        return "—"
+    if not isinstance(alpha, list) or not all(ccf.beta_is_valid(a) for a in alpha):
+        return json.dumps(alpha, ensure_ascii=False)
+    text = tx("report.alpha.parameters", values=", ".join("%.12g" % a for a in alpha))
+    if g.get("alphaNormalised"):
+        text += "; " + tx("report.alpha.sum", sum="%.12g" % g["alphaSum"])
+    return text
+
+
+def _testing_text(g: Dict[str, Any], tx: Callable[..., str]) -> str:
+    """The Testing scheme cell: for an alpha group the scheme in words (a value
+    that is not one of the two schemes is shown as stored), ``—`` for beta."""
+    testing = g.get("testing")
+    if g.get("model") == "alpha":
+        if testing in ccf.TESTING_SCHEMES:
+            return tx("report.testing.%s" % testing)
+        return tx("report.testing.none") if testing in (None, "") else str(testing)
+    return "—" if testing in (None, "") else testing
+
+
+def _write_ccf_section(doc, ccf_data: Dict[str, Any], lang: str, t: Callable[..., str]) -> None:
+    """The CCF section of the report (FN-25, FN-67), written right after the
+    Assumptions: the per-group table (name, model, parameters, testing scheme,
+    source, members, status), the line ``Not applied: <reason>. Results exclude
+    this group.`` for each group that is not applied, the formulas with their
+    sources and pages (and, once, ``assume.alpha`` with the alpha formulas when the
+    document has an alpha group), the six assumptions of UI-7, the note on
+    overlapping CCF events (and one line per applied alpha group of 3 or 4 members) and
+    the note of FN-67. Always written for a document with groups (also
+    in ETA mode), so that a group that was left out cannot go unmentioned."""
+    tx = lambda key, **kw: ccf_text.text(lang, key, **kw)  # noqa: E731
+    doc.add_heading(tx("report.heading"), 1)
+    rows = []
+    for g in ccf_data.get("groups") or []:
+        model = g.get("model")
+        model_text = (tx("model.beta") if model == "beta"
+                      else tx("model.alpha") if model == "alpha" else str(model))
+        params = (tx("param.beta", beta=_beta_text(g.get("beta"))) if model == "beta"
+                  else _alpha_text(g, tx) if model == "alpha" else "")
+        if g.get("applied"):
+            status = tx("applied")
+        else:
+            reasons = g.get("reasons") or {}
+            status = tx("notApplied", reason=reasons.get(lang) or reasons.get("en") or "")
+        rows.append([g.get("name"), model_text, params, _testing_text(g, tx),
+                     g.get("source") or "", ", ".join(map(str, g.get("members") or [])), status])
+    _table(doc, [t("col.name"), t("col.model"), t("col.params"), tx("report.testing"),
+                 t("col.source"), tx("col.members"), t("col.status")], rows)
+    for g in ccf_data.get("groups") or []:
+        if not g.get("applied"):
+            reasons = g.get("reasons") or {}
+            para = doc.add_paragraph()
+            para.add_run("%s: " % g.get("name")).bold = True
+            para.add_run(tx("report.notApplied",
+                            reason=reasons.get(lang) or reasons.get("en") or ""))
+            fixes = g.get("fixes") or {}
+            fix = fixes.get(lang) or fixes.get("en")
+            if fix:  # after the fixed FN-25 sentence, which stays intact
+                para.add_run(("" if lang == "ja" else " ") + fix)
+    alpha_groups = [g for g in ccf_data.get("groups") or [] if g.get("model") == "alpha"]
+    doc.add_heading(tx("report.formulas"), 2)
+    for key in ("report.formula.independent", "report.formula.event", "report.formula.check"):
+        doc.add_paragraph(tx(key), style="List Bullet")
+    if alpha_groups:  # the alpha formulas with source and page follow the beta formulas
+        doc.add_paragraph(tx("assume.alpha"), style="List Bullet")
+    doc.add_heading(tx("report.assumptions"), 2)
+    for key in _ASSUMPTION_KEYS:  # assume.alpha is under "Formulas" and is not repeated here
+        doc.add_paragraph(tx(key), style="List Bullet")
+    doc.add_paragraph(tx("report.overlap"))
+    for g in alpha_groups:  # SPEC 7.3: overlapping CCF events arise from 3 members on
+        if g.get("applied") and 3 <= len(g.get("members") or []) <= 4:
+            doc.add_paragraph(tx("report.alpha.overlap", group=g.get("name"),
+                                 n=len(g["members"])))
+    _note(doc, ccf_text.note(lang))
+
+
 def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = None) -> bytes:
     """The report as ``.docx`` bytes. Needs python-docx."""
     from docx import Document
@@ -609,6 +774,13 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
     unavailable = doc_data.get("unavailable") or {}
     skipped = set(doc_data.get("skippedEta") or [])
     names = doc_data.get("names") or {}
+    ccf_data = doc_data.get("ccf") or {}  # only for a document with CCF groups (FN-25)
+
+    def ev_name(event: Dict[str, Any]) -> str:
+        """An event's name in the report language (CCF events: ``CCF: <group>``)."""
+        if ccf_data and isinstance(event.get("ccf"), dict):
+            return ccf.display_name(event, lang)
+        return str(event.get("name") or event.get("id"))
 
     doc = Document()
     normal = doc.styles["Normal"]
@@ -658,11 +830,26 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
             run = para.add_run(fp(summary.get("headline")))
             run.bold = True
             run.font.size = Pt(16)
-            para.add_run("   [%s]" % t("method." + ("mcub" if method == "mcub" else "treeWalk")))
-            alt_key = "treeWalk" if method == "mcub" else "mcub"
-            alt = summary.get(alt_key)
-            if alt is not None:
-                doc.add_paragraph("%s: %s" % (t("alt." + alt_key), fp(alt)))
+            ccf_head = ccf_data.get("headline") or {}
+            if ccf_head.get("state") == "incomplete":
+                # FN-25, FN-21: no number; the CCF-free tree walk is shown, labelled as such.
+                para.add_run("   " + ccf_text.text(lang, "report.incomplete"))
+                reason_key = _INCOMPLETE_REASON_KEYS.get(str(ccf_head.get("reason")), "headline.reason.error")
+                doc.add_paragraph("%s: %s" % (
+                    ccf_text.text(lang, "headline.walk", reason=ccf_text.text(lang, reason_key)),
+                    fp(ccf_head.get("treeWalk"))))
+            elif ccf_head.get("state") == "includes":
+                n = ccf_head.get("n") or 0
+                includes = (ccf_text.text(lang, "headline.includes1") if n == 1
+                            else ccf_text.text(lang, "headline.includes", n=n))
+                separator = "、" if lang == "ja" else ", "
+                para.add_run("   [%s%s%s]" % (t("method.mcub"), separator, includes))
+            else:
+                para.add_run("   [%s]" % t("method." + ("mcub" if method == "mcub" else "treeWalk")))
+                alt_key = "treeWalk" if method == "mcub" else "mcub"
+                alt = summary.get(alt_key)
+                if alt is not None:
+                    doc.add_paragraph("%s: %s" % (t("alt." + alt_key), fp(alt)))
 
     # ---- assumptions ----
     if "assumptions" in sections and doc_data.get("assumptions"):
@@ -696,6 +883,10 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
         doc.add_paragraph(t("repeated", list=", ".join(rep)) if rep else t("repeated.none"),
                           style="List Bullet")
 
+    # ---- CCF groups (FN-25, FN-67) ----
+    if ccf_data:
+        _write_ccf_section(doc, ccf_data, lang, t)
+
     # ---- diagram ----
     if "diagram" in sections:
         doc.add_heading(t("diagram"), 1)
@@ -709,6 +900,9 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
                 placed = False
         if not placed:
             _note(doc, t("diagram.none"))
+        elif doc_data.get("ccfGates"):
+            # FN-66: the boxes above a CCF member show the cut-set MCUB, or n/a (CCF).
+            _note(doc, ccf_text.text(lang, "diagram.ccfGates"))
         elif doc_data.get("rootHeadline"):
             head = doc_data["rootHeadline"]
             _note(doc, t("diagram.rootMcub", v=fp(head.get("value")), w=fp(head.get("treeWalk"))))
@@ -740,7 +934,7 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
                 _note(doc, t("cutsets.truncated", by=by))
             rows = []
             for c in cs.get("rows") or []:
-                events = " · ".join(str(e.get("name") or e.get("id")) for e in c.get("events") or [])
+                events = " · ".join(ev_name(e) for e in c.get("events") or [])
                 share = c.get("share")
                 rows.append([c.get("rank"), events, c.get("order"), fp(c.get("probability")),
                              "" if share is None else "%.1f%%" % (float(share) * 100)])
@@ -756,7 +950,8 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
                                 total=imp.get("total")))
             # RRW is null with rrwInfinite when removing the event makes the
             # top event impossible: that is ∞, not "missing".
-            rows = [[m.get("id"), m.get("name"), fp(m.get("q")), fp(m.get("fv")),
+            rows = [[m.get("id"), ev_name(m) if ccf_data else m.get("name"),
+                     fp(m.get("q")), fp(m.get("fv")),
                      fp(m.get("birnbaum")), fp(m.get("raw")),
                      "∞" if m.get("rrwInfinite") and m.get("rrw") is None else fp(m.get("rrw")),
                      m.get("cutSetCount")] for m in imp.get("rows") or []]
@@ -786,6 +981,8 @@ def build_report(doc_data: Dict[str, Any], options: Optional[Dict[str, Any]] = N
                 if unc.get(key) is not None:
                     rows.append([t("stat." + key), str(unc.get(key))])
             _table(doc, [t("col.stat"), t("col.value")], rows)
+            if unc.get("ccfSampling"):  # FN-24: say it where the numbers are
+                _note(doc, ccf_text.text(lang, "assume.sampling"))
             hist = unc.get("histogram") or {}
             edges, counts = hist.get("edges") or [], hist.get("counts") or []
             if counts and len(edges) == len(counts) + 1:

@@ -42,6 +42,22 @@ tuple whose first item is the kind:
 
 ``Structure.op_nodes[i]`` is the tree node id op ``i`` came from (None for
 variables/constants shared across nodes).
+
+CCF groups (FN-19)
+------------------
+When the document has CCF groups that are *applied* (``ccf.assess``), each
+member leaf is replaced, at its first reference, by ``OR(independent part,
+CCF event)`` (:meth:`Structure.ccf_member`): the independent part is a
+variable with the member's id and ``q = (1 - beta) Q_t``, the CCF event a
+variable ``ccf:<groupId>`` with ``q = beta Q_t`` created once per group and
+shared by all its members. An alpha-factor group (F2A) has one event
+``ccf:<groupId>:<m1>+<m2>...`` per member subset of two or more, and a member
+is ``OR(independent part, every event that contains it)``. Every later
+reference to the member (links, transfers, a repeated id) gets the same OR operator, so the CCF event is one
+repeated event and the cut sets and the min-cut upper bound count it once.
+The formulas and their sources are in :func:`ccf.event_probabilities`. A group
+that is not applied leaves the tree exactly as it was; a document without
+groups takes the unchanged 1.8.1 path.
 """
 from __future__ import annotations
 
@@ -50,8 +66,9 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 try:  # normal package import: ``import fta_web.logic``
-    from . import engine
+    from . import ccf, engine
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]
     import engine  # type: ignore[no-redef]
 
 _GATE_KINDS = ("AND", "OR", "KOFN", "XOR", "INHIBIT", "PAND")
@@ -78,6 +95,14 @@ class Structure:
         self.non_coherent = False
         self.approximations: List[Dict[str, Any]] = []
         self._const: Dict[bool, int] = {}
+        #: The CCF plan (``ccf.Plan``) when the document has groups, else None.
+        self.ccf: Optional[Any] = None
+        #: Gate node id -> its final operator (only filled when ``ccf`` is set). A
+        #: gate is any node whose operator is not its own variable: a node with
+        #: children, a TRANSFER, or a leaf with links (FN-66).
+        self.node_ops: Dict[str, int] = {}
+        #: Per operator: does its subtree hold a CCF event? ([] without a plan).
+        self.ccf_flag: List[bool] = []
 
     # ---- building --------------------------------------------------------
 
@@ -95,7 +120,8 @@ class Structure:
     def var(self, node: Dict[str, Any], analysis: Dict[str, Any]) -> int:
         eid = str(node.get("id"))
         if eid in self.event_index:
-            return self.events[self.event_index[eid]]["op"]
+            e = self.events[self.event_index[eid]]
+            return e.get("ref", e["op"])
         try:
             q = float(node.get("probability", 0.0))
         except (TypeError, ValueError):
@@ -115,6 +141,74 @@ class Structure:
         })
         self.event_index[eid] = index
         return op
+
+    def ccf_member(self, node: Dict[str, Any], analysis: Dict[str, Any],
+                   group: Any, position: int) -> int:
+        """The operator that stands for member ``node`` of an applied CCF group.
+
+        At the first reference: the independent part (a variable with the
+        member's id and slot, ``q = (1 - beta) Q_t``; its ``derived`` keeps
+        Q_t, so ``derived["q"]`` is Q_t while ``q`` is the independent part),
+        then all CCF events of the group (created at the first reference of
+        any member, so they take the slots right after that member's), then
+        ``OR(independent part, the CCF events that contain the member)``.
+        Operators are appended in creation order, before the parent that
+        uses them, so index order stays topological. Later references return the stored OR operator.
+        """
+        eid = str(node.get("id"))
+        if eid in self.event_index:
+            e = self.events[self.event_index[eid]]
+            return e.get("ref", e["op"])
+        name = str(node.get("name", "") or "")
+        index = len(self.events)
+        op = self.add(("var", index), eid)
+        quant = node.get("quant")
+        event = {
+            "id": eid,
+            "name": "%s (independent part)" % name,
+            "q": group.expansion.independent[position],
+            "op": op,
+            "quant": copy.deepcopy(quant) if isinstance(quant, dict) else None,
+            "derived": engine.derive_quant(node, analysis),
+            "ccf": {"groupId": group.id, "role": "independent", "baseName": name},
+        }
+        self.events.append(event)
+        self.event_index[eid] = index
+        # Every event of the group is created at the first reference of any member, in the
+        # order of ``group.events``, so the slots and the operator order do not depend on
+        # which member comes first (F2A DESIGN 3.3). A beta group has one event over all
+        # members, so nothing changes for it.
+        for ccf_id, positions, q in group.events:
+            if ccf_id in self.event_index:
+                continue
+            slot = len(self.events)
+            ccf_op = self.add(("var", slot), None)
+            marker = {"groupId": group.id, "role": "event",
+                      "members": [group.members[i] for i in positions],
+                      "baseName": group.name}
+            title = "CCF: %s" % group.name
+            if group.model == "alpha":  # the subset events of one group need their member names
+                names = [group.member_names[i] for i in positions]
+                marker["memberNames"] = names
+                title = "%s (%s)" % (title, " + ".join(names))
+            self.events.append({
+                "id": ccf_id,
+                "name": title,
+                "q": q,
+                "op": ccf_op,
+                "quant": None,
+                "derived": {"model": "fixed", "q": q, "params": {"q": q},
+                            "formula": "", "formulaKey": "fixed", "warnings": []},
+                "ccf": marker,
+            })
+            self.event_index[ccf_id] = slot
+        refs = [op]
+        for ccf_id, positions, _q in group.events:
+            if position in positions:
+                refs.append(self.events[self.event_index[ccf_id]]["op"])
+        ref = self.add(("or", tuple(refs)), eid)
+        event["ref"] = ref
+        return ref
 
     # ---- readers ----------------------------------------------------------
 
@@ -189,13 +283,22 @@ def recalculated_core(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]]):
 
 def compile_tree(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None
                  ) -> Structure:
-    """Compile ``tree`` (not modified) into a :class:`Structure`."""
+    """Compile ``tree`` (not modified) into a :class:`Structure`.
+
+    The CCF groups (``analysis["ccfGroups"]``) and the loader's rename map are
+    read from the RAW ``analysis`` argument, because ``coerce_analysis`` drops
+    both from the core's settings (FN-19, DESIGN D1 and D8).
+    """
+    groups = ccf.groups_of(analysis)
+    renamed = analysis.get(ccf.RENAMED_KEY) if isinstance(analysis, dict) else None
     core = recalculated_core(tree, analysis)
-    return compile_core(core)
+    return compile_core(core, groups, renamed)
 
 
-def compile_core(core) -> Structure:
-    """Compile an already recalculated ``WebCore``."""
+def compile_core(core, ccf_groups: Any = None, ccf_renamed: Any = None) -> Structure:
+    """Compile an already recalculated ``WebCore``. ``ccf_groups`` and
+    ``ccf_renamed`` are the raw stored groups and rename map (see
+    :func:`compile_tree`); without groups this is the 1.8.1 compile."""
     s = Structure()
     data = core.get_data()
     s.engine_warnings = copy.deepcopy(getattr(core, "quant_warnings", []) or [])
@@ -204,6 +307,9 @@ def compile_core(core) -> Structure:
         return s
     analysis = core.analysis
     s.tree_walk = data.get("calculatedProbability")
+    plan = ccf.build_plan(ccf_groups, ccf_renamed, data, analysis) if ccf_groups else None
+    s.ccf = plan
+    members = plan.by_member if plan is not None and plan.by_member else None
 
     index: Dict[str, Dict[str, Any]] = {}
     for node in core._walk(data):
@@ -219,6 +325,10 @@ def compile_core(core) -> Structure:
     def leaf_ref(node: Dict[str, Any]) -> int:
         if str(node.get("eventKind") or "").lower() == "house":
             return s.const(node.get("houseState") is True)
+        if members is not None:
+            hit = members.get(str(node.get("id")))
+            if hit is not None:
+                return s.ccf_member(node, analysis, hit[0], hit[1])
         return s.var(node, analysis)
 
     # Recursion mirrors the engine's (which is recursive too), so the depth
@@ -311,6 +421,10 @@ def compile_core(core) -> Structure:
         if or_refs:
             base = s.add(("or", (base,) + tuple(or_refs)), nid)
 
+        if plan is not None and (children or gate_type == "TRANSFER" or and_refs or or_refs):
+            # The final operator of a gate (FN-66): also of a leaf whose links made
+            # its operator something else than its own variable, member leaf included.
+            s.node_ops.setdefault(nid, base)
         memo[key] = base
         visiting.remove(key)
         gate_only.pop(key, None)
@@ -340,6 +454,14 @@ def _analyse(s: Structure) -> None:
         for r in refs:
             paths[r] = min(2, paths[r] + paths[i])
     s.repeated = [i for i, e in enumerate(s.events) if paths[e["op"]] >= 2]
+    if s.ccf is not None and s.ccf.groups:
+        # Which operators have a CCF event somewhere below them (FN-66): those
+        # gates show the cut-set MCUB, never the tree-walk value.
+        ccf_ops = {e["op"] for e in s.events if (e.get("ccf") or {}).get("role") == "event"}
+        flag = [False] * n
+        for i, op in enumerate(s.ops):
+            flag[i] = i in ccf_ops or any(flag[c] for c in op_children(op))
+        s.ccf_flag = flag
 
     approximations: List[Dict[str, Any]] = []
     seen = set()

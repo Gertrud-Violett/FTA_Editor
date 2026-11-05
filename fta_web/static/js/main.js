@@ -142,6 +142,7 @@ import {
 } from './api.js';
 import { describeStep, rescueFilename, rescueText } from './docutil.js';
 import { store } from './store.js';
+import { ancestorsOfMembers, groupsOf } from './ccf_util.js';
 import { formatProb, getSigFigs, setSigFigs, SIG_FIGS_EVENT } from './numfmt.js';
 
 // ---------------------------------------------------------------------------
@@ -1142,6 +1143,10 @@ const CATALOGS = [
   './i18n/imp.js',
   './i18n/unc.js',
   './i18n/report.js',
+  './i18n/grid.js',
+  './i18n/ccf.js',
+  './i18n/whatif.js',
+  './i18n/whatifcaution.js',
 ];
 
 async function loadCatalogs() {
@@ -1211,6 +1216,8 @@ function setHeadline(next) {
  */
 function rootHeadline() {
   if (!headline || headline.method !== 'mcub' || headline.capped) return null;
+  // A document with an applied CCF group: the root is covered by ccfGate().
+  if (Number(headline.ccfApplied) > 0) return null;
   if (typeof headline.value !== 'number' || !Number.isFinite(headline.value)) return null;
   if (!store.state || headline.tree !== store.state.tree) return null;
   return { value: headline.value };
@@ -1224,8 +1231,15 @@ function renderHeadline() {
   valueEl.textContent =
     value === null || value === undefined ? '—' : formatProb(value, getSigFigs());
   const mcub = Boolean(headline) && headline.method === 'mcub';
-  badge.hidden = !(mcub && advanced);
-  if (mcub) {
+  // With an applied CCF group the number is the MCUB including CCF and says so
+  // in #headline-ccf; the unlabelled badge and the value's title (which would
+  // quote a tree-walk value without CCF) give way to that.
+  const ccfApplied = headline ? Number(headline.ccfApplied) || 0 : 0;
+  badge.hidden = !(mcub && advanced) || ccfApplied > 0;
+  if (mcub && ccfApplied > 0) {
+    badge.removeAttribute('title');
+    valueEl.removeAttribute('title');
+  } else if (mcub) {
     const alt =
       headline.alt === null || headline.alt === undefined ? '—' : formatProb(headline.alt, getSigFigs());
     const reasons = ['repeated', 'nonCoherent', 'both'];
@@ -1253,6 +1267,184 @@ function renderHeadline() {
       marker.removeAttribute('title');
       marker.removeAttribute('aria-label');
     }
+  }
+  renderHeadlineCcf();
+}
+
+// ---------------------------------------------------------------------------
+// CCF groups (F2): headline phrases, group status, gate values
+// ---------------------------------------------------------------------------
+//
+// Three small spans in the headline say what the number includes. They exist
+// in the page but stay hidden for a document without a CCF group, so such a
+// document sees no difference. setHeadline() takes, beside the 1.7 fields:
+//   ccfApplied / ccfNotApplied   how many groups are (not) applied
+//   ccfIncomplete / ccfReason    the cut sets were cut short: 'time' | 'error' | 'summary cap'
+//   walk                         the tree-walk value shown beside an incomplete headline
+//   ccfGates                     {nodeId: {method: 'mcub', value} | {method: 'na'}}
+//   ccf                          {applied: [...], notApplied: [{id, name, reason}]} (the title)
+
+/** The language key of an incomplete reason. */
+const CCF_REASON_KEYS = { time: 'time', error: 'error', 'summary cap': 'cap' };
+
+/** Group status as GET /api/ccf/groups answered it for `tree`: {tree, applied, notApplied} or null. */
+let ccfInfo = null;
+let ccfInfoTimer = null;
+let ccfInfoSeq = 0;
+
+function ccfGroupsStored() {
+  return groupsOf(store.state && store.state.analysis);
+}
+
+/** The reason text of a not-applied group in the current language. */
+function ccfReasonText(group) {
+  const known = ccfInfo ? ccfInfo.notApplied.find((g) => g.id === group.id) : null;
+  const reason = known && known.reason && typeof known.reason === 'object' ? known.reason : group.reason;
+  if (reason && typeof reason === 'object') return String(reason[language] || reason.en || '');
+  return reason === null || reason === undefined ? '' : String(reason);
+}
+
+function renderHeadlineCcf() {
+  const ccfEl = $('#headline-ccf');
+  const walkEl = $('#headline-walk');
+  const noteEl = $('#headline-ccf-note');
+  if (!ccfEl || !walkEl || !noteEl) return;
+  const applied = headline ? Number(headline.ccfApplied) || 0 : 0;
+  const notApplied = headline ? Number(headline.ccfNotApplied) || 0 : 0;
+  const incomplete = Boolean(headline) && Boolean(headline.ccfIncomplete);
+
+  let ccfText = '';
+  if (incomplete) ccfText = t('headline.ccf.incomplete');
+  else if (applied > 0) ccfText = applied === 1 ? t('headline.ccf.includes1') : t('headline.ccf.includes', { n: applied });
+  ccfEl.textContent = ccfText;
+  ccfEl.title = ccfText;
+  ccfEl.hidden = !ccfText;
+
+  walkEl.hidden = !incomplete;
+  if (incomplete) {
+    const key = CCF_REASON_KEYS[headline.ccfReason] || 'error';
+    walkEl.querySelector('.headline__walk-label').textContent = t('headline.ccf.walk', {
+      reason: t('headline.ccf.reason.' + key),
+    });
+    const walk = headline.walk;
+    walkEl.querySelector('.headline__walk-value').textContent =
+      typeof walk === 'number' && Number.isFinite(walk) ? formatProb(walk, getSigFigs()) : '—';
+  }
+
+  let noteText = '';
+  let noteTitle = '';
+  if (notApplied > 0) {
+    noteText = notApplied === 1 ? t('headline.ccf.notApplied1') : t('headline.ccf.notApplied', { n: notApplied });
+    const list = ((headline.ccf && headline.ccf.notApplied) || [])
+      .map((g) => {
+        const reason = ccfReasonText(g);
+        return reason ? g.name + ' (' + reason + ')' : String(g.name);
+      })
+      .join('; ');
+    noteTitle = t('headline.ccf.notAppliedTitle', { list });
+  }
+  noteEl.textContent = noteText;
+  noteEl.title = noteTitle;
+  noteEl.hidden = !noteText;
+
+  // A separator sits before each visible span and is hidden with it.
+  for (const span of [ccfEl, walkEl, noteEl]) {
+    const sep = span.previousElementSibling;
+    if (sep && sep.classList.contains('headline__sep')) sep.hidden = span.hidden;
+  }
+}
+
+/** The CCF fields of a headline for a document in ETA mode: every group is not applied. */
+function ccfEtaFields() {
+  const groups = ccfGroupsStored();
+  if (!groups.length) return {};
+  return {
+    ccfApplied: 0,
+    ccfNotApplied: groups.length,
+    ccf: { applied: [], notApplied: groups.map((g) => ({ id: g.id, name: String(g.name), reason: 'ETA mode' })) },
+  };
+}
+
+function ccfHeadlineFresh() {
+  return Boolean(headline) && Boolean(store.state) && headline.tree === store.state.tree;
+}
+
+/**
+ * The cut-set value of a gate above a CCF member for the tree now on screen:
+ * `{method: 'mcub', value}`, `{method: 'na'}` or null (not such a gate, or the
+ * headline has not caught up with the last edit yet).
+ */
+function ccfGate(id) {
+  if (!ccfHeadlineFresh() || !headline.ccfGates) return null;
+  const gate = headline.ccfGates[String(id)];
+  return gate && typeof gate === 'object' ? gate : null;
+}
+
+/**
+ * True while a gate above a CCF member waits for its value: the document has
+ * groups that may be applied, the headline of the current tree has not
+ * arrived, and the gate has a member below it. The tree and Details then show
+ * a dash, never the tree-walk value (which is far too low for such a gate).
+ */
+function ccfGatePending(id) {
+  const groups = ccfGroupsStored();
+  if (!groups.length || isEtaMode() || ccfHeadlineFresh()) return false;
+  if (ccfInfo && ccfInfo.applied.length === 0) return false;
+  return ancestorsOfMembers(store.state.tree, store.state.analysis).has(String(id));
+}
+
+/** `{tree, applied, notApplied, gates}` for the current document, or null before it is known. */
+function ccfState() {
+  if (!ccfInfo) return null;
+  return {
+    tree: ccfInfo.tree,
+    fresh: Boolean(store.state) && ccfInfo.tree === store.state.tree,
+    applied: ccfInfo.applied.slice(),
+    notApplied: ccfInfo.notApplied.slice(),
+    gates: ccfHeadlineFresh() && headline.ccfGates ? { ...headline.ccfGates } : null,
+  };
+}
+
+function announceCcf() {
+  window.dispatchEvent(new CustomEvent('fta:ccf'));
+}
+
+function scheduleCcfInfo() {
+  if (!ccfInfo && !ccfGroupsStored().length) return;
+  if (ccfInfoTimer) window.clearTimeout(ccfInfoTimer);
+  ccfInfoTimer = window.setTimeout(refreshCcfInfo, 80);
+}
+
+/** Ask which groups are applied (a quick request: no cut sets), for the badges and Details. */
+async function refreshCcfInfo() {
+  ccfInfoTimer = null;
+  const seq = ++ccfInfoSeq;
+  if (sessionLost || !store.state) return;
+  if (!ccfGroupsStored().length) {
+    if (ccfInfo) {
+      ccfInfo = null;
+      announceCcf();
+    }
+    return;
+  }
+  const forTree = store.state.tree;
+  try {
+    const res = await api.get('/ccf/groups');
+    if (seq !== ccfInfoSeq) return;
+    const next = { tree: forTree, applied: [], notApplied: [] };
+    for (const g of Array.isArray(res.groups) ? res.groups : []) {
+      const status = g.status || {};
+      if (status.applied) {
+        next.applied.push({ id: g.id, name: String(g.name), beta: g.beta, members: g.members, alphaParts: g.alphaParts || null, warnings: status.warnings || [] });
+      } else {
+        next.notApplied.push({ id: g.id, name: String(g.name), code: status.code, reason: status.reason || {} });
+      }
+    }
+    ccfInfo = next;
+    announceCcf();
+    renderHeadlineCcf();
+  } catch (_err) {
+    /* the badges keep their last state; the tab shows the failure itself */
   }
 }
 
@@ -1329,7 +1521,10 @@ function onDocumentMaybeChanged(state) {
     next.tree !== liveSeen.tree || next.analysis !== liveSeen.analysis || next.mode !== liveSeen.mode;
   const warnChanged = next.warnings !== liveSeen.warnings;
   liveSeen = next;
-  if (docChanged) scheduleHeadline();
+  if (docChanged) {
+    scheduleCcfInfo();
+    scheduleHeadline();
+  }
   if (docChanged || warnChanged) scheduleValidationBadge();
 }
 
@@ -1337,7 +1532,7 @@ function scheduleHeadline() {
   if (headlineTimer) window.clearTimeout(headlineTimer);
   // Before the first server answer (and in ETA mode) show the tree-walk value
   // at once; afterwards the previous figure stays until the new one arrives.
-  if (!headline || isEtaMode()) setHeadline({ value: rootCalculated(), method: 'treeWalk' });
+  if (!headline || isEtaMode()) setHeadline({ value: rootCalculated(), method: 'treeWalk', ...(isEtaMode() ? ccfEtaFields() : {}) });
   headlineTimer = window.setTimeout(refreshHeadline, HEADLINE_DEBOUNCE_MS);
 }
 
@@ -1347,7 +1542,7 @@ async function refreshHeadline() {
   if (sessionLost || !store.state) return;
   if (isEtaMode()) {
     // An event tree has no cut sets: show the root's calculated value, no badge.
-    setHeadline({ value: rootCalculated(), method: 'treeWalk' });
+    setHeadline({ value: rootCalculated(), method: 'treeWalk', ...ccfEtaFields() });
     return;
   }
   try {
@@ -1357,8 +1552,11 @@ async function refreshHeadline() {
     const forTree = store.state.tree;
     const res = await api.get('/analysis/summary');
     if (seq !== headlineSeq) return; // a newer request superseded this one
-    const value = typeof res.headline === 'number' ? res.headline : rootCalculated();
-    const method = res.headlineMethod === 'mcub' ? 'mcub' : 'treeWalk';
+    // CCF (F2): with an applied group whose cut sets are incomplete there is no
+    // headline number; the tree-walk value is shown beside it, labelled.
+    const ccfIncomplete = res.ccfIncomplete === true || res.headlineMethod === 'incomplete';
+    const value = typeof res.headline === 'number' ? res.headline : ccfIncomplete ? null : rootCalculated();
+    const method = res.headlineMethod === 'mcub' ? 'mcub' : ccfIncomplete ? 'incomplete' : 'treeWalk';
     const repeated = Array.isArray(res.repeatedEvents) && res.repeatedEvents.length > 0;
     const nonCoherent = Boolean(res.nonCoherent);
     // capped: only the summary's own caps (2000 sets / 2 s) cut the cut sets
@@ -1379,12 +1577,28 @@ async function refreshHeadline() {
       capped: fromCutSets && Boolean(res.capped),
       truncated: fromCutSets && docTruncated,
       tree: forTree,
+      ...(res.ccf ? ccfHeadlineFields(res, ccfIncomplete) : {}),
     });
   } catch (_err) {
     if (seq !== headlineSeq) return;
     // Silent fallback: the headline is a convenience, not worth a toast.
     setHeadline({ value: rootCalculated(), method: 'treeWalk' });
   }
+}
+
+/** The CCF fields of a headline from a fault-tree summary that has a `ccf` block. */
+function ccfHeadlineFields(res, incomplete) {
+  const applied = Array.isArray(res.ccf.applied) ? res.ccf.applied : [];
+  const notApplied = Array.isArray(res.ccf.notApplied) ? res.ccf.notApplied : [];
+  return {
+    ccfApplied: applied.length,
+    ccfNotApplied: notApplied.length,
+    ccfIncomplete: incomplete,
+    ccfReason: res.ccfIncompleteReason || null,
+    walk: incomplete && typeof res.treeWalk === 'number' ? res.treeWalk : null,
+    ccfGates: res.ccfGates && typeof res.ccfGates === 'object' ? res.ccfGates : {},
+    ccf: res.ccf,
+  };
 }
 
 function scheduleValidationBadge() {
@@ -2173,6 +2387,9 @@ function buildTabContext() {
     },
     pickPath: (opts) => pickPath(opts),
     diagramPng: (opts) => diagramPng(opts),
+    openTab: (id, detail) => openTab(id, detail),
+    takeTabRequest: (id) => takeTabRequest(id),
+    selection: () => selectedIds.slice(),
   });
 }
 
@@ -2193,12 +2410,39 @@ async function diagramPng(options) {
   }
 }
 
-/** Show a bottom-panel tab. @returns {boolean} false when it is not available. */
-function openTab(id) {
-  if (!tabHost) return String(id) === 'details';
-  const shown = tabHost.select(String(id));
-  return shown === String(id);
+/**
+ * Show a bottom-panel tab. @returns {boolean} false when it is not available.
+ * `detail` (optional) is left for the tab to take (takeTabRequest) and announced
+ * as `fta:tab-request` {id, detail}: the Validation tab uses it to open a CCF group.
+ */
+function openTab(id, detail) {
+  const wanted = String(id);
+  if (!tabHost) return wanted === 'details';
+  if (detail !== undefined && detail !== null) tabRequests.set(wanted, detail);
+  const shown = tabHost.select(wanted);
+  if (shown !== wanted) {
+    tabRequests.delete(wanted);
+    return false;
+  }
+  if (detail !== undefined && detail !== null) {
+    window.dispatchEvent(new CustomEvent('fta:tab-request', { detail: { id: wanted, detail } }));
+  }
+  return true;
 }
+
+/** Requests made with openTab(id, detail) that the tab has not taken yet. */
+const tabRequests = new Map();
+
+/** The pending request for a tab (once), or null. */
+function takeTabRequest(id) {
+  const key = String(id);
+  const detail = tabRequests.has(key) ? tabRequests.get(key) : null;
+  tabRequests.delete(key);
+  return detail;
+}
+
+/** Ids of the rows selected in the tree (the last `fta:selection`). */
+let selectedIds = [];
 
 function callInit(module, names, host, label, optional = false) {
   if (!module) return null;
@@ -2791,6 +3035,9 @@ function announceStep(kind, before, after) {
       break;
     case 'settings':
       what = t('history.settings');
+      break;
+    case 'ccf':
+      what = t('history.ccf');
       break;
     default:
       what = t('history.step');
@@ -4148,6 +4395,7 @@ async function boot() {
   window.addEventListener('fta:selection', (event) => {
     const ids = event && event.detail && Array.isArray(event.detail.ids) ? event.detail.ids : [];
     selectionCount = ids.length;
+    selectedIds = ids.map(String);
     renderSelectionMeta();
   });
 
@@ -4326,8 +4574,14 @@ window.ftaShell = {
   setHeadline,
   /** @returns {{value: number}|null} the MCUB headline the root node shows (see rootHeadline). */
   rootHeadline,
-  /** Show a bottom-panel tab by id. @returns {boolean} false if hidden/unknown. */
+  /** Show a bottom-panel tab by id (optional second argument: a request for the tab). @returns {boolean} false if hidden/unknown. */
   openTab,
+  /** CCF groups (F2): {tree, fresh, applied, notApplied, gates} for the open document, or null. */
+  ccfState,
+  /** CCF groups (F2): {method: 'mcub', value} | {method: 'na'} | null for a gate above a member. */
+  ccfGate,
+  /** CCF groups (F2): true while that gate's value has not arrived (show a dash, never the tree walk). */
+  ccfGatePending,
   /** Before a node gets its first child: the warning to show after, or null (see firstChildWarning). */
   firstChildWarning,
   /** Download the document this tab holds as a .json Load can open; no server needed. */

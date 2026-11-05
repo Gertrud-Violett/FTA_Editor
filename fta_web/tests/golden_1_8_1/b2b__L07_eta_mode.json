@@ -1,0 +1,106 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'cutsets' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/tests/b2b/L07_eta_mode.json",
+    "mode": "ETA",
+    "title": "L07 ETA"
+   }
+  },
+  "importance": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'importance' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/tests/b2b/L07_eta_mode.json",
+    "mode": "ETA",
+    "title": "L07 ETA"
+   }
+  },
+  "mc": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'mc' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/tests/b2b/L07_eta_mode.json",
+    "mode": "ETA",
+    "title": "L07 ETA"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L07_eta_mode.json",
+    "mode": "ETA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.008991,
+       "id": "s1a",
+       "model": "fixed",
+       "name": "s1a",
+       "q": 0.9
+      },
+      {
+       "calculated": 0.000999,
+       "id": "s1b",
+       "model": "fixed",
+       "name": "s1b",
+       "q": 0.1
+      },
+      {
+       "calculated": 3e-07,
+       "id": "f1a",
+       "model": "fixed",
+       "name": "f1a",
+       "q": 0.3
+      },
+      {
+       "calculated": 7e-07,
+       "id": "f1b",
+       "model": "fixed",
+       "name": "f1b",
+       "q": 0.7
+      }
+     ],
+     "summary": {
+      "headline": 0.01,
+      "headlineMethod": "treeWalk",
+      "treeWalk": 0.01
+     }
+    },
+    "title": "L07 ETA"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L07_eta_mode.json",
+    "mode": "ETA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "ETA_BRANCH_SUM",
+       "hintKey": "val.fix.ETA_BRANCH_SUM",
+       "message": "Branch probabilities under this node sum to 0.999, not 1.",
+       "nodeId": "root",
+       "nodeName": "Initiator",
+       "params": {
+        "n": 2,
+        "sum": 0.9991
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L07 ETA"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L07_eta_mode.json"
+}

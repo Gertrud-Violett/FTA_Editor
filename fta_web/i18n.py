@@ -48,6 +48,17 @@ _MESSAGES: Dict[str, Dict[str, str]] = {
             "更新は適用されず、何も変更されていません。もう一度「FTA更新」を実行してください。"
         ),
     },
+    # POST /api/grid/paste: the document changed since the grid was drawn. The same
+    # words as the Grid tab's own summary (static/js/i18n/grid.js, grid.summary.stale).
+    "STALE_REVISION": {
+        "ja": "解析が変更されました。もう一度貼り付けてください",
+    },
+    # POST /api/whatif answers the same code for the same cause, but the user's next step is
+    # different (the factors go back to 1). Picked by the route, see :func:`_route_key`;
+    # ``detail`` stays ``{revision, documentSerial}``.
+    "STALE_REVISION:whatif": {
+        "ja": "解析が変更されました。倍率を 1 に戻して、もう一度操作してください",
+    },
     "AI_UPDATE_EXPIRED": {
         "ja": (
             "その更新はもう保留されていません（適用済み・破棄済み、または新しい更新に置き換えられました）。"
@@ -252,6 +263,19 @@ def request_language() -> str:
         return config.DEFAULT_LANGUAGE
 
 
+def _route_key() -> Optional[str]:
+    """The name of the API route being answered, for the codes whose text depends on it
+    (``"whatif"`` for ``POST /api/whatif``), else None. Never raises; None outside a request."""
+    try:
+        from flask import request
+
+        if request.path.rstrip("/") == "/api/whatif":
+            return "whatif"
+    except Exception:
+        pass
+    return None
+
+
 def localize_message(code: str, message: str, language: str) -> str:
     """Swap ``message`` for its localized form when one exists; else unchanged."""
     if language == config.DEFAULT_LANGUAGE:
@@ -277,6 +301,9 @@ def localize_error(payload: dict, language: str) -> dict:
         feature = detail.get("feature")
         reason = detail.get("reason")
         candidates = []
+        route = _route_key()
+        if route:
+            candidates.append("%s:%s" % (code, route))
         if isinstance(fmt, str) and isinstance(feature, str):
             candidates.append("%s:%s:%s" % (code, fmt, feature))
         if isinstance(fmt, str):
