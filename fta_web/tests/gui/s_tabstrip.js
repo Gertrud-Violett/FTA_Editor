@@ -9,18 +9,19 @@
 //      title of the existing key tab.etaUnavailable (the same text as #tab-whatif). Back in FTA nothing of it is left.
 //
 // Cases (each in en and ja, Advanced on, 1100 x 800, a small document):
-//   scroll    Home then 7x ArrowRight leaves #tab-whatif inside the strip (aria-selected only there, focus on it, the visible
+//   scroll    Home then n x ArrowRight to the tab cut off at scrollLeft 0 leaves it inside the strip (aria-selected only there, focus on it, the visible
 //             tab order unchanged); a click on the last, partly cut off tab brings it in; a programmatic select (openTab)
 //             does; End then Home (first tab inside, scrollLeft 0). window.scrollY and panel scrollTop never change.
 //   eta       the seven greyed tabs (quant, cutsets, importance, uncertainty, ccf, whatif, grid), the Grid title, a click on
 //             Grid shows the .anl-eta notice, ArrowRight still works.
 //   fta_back  no greying left, in particular none on Grid.
 // And once, in Basic mode: Grid hidden, selection works, no page scroll.
-// The preconditions (the strip really overflows; at scrollLeft 0 the What-if tab is cut off) are checks of their own, so the
-// tests cannot pass on a layout where the defect cannot show.
-// In ja the labels are shorter: What-if fits at scrollLeft 0 and the tab cut off there is Validation, so the ja walk is Home
-// then 8x ArrowRight to Validation (the tab that is cut off is found from the geometry, not assumed).
-// Shots: tabstrip-after-home-7right-en, tabstrip-after-home-8right-ja, tabstrip-eta-en, tabstrip-eta-ja. Each is taken
+// The preconditions (the strip really overflows; at scrollLeft 0 exactly one tab, not the first, is cut off) are checks of
+// their own, so the tests cannot pass on a layout where the defect cannot show.
+// The tab cut off at scrollLeft 0 is found from the geometry, not assumed: it depends on the labels and the font (Windows:
+// What-if in en, Home then 7x ArrowRight; Validation in ja, 8x. Linux CI: Uncertainty in en, 6x; What-if in ja, 7x). The
+// walk is Home then n x ArrowRight to that tab.
+// Shots: tabstrip-after-home-<n>right-en, tabstrip-after-home-<n>right-ja, tabstrip-eta-en, tabstrip-eta-ja. Each is taken
 // after its assertions.
 //
 // Every check name starts with tabstrip_.
@@ -130,13 +131,15 @@ async function main(url, label, root) {
     const g0 = await geom();
     L.check(`${T}precondition_overflow: at 1100 x 800 with Advanced on the strip scrolls sideways (scrollWidth > clientWidth)`, g0.strip.scrollWidth > g0.strip.clientWidth, g0.strip);
     L.check(`${T}precondition_order: the tabs in order are details, grid, quant, ccf, cutsets, importance, uncertainty, whatif, ... (Advanced on)`, g0.order.slice(0, 8).join() === 'details,grid,quant,ccf,cutsets,importance,uncertainty,whatif', g0.order);
-    // The tab the old code left cut off at scrollLeft 0: in en it is What-if (the 8th tab: Home + 7x ArrowRight). In ja the
-    // labels are shorter and What-if fits; the tab that is cut off there is the next one (Validation, Home + 8x ArrowRight).
+    // The tab the old code left cut off at scrollLeft 0 is measured, not assumed: the one tab that starts inside the strip
+    // and ends past its right edge. Which tab that is depends on the font (Windows: What-if in en, Validation in ja; Linux
+    // CI with DejaVu Sans: Uncertainty in en, What-if in ja). It must not be the first tab, so Home then n x ArrowRight
+    // moves the selection onto it.
     const cutAt0 = g0.order.filter((id) => g0.rects[id].left < g0.strip.right - 6 && g0.rects[id].right > g0.strip.right + TOL);
-    const target = cutAt0.length === 1 ? cutAt0[0] : null;
-    const n = target ? g0.order.indexOf(target) : 7;
-    L.check(`${T}precondition_cut: at scrollLeft 0 one tab does not fit into the strip (the case the old code cut off): ${lang === 'en' ? 'What-if' : 'the first tab after What-if'}`,
-      target !== null && target === (lang === 'en' ? 'whatif' : 'validation'), { cutAt0, strip: g0.strip, order: g0.order });
+    const target = cutAt0.length === 1 && cutAt0[0] !== g0.order[0] ? cutAt0[0] : null;
+    const n = target ? g0.order.indexOf(target) : 0;
+    L.check(`${T}precondition_cut: at scrollLeft 0 exactly one tab does not fit into the strip (the case the old code cut off), and it is not the first`,
+      target !== null && n >= 1, { target, cutAt0, strip: g0.strip, order: g0.order });
     if (!target) return;
     const T1 = `${T}home_${n}right_`;
 

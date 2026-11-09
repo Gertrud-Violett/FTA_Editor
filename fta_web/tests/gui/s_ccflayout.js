@@ -4,6 +4,9 @@
 // fixture with ten groups, the name (.fta-tree-label) must not be truncated at
 // the default 1600 x 1000 layout, and the badge must carry its full text in its
 // title. A document without a group keeps its tree rows as they were.
+// The 301-node rows sit three levels deep; whether their names fit depends on the
+// font, so there the room is measured: a name that fits must not be cut, and a name
+// that cannot fit next to the smallest badge may be cut, with the badge shrunk too and the row used up.
 //   node s_ccflayout.js <url> <label> <root>
 'use strict';
 const fs = require('fs');
@@ -60,6 +63,59 @@ async function run(url, label, root) {
   /** Per row: is the name cut off, and does the badge keep its full text in its title. */
   const rowsInfo = (ids) => page.evaluate(async (list) => {
     const { store } = await import('/static/js/store.js');
+    const px = (v) => parseFloat(v) || 0;
+    const wOf = (e) => (e ? e.getBoundingClientRect().width : 0);
+    const textW = (e) => { const rg = document.createRange(); rg.selectNodeContents(e); return rg.getBoundingClientRect().width; };
+    /** The geometry the name has to fit into, measured: the row's content width less every
+     *  other item of the row and the gaps, with each badge at the smallest width the design
+     *  lets it shrink to ("CCF: " and the not-applied marker whole, the group name at its
+     *  min-width, or the badge's own min-width if that is larger). The name fits when its
+     *  text is no wider than that. This leaves out the label's own cap (tree.js
+     *  .fta-tree-label.has-ccf max-width: calc(100% - 17ch)), which on DejaVu Sans keeps
+     *  about 10 px more for the badge than its minimum; it only matters for a name close
+     *  to the room, and then the check fails rather than passes. */
+    const roomOf = (row, label, badges) => {
+      const cs = getComputedStyle(row);
+      const kids = Array.from(row.children);
+      const content = row.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight);
+      const gaps = px(cs.columnGap) * Math.max(0, kids.length - 1);
+      const others = kids.filter((k) => k !== label && !badges.includes(k)).reduce((a, k) => a + wOf(k), 0);
+      const mins = badges.map((b) => {
+        const s = getComputedStyle(b);
+        const frame = px(s.borderLeftWidth) + px(s.borderRightWidth) + px(s.paddingLeft) + px(s.paddingRight);
+        const pre = b.querySelector('.fta-tree-ccf-pre');
+        const name = b.querySelector('.fta-tree-ccf-name');
+        const post = b.querySelector('.fta-tree-ccf-post');
+        const parts = pre || name || post ? wOf(pre) + wOf(post) + (name ? px(getComputedStyle(name).minWidth) : 0) : 0;
+        const own = s.boxSizing === 'border-box' ? px(s.minWidth) : px(s.minWidth) + frame;
+        return Math.max(frame + parts, own);
+      });
+      const badgeMin = mins.reduce((a, v) => a + v, 0);
+      const free = content - gaps - others - badgeMin;
+      const text = textW(label);
+      const r = (v) => Math.round(v * 10) / 10;
+      return {
+        fits: text + 0.5 <= free, text: r(text), label: r(wOf(label)), free: r(free), content: r(content), others: r(others), gaps: r(gaps), badgeMin: r(badgeMin),
+        // the row is used up: no free space is left beside its items
+        slack: r(content - gaps - kids.reduce((a, k) => a + wOf(k), 0)),
+        // the badge has given up space too: it is narrower than its full width (its whole text, or its
+        // max-width if that is smaller), its group name shows an ellipsis, and "CCF: " (and the marker)
+        // are whole inside it
+        badgeGaveWay: badges.length > 0 && badges.every((b) => {
+          const s = getComputedStyle(b);
+          const frame = px(s.borderLeftWidth) + px(s.borderRightWidth) + px(s.paddingLeft) + px(s.paddingRight);
+          const name = b.querySelector('.fta-tree-ccf-name');
+          const box = b.getBoundingClientRect();
+          const spans = Array.from(b.querySelectorAll('.fta-tree-ccf-pre, .fta-tree-ccf-post'));
+          const whole = spans.filter((p) => p.textContent).every((p) => { const q = p.getBoundingClientRect(); return q.width > 0 && q.left >= box.left - 0.5 && q.right <= box.right + 0.5; });
+          if (!name) return false;
+          const natural = frame + spans.reduce((a, p) => a + wOf(p), 0) + textW(name);
+          const maxW = s.maxWidth.endsWith('px') ? px(s.maxWidth) + (s.boxSizing === 'border-box' ? 0 : frame) : Infinity;
+          const shrank = box.width < Math.min(natural, maxW) - 0.5;
+          return shrank && textW(name) > wOf(name) + 0.01 && whole;
+        }),
+      };
+    };
     const out = [];
     for (const id of list) {
       store.jumpTo(id);
@@ -78,6 +134,7 @@ async function run(url, label, root) {
           return rg.getBoundingClientRect().width > label.getBoundingClientRect().width + 0.01;
         })()) : null,
         badges: badges.map((b) => ({ text: b.textContent, title: b.title, off: b.classList.contains('is-off'), width: Math.round(b.getBoundingClientRect().width) })),
+        room: label ? roomOf(item.querySelector(':scope > .fta-tree-row'), label, badges) : null,
       });
     }
     return out;
@@ -189,7 +246,18 @@ async function run(url, label, root) {
     L.check('the fixture groups hold C0_1_0, C0_1_1 and C0_1_2', want.every((id) => members.includes(id)), members.slice(0, 5));
     const rows = await rowsInfo(want);
     for (const r of rows) {
-      L.check('301 nodes: the name "' + r.text + '" of ' + r.id + ' is not cut off', r.cut === false, r);
+      // The measured room decides the branch: whether the name fits depends on the font (Segoe UI on Windows: it fits
+      // with room to spare; DejaVu Sans on Linux CI: "Component 0.1.0" is ~15% wider and the row of
+      // the default 1600 x 1000 layout cannot hold it next to even the smallest badge). Where the
+      // measured room holds the name, it must not be cut; where it cannot, the badge must have shrunk too
+      // (below its full width, "CCF: " whole, its group name cut) and the row must be used up (no slack).
+      const fits = Boolean(r.room && r.room.fits);
+      L.info('301 nodes: ' + r.id + (fits ? ': the row has room for the whole name' : ': the row cannot hold the whole name next to the smallest badge'), r.room);
+      L.check('301 nodes: the name "' + r.text + '" of ' + r.id + ' is not cut off where the row has room for it, and otherwise the badge shrank too and the row is used up',
+        Boolean(r.room) && (fits ? r.cut === false : (r.room.badgeGaveWay === true && r.room.slack <= 1)), r);
+      // With the Windows UI font (the shipped app) the row of the default layout holds the whole name, as
+      // this test has always required there: the measured branch above must not hide a row that got narrower.
+      if (process.platform === 'win32') L.check('301 nodes (Windows UI font): the row has room for the whole name "' + r.text + '" of ' + r.id, fits, r.room);
       L.check('301 nodes: ' + r.id + ' shows a badge', r.badges.length >= 1, r.badges);
     }
     await app.shot('ccf_layout_big');
