@@ -134,7 +134,7 @@ async function main(url, label) {
   st = await app.api('get', '/state');
   L.check('Advanced switched mid-edit: typed value committed (blur)', st.tree.children[2].probability === 0.004, st.tree.children[2].probability);
   const tabs2 = await page.evaluate(() => Array.from(document.querySelectorAll('#bottom-tabs [role=tab]')).filter((b) => b.offsetParent !== null).map((b) => b.dataset.tab));
-  L.check('advanced: all 9 tabs', tabs2.length === 9, tabs2);
+  L.check('advanced: all 12 tabs (9, the Grid tab F3, the CCF groups tab F2 and the What-if tab F4)', tabs2.length === 12, tabs2);
   r = await cmp('advanced on');
 
   // Advanced: gate select offers all types; make Pumps a 2oo3 vote via Add + Details

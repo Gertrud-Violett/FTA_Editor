@@ -28,6 +28,7 @@ keep their digits (see :func:`mcub_of`).
 """
 from __future__ import annotations
 
+import copy
 import math
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -249,10 +250,17 @@ def mcub_of(probs) -> float:
 
 def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
             limits: Optional[Dict[str, Any]] = None,
-            structure: Optional["logic.Structure"] = None) -> Dict[str, Any]:
+            structure: Optional["logic.Structure"] = None,
+            on_expanded: Optional[Any] = None) -> Dict[str, Any]:
     """Minimal cut sets of ``tree`` (plain dicts in and out; ``tree`` is not
     modified). ``limits`` overrides ``analysis.cutsets`` (``maxOrder``,
     ``maxCount``, ``cutoff``) and adds ``timeBudgetS``.
+
+    ``on_expanded``, when given, is called once with the :class:`_Expander`
+    right after the expansion (its memo holds the cut sets of every
+    operator), so a caller can read gate values without a second expansion
+    (CCF gate values, FN-66). The result gains a ``ccf`` block and a ``ccf``
+    marker on the events of a CCF group only when the document has groups.
 
     Raises :class:`CutsetError` when a voting gate is too large or the time
     budget runs out.
@@ -262,6 +270,8 @@ def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
     s = structure if structure is not None else logic.compile_tree(tree, analysis)
     expander = _Expander(s, max_order, max_count, cutoff, started + budget)
     masks = expander.run()
+    if on_expanded is not None:
+        on_expanded(expander)
 
     rows = []
     for m in masks:
@@ -281,6 +291,11 @@ def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
     for rank, (p, order, indices) in enumerate(rows, start=1):
         events = [{"id": s.events[i]["id"], "name": s.events[i]["name"],
                    "q": s.events[i]["q"]} for i in indices]
+        if getattr(s, "ccf", None) is not None:
+            for ev, i in zip(events, indices):
+                marker = s.events[i].get("ccf")
+                if marker is not None:
+                    ev["ccf"] = copy.deepcopy(marker)  # a CCF event or an independent part
         events.sort(key=lambda e: (e["name"], e["id"]))
         cut_sets.append({
             "rank": rank,
@@ -296,7 +311,7 @@ def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
         warnings.append({"code": "CUTSETS_TRUNCATED", "nodeId": None,
                          "params": {"by": truncated_by, "maxOrder": max_order,
                                     "maxCount": max_count, "cutoff": cutoff}})
-    return {
+    result = {
         "cutSets": cut_sets,
         "total": len(cut_sets),
         "truncated": bool(truncated_by),
@@ -311,6 +326,9 @@ def compute(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
         "limits": {"maxOrder": max_order, "maxCount": max_count, "cutoff": cutoff},
         "elapsedMs": round((time.perf_counter() - started) * 1000.0, 1),
     }
+    if getattr(s, "ccf", None) is not None:  # a document with CCF groups (FN-22): which are applied
+        result["ccf"] = logic.ccf.block(s.ccf.assessments)
+    return result
 
 
 #: Time budget for :func:`truncation_signal` (the Validation tab / ``cli validate``).

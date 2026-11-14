@@ -107,7 +107,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from flask import Blueprint, request, send_file
 
 try:  # normal package import: ``import fta_web.routes.files``
-    from .. import config, fsbrowser, user_prefs
+    from .. import ccf, config, fsbrowser, user_prefs
     from ..config import ALLOWED_OPEN_EXTENSIONS, MAX_TREE_DEPTH, MAX_UPLOAD_BYTES
     from ..errors import (
         INVALID_FIELD,
@@ -127,6 +127,7 @@ try:  # normal package import: ``import fta_web.routes.files``
     from ..state import get_state, load_warning_issues
     from ..tree_ops import tree_height
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]
     import config  # type: ignore[no-redef]
     import fsbrowser  # type: ignore[no-redef]
     import user_prefs  # type: ignore[no-redef]
@@ -329,7 +330,7 @@ def _document_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
-        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "analysis": ccf.public_analysis(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
         **state.revision_fields(),
     }

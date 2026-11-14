@@ -183,6 +183,26 @@ export function parseNumber(raw) {
   return Number.isFinite(value) ? value : NaN;
 }
 
+/**
+ * A reader for a numeric text field: raw text -> {ok, value}. '' -> {ok, value: null}
+ * (the field is cleared) unless `allowBlank` is false. A value below `min` (or equal
+ * to it when `exclusive`) or above `max`, and text that is not a number, is refused
+ * with `message()`. Moved here unchanged from quant.js so that the Quantification
+ * tab and the Grid tab read a number the same way; `message` is the caller's text.
+ */
+export function numberParser(min, { exclusive = false, max = Infinity, allowBlank = true } = {}, message = () => '') {
+  return (raw) => {
+    const value = parseNumber(raw);
+    if (value === null) {
+      return allowBlank ? { ok: true, value: null } : { ok: false, message: message() };
+    }
+    if (Number.isNaN(value) || value < min || (exclusive && value === min) || value > max) {
+      return { ok: false, message: message() };
+    }
+    return { ok: true, value };
+  };
+}
+
 /** Numbers that are not probabilities (hours, samples): plain but compact. */
 export function formatPlain(value) {
   if (value === null || value === undefined || value === '') return '';

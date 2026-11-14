@@ -1,7 +1,7 @@
 /**
  * tabs/host.js -- the bottom panel's tab strip (1.7).
  *
- * The markup (nine role="tab" buttons and nine role="tabpanel" divs) is static
+ * The markup (twelve role="tab" buttons and twelve role="tabpanel" divs) is static
  * in index.html so it paints before any JS; this module wires it.
  *
  * TAB MODULE CONTRACT (frozen in Phase 0)
@@ -27,7 +27,9 @@
  *     fmt: {prob(v), sigFigs()}, onSigFigs(cb) -> unsub,
  *     advanced(), onAdvanced(cb) -> unsub,
  *     highlight(ids, source), clearHighlight(source), setOverlay(o),
- *     jumpTo(nodeId), capabilities(), pickPath(opts), diagramPng()
+ *     jumpTo(nodeId), capabilities(), pickPath(opts), diagramPng(),
+ *     openTab(id, detail) -> boolean, takeTabRequest(id) -> detail|null,
+ *     selection() -> ids of the rows selected in the tree  (F2)
  *
  * The selected tab persists in localStorage `fta.bottomTab`.
  */
@@ -37,10 +39,13 @@ export const STORAGE_KEY = 'fta.bottomTab';
 /** Order is the on-screen order. `advanced` must match each module's export. */
 export const TAB_DEFS = Object.freeze([
   Object.freeze({ id: 'details', advanced: false }),
+  Object.freeze({ id: 'grid', advanced: true }),
   Object.freeze({ id: 'quant', advanced: true }),
+  Object.freeze({ id: 'ccf', advanced: true }),
   Object.freeze({ id: 'cutsets', advanced: true }),
   Object.freeze({ id: 'importance', advanced: true }),
   Object.freeze({ id: 'uncertainty', advanced: true }),
+  Object.freeze({ id: 'whatif', advanced: true }),
   Object.freeze({ id: 'validation', advanced: false }),
   Object.freeze({ id: 'trace', advanced: true }),
   Object.freeze({ id: 'fmea', advanced: true }),
@@ -56,6 +61,19 @@ const DEFAULT_TAB = 'details';
  * ends. They can still be opened: the notice in the panel is the long form.
  */
 export const ETA_UNAVAILABLE = Object.freeze(['quant', 'cutsets', 'importance', 'uncertainty']);
+
+/**
+ * Tabs greyed in ETA mode that are not in ETA_UNAVAILABLE. The CCF groups tab
+ * (F2) has its own reason: the groups stay in the file and can be edited, but
+ * are not applied; its tooltip says so. The What-if tab (F4) reads the cut sets
+ * of a fault tree, and the Grid tab shows the ETA notice in its panel, so both
+ * give the common reason (tab.etaUnavailable).
+ */
+const ETA_TITLE_KEYS = Object.freeze({
+  ccf: 'tab.ccfEtaUnavailable',
+  whatif: 'tab.etaUnavailable',
+  grid: 'tab.etaUnavailable',
+});
 
 function readLocal(key) {
   try {
@@ -210,6 +228,21 @@ export function initTabHost({ strip, ctx, importer } = {}) {
   }
 
   /**
+   * Bring a tab fully into view when the strip scrolls sideways. 'nearest' on
+   * both axes moves only the strip (a tab already visible vertically scrolls
+   * nothing else); 'auto' keeps reduced-motion users free of animation.
+   */
+  function revealTab(tab) {
+    if (!tab || tab.button.hidden) return;
+    if (strip.scrollWidth <= strip.clientWidth) return;
+    try {
+      tab.button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+    } catch (_err) {
+      /* no scrollIntoView options: the tab just stays where it is */
+    }
+  }
+
+  /**
    * Show a tab. Hidden (advanced-in-basic) or unknown ids fall back to
    * details. `persist` false keeps the stored preference (used for fallbacks).
    * @returns {string} the id actually shown
@@ -238,6 +271,8 @@ export function initTabHost({ strip, ctx, importer } = {}) {
     }
     if (persist && wanted === id) writeLocal(STORAGE_KEY, wanted);
     if (focus) tab.button.focus();
+    // On every call: a click on an already selected, half-visible tab reveals it too.
+    revealTab(tab);
     return wanted;
   }
 
@@ -255,7 +290,10 @@ export function initTabHost({ strip, ctx, importer } = {}) {
     const preferred = readLocal(STORAGE_KEY);
     if (preferred && preferred !== activeId && isVisible(preferred) && activeId === DEFAULT_TAB) {
       select(preferred, { persist: false });
+      return;
     }
+    // Widths changed: the active tab may have been pushed out of view.
+    if (activeId) revealTab(tabs.get(activeId));
   }
 
   // ---- ETA mode: the fault-tree analyses are marked as not available ------
@@ -269,14 +307,14 @@ export function initTabHost({ strip, ctx, importer } = {}) {
 
   function applyMode() {
     const eta = isEtaMode();
-    for (const id of ETA_UNAVAILABLE) {
+    for (const id of ETA_UNAVAILABLE.concat(Object.keys(ETA_TITLE_KEYS))) {
       const tab = tabs.get(id);
       if (!tab) continue;
       const off = eta;
       tab.button.classList.toggle('is-unavailable', off);
       if (off) {
         tab.button.dataset.unavailable = 'eta';
-        tab.button.title = t('tab.etaUnavailable');
+        tab.button.title = ETA_TITLE_KEYS[id] ? t(ETA_TITLE_KEYS[id]) : t('tab.etaUnavailable');
       } else if (tab.button.dataset.unavailable) {
         delete tab.button.dataset.unavailable;
         tab.button.removeAttribute('title');

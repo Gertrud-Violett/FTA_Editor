@@ -79,8 +79,10 @@ import string
 from typing import Any, Dict, Iterable, List, Optional
 
 try:  # normal package import: ``import fta_web.lint``
+    from . import ccf
     from .engine import WebCore, coerce_analysis, derive_quant
 except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]
     from engine import WebCore, coerce_analysis, derive_quant  # type: ignore[no-redef]
 
 
@@ -110,10 +112,29 @@ SEVERITY: Dict[str, str] = {
     "LINKS_REMOVED": "warning",
     "UNDEVELOPED_EVENT": "info",
     "PAND_APPROX": "info",
+    # CCF groups (FN-33). CCF_ETA_MODE is a status of the group, never an issue.
+    "CCF_MEMBER_NOT_BASIC": "error",
+    "CCF_TOO_FEW_MEMBERS": "error",
+    "CCF_MEMBER_IN_TWO_GROUPS": "error",
+    "CCF_MEMBERS_DIFFER": "error",
+    "CCF_NO_PROBABILITY": "error",
+    "CCF_Q_ONE": "error",
+    "CCF_BAD_PARAMETER": "error",
+    "CCF_MEMBER_RENAMED": "error",
+    # F2A (FN-43): the alpha-factor model.
+    "CCF_ALPHA_SIZE": "error",
+    "CCF_ALPHA_SUM": "error",
+    "CCF_NO_TESTING": "error",
+    "CCF_ALPHA_NORMALISED": "warning",
+    "CCF_HIGH_Q": "warning",
+    "CCF_ZERO_Q": "warning",
+    "CCF_ORDERED_GATE": "warning",
 }
 
-#: Every frozen code (the plan's list), in severity order.
-CODES = tuple(SEVERITY)
+#: Every frozen code (the plan's list), in severity order. The CCF codes are
+#: left out on purpose: their texts travel with each issue (``params.text`` in
+#: English and Japanese, ``ccf_text``), so they have no ``val.code.*`` key.
+CODES = tuple(code for code in SEVERITY if not code.startswith("CCF_"))
 
 MESSAGES: Dict[str, str] = {
     "DANGLING_LINK": "Link points to node '{targetId}', which does not exist.",
@@ -381,7 +402,9 @@ def run(tree: Any, analysis: Optional[Dict[str, Any]] = None,
         nid = str(node.get("id")) if node is not None else (
             None if node_id is None else str(node_id))
         key = (code, nid)
-        if code not in ("LOAD_REPAIR", "LINKS_REMOVED", "CYCLIC_LINK", "DANGLING_LINK"):
+        # A CCF issue is about a group, which has no node id to dedupe on.
+        no_dedupe = code in ("LOAD_REPAIR", "LINKS_REMOVED", "CYCLIC_LINK", "DANGLING_LINK")
+        if not no_dedupe and not code.startswith("CCF_"):
             if key in seen:
                 return
         seen.add(key)
@@ -411,6 +434,10 @@ def run(tree: Any, analysis: Optional[Dict[str, Any]] = None,
             _eta_rules(nodes, add)
         else:
             _fta_rules(root, nodes, index, add, core, extra)
+            # CCF groups (FN-33): one issue per error and warning of a group,
+            # with no node (the Validation tab jumps to the group instead).
+            for code, params, message in ccf.lint_issues(analysis, root, mode):
+                add(code, None, params, message=message)
 
     for warning in session_warnings or ():
         if not isinstance(warning, dict):

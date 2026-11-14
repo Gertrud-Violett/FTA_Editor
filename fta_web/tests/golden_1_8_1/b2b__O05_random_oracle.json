@@ -1,0 +1,456 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O05_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "o5_e2",
+         "name": "Event 2",
+         "q": 0.0724
+        }
+       ],
+       "order": 1,
+       "probability": 0.0724,
+       "rank": 1,
+       "share": 0.5372777099560453
+      },
+      {
+       "events": [
+        {
+         "id": "o5_e3",
+         "name": "Event 3",
+         "q": 0.03437
+        }
+       ],
+       "order": 1,
+       "probability": 0.03437,
+       "rank": 2,
+       "share": 0.25505849297222755
+      },
+      {
+       "events": [
+        {
+         "id": "o5_e7",
+         "name": "Event 7",
+         "q": 0.0279834034232
+        }
+       ],
+       "order": 1,
+       "probability": 0.0279834034232,
+       "rank": 3,
+       "share": 0.20766379707172725
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.12934686100498238,
+     "nonCoherent": false,
+     "rareEvent": 0.1347534034232,
+     "repeatedEvents": [
+      {
+       "id": "o5_e10",
+       "name": "Event 10"
+      },
+      {
+       "id": "o5_e7",
+       "name": "Event 7"
+      },
+      {
+       "id": "o5_e0",
+       "name": "Event 0"
+      },
+      {
+       "id": "o5_e2",
+       "name": "Event 2"
+      }
+     ],
+     "total": 3,
+     "treeWalk": 0.129346862408,
+     "truncated": true,
+     "truncatedBy": [
+      "order"
+     ],
+     "warnings": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "by": [
+         "order"
+        ],
+        "cutoff": 1e-15,
+        "maxCount": 5000,
+        "maxOrder": 6
+       }
+      }
+     ]
+    },
+    "title": "O05 random (oracle)"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O05_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9386083861524553,
+       "cutSetCount": 1,
+       "fv": 0.5253722172262082,
+       "id": "o5_e2",
+       "name": "Event 2",
+       "q": 0.0724,
+       "raw": 7.731150120152359,
+       "rrw": 2.106914167889328,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9016425949846397,
+       "cutSetCount": 1,
+       "fv": 0.23958413639762285,
+       "id": "o5_e3",
+       "name": "Event 3",
+       "q": 0.03437,
+       "raw": 7.731150120152359,
+       "rrw": 1.3150698819756628,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.895718388,
+       "cutSetCount": 1,
+       "fv": 0.19378320285651837,
+       "id": "o5_e7",
+       "name": "Event 7",
+       "q": 0.0279834034232,
+       "raw": 7.731150120152359,
+       "rrw": 1.2403611578710767,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "O05 random (oracle)"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O05_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "o5_e9",
+      "o5_e8",
+      "o5_e10",
+      "o5_e4",
+      "o5_e5",
+      "o5_e6",
+      "o5_e0",
+      "o5_e1",
+      "o5_e2",
+      "o5_e3"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": true,
+     "histogram": {
+      "counts": [
+       84,
+       204,
+       260,
+       261,
+       222,
+       182,
+       144,
+       136,
+       103,
+       83,
+       70,
+       59,
+       30,
+       30,
+       30,
+       20,
+       23,
+       12,
+       9,
+       7,
+       5,
+       4,
+       5,
+       0,
+       4,
+       3,
+       2,
+       2,
+       1,
+       1,
+       2,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1
+      ],
+      "edges": [
+       0.10737790888126948,
+       0.11200008456223404,
+       0.1166222602431986,
+       0.12124443592416316,
+       0.12586661160512772,
+       0.13048878728609228,
+       0.13511096296705682,
+       0.1397331386480214,
+       0.14435531432898596,
+       0.14897749000995053,
+       0.15359966569091507,
+       0.15822184137187964,
+       0.16284401705284418,
+       0.16746619273380875,
+       0.17208836841477332,
+       0.1767105440957379,
+       0.18133271977670243,
+       0.18595489545766697,
+       0.19057707113863154,
+       0.1951992468195961,
+       0.19982142250056067,
+       0.20444359818152524,
+       0.20906577386248978,
+       0.21368794954345433,
+       0.2183101252244189,
+       0.22293230090538346,
+       0.22755447658634803,
+       0.23217665226731257,
+       0.2367988279482771,
+       0.24142100362924168,
+       0.24604317931020625,
+       0.2506653549911708,
+       0.2552875306721354,
+       0.25990970635309996,
+       0.26453188203406447,
+       0.26915405771502904,
+       0.2737762333959936,
+       0.2783984090769582,
+       0.28302058475792274,
+       0.2876427604388873,
+       0.2922649361198518
+      ],
+      "logBins": false
+     },
+     "mean": 0.13546299694243125,
+     "median": 0.12971916106234319,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.11250935520006412,
+     "p95": 0.17719299288216672,
+     "pointEstimate": 0.12934686100498238,
+     "repeatedEvents": [
+      {
+       "id": "o5_e10",
+       "name": "Event 10"
+      },
+      {
+       "id": "o5_e7",
+       "name": "Event 7"
+      },
+      {
+       "id": "o5_e0",
+       "name": "Event 0"
+      },
+      {
+       "id": "o5_e2",
+       "name": "Event 2"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.021316888119461995,
+     "truncatedByTime": false,
+     "uncertainEvents": [
+      "o5_e7"
+     ],
+     "warnings": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "by": [
+         "order"
+        ],
+        "cutoff": 1e-15,
+        "maxCount": 5000,
+        "maxOrder": 6
+       }
+      }
+     ]
+    },
+    "title": "O05 random (oracle)"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O05_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.0183528746554,
+       "id": "o5_e9",
+       "model": "repairable",
+       "name": "Event 9",
+       "q": 0.0183528746554
+      },
+      {
+       "calculated": 0.0135,
+       "id": "o5_e8",
+       "model": "fixed",
+       "name": "Event 8",
+       "q": 0.0135
+      },
+      {
+       "calculated": 0.2221,
+       "id": "o5_e10",
+       "model": "fixed",
+       "name": "Event 10",
+       "q": 0.2221
+      },
+      {
+       "calculated": 0.054,
+       "id": "o5_e4",
+       "model": "fixed",
+       "name": "Event 4",
+       "q": 0.054
+      },
+      {
+       "calculated": 0.03061,
+       "id": "o5_e5",
+       "model": "fixed",
+       "name": "Event 5",
+       "q": 0.03061
+      },
+      {
+       "calculated": 0.1633,
+       "id": "o5_e6",
+       "model": "fixed",
+       "name": "Event 6",
+       "q": 0.1633
+      },
+      {
+       "calculated": 0.0279834034232,
+       "id": "o5_e7",
+       "model": "rate",
+       "name": "Event 7",
+       "q": 0.0279834034232
+      },
+      {
+       "calculated": 0.05305,
+       "id": "o5_e0",
+       "model": "fixed",
+       "name": "Event 0",
+       "q": 0.05305
+      },
+      {
+       "calculated": 0.064,
+       "id": "o5_e1",
+       "model": "fixed",
+       "name": "Event 1",
+       "q": 0.064
+      },
+      {
+       "calculated": 0.0724,
+       "id": "o5_e2",
+       "model": "fixed",
+       "name": "Event 2",
+       "q": 0.0724
+      },
+      {
+       "calculated": 0.03437,
+       "id": "o5_e3",
+       "model": "fixed",
+       "name": "Event 3",
+       "q": 0.03437
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.12934686100498238,
+      "headlineMethod": "mcub",
+      "mcub": 0.12934686100498238,
+      "nonCoherent": false,
+      "rareEvent": 0.1347534034232,
+      "repeatedEvents": [
+       {
+        "id": "o5_e10",
+        "name": "Event 10"
+       },
+       {
+        "id": "o5_e7",
+        "name": "Event 7"
+       },
+       {
+        "id": "o5_e0",
+        "name": "Event 0"
+       },
+       {
+        "id": "o5_e2",
+        "name": "Event 2"
+       }
+      ],
+      "treeWalk": 0.129346862408,
+      "truncated": true,
+      "truncatedBy": [
+       "order"
+      ]
+     }
+    },
+    "title": "O05 random (oracle)"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O05_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "hintKey": "val.fix.CUTSETS_TRUNCATED",
+       "message": "The cut-set list was truncated (order); results may be underestimated.",
+       "nodeId": null,
+       "nodeName": null,
+       "params": {
+        "count": 3,
+        "reason": "order"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "O05 random (oracle)"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/O05_random_oracle.json"
+}

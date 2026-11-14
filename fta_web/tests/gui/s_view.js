@@ -56,7 +56,10 @@ async function main(url, label, root) {
   await page.locator('#tab-details').focus();
   await page.keyboard.press('ArrowRight');
   let act = await page.evaluate(() => document.activeElement.id);
-  L.check('tab strip: ArrowRight moves to Quantification', act === 'tab-quant' && await page.evaluate(() => !document.getElementById('tabpanel-quant').hidden), act);
+  L.check('tab strip: ArrowRight moves to the next tab (Grid, since 1.9)', act === 'tab-grid' && await page.evaluate(() => !document.getElementById('tabpanel-grid').hidden), act);
+  await page.keyboard.press('ArrowRight');
+  act = await page.evaluate(() => document.activeElement.id);
+  L.check('tab strip: ArrowRight again moves to Quantification', act === 'tab-quant' && await page.evaluate(() => !document.getElementById('tabpanel-quant').hidden), act);
   await page.keyboard.press('End');
   act = await page.evaluate(() => document.activeElement.id);
   L.check('tab strip: End goes to Report', act === 'tab-report', act);

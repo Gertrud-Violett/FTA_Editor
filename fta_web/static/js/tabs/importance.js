@@ -8,6 +8,7 @@
  * the event (ctx.jumpTo).
  */
 import cat from '../i18n/imp.js';
+import { eventLabel, membersOfEvent } from '../ccf_util.js';
 import {
   clear,
   copyText,
@@ -150,7 +151,7 @@ export function mount(panel, ctx) {
     ];
     for (const row of sortedRows()) {
       lines.push([
-        row.name || row.id,
+        eventLabel(row, t),
         row.id,
         row.q,
         row.fv,
@@ -214,7 +215,7 @@ export function mount(panel, ctx) {
         dataset: { id: row.id },
         class: row.id === selected ? 'is-selected' : null,
       }, [
-        el('td', { class: 'anl-name', text: row.name || row.id, title: row.id }),
+        el('td', { class: 'anl-name', text: eventLabel(row, t), title: row.id }),
         el('td', { class: 'num', text: fmt(row.q) }),
         el('td', { class: 'num anl-bar' }, [
           el('span', { class: 'anl-bar__fill', style: 'width:' + fvPct + '%' }),
@@ -271,7 +272,14 @@ export function mount(panel, ctx) {
   function onRow(event) {
     const tr = event.target instanceof Element ? event.target.closest('tr[data-id]') : null;
     if (!tr) return;
-    ctx.jumpTo(tr.dataset.id);
+    const found = ((result && result.events) || []).find((e) => String(e.id) === tr.dataset.id);
+    if (found && found.ccf && found.ccf.role === 'event') {
+      // The CCF event is not a tree node: light up the members of its group (F2).
+      ctx.highlight(membersOfEvent(found), 'importance');
+    } else {
+      ctx.clearHighlight('importance');
+      ctx.jumpTo(tr.dataset.id);
+    }
     for (const other of tableWrap.querySelectorAll('tr[data-id]')) {
       other.classList.toggle('is-selected', other === tr);
     }
@@ -341,6 +349,7 @@ export function mount(panel, ctx) {
       active = false;
       runSoon.cancel();
       ctx.setOverlay(null);
+      ctx.clearHighlight('importance');
     },
     onStale() {
       // A first run still in flight answers for the tree before this change:

@@ -30,6 +30,8 @@ _PLACEHOLDER = re.compile(r"\{[A-Za-z0-9_]+\}")
 #: Values that are legitimately identical in both languages -- brand names,
 #: shell commands, gate symbols. A key here may have en == ja without failing.
 _IDENTICAL_OK = {
+    "ccf.label.event",  # "CCF: {name}" reads the same in both languages (F2)
+    "details.ccfNa",    # "n/a (CCF)" matches the caption, diagram and Excel in both languages (F2)
     "btn.excel",   # "Excel" is "Excel"
     "btn.json",    # file-format names, unchanged in Japanese engineering use
     "btn.xml",

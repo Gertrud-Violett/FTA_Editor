@@ -13,6 +13,7 @@
  * 'cutsets'); leaving the tab clears that highlight.
  */
 import cat from '../i18n/cutsets.js';
+import { eventLabel, membersOfEvent } from '../ccf_util.js';
 import {
   clear,
   copyText,
@@ -199,7 +200,8 @@ export function mount(panel, ctx) {
   function highlightRow(row) {
     selectedRank = row.rank;
     selectedKey = cutSetKey(row);
-    ctx.highlight(row.events.map((e) => e.id), SOURCE);
+    // A CCF event stands for every member of its group (F2).
+    ctx.highlight(row.events.flatMap((e) => membersOfEvent(e)), SOURCE);
   }
 
   function unselect() {
@@ -351,7 +353,7 @@ export function mount(panel, ctx) {
     }
     const repeated = result.repeatedEvents || [];
     if (repeated.length) {
-      const names = repeated.map((e) => e.name || e.id).join(', ');
+      const names = repeated.map((e) => eventLabel(e, t)).join(', ');
       summary.appendChild(badge(t('cutsets.repeated', { n: repeated.length }), 'info',
         t('cutsets.repeatedTitle', { names })));
     }
@@ -386,7 +388,13 @@ export function mount(panel, ctx) {
       const events = el('div', { class: 'anl-events' });
       if (!row.events.length) events.appendChild(el('span', { class: 'anl-note', text: t('cutsets.emptySet') }));
       for (const ev of row.events) {
-        events.appendChild(el('span', { class: 'anl-event', text: ev.name || ev.id, title: ev.id + '  q=' + fmt(ev.q) }));
+        const ccf = ev.ccf && typeof ev.ccf === 'object' ? ev.ccf : null;
+        events.appendChild(el('span', {
+          class: 'anl-event' + (ccf ? ' anl-event--ccf' : ''),
+          text: eventLabel(ev, t),
+          title: ev.id + '  q=' + fmt(ev.q),
+          dataset: ccf ? { ccfGroup: String(ccf.groupId), ccfRole: String(ccf.role) } : null,
+        }));
       }
       const pct = (row.share || 0) * 100;
       const fill = el('span', { class: 'anl-bar__fill', style: 'width:' + ((row.share || 0) / maxShare) * 100 + '%' });
@@ -502,7 +510,7 @@ export function mount(panel, ctx) {
         row.order,
         row.probability,
         row.share,
-        row.events.map((e) => e.name || e.id).join(' ; '),
+        row.events.map((e) => eventLabel(e, t)).join(' ; '),
       ].map(csvCell).join(','));
     }
     const ok = await copyText(lines.join('\r\n') + '\r\n');

@@ -125,6 +125,15 @@
             data-i18n="headline.mcub">MCUB</span>
       <span class="headline__marker" id="headline-marker" data-advanced-only hidden
             role="img">&#8776;</span>
+      <!-- CCF groups (F2): ftaShell.setHeadline() fills these three; each is
+           hidden unless the document has a CCF group to report. -->
+      <span class="headline__sep" aria-hidden="true" hidden> &#183; </span>
+      <span class="headline__ccf" id="headline-ccf" hidden></span>
+      <span class="headline__sep" aria-hidden="true" hidden> &#183; </span>
+      <span class="headline__walk" id="headline-walk" hidden><span class="headline__walk-label"></span>:
+        <b class="headline__walk-value"></b></span>
+      <span class="headline__sep" aria-hidden="true" hidden> &#183; </span>
+      <span class="headline__note" id="headline-ccf-note" hidden></span>
     </div>
 
     <div class="topbar__group" id="capabilities-host"></div>
@@ -245,9 +254,16 @@
           <button type="button" class="tabstrip__tab" role="tab" id="tab-details" data-tab="details"
                   aria-controls="tabpanel-details" aria-selected="true" tabindex="0"
                   data-i18n="tab.details">Details</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-grid" data-tab="grid"
+                  data-testid="tab-grid"
+                  aria-controls="tabpanel-grid" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.grid">Grid</button>
           <button type="button" class="tabstrip__tab" role="tab" id="tab-quant" data-tab="quant"
                   aria-controls="tabpanel-quant" aria-selected="false" tabindex="-1"
                   data-advanced-only data-i18n="tab.quant">Quantification</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-ccf" data-tab="ccf"
+                  aria-controls="tabpanel-ccf" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.ccf">CCF groups</button>
           <button type="button" class="tabstrip__tab" role="tab" id="tab-cutsets" data-tab="cutsets"
                   aria-controls="tabpanel-cutsets" aria-selected="false" tabindex="-1"
                   data-advanced-only data-i18n="tab.cutsets">Cut Sets</button>
@@ -257,6 +273,10 @@
           <button type="button" class="tabstrip__tab" role="tab" id="tab-uncertainty" data-tab="uncertainty"
                   aria-controls="tabpanel-uncertainty" aria-selected="false" tabindex="-1"
                   data-advanced-only data-i18n="tab.uncertainty">Uncertainty</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-whatif" data-tab="whatif"
+                  data-testid="tab-whatif"
+                  aria-controls="tabpanel-whatif" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.whatif">What-if</button>
           <button type="button" class="tabstrip__tab" role="tab" id="tab-validation" data-tab="validation"
                   aria-controls="tabpanel-validation" aria-selected="false" tabindex="-1"
                   data-i18n="tab.validation">Validation</button>
@@ -284,14 +304,20 @@
              aria-labelledby="tab-details" tabindex="-1">
           <div class="panel__body" id="details-root" tabindex="-1"></div>
         </div>
+        <div class="tabpanel panel__body" id="tabpanel-grid" role="tabpanel" data-testid="tabpanel-grid"
+             aria-labelledby="tab-grid" tabindex="0" hidden></div>
         <div class="tabpanel panel__body" id="tabpanel-quant" role="tabpanel"
              aria-labelledby="tab-quant" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-ccf" role="tabpanel"
+             aria-labelledby="tab-ccf" tabindex="0" hidden></div>
         <div class="tabpanel panel__body" id="tabpanel-cutsets" role="tabpanel"
              aria-labelledby="tab-cutsets" tabindex="0" hidden></div>
         <div class="tabpanel panel__body" id="tabpanel-importance" role="tabpanel"
              aria-labelledby="tab-importance" tabindex="0" hidden></div>
         <div class="tabpanel panel__body" id="tabpanel-uncertainty" role="tabpanel"
              aria-labelledby="tab-uncertainty" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-whatif" role="tabpanel" data-testid="tabpanel-whatif"
+             aria-labelledby="tab-whatif" tabindex="0" hidden></div>
         <div class="tabpanel panel__body" id="tabpanel-validation" role="tabpanel"
              aria-labelledby="tab-validation" tabindex="0" hidden></div>
         <div class="tabpanel panel__body" id="tabpanel-trace" role="tabpanel"

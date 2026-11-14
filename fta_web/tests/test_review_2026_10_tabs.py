@@ -483,7 +483,8 @@ def test_tab_enter_escape_handlers_ignore_ime_composition():
             assert IME_GUARD in body, "%s %s: no IME composition guard" % (path.name, name)
             assert body.index(IME_GUARD) < min(keys), "%s %s: Enter/Escape checked before the guard" % (path.name, name)
             guarded.append((path.name, name))
-    # cutsets x2, fmea, importance, quant x2, trace x2, uncertainty: none may slip past the scan
-    assert len(guarded) == 9, guarded
-    assert {name for name, _ in guarded} == {"cutsets.js", "fmea.js", "importance.js", "quant.js",
-                                             "trace.js", "uncertainty.js"}
+    # ccf x3 (F2 x2, F2A model-select Escape), cutsets x2, fmea, grid x3 (cell keys, cell editor, Columns chooser), importance,
+    # quant x2, trace x2, uncertainty, whatif x1 (F4): none may slip past the scan
+    assert len(guarded) == 16, guarded
+    assert {name for name, _ in guarded} == {"ccf.js", "cutsets.js", "fmea.js", "grid.js", "importance.js", "quant.js",
+                                             "trace.js", "uncertainty.js", "whatif.js"}

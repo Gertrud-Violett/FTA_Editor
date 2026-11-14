@@ -60,7 +60,7 @@ try:  # normal package import: ``import fta_web.routes.tree``
         api_error_response,
         ok_response,
     )
-    from .. import node_schema, user_prefs
+    from .. import ccf, node_schema, user_prefs
     from ..config import MAX_TREE_DEPTH
     from ..engine import derive_quant
     from ..state import get_state, removed_link_issues
@@ -95,6 +95,7 @@ except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
         api_error_response,
         ok_response,
     )
+    import ccf  # type: ignore[no-redef]
     import node_schema  # type: ignore[no-redef]
     import user_prefs  # type: ignore[no-redef]
     from config import MAX_TREE_DEPTH  # type: ignore[no-redef]
@@ -342,7 +343,7 @@ def _mutation_payload(state) -> Dict[str, Any]:
         "dirty": state.dirty,
         "canUndo": state.can_undo,
         "canRedo": state.can_redo,
-        "analysis": copy.deepcopy(getattr(core, "analysis", None)),
+        "analysis": ccf.public_analysis(getattr(core, "analysis", None)),
         "sessionWarnings": copy.deepcopy(state.session_warnings),
         **state.revision_fields(),
     }
@@ -755,6 +756,7 @@ def delete_node(node_id: str):
         doomed = subtree_ids(core, node_id)
         core.delete_node_from_data(node_id)
         removed_links = strip_references_to(core, doomed)
+        ccf.remove_members(core, doomed)  # FN-38 (a): same undo step
         # An edit notice, like the AI gate-type reset: undoing the delete
         # (which restores the links) removes it, redo brings it back.
         state.add_edit_warnings(removed_link_issues(removed_links, node_id))
@@ -921,6 +923,7 @@ def delete_nodes():
                 doomed |= subtree_ids(core, node_id)
                 core.delete_node_from_data(node_id)
         removed_links = strip_references_to(core, doomed)
+        ccf.remove_members(core, doomed)  # FN-38 (a): same undo step
         issues: List[Dict[str, Any]] = []
         for entry in removed_links:
             issues.extend(removed_link_issues([entry], entry.get("targetId")))

@@ -168,6 +168,7 @@ function movedWithin(before, after) {
  *   'changed'   fields of existing nodes differ (count, names, fields)
  *   'metadata'  the title, date or mode (fields)
  *   'settings'  the analysis settings
+ *   'ccf'       only the CCF groups changed (F2)
  *   'none'      nothing this comparison can see
  *
  * `selectId` is the node to select afterwards: the node concerned when it
@@ -268,6 +269,14 @@ export function describeStep(before, after) {
   const analysisB = isObject(after) ? after.analysis : null;
   if (JSON.stringify(analysisA === undefined ? null : analysisA) !== JSON.stringify(analysisB === undefined ? null : analysisB)) {
     out.kind = 'settings';
+    // Only the CCF groups differ (F2): say so, not "the settings".
+    const without = (analysis) => {
+      if (!isObject(analysis)) return JSON.stringify(analysis === undefined ? null : analysis);
+      const copy = { ...analysis };
+      delete copy.ccfGroups;
+      return JSON.stringify(copy);
+    };
+    if (without(analysisA) === without(analysisB)) out.kind = 'ccf';
   }
   return out;
 }

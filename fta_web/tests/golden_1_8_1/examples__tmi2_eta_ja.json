@@ -1,0 +1,100 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'cutsets' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/examples/tmi2_eta_ja.json",
+    "mode": "ETA",
+    "title": "スリーマイル島2号機事故（1979年）のイベントツリー：確率は例示"
+   }
+  },
+  "importance": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'importance' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/examples/tmi2_eta_ja.json",
+    "mode": "ETA",
+    "title": "スリーマイル島2号機事故（1979年）のイベントツリー：確率は例示"
+   }
+  },
+  "mc": {
+   "exitCode": 1,
+   "stdout": {
+    "error": "'mc' applies to fault trees only; this file is in ETA mode.",
+    "file": "fta_web/examples/tmi2_eta_ja.json",
+    "mode": "ETA",
+    "title": "スリーマイル島2号機事故（1979年）のイベントツリー：確率は例示"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/tmi2_eta_ja.json",
+    "mode": "ETA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.98,
+       "id": "root_0",
+       "model": "fixed",
+       "name": "逃し弁が再び閉じる",
+       "q": 0.98
+      },
+      {
+       "calculated": 0.01,
+       "id": "root_1_0",
+       "model": "fixed",
+       "name": "元弁の閉止が間に合う",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.005,
+       "id": "root_1_1_0",
+       "model": "fixed",
+       "name": "高圧注入を続ける",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.00495,
+       "id": "root_1_1_1_0",
+       "model": "fixed",
+       "name": "格納容器が持ちこたえる（実際）",
+       "q": 0.99
+      },
+      {
+       "calculated": 5e-05,
+       "id": "root_1_1_1_1",
+       "model": "fixed",
+       "name": "格納容器が破損する",
+       "q": 0.01
+      }
+     ],
+     "summary": {
+      "headline": 1.0,
+      "headlineMethod": "treeWalk",
+      "treeWalk": 1.0
+     }
+    },
+    "title": "スリーマイル島2号機事故（1979年）のイベントツリー：確率は例示"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/tmi2_eta_ja.json",
+    "mode": "ETA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "スリーマイル島2号機事故（1979年）のイベントツリー：確率は例示"
+   }
+  }
+ },
+ "file": "fta_web/examples/tmi2_eta_ja.json"
+}

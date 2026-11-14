@@ -1,0 +1,240 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T01_2oo3.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 1,
+       "share": 0.3333333333333333
+      },
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 2,
+       "share": 0.3333333333333333
+      },
+      {
+       "events": [
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.1
+        },
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.1
+        }
+       ],
+       "order": 2,
+       "probability": 0.010000000000000002,
+       "rank": 3,
+       "share": 0.3333333333333333
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.029701000000000005,
+     "nonCoherent": false,
+     "rareEvent": 0.030000000000000006,
+     "repeatedEvents": [],
+     "total": 3,
+     "treeWalk": 0.028,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "T01 2oo3 voting"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T01_2oo3.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.1881,
+       "cutSetCount": 2,
+       "fv": 0.663310999629642,
+       "id": "A",
+       "name": "A",
+       "q": 0.1,
+       "raw": 6.669809097336789,
+       "rrw": 2.9701000000000004,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.1881,
+       "cutSetCount": 2,
+       "fv": 0.663310999629642,
+       "id": "B",
+       "name": "B",
+       "q": 0.1,
+       "raw": 6.669809097336789,
+       "rrw": 2.9701000000000004,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.1881,
+       "cutSetCount": 2,
+       "fv": 0.663310999629642,
+       "id": "C",
+       "name": "C",
+       "q": 0.1,
+       "raw": 6.669809097336789,
+       "rrw": 2.9701000000000004,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "T01 2oo3 voting"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T01_2oo3.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "A",
+      "B",
+      "C"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.028000000000000004,
+       0.028000000000000004
+      ],
+      "logBins": false
+     },
+     "mean": 0.028000000000000004,
+     "median": 0.028000000000000004,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.028000000000000004,
+     "p95": 0.028000000000000004,
+     "pointEstimate": 0.028000000000000004,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "T01 2oo3 voting"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T01_2oo3.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "A",
+       "model": "fixed",
+       "name": "A",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "B",
+       "model": "fixed",
+       "name": "B",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.1,
+       "id": "C",
+       "model": "fixed",
+       "name": "C",
+       "q": 0.1
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.028,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.029701000000000005,
+      "nonCoherent": false,
+      "rareEvent": 0.030000000000000006,
+      "repeatedEvents": [],
+      "treeWalk": 0.028,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "T01 2oo3 voting"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T01_2oo3.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "T01 2oo3 voting"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/T01_2oo3.json"
+}

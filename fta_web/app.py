@@ -360,6 +360,9 @@ _BLUEPRINTS = (
     ("routes.validate", "validate_bp", "the validation API"),
     ("routes.report", "report_bp", "the report API"),
     ("routes.fmea", "fmea_bp", "the FMEA import API"),
+    ("routes.grid", "grid_bp", "the grid paste API"),
+    ("routes.ccf", "ccf_bp", "the CCF groups API"),
+    ("routes.whatif", "whatif_bp", "the what-if API"),
 )
 
 

@@ -21,6 +21,13 @@ carries a comment giving the headline and pointing at the Analysis sheet,
 whose "Tree walk" row says in turn that it is the value the Events sheet
 shows for the top event.
 
+CCF groups (FN-66): a gate above a member of an applied group shows the
+min-cut upper bound of the cut sets, or ``n/a (CCF)`` when they are
+incomplete, never its tree-walk value: in the FTA sheet's ``Calc:`` text
+(``<v> (MCUB, CCF)``), in the Events sheet's "Calculated probability" (the
+number, or the text with a cell comment), and the Analysis sheet lists the
+groups applied and not applied. A member leaf keeps its Q_t.
+
 A pre-existing sheet of either name is replaced. No images, so no PIL.
 
 Text is passed through :func:`xml_text` on the way into any sheet: a
@@ -324,6 +331,12 @@ def _root_headline(summ: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 #: Not yet computed (None is a real answer: ETA mode, or the summary failed).
 _UNSET = object()
 
+#: A gate above a CCF member when the cut sets are incomplete (FN-66), and the
+#: comment on that cell.
+NA_TEXT = "n/a (CCF)"
+NA_COMMENT = ("The cut sets are incomplete, so the probability of this gate with CCF is "
+              "not available. The tree-walk value is not shown: it does not include CCF.")
+
 #: Note on the Analysis sheet's "Tree walk" row when the headline is the MCUB.
 TREE_WALK_NOTE = "the Events sheet shows this value for the top event"
 
@@ -340,6 +353,28 @@ def document_summary(core) -> Optional[Dict[str, Any]]:
 PROBABILITY_SETTINGS = frozenset((
     "Cut sets: cutoff", "Top event (headline)", "Tree walk", "MCUB", "Rare-event approximation",
 ))
+
+
+def ccf_rows(core, summ: Any) -> List[Tuple[str, Any, str]]:
+    """The Analysis rows of a document with CCF groups: how many are applied
+    (with their names) and how many are not (with the reason of each)."""
+    try:
+        from . import ccf
+    except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+        import ccf  # type: ignore[no-redef]
+
+    analysis = getattr(core, "analysis", None) or {}
+    groups = ccf.groups_of(analysis)
+    if not groups:
+        return []
+    mode = "ETA" if (getattr(core, "mode", "FTA") or "FTA") == "ETA" else "FTA"
+    block = ccf.block(ccf.assess(groups, core.get_data(), analysis, mode))
+    applied = ["%s (%s)" % (g["name"], g["id"]) for g in block["applied"]]
+    off = ["%s (%s): %s" % (g["name"], g["id"], g["reason"]) for g in block["notApplied"]]
+    return [
+        ("CCF groups applied", len(applied), "; ".join(applied)),
+        ("CCF groups not applied", len(off), "; ".join(off)),
+    ]
 
 
 def analysis_rows(core, summ: Any = _UNSET) -> List[Tuple[str, Any, str]]:
@@ -378,6 +413,7 @@ def analysis_rows(core, summ: Any = _UNSET) -> List[Tuple[str, Any, str]]:
             ])
     else:
         rows.append(("Summary", "", "not available in ETA mode"))
+    rows.extend(ccf_rows(core, summ))
     return rows
 
 
@@ -404,7 +440,8 @@ def root_comment(head: Dict[str, Any]) -> str:
             % (head.get("value"), ANALYSIS_SHEET))
 
 
-def _write_events(wb, tree: Any, sig_figs: int, head: Optional[Dict[str, Any]] = None) -> None:
+def _write_events(wb, tree: Any, sig_figs: int, head: Optional[Dict[str, Any]] = None,
+                  gates: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
 
@@ -415,12 +452,22 @@ def _write_events(wb, tree: Any, sig_figs: int, head: Optional[Dict[str, Any]] =
         cell.font = bold
     fmt = sci_format(sig_figs)
     widths = [len(h) for h in EVENT_HEADERS]
+    calc_col = EVENT_HEADERS.index("Calculated probability") + 1
+    na_cells = []
     for row in event_rows(tree):
         for header, kind in EVENT_COLUMNS:
             if kind == "text" and row[header] is not None:
                 row[header] = xml_text(row[header]) or None
+        # ``gates`` holds gates only, a leaf with links among them (FN-66); a bare
+        # member is not in it and keeps its Q_t.
+        gate = gates.get(row["Id"]) if gates else None
+        if gate is not None:  # FN-66: the cut-set MCUB, never the tree-walk value
+            row["Calculated probability"] = (
+                _number(gate.get("value")) if gate.get("method") == "mcub" else None)
         ws.append([row[h] for h in EVENT_HEADERS])
         row_idx = ws.max_row
+        if gate is not None and gate.get("method") != "mcub":
+            na_cells.append(row_idx)
         for col_idx, (header, kind) in enumerate(EVENT_COLUMNS, start=1):
             value = row[header]
             if value is None:
@@ -434,6 +481,13 @@ def _write_events(wb, tree: Any, sig_figs: int, head: Optional[Dict[str, Any]] =
                 widths[col_idx - 1] = max(widths[col_idx - 1], len(str(value)))
     for col_idx, width in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max(width + 2, 6), 50)
+    if na_cells:
+        from openpyxl.comments import Comment
+
+        for row_idx in na_cells:
+            cell = ws.cell(row=row_idx, column=calc_col)
+            cell.value = NA_TEXT
+            cell.comment = Comment(NA_COMMENT, "FTA Editor")
     if head and ws.max_row >= 2:
         # Row 2 is the root (pre-order). Its number stays the tree walk's.
         from openpyxl.comments import Comment
@@ -475,7 +529,16 @@ def export_xlsx(core, path: str, sig_figs: int = 3) -> Tuple[bool, Optional[str]
     caller holds the state lock (``routes/files.py`` does) -- the tree is
     read, never modified.
     """
-    ok, error = export_view(core).export_to_excel(path)
+    view = export_view(core)
+    summ = document_summary(core)
+    gates = (summ or {}).get("ccfGates") or {}
+    if gates:
+        try:
+            from . import ccf
+        except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+            import ccf  # type: ignore[no-redef]
+        ccf.substitute_gate_values(view.fta_data, gates)  # the FTA sheet's Calc: text
+    ok, error = view.export_to_excel(path)
     if not ok:
         return ok, error
     try:
@@ -490,8 +553,7 @@ def export_xlsx(core, path: str, sig_figs: int = 3) -> Tuple[bool, Optional[str]
             for row in sheet.iter_rows():
                 for cell in row:
                     _as_text(cell)
-        summ = document_summary(core)
-        _write_events(wb, core.get_data(), sf, _root_headline(summ))
+        _write_events(wb, core.get_data(), sf, _root_headline(summ), gates)
         _write_analysis(wb, core, sf, summ)
         wb.save(path)
     except ImportError as exc:  # pragma: no cover - openpyxl broke after the core's write

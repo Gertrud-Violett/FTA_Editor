@@ -1,0 +1,277 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T04_series_parallel.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.2
+        },
+        {
+         "id": "D",
+         "name": "D",
+         "q": 0.4
+        }
+       ],
+       "order": 2,
+       "probability": 0.08000000000000002,
+       "rank": 1,
+       "share": 0.380952380952381
+      },
+      {
+       "events": [
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.2
+        },
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.3
+        }
+       ],
+       "order": 2,
+       "probability": 0.06,
+       "rank": 2,
+       "share": 0.2857142857142857
+      },
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "D",
+         "name": "D",
+         "q": 0.4
+        }
+       ],
+       "order": 2,
+       "probability": 0.04000000000000001,
+       "rank": 3,
+       "share": 0.1904761904761905
+      },
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.3
+        }
+       ],
+       "order": 2,
+       "probability": 0.03,
+       "rank": 4,
+       "share": 0.14285714285714285
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.19469824000000002,
+     "nonCoherent": false,
+     "rareEvent": 0.21000000000000002,
+     "repeatedEvents": [],
+     "total": 4,
+     "treeWalk": 0.1624,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "T04 series-parallel"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T04_series_parallel.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.5400960000000001,
+       "cutSetCount": 2,
+       "fv": 0.6466326557446027,
+       "id": "B",
+       "name": "B",
+       "q": 0.2,
+       "raw": 3.1273831751124197,
+       "rrw": 2.829916279069767,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.255304,
+       "cutSetCount": 2,
+       "fv": 0.5469912825097958,
+       "id": "D",
+       "name": "D",
+       "q": 0.4,
+       "raw": 1.7642891892602623,
+       "rrw": 2.2074630385487533,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.24729599999999996,
+       "cutSetCount": 2,
+       "fv": 0.4000972992873484,
+       "id": "C",
+       "name": "C",
+       "q": 0.3,
+       "raw": 1.8700528571804247,
+       "rrw": 1.6669369863013697,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.501584,
+       "cutSetCount": 2,
+       "fv": 0.3055920793120678,
+       "id": "A",
+       "name": "A",
+       "q": 0.1,
+       "raw": 3.2706202172140846,
+       "rrw": 1.4400757396449702,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "T04 series-parallel"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T04_series_parallel.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.16239999999999996,
+       0.16239999999999996
+      ],
+      "logBins": false
+     },
+     "mean": 0.16239999999999996,
+     "median": 0.16239999999999996,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.16239999999999996,
+     "p95": 0.16239999999999996,
+     "pointEstimate": 0.16239999999999996,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "T04 series-parallel"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T04_series_parallel.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "A",
+       "model": "fixed",
+       "name": "A",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "B",
+       "model": "fixed",
+       "name": "B",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.3,
+       "id": "C",
+       "model": "fixed",
+       "name": "C",
+       "q": 0.3
+      },
+      {
+       "calculated": 0.4,
+       "id": "D",
+       "model": "fixed",
+       "name": "D",
+       "q": 0.4
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.1624,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.19469824000000002,
+      "nonCoherent": false,
+      "rareEvent": 0.21000000000000002,
+      "repeatedEvents": [],
+      "treeWalk": 0.1624,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "T04 series-parallel"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T04_series_parallel.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "T04 series-parallel"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/T04_series_parallel.json"
+}

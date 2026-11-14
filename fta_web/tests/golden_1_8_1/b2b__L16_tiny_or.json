@@ -1,0 +1,314 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L16_tiny_or.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "w2",
+         "name": "w2",
+         "q": 3e-15
+        }
+       ],
+       "order": 1,
+       "probability": 3e-15,
+       "rank": 1,
+       "share": 0.7499999999999999
+      },
+      {
+       "events": [
+        {
+         "id": "w1",
+         "name": "w1",
+         "q": 1e-15
+        }
+       ],
+       "order": 1,
+       "probability": 1e-15,
+       "rank": 2,
+       "share": 0.25
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 3.999999999999997e-15,
+     "nonCoherent": false,
+     "rareEvent": 4e-15,
+     "repeatedEvents": [
+      {
+       "id": "w2",
+       "name": "w2"
+      }
+     ],
+     "total": 2,
+     "treeWalk": 7.022e-15,
+     "truncated": true,
+     "truncatedBy": [
+      "cutoff"
+     ],
+     "warnings": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "by": [
+         "cutoff"
+        ],
+        "cutoff": 1e-15,
+        "maxCount": 5000,
+        "maxOrder": 6
+       }
+      }
+     ]
+    },
+    "title": "L16 tiny OR inputs"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L16_tiny_or.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.999999999999999,
+       "cutSetCount": 1,
+       "fv": 0.7499999999999997,
+       "id": "w2",
+       "name": "w2",
+       "q": 3e-15,
+       "raw": 250000000000000.2,
+       "rrw": 3.999999999999997,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.999999999999997,
+       "cutSetCount": 1,
+       "fv": 0.24999999999999944,
+       "id": "w1",
+       "name": "w1",
+       "q": 1e-15,
+       "raw": 250000000000000.2,
+       "rrw": 1.3333333333333324,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L16 tiny OR inputs"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L16_tiny_or.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "x1",
+      "x2",
+      "y0",
+      "y1",
+      "y2",
+      "z0",
+      "z1",
+      "z2",
+      "w1",
+      "w2"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": true,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       3.999999999999997e-15,
+       3.999999999999997e-15
+      ],
+      "logBins": false
+     },
+     "mean": 3.999999999999997e-15,
+     "median": 3.999999999999997e-15,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 3.999999999999997e-15,
+     "p95": 3.999999999999997e-15,
+     "pointEstimate": 3.999999999999997e-15,
+     "repeatedEvents": [
+      {
+       "id": "w2",
+       "name": "w2"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "by": [
+         "cutoff"
+        ],
+        "cutoff": 1e-15,
+        "maxCount": 5000,
+        "maxOrder": 6
+       }
+      },
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L16 tiny OR inputs"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L16_tiny_or.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 1e-17,
+       "id": "x1",
+       "model": "fixed",
+       "name": "x1",
+       "q": 1e-17
+      },
+      {
+       "calculated": 1e-17,
+       "id": "x2",
+       "model": "fixed",
+       "name": "x2",
+       "q": 1e-17
+      },
+      {
+       "calculated": 1e-06,
+       "id": "y0",
+       "model": "fixed",
+       "name": "y0",
+       "q": 1e-06
+      },
+      {
+       "calculated": 1e-06,
+       "id": "y1",
+       "model": "fixed",
+       "name": "y1",
+       "q": 1e-06
+      },
+      {
+       "calculated": 1e-06,
+       "id": "y2",
+       "model": "fixed",
+       "name": "y2",
+       "q": 1e-06
+      },
+      {
+       "calculated": 1e-06,
+       "id": "z0",
+       "model": "fixed",
+       "name": "z0",
+       "q": 1e-06
+      },
+      {
+       "calculated": 1e-06,
+       "id": "z1",
+       "model": "fixed",
+       "name": "z1",
+       "q": 1e-06
+      },
+      {
+       "calculated": 1e-06,
+       "id": "z2",
+       "model": "fixed",
+       "name": "z2",
+       "q": 1e-06
+      },
+      {
+       "calculated": 1e-15,
+       "id": "w1",
+       "model": "fixed",
+       "name": "w1",
+       "q": 1e-15
+      },
+      {
+       "calculated": 3e-15,
+       "id": "w2",
+       "model": "fixed",
+       "name": "w2",
+       "q": 3e-15
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 3.999999999999997e-15,
+      "headlineMethod": "mcub",
+      "mcub": 3.999999999999997e-15,
+      "nonCoherent": false,
+      "rareEvent": 4e-15,
+      "repeatedEvents": [
+       {
+        "id": "w2",
+        "name": "w2"
+       }
+      ],
+      "treeWalk": 7.022e-15,
+      "truncated": true,
+      "truncatedBy": [
+       "cutoff"
+      ]
+     }
+    },
+    "title": "L16 tiny OR inputs"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L16_tiny_or.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "hintKey": "val.fix.CUTSETS_TRUNCATED",
+       "message": "The cut-set list was truncated (cutoff); results may be underestimated.",
+       "nodeId": null,
+       "nodeName": null,
+       "params": {
+        "count": 2,
+        "reason": "cutoff"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L16 tiny OR inputs"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L16_tiny_or.json"
+}

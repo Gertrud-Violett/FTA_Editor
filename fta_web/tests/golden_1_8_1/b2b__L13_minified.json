@@ -1,0 +1,185 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L13_minified.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.1
+        },
+        {
+         "id": "b",
+         "name": "b",
+         "q": 0.2
+        }
+       ],
+       "order": 2,
+       "probability": 0.020000000000000004,
+       "rank": 1,
+       "share": 1.0
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.020000000000000004,
+     "nonCoherent": false,
+     "rareEvent": 0.020000000000000004,
+     "repeatedEvents": [],
+     "total": 1,
+     "treeWalk": 0.02,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L13 minified"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L13_minified.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.2,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "a",
+       "name": "a",
+       "q": 0.1,
+       "raw": 9.999999999999998,
+       "rrw": null,
+       "rrwInfinite": true
+      },
+      {
+       "birnbaum": 0.1,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "b",
+       "name": "b",
+       "q": 0.2,
+       "raw": 4.999999999999999,
+       "rrw": null,
+       "rrwInfinite": true
+      }
+     ]
+    },
+    "title": "L13 minified"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L13_minified.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.020000000000000004,
+       0.020000000000000004
+      ],
+      "logBins": false
+     },
+     "mean": 0.020000000000000004,
+     "median": 0.020000000000000004,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.020000000000000004,
+     "p95": 0.020000000000000004,
+     "pointEstimate": 0.020000000000000004,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L13 minified"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L13_minified.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.2
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.02,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.020000000000000004,
+      "nonCoherent": false,
+      "rareEvent": 0.020000000000000004,
+      "repeatedEvents": [],
+      "treeWalk": 0.02,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L13 minified"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L13_minified.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "L13 minified"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L13_minified.json"
+}

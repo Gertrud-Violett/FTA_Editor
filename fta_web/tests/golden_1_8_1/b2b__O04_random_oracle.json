@@ -1,0 +1,654 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O04_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "o4_e6",
+         "name": "Event 6",
+         "q": 0.150354436009
+        }
+       ],
+       "order": 1,
+       "probability": 0.150354436009,
+       "rank": 1,
+       "share": 0.5112357072696465
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e8",
+         "name": "Event 8",
+         "q": 0.059495
+        }
+       ],
+       "order": 1,
+       "probability": 0.059495,
+       "rank": 2,
+       "share": 0.20229511819782267
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e7",
+         "name": "Event 7",
+         "q": 0.02678
+        }
+       ],
+       "order": 1,
+       "probability": 0.02678,
+       "rank": 3,
+       "share": 0.09105745466573144
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e11",
+         "name": "Event 11",
+         "q": 0.01667
+        }
+       ],
+       "order": 1,
+       "probability": 0.01667,
+       "rank": 4,
+       "share": 0.05668139541739145
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e5",
+         "name": "Event 5",
+         "q": 0.016644
+        }
+       ],
+       "order": 1,
+       "probability": 0.016644,
+       "rank": 5,
+       "share": 0.05659299012159947
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e3",
+         "name": "Event 3",
+         "q": 0.0165688480481
+        }
+       ],
+       "order": 1,
+       "probability": 0.0165688480481,
+       "rank": 6,
+       "share": 0.056337458177866256
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e9",
+         "name": "Event 9",
+         "q": 0.005767
+        }
+       ],
+       "order": 1,
+       "probability": 0.005767,
+       "rank": 7,
+       "share": 0.01960897464739631
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e10",
+         "name": "Event 10",
+         "q": 0.00182067908136
+        }
+       ],
+       "order": 1,
+       "probability": 0.00182067908136,
+       "rank": 8,
+       "share": 0.006190679720380275
+      },
+      {
+       "events": [
+        {
+         "id": "o4_e0",
+         "name": "Event 0",
+         "q": 0.04282
+        },
+        {
+         "id": "o4_e1",
+         "name": "Event 1",
+         "q": 0.08316
+        },
+        {
+         "id": "o4_e13",
+         "name": "Event 13",
+         "q": 0.05431
+        },
+        {
+         "id": "o4_e2",
+         "name": "Event 2",
+         "q": 0.0280685483477
+        },
+        {
+         "id": "o4_e4",
+         "name": "Event 4",
+         "q": 0.0120160240106
+        }
+       ],
+       "order": 5,
+       "probability": 6.522614118984133e-08,
+       "rank": 9,
+       "share": 2.217821655868026e-07
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.2660598191446903,
+     "nonCoherent": false,
+     "rareEvent": 0.2941000283646012,
+     "repeatedEvents": [
+      {
+       "id": "o4_e9",
+       "name": "Event 9"
+      },
+      {
+       "id": "o4_e6",
+       "name": "Event 6"
+      },
+      {
+       "id": "o4_e10",
+       "name": "Event 10"
+      }
+     ],
+     "total": 9,
+     "treeWalk": 0.383785908529,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "O04 random (oracle)"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O04_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.8638192347027708,
+       "cutSetCount": 1,
+       "fv": 0.48815734095056823,
+       "id": "o4_e6",
+       "name": "Event 6",
+       "q": 0.150354436009,
+       "raw": 3.7585532577400342,
+       "rrw": 1.9537253925984777,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7803681860865277,
+       "cutSetCount": 1,
+       "fv": 0.1745021303121656,
+       "id": "o4_e8",
+       "name": "Event 8",
+       "q": 0.059495,
+       "raw": 3.7585532577400342,
+       "rrw": 1.2113901643115739,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7541359413650661,
+       "cutSetCount": 1,
+       "fv": 0.07590684145648273,
+       "id": "o4_e7",
+       "name": "Event 7",
+       "q": 0.02678,
+       "raw": 3.7585532577400342,
+       "rrw": 1.0821419796853826,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.746382375047349,
+       "cutSetCount": 1,
+       "fv": 0.04676464951392347,
+       "id": "o4_e11",
+       "name": "Event 11",
+       "q": 0.01667,
+       "raw": 3.7585532577400342,
+       "rrw": 1.0490588703934207,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7463626406462255,
+       "cutSetCount": 1,
+       "fv": 0.04669047671629107,
+       "id": "o4_e5",
+       "name": "Event 5",
+       "q": 0.016644,
+       "raw": 3.7585532577400342,
+       "rrw": 1.0489772477625774,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7463056050223706,
+       "cutSetCount": 1,
+       "fv": 0.04647610528644445,
+       "id": "o4_e3",
+       "name": "Event 3",
+       "q": 0.0165688480481,
+       "raw": 3.7585532577400342,
+       "rrw": 1.048741416491095,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7381973650596084,
+       "cutSetCount": 1,
+       "fv": 0.016000853559866527,
+       "id": "o4_e9",
+       "name": "Event 9",
+       "q": 0.005767,
+       "raw": 3.7585532577400342,
+       "rrw": 1.016261044145977,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.735278887745193,
+       "cutSetCount": 1,
+       "fv": 0.005031601142129984,
+       "id": "o4_e10",
+       "name": "Event 10",
+       "q": 0.00182067908136,
+       "raw": 3.7585532577400342,
+       "rrw": 1.0050570461814723,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 1.1179843293759398e-06,
+       "cutSetCount": 1,
+       "fv": 1.7992979600517442e-07,
+       "id": "o4_e0",
+       "name": "Event 0",
+       "q": 0.04282,
+       "raw": 1.0000040220738473,
+       "rrw": 1.0000001799298284,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 5.756624456935754e-07,
+       "cutSetCount": 1,
+       "fv": 1.7992979600517442e-07,
+       "id": "o4_e1",
+       "name": "Event 1",
+       "q": 0.08316,
+       "raw": 1.0000019837281648,
+       "rrw": 1.0000001799298284,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 8.814599334170085e-07,
+       "cutSetCount": 1,
+       "fv": 1.7992979600517442e-07,
+       "id": "o4_e13",
+       "name": "Event 13",
+       "q": 0.05431,
+       "raw": 1.0000031330843082,
+       "rrw": 1.0000001799298284,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 1.7055420319875743e-06,
+       "cutSetCount": 1,
+       "fv": 1.7992979600517442e-07,
+       "id": "o4_e2",
+       "name": "Event 2",
+       "q": 0.0280685483477,
+       "raw": 1.0000062304407646,
+       "rrw": 1.0000001799298284,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 3.984020749429854e-06,
+       "cutSetCount": 1,
+       "fv": 1.7992979600517442e-07,
+       "id": "o4_e4",
+       "name": "Event 4",
+       "q": 0.0120160240106,
+       "raw": 1.0000147942243707,
+       "rrw": 1.0000001799298284,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "O04 random (oracle)"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O04_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "o4_e7",
+      "o4_e12",
+      "o4_e6",
+      "o4_e10",
+      "o4_e11",
+      "o4_e4",
+      "o4_e13",
+      "o4_e0",
+      "o4_e1",
+      "o4_e8"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": true,
+     "histogram": {
+      "counts": [
+       99,
+       367,
+       434,
+       321,
+       254,
+       147,
+       118,
+       77,
+       48,
+       34,
+       22,
+       18,
+       15,
+       16,
+       6,
+       1,
+       5,
+       3,
+       4,
+       2,
+       2,
+       1,
+       0,
+       0,
+       2,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       1
+      ],
+      "edges": [
+       0.24426460623471585,
+       0.2521173147932262,
+       0.2599700233517366,
+       0.2678227319102469,
+       0.27567544046875725,
+       0.2835281490272676,
+       0.291380857585778,
+       0.2992335661442883,
+       0.30708627470279865,
+       0.314938983261309,
+       0.32279169181981937,
+       0.3306444003783297,
+       0.33849710893684004,
+       0.34634981749535043,
+       0.35420252605386077,
+       0.3620552346123711,
+       0.3699079431708815,
+       0.3777606517293918,
+       0.38561336028790216,
+       0.39346606884641255,
+       0.40131877740492283,
+       0.4091714859634332,
+       0.41702419452194356,
+       0.4248769030804539,
+       0.4327296116389643,
+       0.4405823201974746,
+       0.44843502875598495,
+       0.45628773731449535,
+       0.4641404458730057,
+       0.471993154431516,
+       0.4798458629900264,
+       0.4876985715485367,
+       0.4955512801070471,
+       0.5034039886655575,
+       0.5112566972240677,
+       0.5191094057825781,
+       0.5269621143410885,
+       0.5348148228995988,
+       0.5426675314581092,
+       0.5505202400166196,
+       0.5583729485751299
+      ],
+      "logBins": false
+     },
+     "mean": 0.27678356049245045,
+     "median": 0.27022582782523735,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.2521527570741725,
+     "p95": 0.32284073343447967,
+     "pointEstimate": 0.26605977127260133,
+     "repeatedEvents": [
+      {
+       "id": "o4_e9",
+       "name": "Event 9"
+      },
+      {
+       "id": "o4_e6",
+       "name": "Event 6"
+      },
+      {
+       "id": "o4_e10",
+       "name": "Event 10"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.025713941669078904,
+     "truncatedByTime": false,
+     "uncertainEvents": [
+      "o4_e3",
+      "o4_e5",
+      "o4_e9",
+      "o4_e2"
+     ],
+     "warnings": [
+      {
+       "code": "MC_CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "coverage": 0.9999997782178345,
+        "total": 9,
+        "used": 8
+       }
+      },
+      {
+       "code": "MC_EVENT_NOT_SAMPLED",
+       "nodeId": null,
+       "params": {
+        "count": 1,
+        "eventIds": [
+         "o4_e2"
+        ],
+        "names": "Event 2"
+       }
+      }
+     ]
+    },
+    "title": "O04 random (oracle)"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O04_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.02678,
+       "id": "o4_e7",
+       "model": "fixed",
+       "name": "Event 7",
+       "q": 0.02678
+      },
+      {
+       "calculated": 0.0165688480481,
+       "id": "o4_e3",
+       "model": "repairable",
+       "name": "Event 3",
+       "q": 0.0165688480481
+      },
+      {
+       "calculated": 0.016644,
+       "id": "o4_e5",
+       "model": "standby",
+       "name": "Event 5",
+       "q": 0.016644
+      },
+      {
+       "calculated": 0.005767,
+       "id": "o4_e9",
+       "model": "standby",
+       "name": "Event 9",
+       "q": 0.005767
+      },
+      {
+       "calculated": 0.03839,
+       "id": "o4_e12",
+       "model": "fixed",
+       "name": "Event 12",
+       "q": 0.03839
+      },
+      {
+       "calculated": 0.150354436009,
+       "id": "o4_e6",
+       "model": "rate",
+       "name": "Event 6",
+       "q": 0.150354436009
+      },
+      {
+       "calculated": 0.00182067908136,
+       "id": "o4_e10",
+       "model": "repairable",
+       "name": "Event 10",
+       "q": 0.00182067908136
+      },
+      {
+       "calculated": 0.01667,
+       "id": "o4_e11",
+       "model": "fixed",
+       "name": "Event 11",
+       "q": 0.01667
+      },
+      {
+       "calculated": 0.0120160240106,
+       "id": "o4_e4",
+       "model": "rate",
+       "name": "Event 4",
+       "q": 0.0120160240106
+      },
+      {
+       "calculated": 0.0280685483477,
+       "id": "o4_e2",
+       "model": "rate",
+       "name": "Event 2",
+       "q": 0.0280685483477
+      },
+      {
+       "calculated": 0.05431,
+       "id": "o4_e13",
+       "model": "fixed",
+       "name": "Event 13",
+       "q": 0.05431
+      },
+      {
+       "calculated": 0.04282,
+       "id": "o4_e0",
+       "model": "fixed",
+       "name": "Event 0",
+       "q": 0.04282
+      },
+      {
+       "calculated": 0.08316,
+       "id": "o4_e1",
+       "model": "fixed",
+       "name": "Event 1",
+       "q": 0.08316
+      },
+      {
+       "calculated": 0.059495,
+       "id": "o4_e8",
+       "model": "standby",
+       "name": "Event 8",
+       "q": 0.059495
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.2660598191446903,
+      "headlineMethod": "mcub",
+      "mcub": 0.2660598191446903,
+      "nonCoherent": false,
+      "rareEvent": 0.2941000283646012,
+      "repeatedEvents": [
+       {
+        "id": "o4_e9",
+        "name": "Event 9"
+       },
+       {
+        "id": "o4_e6",
+        "name": "Event 6"
+       },
+       {
+        "id": "o4_e10",
+        "name": "Event 10"
+       }
+      ],
+      "treeWalk": 0.383785908529,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "O04 random (oracle)"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/O04_random_oracle.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "O04 random (oracle)"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/O04_random_oracle.json"
+}

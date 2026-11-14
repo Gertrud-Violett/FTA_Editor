@@ -1,0 +1,318 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F06_pand.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [
+      {
+       "code": "PAND_APPROX",
+       "nodeId": "pand2",
+       "params": {
+        "n": 2
+       }
+      },
+      {
+       "code": "PAND_APPROX",
+       "nodeId": "pand3",
+       "params": {
+        "n": 3
+       }
+      }
+     ],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.1
+        },
+        {
+         "id": "b",
+         "name": "b",
+         "q": 0.2
+        }
+       ],
+       "order": 2,
+       "probability": 0.020000000000000004,
+       "rank": 1,
+       "share": 0.7692307692307692
+      },
+      {
+       "events": [
+        {
+         "id": "c",
+         "name": "c",
+         "q": 0.1
+        },
+        {
+         "id": "d",
+         "name": "d",
+         "q": 0.2
+        },
+        {
+         "id": "e",
+         "name": "e",
+         "q": 0.3
+        }
+       ],
+       "order": 3,
+       "probability": 0.006000000000000001,
+       "rank": 2,
+       "share": 0.23076923076923075
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.025880000000000004,
+     "nonCoherent": false,
+     "rareEvent": 0.026000000000000006,
+     "repeatedEvents": [],
+     "total": 2,
+     "treeWalk": 0.01099,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F06 PAND"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F06_pand.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.1988,
+       "cutSetCount": 1,
+       "fv": 0.7681607418856262,
+       "id": "a",
+       "name": "a",
+       "q": 0.1,
+       "raw": 7.913446676970634,
+       "rrw": 4.313333333333333,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0994,
+       "cutSetCount": 1,
+       "fv": 0.7681607418856262,
+       "id": "b",
+       "name": "b",
+       "q": 0.2,
+       "raw": 4.072642967542504,
+       "rrw": 4.313333333333333,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.05879999999999999,
+       "cutSetCount": 1,
+       "fv": 0.22720247295208656,
+       "id": "c",
+       "name": "c",
+       "q": 0.1,
+       "raw": 3.0448222565687786,
+       "rrw": 1.2939999999999998,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0294,
+       "cutSetCount": 1,
+       "fv": 0.22720247295208656,
+       "id": "d",
+       "name": "d",
+       "q": 0.2,
+       "raw": 1.9088098918083463,
+       "rrw": 1.2939999999999998,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.019600000000000003,
+       "cutSetCount": 1,
+       "fv": 0.22720247295208656,
+       "id": "e",
+       "name": "e",
+       "q": 0.3,
+       "raw": 1.530139103554869,
+       "rrw": 1.2939999999999998,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F06 PAND"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F06_pand.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.010990000000000055,
+       0.010990000000000055
+      ],
+      "logBins": false
+     },
+     "mean": 0.010990000000000055,
+     "median": 0.010990000000000055,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.010990000000000055,
+     "p95": 0.010990000000000055,
+     "pointEstimate": 0.010990000000000055,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F06 PAND"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F06_pand.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.1,
+       "id": "c",
+       "model": "fixed",
+       "name": "c",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "d",
+       "model": "fixed",
+       "name": "d",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.3,
+       "id": "e",
+       "model": "fixed",
+       "name": "e",
+       "q": 0.3
+      }
+     ],
+     "summary": {
+      "approximations": [
+       {
+        "code": "PAND_APPROX",
+        "nodeId": "pand2",
+        "params": {
+         "n": 2
+        }
+       },
+       {
+        "code": "PAND_APPROX",
+        "nodeId": "pand3",
+        "params": {
+         "n": 3
+        }
+       }
+      ],
+      "capped": false,
+      "headline": 0.01099,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.025880000000000004,
+      "nonCoherent": false,
+      "rareEvent": 0.026000000000000006,
+      "repeatedEvents": [],
+      "treeWalk": 0.01099,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F06 PAND"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F06_pand.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 2,
+      "warning": 0
+     },
+     "issues": [
+      {
+       "code": "PAND_APPROX",
+       "hintKey": "val.fix.PAND_APPROX",
+       "message": "Priority-AND is approximated as AND × 1/2!.",
+       "nodeId": "pand2",
+       "nodeName": "pand2",
+       "params": {
+        "n": 2
+       },
+       "severity": "info"
+      },
+      {
+       "code": "PAND_APPROX",
+       "hintKey": "val.fix.PAND_APPROX",
+       "message": "Priority-AND is approximated as AND × 1/3!.",
+       "nodeId": "pand3",
+       "nodeName": "pand3",
+       "params": {
+        "n": 3
+       },
+       "severity": "info"
+      }
+     ]
+    },
+    "title": "F06 PAND"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F06_pand.json"
+}

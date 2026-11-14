@@ -1,0 +1,337 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L08_prob_span.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "t4",
+         "name": "t4",
+         "q": 4e-07
+        }
+       ],
+       "order": 1,
+       "probability": 4e-07,
+       "rank": 1,
+       "share": 0.49937515683563366
+      },
+      {
+       "events": [
+        {
+         "id": "t3",
+         "name": "t3",
+         "q": 3e-07
+        }
+       ],
+       "order": 1,
+       "probability": 3e-07,
+       "rank": 2,
+       "share": 0.37453136762672523
+      },
+      {
+       "events": [
+        {
+         "id": "t1",
+         "name": "t1",
+         "q": 0.001
+        },
+        {
+         "id": "t2",
+         "name": "t2",
+         "q": 0.0001
+        }
+       ],
+       "order": 2,
+       "probability": 1.0000000000000001e-07,
+       "rank": 3,
+       "share": 0.12484378920890843
+      },
+      {
+       "events": [
+        {
+         "id": "big",
+         "name": "big",
+         "q": 1e-09
+        }
+       ],
+       "order": 1,
+       "probability": 1e-09,
+       "rank": 4,
+       "share": 0.0012484378920890843
+      },
+      {
+       "events": [
+        {
+         "id": "m1",
+         "name": "m1",
+         "q": 1e-12
+        },
+        {
+         "id": "m2",
+         "name": "m2",
+         "q": 0.999999
+        }
+       ],
+       "order": 2,
+       "probability": 9.99999e-13,
+       "rank": 5,
+       "share": 1.2484366436511922e-06
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 8.010008091982112e-07,
+     "nonCoherent": false,
+     "rareEvent": 8.010009999989999e-07,
+     "repeatedEvents": [],
+     "total": 5,
+     "treeWalk": 8.01000809198e-07,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L08 1e-12..1"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L08_prob_span.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9999995989990303,
+       "cutSetCount": 1,
+       "fv": 0.49937507553832,
+       "id": "t4",
+       "name": "t4",
+       "q": 4e-07,
+       "raw": 1248438.1894707247,
+       "rrw": 1.9975034224979829,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9999994989990405,
+       "cutSetCount": 1,
+       "fv": 0.3745312692005981,
+       "id": "t3",
+       "name": "t3",
+       "q": 3e-07,
+       "raw": 1248438.1894707247,
+       "rrw": 1.5988009484053909,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 9.999992989991207e-05,
+       "cutSetCount": 1,
+       "fv": 0.1248437314314456,
+       "id": "t1",
+       "name": "t1",
+       "q": 0.001,
+       "raw": 125.71888770001416,
+       "rrw": 1.142653073416986,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0009999992989991207,
+       "cutSetCount": 1,
+       "fv": 0.1248437314314456,
+       "id": "t2",
+       "name": "t2",
+       "q": 0.0001,
+       "raw": 1249.3124705830246,
+       "rrw": 1.142653073416986,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.99999919999919,
+       "cutSetCount": 1,
+       "fv": 0.0012484371907191618,
+       "id": "big",
+       "name": "big",
+       "q": 1e-09,
+       "raw": 1248438.1894707247,
+       "rrw": 1.001249997734379,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9999981990009918,
+       "cutSetCount": 1,
+       "fv": 1.2484359410347836e-06,
+       "id": "m1",
+       "name": "m1",
+       "q": 1e-12,
+       "raw": 1248436.9410335352,
+       "rrw": 1.0000012484374996,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 9.999991990001908e-13,
+       "cutSetCount": 1,
+       "fv": 1.2484359410347836e-06,
+       "id": "m2",
+       "name": "m2",
+       "q": 0.999999,
+       "raw": 1.0000000000012486,
+       "rrw": 1.0000012484374996,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L08 1e-12..1"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L08_prob_span.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "m1",
+      "m2",
+      "big"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       8.010008091982112e-07,
+       8.010008091982112e-07
+      ],
+      "logBins": false
+     },
+     "mean": 8.010008091982112e-07,
+     "median": 8.010008091982112e-07,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 8.010008091982112e-07,
+     "p95": 8.010008091982112e-07,
+     "pointEstimate": 8.010008091982112e-07,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L08 1e-12..1"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L08_prob_span.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.001,
+       "id": "t1",
+       "model": "fixed",
+       "name": "t1",
+       "q": 0.001
+      },
+      {
+       "calculated": 0.0001,
+       "id": "t2",
+       "model": "fixed",
+       "name": "t2",
+       "q": 0.0001
+      },
+      {
+       "calculated": 3e-07,
+       "id": "t3",
+       "model": "fixed",
+       "name": "t3",
+       "q": 3e-07
+      },
+      {
+       "calculated": 4e-07,
+       "id": "t4",
+       "model": "fixed",
+       "name": "t4",
+       "q": 4e-07
+      },
+      {
+       "calculated": 1e-12,
+       "id": "m1",
+       "model": "fixed",
+       "name": "m1",
+       "q": 1e-12
+      },
+      {
+       "calculated": 0.999999,
+       "id": "m2",
+       "model": "fixed",
+       "name": "m2",
+       "q": 0.999999
+      },
+      {
+       "calculated": 1e-09,
+       "id": "big",
+       "model": "fixed",
+       "name": "big",
+       "q": 1e-09
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 8.01000809198e-07,
+      "headlineMethod": "treeWalk",
+      "mcub": 8.010008091982112e-07,
+      "nonCoherent": false,
+      "rareEvent": 8.010009999989999e-07,
+      "repeatedEvents": [],
+      "treeWalk": 8.01000809198e-07,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L08 1e-12..1"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L08_prob_span.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "L08 1e-12..1"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L08_prob_span.json"
+}

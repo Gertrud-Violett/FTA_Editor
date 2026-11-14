@@ -1,0 +1,2715 @@
+{
+ "commandTemplates": {
+  "cutsets": [
+   "fta_web/run.py",
+   "cutsets",
+   "<corpus file>",
+   "--json"
+  ],
+  "importance": [
+   "fta_web/run.py",
+   "importance",
+   "<corpus file>",
+   "--json"
+  ],
+  "mc": [
+   "fta_web/run.py",
+   "mc",
+   "<corpus file>",
+   "--json",
+   "--n",
+   "2000",
+   "--seed",
+   "1",
+   "--time-limit",
+   "3600"
+  ],
+  "quantify": [
+   "fta_web/run.py",
+   "quantify",
+   "<corpus file>",
+   "--json"
+  ],
+  "validate": [
+   "fta_web/run.py",
+   "validate",
+   "<corpus file>",
+   "--json"
+  ]
+ },
+ "determinism": "every command run twice; equal after removing elapsedMs",
+ "entry": "uv run --frozen python <first word of the command line>, working directory = repo root; the driver cli_with_budgets.py only raises the two internal 2 s budgets named in largerLimits (see its docstring)",
+ "files": {
+  "fta_web/examples/challenger_fta_en.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/examples/challenger_fta_en.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/examples/challenger_fta_en.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/examples/challenger_fta_en.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/examples/challenger_fta_en.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/examples/challenger_fta_en.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "examples__challenger_fta_en.json",
+   "inputSha256": "7feecaa621b8c85116eec1f096e82646942d1b34cd9c830dd417335106d08550"
+  },
+  "fta_web/examples/challenger_fta_ja.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/examples/challenger_fta_ja.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/examples/challenger_fta_ja.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/examples/challenger_fta_ja.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/examples/challenger_fta_ja.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/examples/challenger_fta_ja.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "examples__challenger_fta_ja.json",
+   "inputSha256": "a0679a3423e6452c5b5630e72965d8f04fdfcbd698e724d4f047ec30531b7f72"
+  },
+  "fta_web/examples/sampleFTA.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/examples/sampleFTA.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/examples/sampleFTA.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/examples/sampleFTA.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/examples/sampleFTA.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/examples/sampleFTA.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "examples__sampleFTA.json",
+   "inputSha256": "c2a99673302a30f79156604ce0d81178f28c6ab68b2e45d4a5143d9c03ea3aa3"
+  },
+  "fta_web/examples/tmi2_eta_en.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/examples/tmi2_eta_en.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/examples/tmi2_eta_en.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/examples/tmi2_eta_en.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/examples/tmi2_eta_en.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/examples/tmi2_eta_en.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 1,
+    "importance": 1,
+    "mc": 1,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "examples__tmi2_eta_en.json",
+   "inputSha256": "ea33db0931a84448dd9856d240db5a63739c1cb487016f8dfaecea9e86bd5f2b"
+  },
+  "fta_web/examples/tmi2_eta_ja.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/examples/tmi2_eta_ja.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/examples/tmi2_eta_ja.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/examples/tmi2_eta_ja.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/examples/tmi2_eta_ja.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/examples/tmi2_eta_ja.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 1,
+    "importance": 1,
+    "mc": 1,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "examples__tmi2_eta_ja.json",
+   "inputSha256": "369fa7d771541e39d4eedc640d2cc6d1054f053c4ca8ef5b7a6de5aee13544e0"
+  },
+  "fta_web/tests/b2b/F01_quant_models.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F01_quant_models.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F01_quant_models.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F01_quant_models.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F01_quant_models.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F01_quant_models.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F01_quant_models.json",
+   "inputSha256": "65c01ebf0853a1d51b09fce267e63b221200cf7bdd32ee621160eb479ee29f60"
+  },
+  "fta_web/tests/b2b/F02_mission_default.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F02_mission_default.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F02_mission_default.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F02_mission_default.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F02_mission_default.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F02_mission_default.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F02_mission_default.json",
+   "inputSha256": "d44594f3b90393d789fdd59f13d1b32c37d9847a8b2ba758bf2edcc8bd9916ed"
+  },
+  "fta_web/tests/b2b/F03_kofn.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F03_kofn.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F03_kofn.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F03_kofn.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F03_kofn.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F03_kofn.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F03_kofn.json",
+   "inputSha256": "c703873c122413d2f3dcb93f9030e4380936b791c43a3aedb0754d9a149bf64f"
+  },
+  "fta_web/tests/b2b/F04_xor.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F04_xor.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F04_xor.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F04_xor.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F04_xor.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F04_xor.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 1
+   },
+   "golden": "b2b__F04_xor.json",
+   "inputSha256": "3fd16e7efbea3491bf26a504c5e93faf780573b7596965afe28a387eb8f2fdee"
+  },
+  "fta_web/tests/b2b/F05_inhibit.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F05_inhibit.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F05_inhibit.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F05_inhibit.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F05_inhibit.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F05_inhibit.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 1
+   },
+   "golden": "b2b__F05_inhibit.json",
+   "inputSha256": "fb842462c1aa8524797a170449ee4ec8d48f302cf69a32540f6e8f3bf2ce5881"
+  },
+  "fta_web/tests/b2b/F06_pand.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F06_pand.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F06_pand.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F06_pand.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F06_pand.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F06_pand.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F06_pand.json",
+   "inputSha256": "a18c0a7187d4a831a9b4260669231b1cbfcf076a5991f66aee933f8249530a4e"
+  },
+  "fta_web/tests/b2b/F07_transfer.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F07_transfer.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F07_transfer.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F07_transfer.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F07_transfer.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F07_transfer.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 1
+   },
+   "golden": "b2b__F07_transfer.json",
+   "inputSha256": "e84378dee888f227fda08bba7da525e2e837be231523bfd5e1b850fe978174d2"
+  },
+  "fta_web/tests/b2b/F08_house.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F08_house.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F08_house.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F08_house.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F08_house.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F08_house.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F08_house.json",
+   "inputSha256": "c6202bd9fd8cd4c7549d07aba1147bcaa9114f541e01325407e4d4299a9daeeb"
+  },
+  "fta_web/tests/b2b/F09_undeveloped.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F09_undeveloped.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F09_undeveloped.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F09_undeveloped.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F09_undeveloped.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F09_undeveloped.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F09_undeveloped.json",
+   "inputSha256": "15f7ecca2dd287cbd2bac18ca0601222bfb8d4c08ca3942f0dee530a167fa0bb"
+  },
+  "fta_web/tests/b2b/F10_repeated_links.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F10_repeated_links.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F10_repeated_links.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F10_repeated_links.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F10_repeated_links.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F10_repeated_links.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F10_repeated_links.json",
+   "inputSha256": "736dd8892c6fca0c0b3459a7ee2b1ece3cd11097db5f443c9d08f06b05e887e4"
+  },
+  "fta_web/tests/b2b/F11_repeated_transfer.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F11_repeated_transfer.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F11_repeated_transfer.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F11_repeated_transfer.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F11_repeated_transfer.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F11_repeated_transfer.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F11_repeated_transfer.json",
+   "inputSha256": "5b2451cbc690d887463f0b182ae83ad8217c991e1f20df3ba53145639cd7016d"
+  },
+  "fta_web/tests/b2b/F12_uncertainty.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F12_uncertainty.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F12_uncertainty.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F12_uncertainty.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F12_uncertainty.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F12_uncertainty.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F12_uncertainty.json",
+   "inputSha256": "57618a352153bf16579ed1d77d5699b3a7b71df3c81fce59654beacc67632e00"
+  },
+  "fta_web/tests/b2b/F13_trace_fmea.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F13_trace_fmea.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F13_trace_fmea.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F13_trace_fmea.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F13_trace_fmea.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F13_trace_fmea.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F13_trace_fmea.json",
+   "inputSha256": "fbaf9af85d771d10f73309f64f9039d11749803e6a95a42979da607946ef50d7"
+  },
+  "fta_web/tests/b2b/F14_mixed_plant.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F14_mixed_plant.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F14_mixed_plant.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F14_mixed_plant.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F14_mixed_plant.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F14_mixed_plant.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F14_mixed_plant.json",
+   "inputSha256": "4f6b16be1a2b048532d9ad80868564d8c0858650aaa3c5f66d1d00f285535959"
+  },
+  "fta_web/tests/b2b/F15_stale_gate_type.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F15_stale_gate_type.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F15_stale_gate_type.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F15_stale_gate_type.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F15_stale_gate_type.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F15_stale_gate_type.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F15_stale_gate_type.json",
+   "inputSha256": "1446a66f05b84c7a1d2cddf37815361bcb519412efbfda63ff27682759faa28c"
+  },
+  "fta_web/tests/b2b/F16_analysis_limits.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F16_analysis_limits.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F16_analysis_limits.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F16_analysis_limits.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F16_analysis_limits.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F16_analysis_limits.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__F16_analysis_limits.json",
+   "inputSha256": "65a4322953f0f80db28e4c1e61944d8a6cba6380c6f5d8bac9176252927cca1d"
+  },
+  "fta_web/tests/b2b/F17_quant_missing.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/F17_quant_missing.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/F17_quant_missing.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/F17_quant_missing.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/F17_quant_missing.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/F17_quant_missing.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 1
+   },
+   "golden": "b2b__F17_quant_missing.json",
+   "inputSha256": "cd278eb4264e9745f68924852d8777d6b15eb70dae3bd7c90e4d52cd0423d07b"
+  },
+  "fta_web/tests/b2b/L01_and_or_basic.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L01_and_or_basic.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L01_and_or_basic.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L01_and_or_basic.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L01_and_or_basic.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L01_and_or_basic.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L01_and_or_basic.json",
+   "inputSha256": "ce9477dc7fe75687131ee23b08782a739e90ada73bad8b30b89e0df9dafa4636"
+  },
+  "fta_web/tests/b2b/L02_bare_tree.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L02_bare_tree.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L02_bare_tree.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L02_bare_tree.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L02_bare_tree.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L02_bare_tree.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L02_bare_tree.json",
+   "inputSha256": "f9e580cfaa50aa846aa4de980adbf5f710009d11502c1a66577eeca2f395e07e"
+  },
+  "fta_web/tests/b2b/L03_fta_wrapper.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L03_fta_wrapper.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L03_fta_wrapper.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L03_fta_wrapper.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L03_fta_wrapper.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L03_fta_wrapper.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L03_fta_wrapper.json",
+   "inputSha256": "07c26bac437222e57eebb86b2917097cdca86558d1b6a402bb74c097cc40e2bc"
+  },
+  "fta_web/tests/b2b/L04_links_and_or.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L04_links_and_or.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L04_links_and_or.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L04_links_and_or.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L04_links_and_or.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L04_links_and_or.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L04_links_and_or.json",
+   "inputSha256": "2336b5eed9eed08d5f9c6473ed66d77cee203851e2dbc567a2f60fc9ba0eba44"
+  },
+  "fta_web/tests/b2b/L05_link_cycle.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L05_link_cycle.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L05_link_cycle.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L05_link_cycle.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L05_link_cycle.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L05_link_cycle.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L05_link_cycle.json",
+   "inputSha256": "c06029dfd00c627c338ca9c38beba4ee37c0b17e38df597e9fa371cfae9e2e12"
+  },
+  "fta_web/tests/b2b/L06_deep_chain.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L06_deep_chain.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L06_deep_chain.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L06_deep_chain.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L06_deep_chain.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L06_deep_chain.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L06_deep_chain.json",
+   "inputSha256": "56cf5ccca915fcada78e8fcf7fbd09e8c6a1bebfea7a73790534c898c630099d"
+  },
+  "fta_web/tests/b2b/L07_eta_mode.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L07_eta_mode.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L07_eta_mode.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L07_eta_mode.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L07_eta_mode.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L07_eta_mode.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 1,
+    "importance": 1,
+    "mc": 1,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L07_eta_mode.json",
+   "inputSha256": "1c3a4ff6d38c9365808c6fb440a761b025adda053cf9b73ae1e2d1ef99cfd22c"
+  },
+  "fta_web/tests/b2b/L08_prob_span.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L08_prob_span.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L08_prob_span.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L08_prob_span.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L08_prob_span.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L08_prob_span.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L08_prob_span.json",
+   "inputSha256": "05ab9ece26fa6fe3cb746a3ee21058ce36c3e73d6c6f05e25dac039662542e39"
+  },
+  "fta_web/tests/b2b/L09_zero_one.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L09_zero_one.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L09_zero_one.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L09_zero_one.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L09_zero_one.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L09_zero_one.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L09_zero_one.json",
+   "inputSha256": "420760508400734894968d42b8633590c84ace74352f197fc88843827e798100"
+  },
+  "fta_web/tests/b2b/L10_duplicate_ids.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L10_duplicate_ids.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L10_duplicate_ids.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L10_duplicate_ids.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L10_duplicate_ids.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L10_duplicate_ids.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L10_duplicate_ids.json",
+   "inputSha256": "9631738867a79fe2955644524abd54dd04f49f8650e56c415dab152491239ac0"
+  },
+  "fta_web/tests/b2b/L11_unicode_names.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L11_unicode_names.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L11_unicode_names.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L11_unicode_names.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L11_unicode_names.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L11_unicode_names.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L11_unicode_names.json",
+   "inputSha256": "a5facb7109036c8d43b6e9700aa60d7b088d317d33417bbacd2e38ef2d107aae"
+  },
+  "fta_web/tests/b2b/L12_top_not_root.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L12_top_not_root.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L12_top_not_root.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L12_top_not_root.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L12_top_not_root.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L12_top_not_root.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L12_top_not_root.json",
+   "inputSha256": "6dd0b744dc14d7673dbda9d41ebb21372b6e8084e0f33c3ed4b89eab036177fd"
+  },
+  "fta_web/tests/b2b/L13_minified.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L13_minified.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L13_minified.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L13_minified.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L13_minified.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L13_minified.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L13_minified.json",
+   "inputSha256": "ec4dff8bed7b112fa154714c0aeb5e5453ee8bd7f87a5b02cb81dc4b45affd92"
+  },
+  "fta_web/tests/b2b/L14_gate_spellings.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L14_gate_spellings.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L14_gate_spellings.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L14_gate_spellings.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L14_gate_spellings.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L14_gate_spellings.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L14_gate_spellings.json",
+   "inputSha256": "46be71f50fd1bb659442c2eab59b62d70475d82ef9cd1e3a66b44d8e0222f72c"
+  },
+  "fta_web/tests/b2b/L15_dangling_links.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L15_dangling_links.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L15_dangling_links.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L15_dangling_links.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L15_dangling_links.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L15_dangling_links.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 1
+   },
+   "golden": "b2b__L15_dangling_links.json",
+   "inputSha256": "026b31ae6cfedb81f177ca9de70e7ed5be0e8728754556b5c132880bdc8faa85"
+  },
+  "fta_web/tests/b2b/L16_tiny_or.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/L16_tiny_or.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/L16_tiny_or.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/L16_tiny_or.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/L16_tiny_or.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/L16_tiny_or.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__L16_tiny_or.json",
+   "inputSha256": "f21e07e6121d04115b522e46bef4495bf2b48cb011f78dabc411736478e2f2d7"
+  },
+  "fta_web/tests/b2b/O01_random_oracle.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/O01_random_oracle.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/O01_random_oracle.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/O01_random_oracle.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/O01_random_oracle.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/O01_random_oracle.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__O01_random_oracle.json",
+   "inputSha256": "b7dc563176cfb535f0b168a74be0df9e72e85ed91703e450bdcaf1ff9f26a46b"
+  },
+  "fta_web/tests/b2b/O02_random_oracle.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/O02_random_oracle.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/O02_random_oracle.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/O02_random_oracle.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/O02_random_oracle.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/O02_random_oracle.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__O02_random_oracle.json",
+   "inputSha256": "656d34b0c717d18a183b1ee8e0334c13a3bb0d2751d14ec9dbb7727b5640cd00"
+  },
+  "fta_web/tests/b2b/O03_random_oracle.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/O03_random_oracle.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/O03_random_oracle.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/O03_random_oracle.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/O03_random_oracle.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/O03_random_oracle.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__O03_random_oracle.json",
+   "inputSha256": "dc28e241da4a8734eadf39e431ac20ca039ee712868b59e331fa49fc14092349"
+  },
+  "fta_web/tests/b2b/O04_random_oracle.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/O04_random_oracle.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/O04_random_oracle.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/O04_random_oracle.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/O04_random_oracle.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/O04_random_oracle.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__O04_random_oracle.json",
+   "inputSha256": "0cf92eb52276f506db6920aae5de4f4ba6fb6be1bf89be8c9077601e43f13293"
+  },
+  "fta_web/tests/b2b/O05_random_oracle.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/O05_random_oracle.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/O05_random_oracle.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/O05_random_oracle.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/O05_random_oracle.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/O05_random_oracle.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__O05_random_oracle.json",
+   "inputSha256": "0c42dc7055bcfeb66c725c4cff638af4860f01ec6d30e5261e8957c4f2559621"
+  },
+  "fta_web/tests/b2b/O06_random_oracle.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/O06_random_oracle.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/O06_random_oracle.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/O06_random_oracle.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/O06_random_oracle.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/O06_random_oracle.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__O06_random_oracle.json",
+   "inputSha256": "f1dd1eef527942a341c5a1f1dedbb9f7ead3421f6c3e70a03f8d8bf5b1aea036"
+  },
+  "fta_web/tests/b2b/R00_random_legacy_400.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/R00_random_legacy_400.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/R00_random_legacy_400.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/R00_random_legacy_400.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/tests/golden_1_8_1/cli_with_budgets.py",
+     "300",
+     "300",
+     "quantify",
+     "fta_web/tests/b2b/R00_random_legacy_400.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/tests/golden_1_8_1/cli_with_budgets.py",
+     "300",
+     "300",
+     "validate",
+     "fta_web/tests/b2b/R00_random_legacy_400.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__R00_random_legacy_400.json",
+   "inputSha256": "91e0a70588bb11152cac752673f15066bb8c3fb254f8e64c6c8c1c9b8fdf6c1e"
+  },
+  "fta_web/tests/b2b/R01_random_300.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/R01_random_300.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/R01_random_300.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/R01_random_300.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/R01_random_300.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/R01_random_300.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__R01_random_300.json",
+   "inputSha256": "20b73e3dd5ffb0b839f4b7267488539e4d4c112865c1ed70beed8be21773c1fe"
+  },
+  "fta_web/tests/b2b/R02_random_800.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/R02_random_800.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/R02_random_800.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/R02_random_800.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/R02_random_800.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/R02_random_800.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__R02_random_800.json",
+   "inputSha256": "6f3021c9dd39efc87540f22151260c2e82f6b5cfdbd8f572bd953b60abd10993"
+  },
+  "fta_web/tests/b2b/R03_random_2000.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/R03_random_2000.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/R03_random_2000.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/R03_random_2000.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/tests/golden_1_8_1/cli_with_budgets.py",
+     "300",
+     "300",
+     "quantify",
+     "fta_web/tests/b2b/R03_random_2000.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/tests/golden_1_8_1/cli_with_budgets.py",
+     "300",
+     "300",
+     "validate",
+     "fta_web/tests/b2b/R03_random_2000.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__R03_random_2000.json",
+   "inputSha256": "942c064e3ecfa2808fd349aab14ad627dbecbad02b02fb9e109f81eb98632525"
+  },
+  "fta_web/tests/b2b/T01_2oo3.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/T01_2oo3.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/T01_2oo3.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/T01_2oo3.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/T01_2oo3.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/T01_2oo3.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__T01_2oo3.json",
+   "inputSha256": "f279ca535d27b0a77ee7b7231831859a63d8169d6ac6b543d13bcc856fbaa463"
+  },
+  "fta_web/tests/b2b/T02_2oo3_expanded.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/T02_2oo3_expanded.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/T02_2oo3_expanded.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/T02_2oo3_expanded.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/T02_2oo3_expanded.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/T02_2oo3_expanded.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__T02_2oo3_expanded.json",
+   "inputSha256": "5d564f84ebc8bb75be61bf71733a609345b34f23f1b5529a69b9bc9d6ac8638c"
+  },
+  "fta_web/tests/b2b/T03_standby_exp.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/T03_standby_exp.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/T03_standby_exp.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/T03_standby_exp.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/T03_standby_exp.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/T03_standby_exp.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__T03_standby_exp.json",
+   "inputSha256": "6dbc7bc0bb347423e28f7d066d40dac0483dce4c0891ee7affee4d211bd1b0f9"
+  },
+  "fta_web/tests/b2b/T04_series_parallel.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/T04_series_parallel.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/T04_series_parallel.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/T04_series_parallel.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/T04_series_parallel.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/T04_series_parallel.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__T04_series_parallel.json",
+   "inputSha256": "13aecbb9d63225c78180f3ec303bb77287f0a9ce4de2e3521856656f910ac18d"
+  },
+  "fta_web/tests/b2b/T05_repairable.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/T05_repairable.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/T05_repairable.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/T05_repairable.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/T05_repairable.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/T05_repairable.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__T05_repairable.json",
+   "inputSha256": "e0282ea9250ef91a2afdf3317db5de1f85c119c9b7e3b20dce2282682f2bbe0a"
+  },
+  "fta_web/tests/b2b/T06_importance.json": {
+   "commands": {
+    "cutsets": [
+     "fta_web/run.py",
+     "cutsets",
+     "fta_web/tests/b2b/T06_importance.json",
+     "--json"
+    ],
+    "importance": [
+     "fta_web/run.py",
+     "importance",
+     "fta_web/tests/b2b/T06_importance.json",
+     "--json"
+    ],
+    "mc": [
+     "fta_web/run.py",
+     "mc",
+     "fta_web/tests/b2b/T06_importance.json",
+     "--json",
+     "--n",
+     "2000",
+     "--seed",
+     "1",
+     "--time-limit",
+     "3600"
+    ],
+    "quantify": [
+     "fta_web/run.py",
+     "quantify",
+     "fta_web/tests/b2b/T06_importance.json",
+     "--json"
+    ],
+    "validate": [
+     "fta_web/run.py",
+     "validate",
+     "fta_web/tests/b2b/T06_importance.json",
+     "--json"
+    ]
+   },
+   "exitCodes": {
+    "cutsets": 0,
+    "importance": 0,
+    "mc": 0,
+    "quantify": 0,
+    "validate": 0
+   },
+   "golden": "b2b__T06_importance.json",
+   "inputSha256": "ff31a875b09056f5cadd2842804f24e2d1be2f3489cddf98cb744f26d52ee42f"
+  }
+ },
+ "generatorVersion": 1,
+ "largerLimits": {
+  "fta_web/tests/b2b/R00_random_legacy_400.json": {
+   "summaryTimeBudgetS": 300,
+   "validateTimeBudgetS": 300
+  },
+  "fta_web/tests/b2b/R03_random_2000.json": {
+   "summaryTimeBudgetS": 300,
+   "validateTimeBudgetS": 300
+  }
+ },
+ "pathHandling": "Each corpus file is passed to the CLI as a repo-relative path with forward slashes and the working directory is the repo root, so the CLI's own 'file' field is that relative path; the generator fails if any output holds an absolute path. Nothing needed rewriting.",
+ "releaseCommit": "c6d09f5b0d5363fc037f63d3ec7cf1c91186a798",
+ "volatileKeys": [
+  "elapsedMs"
+ ],
+ "volatileKeysStoredInGoldens": false
+}

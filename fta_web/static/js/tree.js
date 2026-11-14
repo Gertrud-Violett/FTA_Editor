@@ -115,6 +115,7 @@ import {
 import traceStrings from './i18n/trace.js';
 import { formatProb, getSigFigs } from './numfmt.js';
 import { scaleColor, overlayMax } from './overlay_scale.js';
+import { memberMap } from './ccf_util.js';
 
 /**
  * {"<file path>": [open branch ids], ...}, newest last, in localStorage. The
@@ -309,6 +310,51 @@ const TREE_CSS = `
   color: var(--fta-muted-fg, #5d6a78);
   background: var(--fta-surface, #fff);
 }
+/* A member of a CCF group (F2): a small pill after the gate chip. A group that
+   is not applied is dashed and dim, so it never looks like it changes a number. */
+.fta-tree-ccf {
+  /* The name keeps its width (.fta-tree-label.has-ccf does not shrink): the
+     badge gives up space, down to a few characters. The full text is in the title. */
+  flex: 0 1 auto;
+  min-width: 4.5ch;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 0.4em;
+  border: 1px solid var(--accent, #2b6cb0);
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--accent-hover, #1e4e8c);
+  background: var(--accent-soft, #e6effa);
+}
+/* The badge is cut in its middle: "CCF: " and the not-applied marker stay whole, the
+   group name takes the ellipsis, so "(off)" is never the part that is hidden. */
+.fta-tree-ccf.has-parts { display: inline-flex; }
+.fta-tree-ccf.has-parts.is-off { min-width: 12ch; max-width: 18ch; } /* room for the Japanese marker too */
+.fta-tree-ccf-pre, .fta-tree-ccf-post { flex: 0 0 auto; white-space: pre; }
+.fta-tree-ccf-name {
+  flex: 0 1 auto;
+  min-width: 1.5ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The state of the group is not known yet (GET /api/ccf/groups has not answered):
+   neither the applied look nor the off look. */
+.fta-tree-ccf.is-pending {
+  border-color: var(--fta-border, #d7dde5);
+  color: var(--fta-muted-fg, #5d6a78);
+  background: transparent;
+}
+.fta-tree-ccf.is-off {
+  border-style: dashed;
+  border-color: var(--fta-border, #d7dde5);
+  color: var(--fta-muted-fg, #5d6a78);
+  background: transparent;
+}
 .fta-tree-prob {
   flex: 0 0 auto;
   min-width: 4.2em;
@@ -329,6 +375,9 @@ const TREE_CSS = `
   font-size: 0.8em;
 }
 .fta-tree-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+/* A row with a CCF badge (F2): the name does not shrink with the badge; only a
+   name too long for the row is cut, leaving room for the badge and the number. */
+.fta-tree-label.has-ccf { flex: 1 0 auto; max-width: calc(100% - 17ch); }
 .fta-tree-fv {
   /* Overlay (e.g. FV importance) bar, same colour scale as the diagram. */
   flex: 0 0 34px;
@@ -1151,6 +1200,60 @@ export function initTree(container) {
     ];
   }
 
+  /**
+   * The CCF badges of a node (F2): one per group that holds it, `CCF: <name>`,
+   * `CCF: <name> (off)` for a group that is not applied. Empty for a document
+   * without groups, so such a tree gets no extra element.
+   */
+  function ccfBadgesOf(id, ctx) {
+    if (!ctx.ccf) return [];
+    const groups = ctx.ccf.members.get(id);
+    if (!groups) return [];
+    return groups.map((g) => {
+      const pending = !ctx.ccf.state;
+      const off = pending ? false : ctx.ccf.state.notApplied.some((n) => n.id === g.id);
+      const lang = window.ftaShell && window.ftaShell.language === 'ja' ? 'ja' : 'en';
+      const known = off ? ctx.ccf.state.notApplied.find((n) => n.id === g.id) : null;
+      const reason = known && known.reason ? known.reason[lang] || known.reason.en || '' : '';
+      const status = off ? t('ccf.status.notApplied', { reason }) : t('ccf.status.applied');
+      const key = off ? 'ccf.badgeOff' : 'ccf.label.event';
+      const label = t(key, { name: g.name });
+      // The words around the name ("CCF: " and " (off)") stay whole when the badge is
+      // cut; only the name is ellipsized. The textContent is the label unchanged.
+      const marker = t(key, { name: '\u0001' }).split('\u0001');
+      const parts = marker.length === 2 && marker[0] + g.name + marker[1] === label ? { pre: marker[0], post: marker[1] } : null;
+      return {
+        id: g.id,
+        off,
+        pending,
+        label,
+        parts,
+        title: ctx.ccf.state ? t('ccf.badgeTitle', { group: g.name, status }) : g.name,
+      };
+    });
+  }
+
+  /**
+   * A gate above a CCF member shows the cut-set value including CCF, `n/a (CCF)`
+   * or a dash while that is loading -- never its tree-walk value, which is far
+   * too low for such a gate (F2, FN-66). A leaf with links is such a gate too.
+   */
+  function ccfRowProbability(id, node, isBranch, ctx) {
+    const hasLinks = Array.isArray(node.links) && node.links.length > 0;
+    if (!ctx.ccf || !(isBranch || hasLinks)) return null;
+    const shell = window.ftaShell;
+    if (!shell || typeof shell.ccfGate !== 'function') return null;
+    const gate = shell.ccfGate(id);
+    if (gate) {
+      const text = gate.method === 'mcub' ? formatProb(gate.value, getSigFigs()) : t('details.ccfNa');
+      return { text, key: 'tree.ccfMcub' };
+    }
+    if (typeof shell.ccfGatePending === 'function' && shell.ccfGatePending(id)) {
+      return { text: '—', key: 'tree.ccfMcub' };
+    }
+    return null;
+  }
+
   function buildItem(node, depth, ctx) {
     const id = String(node.id);
     if (ctx.filter && !ctx.filter.visible.has(id)) return null;
@@ -1169,7 +1272,8 @@ export function initTree(container) {
     const isFull = Number(node.probability) === 1 && !isBranch;
     const name = sanitizeName(node.name);
     const gateChip = ctx.eta ? null : gateLabel(node, isBranch);
-    const shown = rowProbability(node, isBranch, ctx.eta);
+    const shown = ccfRowProbability(id, node, isBranch, ctx) || rowProbability(node, isBranch, ctx.eta);
+    const ccfBadges = ccfBadgesOf(id, ctx);
     const isSelected = selection.has(id);
     const isLead = id === ctx.selectedId;
     const isEditing = Boolean(editing && editing.id === id);
@@ -1185,7 +1289,7 @@ export function initTree(container) {
       draggable: isEditing || id === ctx.rootId ? 'false' : 'true',
       'aria-level': String(level + 1),
       'aria-selected': isSelected ? 'true' : 'false',
-      'aria-label': name + (isZero ? t('tree.zeroAria') : ''),
+      'aria-label': name + (isZero ? t('tree.zeroAria') : '') + ccfBadges.map((b) => ', ' + b.label).join(''),
       dataset: {
         id: id,
         depth: String(((level % DEPTH_LEVELS) + DEPTH_LEVELS) % DEPTH_LEVELS),
@@ -1210,7 +1314,7 @@ export function initTree(container) {
           autocomplete: 'off',
           spellcheck: 'false',
         })
-      : el('span', { class: 'fta-tree-label' }, labelContent(name));
+      : el('span', { class: 'fta-tree-label' + (ccfBadges.length ? ' has-ccf' : '') }, labelContent(name));
 
     item.appendChild(
       el('div', { class: rowClass }, [
@@ -1223,6 +1327,18 @@ export function initTree(container) {
         gateChip
           ? el('span', { class: 'fta-tree-gate', title: t('tree.gateTitle', { gate: gateChip }), text: gateChip })
           : null,
+        ...ccfBadges.map((b) =>
+          el('span', {
+            class: 'fta-tree-ccf' + (b.off ? ' is-off' : '') + (b.pending ? ' is-pending' : '') + (b.parts ? ' has-parts' : ''),
+            title: b.label + (b.title && b.title !== b.label ? ' - ' + b.title : ''),
+            dataset: { group: b.id },
+            ...(b.parts ? {} : { text: b.label }),
+          }, b.parts ? [
+            el('span', { class: 'fta-tree-ccf-pre', text: b.parts.pre }),
+            el('span', { class: 'fta-tree-ccf-name', text: b.label.slice(b.parts.pre.length, b.label.length - b.parts.post.length) }),
+            el('span', { class: 'fta-tree-ccf-post', text: b.parts.post }),
+          ] : undefined)
+        ),
         fvBar,
         shown
           ? el('span', { class: 'fta-tree-prob', title: t(shown.key, { value: shown.text }), text: shown.text })
@@ -1245,6 +1361,20 @@ export function initTree(container) {
       item.appendChild(group);
     }
     return item;
+  }
+
+  /** The CCF context of one render: members by node id and the group status, or null without groups. */
+  let ccfPainted = false;
+  function ccfContext() {
+    const members = memberMap(store.state && store.state.analysis);
+    if (!members.size) return null;
+    const shell = window.ftaShell;
+    const state = shell && typeof shell.ccfState === 'function' ? shell.ccfState() : null;
+    return { members, state };
+  }
+
+  function hasCcfGroups() {
+    return memberMap(store.state && store.state.analysis).size > 0;
   }
 
   function render() {
@@ -1321,7 +1451,9 @@ export function initTree(container) {
       rootId: String(root.id),
       filter: filter,
       eta: isEtaDocument(),
+      ccf: ccfContext(),
     };
+    ccfPainted = Boolean(ctx.ccf);
     announceSelection();
 
     if (filter && !filter.matches.size) {
@@ -2522,6 +2654,13 @@ export function initTree(container) {
   window.addEventListener('fta:jump', onJump);
   window.addEventListener('fta:document', onDocument);
   window.addEventListener('fta:reveal', onReveal);
+  // CCF groups (F2): which groups are applied, and the gate values, arrive
+  // after the tree does. Nothing to redraw for a document that never had a group.
+  const onCcf = () => {
+    if (hasCcfGroups() || ccfPainted) render();
+  };
+  window.addEventListener('fta:ccf', onCcf);
+  window.addEventListener('fta:headline', onCcf);
 
   render();
 
@@ -2537,6 +2676,8 @@ export function initTree(container) {
       window.removeEventListener('fta:jump', onJump);
       window.removeEventListener('fta:document', onDocument);
       window.removeEventListener('fta:reveal', onReveal);
+      window.removeEventListener('fta:ccf', onCcf);
+      window.removeEventListener('fta:headline', onCcf);
       if (revealTimer) window.clearTimeout(revealTimer);
       if (typeof unHighlight === 'function') unHighlight();
       if (typeof unOverlay === 'function') unOverlay();

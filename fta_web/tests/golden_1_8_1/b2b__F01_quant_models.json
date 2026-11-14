@@ -1,0 +1,413 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F01_quant_models.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [
+      {
+       "code": "STANDBY_LARGE_LT",
+       "nodeId": "standby_big",
+       "params": {
+        "lambdaTau": 0.5
+       }
+      }
+     ],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "standby_big",
+         "name": "standby_big",
+         "q": 0.25
+        }
+       ],
+       "order": 1,
+       "probability": 0.25,
+       "rank": 1,
+       "share": 0.7240602311930349
+      },
+      {
+       "events": [
+        {
+         "id": "standby",
+         "name": "standby",
+         "q": 0.036
+        }
+       ],
+       "order": 1,
+       "probability": 0.036,
+       "rank": 2,
+       "share": 0.10426467329179702
+      },
+      {
+       "events": [
+        {
+         "id": "rep_mu",
+         "name": "rep_mu",
+         "q": 0.0196078431373
+        }
+       ],
+       "order": 1,
+       "probability": 0.0196078431373,
+       "rank": 3,
+       "share": 0.05678903774076081
+      },
+      {
+       "events": [
+        {
+         "id": "fixed",
+         "name": "fixed",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 4,
+       "share": 0.028962409247721397
+      },
+      {
+       "events": [
+        {
+         "id": "rate_T",
+         "name": "rate_T",
+         "q": 0.00995016625083
+        }
+       ],
+       "order": 1,
+       "probability": 0.00995016625083,
+       "rank": 5,
+       "share": 0.028818078703940413
+      },
+      {
+       "events": [
+        {
+         "id": "rep_mttr",
+         "name": "rep_mttr",
+         "q": 0.00990099009901
+        }
+       ],
+       "order": 1,
+       "probability": 0.00990099009901,
+       "rank": 6,
+       "share": 0.02867565272051652
+      },
+      {
+       "events": [
+        {
+         "id": "rate_mission",
+         "name": "rate_mission",
+         "q": 0.00872174299196
+        }
+       ],
+       "order": 1,
+       "probability": 0.00872174299196,
+       "rank": 7,
+       "share": 0.025260268988659157
+      },
+      {
+       "events": [
+        {
+         "id": "rate_fit",
+         "name": "rate 250 FIT",
+         "q": 0.00109440070626
+        }
+       ],
+       "order": 1,
+       "probability": 0.00109440070626,
+       "rank": 8,
+       "share": 0.0031696481135697454
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.31887153629850534,
+     "nonCoherent": false,
+     "rareEvent": 0.34527514318536,
+     "repeatedEvents": [],
+     "total": 8,
+     "treeWalk": 0.318871536299,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F01 quant models"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F01_quant_models.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9081712849353262,
+       "cutSetCount": 1,
+       "fv": 0.7120197176247486,
+       "id": "standby_big",
+       "name": "standby_big",
+       "q": 0.25,
+       "raw": 3.1360591528742456,
+       "rrw": 3.472459960633536,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7065647963708451,
+       "cutSetCount": 1,
+       "fv": 0.07976984388327059,
+       "id": "standby",
+       "name": "standby",
+       "q": 0.036,
+       "raw": 3.1360591528742456,
+       "rrw": 1.0866846661707878,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.6947510329755565,
+       "cutSetCount": 1,
+       "fv": 0.04272118305758514,
+       "id": "rep_mu",
+       "name": "rep_mu",
+       "q": 0.0196078431373,
+       "raw": 3.1360591528742456,
+       "rrw": 1.0446277325910527,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.688008549193429,
+       "cutSetCount": 1,
+       "fv": 0.02157635507953784,
+       "id": "fixed",
+       "name": "fixed",
+       "q": 0.01,
+       "raw": 3.1360591528742456,
+       "rrw": 1.0220521603208923,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.687973918567476,
+       "cutSetCount": 1,
+       "fv": 0.02146775138804841,
+       "id": "rate_T",
+       "name": "rate_T",
+       "q": 0.00995016625083,
+       "raw": 3.1360591528742456,
+       "rrw": 1.0219387265146351,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.6879397483385097,
+       "cutSetCount": 1,
+       "fv": 0.021360591528742673,
+       "id": "rep_mttr",
+       "name": "rep_mttr",
+       "q": 0.00990099009901,
+       "raw": 3.1360591528742456,
+       "rrw": 1.021826825431147,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.6871213596042491,
+       "cutSetCount": 1,
+       "fv": 0.018794076048055462,
+       "id": "rate_mission",
+       "name": "rate_mission",
+       "q": 0.00872174299196,
+       "raw": 3.1360591528742456,
+       "rrw": 1.0191540588874146,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.6818747078633612,
+       "cutSetCount": 1,
+       "fv": 0.0023402658341003884,
+       "id": "rate_fit",
+       "name": "rate 250 FIT",
+       "q": 0.00109440070626,
+       "raw": 3.1360591528742456,
+       "rrw": 1.0023457555256123,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F01 quant models"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F01_quant_models.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "fixed",
+      "rate_T",
+      "rate_mission",
+      "rate_fit",
+      "standby",
+      "standby_big",
+      "rep_mttr",
+      "rep_mu"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.3188715362985055,
+       0.3188715362985055
+      ],
+      "logBins": false
+     },
+     "mean": 0.3188715362985055,
+     "median": 0.3188715362985055,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.3188715362985055,
+     "p95": 0.3188715362985055,
+     "pointEstimate": 0.3188715362985055,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F01 quant models"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F01_quant_models.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.01,
+       "id": "fixed",
+       "model": "fixed",
+       "name": "fixed",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.00995016625083,
+       "id": "rate_T",
+       "model": "rate",
+       "name": "rate_T",
+       "q": 0.00995016625083
+      },
+      {
+       "calculated": 0.00872174299196,
+       "id": "rate_mission",
+       "model": "rate",
+       "name": "rate_mission",
+       "q": 0.00872174299196
+      },
+      {
+       "calculated": 0.00109440070626,
+       "id": "rate_fit",
+       "model": "rate",
+       "name": "rate 250 FIT",
+       "q": 0.00109440070626
+      },
+      {
+       "calculated": 0.036,
+       "id": "standby",
+       "model": "standby",
+       "name": "standby",
+       "q": 0.036
+      },
+      {
+       "calculated": 0.25,
+       "id": "standby_big",
+       "model": "standby",
+       "name": "standby_big",
+       "q": 0.25
+      },
+      {
+       "calculated": 0.00990099009901,
+       "id": "rep_mttr",
+       "model": "repairable",
+       "name": "rep_mttr",
+       "q": 0.00990099009901
+      },
+      {
+       "calculated": 0.0196078431373,
+       "id": "rep_mu",
+       "model": "repairable",
+       "name": "rep_mu",
+       "q": 0.0196078431373
+      }
+     ],
+     "summary": {
+      "approximations": [
+       {
+        "code": "STANDBY_LARGE_LT",
+        "nodeId": "standby_big",
+        "params": {
+         "lambdaTau": 0.5
+        }
+       }
+      ],
+      "capped": false,
+      "headline": 0.318871536299,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.31887153629850534,
+      "nonCoherent": false,
+      "rareEvent": 0.34527514318536,
+      "repeatedEvents": [],
+      "treeWalk": 0.318871536299,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F01 quant models"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F01_quant_models.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "STANDBY_LARGE_LT",
+       "hintKey": "val.fix.STANDBY_LARGE_LT",
+       "message": "Standby λτ = 0.5 is above 0.2; the λτ/2 approximation is poor.",
+       "nodeId": "standby_big",
+       "nodeName": "standby_big",
+       "params": {
+        "lambdaTau": 0.5
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "F01 quant models"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F01_quant_models.json"
+}

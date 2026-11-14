@@ -1,0 +1,733 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F14_mixed_plant.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [
+      {
+       "code": "PAND_APPROX",
+       "nodeId": "valve_seq",
+       "params": {
+        "n": 2
+       }
+      },
+      {
+       "code": "NONCOHERENT_XOR",
+       "nodeId": "sensors",
+       "params": {
+        "n": 2
+       }
+      }
+     ],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "grid",
+         "name": "grid",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 1,
+       "share": 0.7639971889346076
+      },
+      {
+       "events": [
+        {
+         "id": "S2",
+         "name": "S2",
+         "q": 0.002
+        }
+       ],
+       "order": 1,
+       "probability": 0.002,
+       "rank": 2,
+       "share": 0.1527994377869215
+      },
+      {
+       "events": [
+        {
+         "id": "operator",
+         "name": "operator",
+         "q": 0.001
+        }
+       ],
+       "order": 1,
+       "probability": 0.001,
+       "rank": 3,
+       "share": 0.07639971889346076
+      },
+      {
+       "events": [
+        {
+         "id": "S1",
+         "name": "S1",
+         "q": 7.19974080622e-05
+        }
+       ],
+       "order": 1,
+       "probability": 7.19974080622e-05,
+       "rank": 4,
+       "share": 0.0055005817370098655
+      },
+      {
+       "events": [
+        {
+         "id": "V1",
+         "name": "V1",
+         "q": 0.001
+        },
+        {
+         "id": "dg_demand",
+         "name": "dg_demand",
+         "q": 0.3
+        },
+        {
+         "id": "dg_fail",
+         "name": "dg_fail",
+         "q": 0.05
+        }
+       ],
+       "order": 3,
+       "probability": 1.5e-05,
+       "rank": 5,
+       "share": 0.0011459957834019114
+      },
+      {
+       "events": [
+        {
+         "id": "V1",
+         "name": "V1",
+         "q": 0.001
+        },
+        {
+         "id": "V2",
+         "name": "V2",
+         "q": 0.002
+        }
+       ],
+       "order": 2,
+       "probability": 2e-06,
+       "rank": 6,
+       "share": 0.0001527994377869215
+      },
+      {
+       "events": [
+        {
+         "id": "P1",
+         "name": "P1",
+         "q": 0.000479769710539
+        },
+        {
+         "id": "P3",
+         "name": "P3",
+         "q": 0.00365
+        },
+        {
+         "id": "dg_demand",
+         "name": "dg_demand",
+         "q": 0.3
+        },
+        {
+         "id": "dg_fail",
+         "name": "dg_fail",
+         "q": 0.05
+        }
+       ],
+       "order": 4,
+       "probability": 2.626739165201025e-08,
+       "rank": 7,
+       "share": 2.006821338278021e-06
+      },
+      {
+       "events": [
+        {
+         "id": "P2",
+         "name": "P2",
+         "q": 0.000479769710539
+        },
+        {
+         "id": "P3",
+         "name": "P3",
+         "q": 0.00365
+        },
+        {
+         "id": "dg_demand",
+         "name": "dg_demand",
+         "q": 0.3
+        },
+        {
+         "id": "dg_fail",
+         "name": "dg_fail",
+         "q": 0.05
+        }
+       ],
+       "order": 4,
+       "probability": 2.626739165201025e-08,
+       "rank": 8,
+       "share": 2.006821338278021e-06
+      },
+      {
+       "events": [
+        {
+         "id": "P1",
+         "name": "P1",
+         "q": 0.000479769710539
+        },
+        {
+         "id": "P2",
+         "name": "P2",
+         "q": 0.000479769710539
+        },
+        {
+         "id": "dg_demand",
+         "name": "dg_demand",
+         "q": 0.3
+        },
+        {
+         "id": "dg_fail",
+         "name": "dg_fail",
+         "q": 0.05
+        }
+       ],
+       "order": 4,
+       "probability": 3.4526846272601374e-09,
+       "rank": 9,
+       "share": 2.6378413495044785e-07
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.013055917306704436,
+     "nonCoherent": true,
+     "rareEvent": 0.013089053395530131,
+     "repeatedEvents": [
+      {
+       "id": "grid",
+       "name": "grid"
+      },
+      {
+       "id": "dg_fail",
+       "name": "dg_fail"
+      },
+      {
+       "id": "dg_demand",
+       "name": "dg_demand"
+      },
+      {
+       "id": "V1",
+       "name": "V1"
+      }
+     ],
+     "total": 9,
+     "treeWalk": 0.0130645457504,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F14 mixed plant"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F14_mixed_plant.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9969132148417127,
+       "cutSetCount": 1,
+       "fv": 0.7635719432213168,
+       "id": "grid",
+       "name": "grid",
+       "q": 0.01,
+       "raw": 76.59362237891035,
+       "rrw": 4.229616457644387,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9889219265463883,
+       "cutSetCount": 1,
+       "fv": 0.15149022520823718,
+       "id": "S2",
+       "name": "S2",
+       "q": 0.002,
+       "raw": 76.59362237891035,
+       "rrw": 1.1785368061851913,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9879320147080035,
+       "cutSetCount": 1,
+       "fv": 0.07566929167058094,
+       "id": "operator",
+       "name": "operator",
+       "q": 0.001,
+       "raw": 76.59362237891035,
+       "rrw": 1.0818638729501275,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.98701514522547,
+       "cutSetCount": 1,
+       "fv": 0.005442936754652845,
+       "id": "S1",
+       "name": "S1",
+       "q": 7.19974080622e-05,
+       "raw": 76.59362237891035,
+       "rrw": 1.0054727244476973,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.016748725811141552,
+       "cutSetCount": 2,
+       "fv": 0.001285111159483962,
+       "id": "V1",
+       "name": "V1",
+       "q": 0.001,
+       "raw": 2.2815604689470015,
+       "rrw": 1.001286764795282,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 4.95321290046976e-05,
+       "cutSetCount": 4,
+       "fv": 0.0011381537036690452,
+       "id": "dg_demand",
+       "name": "dg_demand",
+       "q": 0.3,
+       "raw": 1.0026556914809401,
+       "rrw": 1.0011394505735594,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0002971924974549591,
+       "cutSetCount": 4,
+       "fv": 0.0011381537036690452,
+       "id": "dg_fail",
+       "name": "dg_fail",
+       "q": 0.05,
+       "raw": 1.0216248962202414,
+       "rrw": 1.0011394505735594,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0009869460565854087,
+       "cutSetCount": 1,
+       "fv": 0.00015118754713291498,
+       "id": "V2",
+       "name": "V2",
+       "q": 0.002,
+       "raw": 1.0754425860193244,
+       "rrw": 1.0001512104082637,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 1.4205125938321507e-05,
+       "cutSetCount": 2,
+       "fv": 3.971294727315341e-06,
+       "id": "P3",
+       "name": "P3",
+       "q": 0.00365,
+       "raw": 1.0010840507572372,
+       "rrw": 1.0000039713104987,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 6.113738963084355e-05,
+       "cutSetCount": 2,
+       "fv": 2.2466482832423214e-06,
+       "id": "P1",
+       "name": "P1",
+       "q": 0.000479769710539,
+       "raw": 1.004680487486334,
+       "rrw": 1.0000022466533307,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 6.113738963084355e-05,
+       "cutSetCount": 2,
+       "fv": 2.2466482832423214e-06,
+       "id": "P2",
+       "name": "P2",
+       "q": 0.000479769710539,
+       "raw": 1.004680487486334,
+       "rrw": 1.0000022466533307,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F14 mixed plant"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F14_mixed_plant.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "P3",
+      "grid",
+      "dg_demand",
+      "V1",
+      "V2",
+      "S1",
+      "S2",
+      "operator"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": true,
+     "histogram": {
+      "counts": [
+       437,
+       426,
+       297,
+       227,
+       155,
+       97,
+       76,
+       60,
+       40,
+       32,
+       20,
+       21,
+       14,
+       17,
+       11,
+       12,
+       5,
+       7,
+       7,
+       3,
+       4,
+       8,
+       3,
+       2,
+       2,
+       2,
+       1,
+       1,
+       1,
+       2,
+       0,
+       1,
+       3,
+       2,
+       0,
+       0,
+       3,
+       0,
+       0,
+       1
+      ],
+      "edges": [
+       0.013041736794651785,
+       0.013047694946491337,
+       0.013053653098330889,
+       0.01305961125017044,
+       0.013065569402009992,
+       0.013071527553849544,
+       0.013077485705689096,
+       0.013083443857528647,
+       0.013089402009368199,
+       0.01309536016120775,
+       0.013101318313047302,
+       0.013107276464886854,
+       0.013113234616726406,
+       0.013119192768565957,
+       0.013125150920405509,
+       0.01313110907224506,
+       0.013137067224084613,
+       0.013143025375924164,
+       0.013148983527763716,
+       0.013154941679603268,
+       0.013160899831442821,
+       0.013166857983282373,
+       0.013172816135121924,
+       0.013178774286961476,
+       0.013184732438801028,
+       0.01319069059064058,
+       0.013196648742480131,
+       0.013202606894319683,
+       0.013208565046159235,
+       0.013214523197998786,
+       0.013220481349838338,
+       0.01322643950167789,
+       0.013232397653517441,
+       0.013238355805356993,
+       0.013244313957196545,
+       0.013250272109036097,
+       0.013256230260875648,
+       0.0132621884127152,
+       0.013268146564554752,
+       0.013274104716394303,
+       0.013280062868233855
+      ],
+      "logBins": false
+     },
+     "mean": 0.013064854115671501,
+     "median": 0.013055825091169662,
+     "method": "cutsets",
+     "nonCoherent": true,
+     "p05": 0.013044079309218552,
+     "p95": 0.013117455898964294,
+     "pointEstimate": 0.013055862050202023,
+     "repeatedEvents": [
+      {
+       "id": "grid",
+       "name": "grid"
+      },
+      {
+       "id": "dg_fail",
+       "name": "dg_fail"
+      },
+      {
+       "id": "dg_demand",
+       "name": "dg_demand"
+      },
+      {
+       "id": "V1",
+       "name": "V1"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 2.7611328604730646e-05,
+     "truncatedByTime": false,
+     "uncertainEvents": [
+      "P1",
+      "P2",
+      "dg_fail"
+     ],
+     "warnings": [
+      {
+       "code": "MC_CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "coverage": 0.9999957225731885,
+        "total": 9,
+        "used": 6
+       }
+      },
+      {
+       "code": "MC_EVENT_NOT_SAMPLED",
+       "nodeId": null,
+       "params": {
+        "count": 2,
+        "eventIds": [
+         "P1",
+         "P2"
+        ],
+        "names": "P1, P2"
+       }
+      }
+     ]
+    },
+    "title": "F14 mixed plant"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F14_mixed_plant.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.000479769710539,
+       "id": "P1",
+       "model": "repairable",
+       "name": "P1",
+       "q": 0.000479769710539
+      },
+      {
+       "calculated": 0.000479769710539,
+       "id": "P2",
+       "model": "repairable",
+       "name": "P2",
+       "q": 0.000479769710539
+      },
+      {
+       "calculated": 0.00365,
+       "id": "P3",
+       "model": "standby",
+       "name": "P3",
+       "q": 0.00365
+      },
+      {
+       "calculated": 0.01,
+       "id": "grid",
+       "model": "fixed",
+       "name": "grid",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.05,
+       "id": "dg_fail",
+       "model": "fixed",
+       "name": "dg_fail",
+       "q": 0.05
+      },
+      {
+       "calculated": 0.3,
+       "id": "dg_demand",
+       "model": "fixed",
+       "name": "dg_demand",
+       "q": 0.3
+      },
+      {
+       "calculated": 0.001,
+       "id": "V1",
+       "model": "fixed",
+       "name": "V1",
+       "q": 0.001
+      },
+      {
+       "calculated": 0.002,
+       "id": "V2",
+       "model": "fixed",
+       "name": "V2",
+       "q": 0.002
+      },
+      {
+       "calculated": 7.19974080622e-05,
+       "id": "S1",
+       "model": "rate",
+       "name": "S1",
+       "q": 7.19974080622e-05
+      },
+      {
+       "calculated": 0.002,
+       "id": "S2",
+       "model": "fixed",
+       "name": "S2",
+       "q": 0.002
+      },
+      {
+       "calculated": 1.0,
+       "id": "in_maint",
+       "model": "fixed",
+       "name": "in_maint",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.01099,
+       "id": "operator",
+       "model": "fixed",
+       "name": "operator",
+       "q": 0.001
+      }
+     ],
+     "summary": {
+      "approximations": [
+       {
+        "code": "PAND_APPROX",
+        "nodeId": "valve_seq",
+        "params": {
+         "n": 2
+        }
+       },
+       {
+        "code": "NONCOHERENT_XOR",
+        "nodeId": "sensors",
+        "params": {
+         "n": 2
+        }
+       }
+      ],
+      "capped": false,
+      "headline": 0.013055917306704436,
+      "headlineMethod": "mcub",
+      "mcub": 0.013055917306704436,
+      "nonCoherent": true,
+      "rareEvent": 0.013089053395530131,
+      "repeatedEvents": [
+       {
+        "id": "grid",
+        "name": "grid"
+       },
+       {
+        "id": "dg_fail",
+        "name": "dg_fail"
+       },
+       {
+        "id": "dg_demand",
+        "name": "dg_demand"
+       },
+       {
+        "id": "V1",
+        "name": "V1"
+       }
+      ],
+      "treeWalk": 0.0130645457504,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F14 mixed plant"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F14_mixed_plant.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 2,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "NONCOHERENT_XOR",
+       "hintKey": "val.fix.NONCOHERENT_XOR",
+       "message": "The tree has 1 XOR gate(s); cut-set results are approximate.",
+       "nodeId": "sensors",
+       "nodeName": "sensors",
+       "params": {
+        "count": 1,
+        "nodeIds": [
+         "sensors"
+        ]
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "PAND_APPROX",
+       "hintKey": "val.fix.PAND_APPROX",
+       "message": "Priority-AND is approximated as AND × 1/2!.",
+       "nodeId": "valve_seq",
+       "nodeName": "Valves in order",
+       "params": {
+        "n": 2
+       },
+       "severity": "info"
+      },
+      {
+       "code": "UNDEVELOPED_EVENT",
+       "hintKey": "val.fix.UNDEVELOPED_EVENT",
+       "message": "Undeveloped event: its causes are not analysed further.",
+       "nodeId": "operator",
+       "nodeName": "operator",
+       "params": {},
+       "severity": "info"
+      }
+     ]
+    },
+    "title": "F14 mixed plant"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F14_mixed_plant.json"
+}
