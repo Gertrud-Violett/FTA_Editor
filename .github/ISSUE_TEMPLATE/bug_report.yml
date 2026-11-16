@@ -1,0 +1,78 @@
+name: Bug report
+description: Something in FTA Editor does not work, or a result looks wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem.
+
+        **Issues are public.** Remove confidential data from analysis files and screenshots before you attach them, and never paste an API key.
+        For a security problem, use [private reporting](https://github.com/Gertrud-Violett/FTA_Editor/security/advisories/new) and not this form.
+  - type: input
+    id: version
+    attributes:
+      label: FTA Editor version
+      description: From 1.9.1 on, the version is in the browser tab title and at the right end of the top bar. For the Windows download, the zip file name also has it.
+      placeholder: "1.9.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: variant
+    attributes:
+      label: How do you run it?
+      options:
+        - Windows download (fta_editor.exe)
+        - Web app from source (python fta_web/run.py)
+        - Legacy desktop app (desktop/)
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and browser
+      description: For a run from source, add the Python version.
+      placeholder: "Windows 11, Edge 141"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest list of steps that shows the problem, starting from a new or attached analysis.
+      placeholder: |
+        1. Open the attached file
+        2. Select the top event
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Include the exact text of any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: For a calculation result, give the value you expected and where it comes from (a hand calculation, a standard, another tool).
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files and screenshots
+      description: Drag files here. A small analysis file (.json) that shows the problem helps most.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched the existing issues and did not find this problem.
+          required: true
+        - label: My attachments contain no confidential data and no API keys.
+          required: true

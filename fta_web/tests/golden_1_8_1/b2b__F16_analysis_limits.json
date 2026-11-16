@@ -1,0 +1,257 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F16_analysis_limits.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [],
+     "limits": {
+      "cutoff": 1e-10,
+      "maxCount": 50,
+      "maxOrder": 2
+     },
+     "mcub": 0.0,
+     "nonCoherent": false,
+     "rareEvent": 0.0,
+     "repeatedEvents": [],
+     "total": 0,
+     "treeWalk": 0.00139951004599,
+     "truncated": true,
+     "truncatedBy": [
+      "cutoff",
+      "order"
+     ],
+     "warnings": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "nodeId": null,
+       "params": {
+        "by": [
+         "cutoff",
+         "order"
+        ],
+        "cutoff": 1e-10,
+        "maxCount": 50,
+        "maxOrder": 2
+       }
+      }
+     ]
+    },
+    "title": "F16 analysis limits"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F16_analysis_limits.json",
+    "mode": "FTA",
+    "results": {
+     "measures": []
+    },
+    "title": "F16 analysis limits"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F16_analysis_limits.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "x0",
+      "y0",
+      "z0",
+      "x1",
+      "y1",
+      "z1",
+      "x2",
+      "y2",
+      "z2",
+      "single"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.001399510045986041,
+       0.001399510045986041
+      ],
+      "logBins": false
+     },
+     "mean": 0.001399510045986041,
+     "median": 0.001399510045986041,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.001399510045986041,
+     "p95": 0.001399510045986041,
+     "pointEstimate": 0.001399510045986041,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F16 analysis limits"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F16_analysis_limits.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "x0",
+       "model": "fixed",
+       "name": "x0",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.05,
+       "id": "y0",
+       "model": "fixed",
+       "name": "y0",
+       "q": 0.05
+      },
+      {
+       "calculated": 0.02,
+       "id": "z0",
+       "model": "fixed",
+       "name": "z0",
+       "q": 0.02
+      },
+      {
+       "calculated": 0.2,
+       "id": "x1",
+       "model": "fixed",
+       "name": "x1",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.05,
+       "id": "y1",
+       "model": "fixed",
+       "name": "y1",
+       "q": 0.05
+      },
+      {
+       "calculated": 0.04,
+       "id": "z1",
+       "model": "fixed",
+       "name": "z1",
+       "q": 0.04
+      },
+      {
+       "calculated": 0.30000000000000004,
+       "id": "x2",
+       "model": "fixed",
+       "name": "x2",
+       "q": 0.30000000000000004
+      },
+      {
+       "calculated": 0.05,
+       "id": "y2",
+       "model": "fixed",
+       "name": "y2",
+       "q": 0.05
+      },
+      {
+       "calculated": 0.06,
+       "id": "z2",
+       "model": "fixed",
+       "name": "z2",
+       "q": 0.06
+      },
+      {
+       "calculated": 1e-11,
+       "id": "single",
+       "model": "fixed",
+       "name": "single",
+       "q": 1e-11
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.00139951004599,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.0,
+      "nonCoherent": false,
+      "rareEvent": 0.0,
+      "repeatedEvents": [],
+      "treeWalk": 0.00139951004599,
+      "truncated": true,
+      "truncatedBy": [
+       "cutoff",
+       "order"
+      ]
+     }
+    },
+    "title": "F16 analysis limits"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F16_analysis_limits.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 2
+     },
+     "issues": [
+      {
+       "code": "CUTSETS_TRUNCATED",
+       "hintKey": "val.fix.CUTSETS_TRUNCATED",
+       "message": "The cut-set list was truncated (cutoff, order); results may be underestimated.",
+       "nodeId": null,
+       "nodeName": null,
+       "params": {
+        "count": 0,
+        "reason": "cutoff, order"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "LOAD_REPAIR",
+       "hintKey": "val.fix.LOAD_REPAIR",
+       "message": "Invalid analysis setting(s) were reset to their defaults: bogus.",
+       "nodeId": null,
+       "nodeName": null,
+       "params": {
+        "fields": [
+         "bogus"
+        ],
+        "kind": "analysis_invalid",
+        "message": "Invalid analysis setting(s) were reset to their defaults: bogus.",
+        "new_id": null,
+        "old_id": null
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "F16 analysis limits"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F16_analysis_limits.json"
+}

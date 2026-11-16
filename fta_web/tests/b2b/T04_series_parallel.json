@@ -1,0 +1,78 @@
+{
+  "title": "T04 series-parallel",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "AND",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "L",
+        "name": "L",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "A",
+            "name": "A",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "B",
+            "name": "B",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "R",
+        "name": "R",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "C",
+            "name": "C",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "D",
+            "name": "D",
+            "type": "Event",
+            "probability": 0.4,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>FTA Editor {{ app_version }}</title>
+
+  <!-- Empty data: URI. It suppresses the browser's automatic /favicon.ico
+       request without pulling in an asset; this app ships fully offline. -->
+  <link rel="icon" href="data:,">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+
+  <script>
+    /* Paint the saved theme before first paint, so a dark-theme user never
+       sees a white flash. main.js owns the toggle; this only replays the
+       stored choice. Kept inline and tiny on purpose: a separate file would
+       be a second round trip and the flash would be back. */
+    (function () {
+      /* Boot gate: main.js removes this once every panel has loaded, so an
+         early click or shortcut cannot reach a half-initialised editor. */
+      document.documentElement.setAttribute('data-booting', '');
+      document.documentElement.setAttribute('data-advanced', '0');
+      try {
+        if (localStorage.getItem('fta.advanced') === '1') {
+          document.documentElement.setAttribute('data-advanced', '1');
+        }
+        var pref = localStorage.getItem('fta.theme');
+        if (pref === 'dark' || pref === 'light') {
+          document.documentElement.setAttribute('data-theme', pref);
+        }
+        var hide = localStorage.getItem('fta.hideZero');
+        document.documentElement.setAttribute('data-hide-zero', hide === '1' ? '1' : '0');
+        var lang = localStorage.getItem('fta.language');
+        if (lang === 'ja' || lang === 'en') document.documentElement.lang = lang;
+      } catch (e) { /* private mode: fall through to the defaults */ }
+    })();
+  </script>
+</head>
+
+<body>
+  <a class="skip-link" href="#tree-root" data-i18n="a11y.skip">Skip to the fault tree</a>
+
+  <!-- Shown by main.js while the server does not answer (it was closed, or
+       the machine slept). It stays up until the server is back, and the
+       download is built in this page from the document it still holds. -->
+  <div class="banner" id="server-banner" hidden role="alert">
+    <span class="banner__glyph" aria-hidden="true">&#9888;</span>
+    <span class="banner__text" id="server-banner-text" data-i18n="rescue.banner">The editor is not
+      answering. It may have been closed. What you see is still in this tab, but nothing can be
+      saved until the editor answers again.</span>
+    <button type="button" class="btn btn--primary" id="server-banner-rescue"
+            data-i18n="rescue.download">Download a rescue copy (JSON)</button>
+    <button type="button" class="btn" id="server-banner-retry"
+            data-i18n="rescue.retry">Try again</button>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- Top bar: document metadata, view options, session chrome             -->
+  <!-- ==================================================================== -->
+  <header class="topbar" role="banner">
+    <div class="topbar__group">
+      <label class="topbar__label" for="mode-select" data-i18n="bar.mode">Mode</label>
+      <select id="mode-select" data-i18n-title="bar.modeTitle"
+              title="Switching mode recalculates every probability">
+        <option value="FTA">FTA</option>
+        <option value="ETA">ETA</option>
+      </select>
+    </div>
+
+    <div class="topbar__group topbar__group--grow">
+      <label class="topbar__label" for="title-input" data-i18n="bar.title">Title</label>
+      <input id="title-input" type="text" autocomplete="off" spellcheck="false"
+             data-i18n-placeholder="bar.titlePlaceholder" placeholder="Untitled Analysis">
+    </div>
+
+    <div class="topbar__group">
+      <label class="topbar__label" for="date-input" data-i18n="bar.date">Date</label>
+      <!-- Deliberately a text field, not <input type="date">: the backend
+           stores `date` as a free string and files written by the desktop
+           editor may hold a non-ISO value that a date picker would silently
+           blank on the next save. -->
+      <input id="date-input" type="text" autocomplete="off" spellcheck="false"
+             inputmode="numeric" data-keep-caret placeholder="YYYY-MM-DD" pattern="[0-9\/.\-]*">
+    </div>
+
+    <label class="checkbox" for="hide-zero"
+           data-i18n-title="bar.hideZeroTitle"
+           title="Hide nodes whose calculated probability is zero">
+      <input id="hide-zero" type="checkbox">
+      <span data-i18n="bar.hideZero">Hide Zero</span>
+    </label>
+
+    <div class="topbar__group">
+      <label class="topbar__label" for="sigfig-select" data-i18n="bar.sigFigs">Sig. figs</label>
+      <select id="sigfig-select" data-i18n-title="bar.sigFigsTitle"
+              title="Significant figures used to display probabilities">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+    </div>
+
+    <label class="switch" for="advanced-toggle"
+           data-i18n-title="bar.advancedTitle"
+           title="Show advanced gates, models and analysis tabs. Calculations and files are the same either way.">
+      <input id="advanced-toggle" type="checkbox" role="switch" class="switch__input">
+      <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+      <span class="switch__label" data-i18n="bar.advanced">Advanced</span>
+    </label>
+
+    <!-- Top-event headline. ftaShell.setHeadline() fills it; the MCUB badge
+         and the capped/truncated marker are advanced-mode details and hidden
+         in basic mode. -->
+    <div class="headline" id="headline" data-i18n-title="headline.title"
+         title="Top-event probability" aria-live="polite">
+      <span class="headline__label"><span data-i18n="headline.label">Top event</span>:</span>
+      <span class="headline__value" id="headline-value">&#8212;</span>
+      <span class="headline__badge" id="headline-badge" data-advanced-only hidden
+            data-i18n="headline.mcub">MCUB</span>
+      <span class="headline__marker" id="headline-marker" data-advanced-only hidden
+            role="img">&#8776;</span>
+      <!-- CCF groups (F2): ftaShell.setHeadline() fills these three; each is
+           hidden unless the document has a CCF group to report. -->
+      <span class="headline__sep" aria-hidden="true" hidden> &#183; </span>
+      <span class="headline__ccf" id="headline-ccf" hidden></span>
+      <span class="headline__sep" aria-hidden="true" hidden> &#183; </span>
+      <span class="headline__walk" id="headline-walk" hidden><span class="headline__walk-label"></span>:
+        <b class="headline__walk-value"></b></span>
+      <span class="headline__sep" aria-hidden="true" hidden> &#183; </span>
+      <span class="headline__note" id="headline-ccf-note" hidden></span>
+    </div>
+
+    <div class="topbar__group" id="capabilities-host"></div>
+
+    <div class="topbar__group topbar__group--end">
+      <button type="button" class="btn btn--icon btn--ghost" id="btn-undo"
+              data-i18n-aria="action.undo" aria-label="Undo (Ctrl+Z)"
+              data-i18n-title="action.undo" title="Undo (Ctrl+Z)">
+        <span aria-hidden="true">&#8630;</span>
+      </button>
+      <button type="button" class="btn btn--icon btn--ghost" id="btn-redo"
+              data-i18n-aria="action.redo" aria-label="Redo (Ctrl+Y)"
+              data-i18n-title="action.redo" title="Redo (Ctrl+Y)">
+        <span aria-hidden="true">&#8631;</span>
+      </button>
+
+      <span class="sep" aria-hidden="true"></span>
+
+      <button type="button" class="btn btn--ghost" id="btn-lang"
+              data-i18n-aria="action.language" aria-label="Switch language">
+        <span aria-hidden="true">&#127760;</span><span id="lang-code">EN</span>
+      </button>
+      <button type="button" class="btn btn--icon btn--ghost" id="btn-theme"
+              data-i18n-aria="action.theme" aria-label="Switch theme">
+        <span aria-hidden="true" id="theme-glyph">&#9680;</span>
+      </button>
+
+      <!-- data-saved / data-unsaved (set by main.js renderShell) feed two
+           invisible sizers in app.css, so the pill has one width in both states. -->
+      <span class="dirty" id="dirty" data-dirty="false" aria-live="polite">
+        <span class="dirty__dot" aria-hidden="true">&#9679;</span>
+        <span id="dirty-text" data-i18n="status.saved">Saved</span>
+      </span>
+    </div>
+    <!-- The editor version (R191): a plain item of the top bar after the end group, the last item of its row. -->
+    <span class="topbar__version" id="app-version">v{{ app_version }}</span>
+  </header>
+
+  <!-- ==================================================================== -->
+  <!-- Workspace: tree | diagram | AI, with node details beneath the first  -->
+  <!-- two. Splitters are real focusable separators, resizable with arrows. -->
+  <!-- ==================================================================== -->
+  <main class="workspace" id="workspace">
+
+    <section class="panel" id="tree-panel" aria-labelledby="tree-panel-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="tree-panel-title" data-i18n="panel.tree">Fault Tree</h2>
+        <span class="panel__spacer"></span>
+        <span class="panel__meta" id="tree-count"></span>
+      </div>
+      <!-- Unsaved work an earlier run of the editor left behind (it crashed,
+           or its window was closed): shown by main.js when the server lists
+           a recovery copy, until it is restored or discarded. -->
+      <div class="firstrun firstrun--recovery" id="recovery-offer" role="region"
+           data-i18n-aria="recovery.title" aria-label="Unsaved work found" hidden>
+        <p class="firstrun__title" data-i18n="recovery.title">Unsaved work found</p>
+        <p class="firstrun__text" id="recovery-text"></p>
+        <div class="firstrun__actions">
+          <button type="button" class="btn btn--primary" id="recovery-restore"></button>
+          <button type="button" class="btn" id="recovery-discard"
+                  data-i18n="recovery.discard">Discard it</button>
+        </div>
+      </div>
+      <!-- For a new analysis nobody has touched yet: the two ways to begin.
+           main.js shows it (renderShell) and it goes with the first edit. -->
+      <div class="firstrun" id="first-run" hidden>
+        <button type="button" class="firstrun__close" id="first-run-dismiss"
+                data-i18n-aria="firstrun.dismiss" aria-label="Hide this hint"
+                data-i18n-title="firstrun.dismiss" title="Hide this hint">&#215;</button>
+        <p class="firstrun__title" data-i18n="firstrun.title">Start here</p>
+        <p class="firstrun__text" data-i18n="firstrun.text">This is a new, empty analysis. Name the
+          top event (the failure you want to analyse), then add its causes beneath it with Add.</p>
+        <div class="firstrun__actions">
+          <button type="button" class="btn btn--primary" id="first-run-name"
+                  data-i18n="firstrun.name">Name your top event</button>
+          <button type="button" class="btn" id="first-run-example"
+                  data-i18n="firstrun.example">Open an example</button>
+        </div>
+      </div>
+      <div class="panel__body panel__body--flush" id="tree-root" tabindex="-1"></div>
+      <!-- What a .json dragged over the tree panel says it will do. -->
+      <div class="dropzone" id="tree-dropzone" hidden aria-hidden="true">
+        <span data-i18n="import.dropHint">Drop a .json analysis here to open a copy of it</span>
+      </div>
+    </section>
+
+    <div class="splitter splitter--v" data-splitter="tree" role="separator"
+         aria-orientation="vertical" tabindex="0"
+         data-i18n-aria="a11y.splitTree"
+         aria-label="Resize the fault tree panel"></div>
+
+    <section class="panel" id="diagram-panel" aria-labelledby="diagram-panel-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="diagram-panel-title" data-i18n="panel.diagram">Live Diagram Preview</h2>
+        <span class="panel__spacer"></span>
+        <span class="panel__meta" id="diagram-meta"></span>
+      </div>
+      <div class="panel__body panel__body--flush" id="diagram-root"></div>
+    </section>
+
+    <div class="splitter splitter--v" data-splitter="ai" role="separator"
+         aria-orientation="vertical" tabindex="0"
+         data-i18n-aria="a11y.splitAi"
+         aria-label="Resize the AI assistant panel"></div>
+
+    <div class="splitter splitter--h" data-splitter="details" role="separator"
+         aria-orientation="horizontal" tabindex="0"
+         data-i18n-aria="a11y.splitDetails"
+         aria-label="Resize the node details panel"></div>
+
+    <!-- Bottom panel: one tab per feature (1.7). tabs/host.js wires the strip
+         and lazy-loads tabs/<id>.js the first time a tab is shown. The Details
+         tab wraps #details-root, which details.js owns exactly as before.
+         data-advanced-only tabs are hidden while the Advanced switch is off. -->
+    <section class="panel panel--tabs" id="details-panel" aria-labelledby="details-panel-title">
+      <div class="panel__head panel__head--tabs">
+        <h2 class="visually-hidden" id="details-panel-title" data-i18n="panel.bottom">Details and analysis</h2>
+        <div class="tabstrip" id="bottom-tabs" role="tablist"
+             data-i18n-aria="tabs.aria" aria-label="Details and analysis tabs">
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-details" data-tab="details"
+                  aria-controls="tabpanel-details" aria-selected="true" tabindex="0"
+                  data-i18n="tab.details">Details</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-grid" data-tab="grid"
+                  data-testid="tab-grid"
+                  aria-controls="tabpanel-grid" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.grid">Grid</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-quant" data-tab="quant"
+                  aria-controls="tabpanel-quant" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.quant">Quantification</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-ccf" data-tab="ccf"
+                  aria-controls="tabpanel-ccf" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.ccf">CCF groups</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-cutsets" data-tab="cutsets"
+                  aria-controls="tabpanel-cutsets" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.cutsets">Cut Sets</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-importance" data-tab="importance"
+                  aria-controls="tabpanel-importance" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.importance">Importance</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-uncertainty" data-tab="uncertainty"
+                  aria-controls="tabpanel-uncertainty" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.uncertainty">Uncertainty</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-whatif" data-tab="whatif"
+                  data-testid="tab-whatif"
+                  aria-controls="tabpanel-whatif" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.whatif">What-if</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-validation" data-tab="validation"
+                  aria-controls="tabpanel-validation" aria-selected="false" tabindex="-1"
+                  data-i18n="tab.validation">Validation</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-trace" data-tab="trace"
+                  aria-controls="tabpanel-trace" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.trace">Traceability</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-fmea" data-tab="fmea"
+                  aria-controls="tabpanel-fmea" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.fmea">FMEA</button>
+          <button type="button" class="tabstrip__tab" role="tab" id="tab-report" data-tab="report"
+                  aria-controls="tabpanel-report" aria-selected="false" tabindex="-1"
+                  data-advanced-only data-i18n="tab.report">Report</button>
+        </div>
+        <span class="panel__meta" id="details-meta"></span>
+        <!-- All the height there is for a table, leaving a strip of diagram.
+             main.js sets the wording and the glyph (applyLayout). -->
+        <button type="button" class="btn btn--icon btn--ghost" id="btn-bottom-max" aria-pressed="false"
+                data-i18n-aria="bottom.maximise" aria-label="Enlarge this panel"
+                data-i18n-title="bottom.maximise" title="Enlarge this panel">
+          <span aria-hidden="true" id="bottom-max-glyph">&#9651;</span>
+        </button>
+      </div>
+      <div class="tabpanels">
+        <div class="tabpanel tabpanel--details" id="tabpanel-details" role="tabpanel"
+             aria-labelledby="tab-details" tabindex="-1">
+          <div class="panel__body" id="details-root" tabindex="-1"></div>
+        </div>
+        <div class="tabpanel panel__body" id="tabpanel-grid" role="tabpanel" data-testid="tabpanel-grid"
+             aria-labelledby="tab-grid" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-quant" role="tabpanel"
+             aria-labelledby="tab-quant" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-ccf" role="tabpanel"
+             aria-labelledby="tab-ccf" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-cutsets" role="tabpanel"
+             aria-labelledby="tab-cutsets" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-importance" role="tabpanel"
+             aria-labelledby="tab-importance" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-uncertainty" role="tabpanel"
+             aria-labelledby="tab-uncertainty" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-whatif" role="tabpanel" data-testid="tabpanel-whatif"
+             aria-labelledby="tab-whatif" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-validation" role="tabpanel"
+             aria-labelledby="tab-validation" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-trace" role="tabpanel"
+             aria-labelledby="tab-trace" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-fmea" role="tabpanel"
+             aria-labelledby="tab-fmea" tabindex="0" hidden></div>
+        <div class="tabpanel panel__body" id="tabpanel-report" role="tabpanel"
+             aria-labelledby="tab-report" tabindex="0" hidden></div>
+      </div>
+    </section>
+
+    <section class="panel" id="ai-panel" aria-labelledby="ai-panel-title">
+      <div class="panel__head">
+        <!-- Folds the panel to a strip at the right edge. The choice is kept
+             on the server (POST /api/prefs), so it survives a new launch. -->
+        <button type="button" class="btn btn--icon btn--ghost" id="btn-ai-collapse"
+                aria-expanded="true" aria-controls="ai-root"
+                data-i18n-aria="ai.panel.collapse" aria-label="Hide the AI Assistant panel"
+                data-i18n-title="ai.panel.collapse" title="Hide the AI Assistant panel">
+          <span aria-hidden="true" id="ai-collapse-glyph">&#187;</span>
+        </button>
+        <h2 class="panel__title" id="ai-panel-title" data-i18n="panel.ai">AI Assistant</h2>
+        <span class="status-dot" id="ai-status" data-on="false" aria-hidden="true">&#9679;</span>
+        <span class="panel__spacer"></span>
+        <button type="button" class="btn btn--icon btn--ghost" id="btn-ai-settings"
+                data-i18n-aria="action.aiSettings" aria-label="AI settings"
+                data-i18n-title="action.aiSettings" title="AI settings">
+          <span aria-hidden="true">&#9881;</span>
+        </button>
+      </div>
+      <!-- chat.js fills this. It is left empty rather than seeded with markup
+           so that every string in the panel comes from the shell's catalog;
+           a literal here would be invisible to the language switch. -->
+      <div class="panel__body panel__body--flush" id="ai-root"></div>
+    </section>
+  </main>
+
+  <!-- ==================================================================== -->
+  <!-- Action bar. Buttons whose phase has not landed carry                  -->
+  <!-- aria-disabled + data-phase: still focusable, still explain themselves.-->
+  <!-- ==================================================================== -->
+  <footer class="actionbar" role="toolbar" data-i18n-aria="a11y.actionbar"
+          aria-label="Document actions" aria-busy="true">
+    <button type="button" class="btn btn--primary" data-action="new"
+            data-i18n="btn.new" data-i18n-title="tip.new"
+            title="New analysis (Alt+N)">New</button>
+    <button type="button" class="btn" data-action="add"
+            data-i18n="btn.add" data-i18n-title="tip.add"
+            title="Add a child node (Ctrl+A)">Add</button>
+    <button type="button" class="btn" data-action="edit"
+            data-i18n="btn.edit" data-i18n-title="tip.edit"
+            title="Edit the selected node (Ctrl+E)">Edit</button>
+    <button type="button" class="btn btn--danger" data-action="delete"
+            data-i18n="btn.delete" data-i18n-title="tip.delete"
+            title="Delete the selected node (Ctrl+D)">Delete</button>
+
+    <span class="sep" aria-hidden="true"></span>
+
+    <button type="button" class="btn" data-action="load"
+            data-i18n="btn.load" data-i18n-title="tip.load"
+            title="Open a saved analysis from disk">Load</button>
+    <button type="button" class="btn" data-action="save"
+            data-i18n="btn.save" data-i18n-title="tip.save"
+            title="Save to the current file (Ctrl+S)">Save</button>
+    <button type="button" class="btn" data-action="save-as"
+            data-i18n="btn.saveAs" data-i18n-title="tip.saveAs"
+            title="Save to another file (Ctrl+Shift+S)">Save As</button>
+
+    <span class="sep" aria-hidden="true"></span>
+
+    <!-- Downloads, not disk writes: these fetch /api/export/* with the session
+         header and hand the bytes to the browser. Excel and Render carry
+         data-capability when the server reports the dependency missing; the
+         button stays visible and says what to install (spec 6.8). -->
+    <!-- Labelled as a group: a button that says only "JSON", beside Save,
+         read as another way to save the file. -->
+    <div class="actionbar__group" role="group" aria-labelledby="export-label">
+      <span class="actionbar__label" id="export-label" data-i18n="bar.exportGroup"
+            data-i18n-title="bar.exportGroupTitle"
+            title="Each of these downloads a copy through the browser. The open file is not changed; use Save for that.">Export:</span>
+      <button type="button" class="btn" data-action="json"
+              data-i18n="btn.json" data-i18n-title="tip.json"
+              title="Download a copy as JSON">JSON</button>
+      <button type="button" class="btn" data-action="xml"
+              data-i18n="btn.xml" data-i18n-title="tip.xml"
+              title="Download a copy as XML">XML</button>
+      <button type="button" class="btn" data-action="excel"
+              data-i18n="btn.excel" data-i18n-title="tip.excel"
+              title="Download a copy as an Excel workbook">Excel</button>
+      <button type="button" class="btn" data-action="render"
+              data-i18n="btn.render" data-i18n-title="tip.render"
+              title="Download the diagram as a PNG image">Render</button>
+    </div>
+
+    <div class="statusline">
+      <!-- The file name, never cut off, then its folder, which may be. -->
+      <span class="statusline__file" id="statusline-file"></span>
+      <span class="statusline__path" id="statusline-path"></span>
+      <span class="statusline__msg" id="statusline-msg" role="status" aria-live="polite"></span>
+    </div>
+  </footer>
+
+  <!-- "A file on this computer" in the Load dialog, and a .json dropped on
+       the tree panel, go to POST /api/import/json. The browser's own picker
+       is the one way to reach a file outside the sandbox root. -->
+  <input type="file" id="import-file" accept=".json,application/json" hidden tabindex="-1"
+         aria-hidden="true">
+
+  <!-- Toasts. aria-live so an error is announced, not just drawn. -->
+  <div class="toasts" id="toasts" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+  <!-- Blocking screen for a tab with no session, or a boot that failed. -->
+  <!-- The command is filled in by the server (app.py): the packaged app's
+       own file name, or the command for a source checkout. data-packaged
+       picks the wording of the hint in main.js. -->
+  <div class="overlay" id="blocking-overlay" hidden role="alertdialog"
+       aria-modal="true" aria-labelledby="overlay-title" aria-describedby="overlay-body"
+       data-packaged="{{ '1' if packaged else '0' }}">
+    <div class="overlay__card">
+      <div class="overlay__glyph" aria-hidden="true">&#128274;</div>
+      <h1 class="overlay__title" id="overlay-title" data-i18n="session.title">
+        This tab is not connected to the editor
+      </h1>
+      <div class="overlay__body" id="overlay-body">
+        <p data-i18n="session.body">
+          The editor only works in the tab it opens itself when it starts. This
+          tab was opened another way (typed in, from a bookmark or the history,
+          or restored by the browser), or the editor has been closed and
+          started again since.
+        </p>
+        <p data-i18n="session.hint">
+          Close this tab. If the editor is still running, use the tab it
+          opened. If not, start it again:
+        </p>
+        <code class="overlay__cmd" id="overlay-cmd">{{ relaunch_command }}</code>
+        <!-- Shown by main.js when this tab still holds a document: the
+             server is gone or restarted, the tree in this tab is not. -->
+        <div class="overlay__rescue" id="overlay-rescue" hidden>
+          <p data-i18n="rescue.overlayNote">
+            The analysis in this tab is still here. Download a copy before you
+            close the tab; you can open it again with Load.
+          </p>
+          <button type="button" class="btn btn--primary" id="overlay-rescue-btn"
+                  data-i18n="rescue.download">Download a rescue copy (JSON)</button>
+          <p id="overlay-rescue-done" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

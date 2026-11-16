@@ -1,0 +1,58 @@
+{
+  "title": "F17 missing params",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "no_lambda",
+        "name": "no_lambda",
+        "type": "Event",
+        "probability": 0.02,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "rate",
+          "T": 100.0
+        }
+      },
+      {
+        "id": "no_tau",
+        "name": "no_tau",
+        "type": "Event",
+        "probability": 0.03,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "standby",
+          "lambda": 0.0001
+        }
+      },
+      {
+        "id": "no_mu",
+        "name": "no_mu",
+        "type": "Event",
+        "probability": 0.04,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "repairable",
+          "lambda": 0.0001
+        }
+      }
+    ]
+  }
+}

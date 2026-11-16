@@ -1,0 +1,52 @@
+# FTA Editor Python Dependencies -- pip fallback
+#
+# The source of truth is pyproject.toml, and the recommended install path is
+# `uv sync --extra desktop --extra excel --extra ai` (see README.md). This
+# file exists for `pip install -r requirements.txt`, when uv is not
+# available; keep it in sync with pyproject.toml's desktop/excel/ai extras by
+# hand -- there is no tool wiring the two together automatically.
+
+# Core Python packages (most are built-in, listed for reference)
+# - tkinter: GUI framework (built-in with Python, installed via system package python3-tk)
+# - json: JSON handling (built-in)
+# - xml.etree.ElementTree: XML handling (built-in)
+# - re: Regular expressions (built-in)
+# - subprocess: Process management (built-in)
+# - sys: System-specific parameters (built-in)
+# - tempfile: Temporary file operations (built-in)
+# - os: Operating system interface (built-in)
+# - pathlib: Object-oriented filesystem paths (built-in)
+# - argparse: Command-line argument parsing (built-in)
+# - shutil: High-level file operations (built-in)
+# - threading: Thread-based parallelism (built-in)
+
+# Third-party packages that need to be installed
+# Excel export functionality
+openpyxl>=3.1.0
+
+# Image processing for diagram preview and rendering
+# Required for loading and displaying PNG diagrams in the GUI
+Pillow>=10.0.0
+
+# AI Agent functionality
+# Supports multiple AI platforms: OpenAI, Anthropic Claude, Google Gemini
+#
+# google-generativeai specifically: desktop/src/ai_providers.py (frozen) still uses
+# this deprecated package. fta_web's vendored copy migrated to google-genai
+# (see fta_web/core/DIVERGENCE.md, D11) and lists it separately in
+# fta_web/requirements.txt -- the two apps genuinely need different packages
+# for the same provider now.
+openai>=1.0.0
+anthropic>=0.7.0
+google-generativeai>=0.3.0
+
+# DOCX analysis report of the web app (fta_web 1.7) -- listed in
+# fta_web/requirements.txt, since the desktop app does not use it.
+
+# Testing (optional)
+pytest>=7.0.0
+
+# Note: Graphviz is a system package (not a Python package)
+# It must be installed separately via apt, brew, or downloaded from graphviz.org
+# The desktop app needs it; the web app renders diagrams in the browser and
+# uses a native `dot` only when one is on PATH.

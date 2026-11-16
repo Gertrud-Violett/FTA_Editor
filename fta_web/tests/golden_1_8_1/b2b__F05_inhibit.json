@@ -1,0 +1,278 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F05_inhibit.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "i1",
+         "name": "i1",
+         "q": 0.1
+        },
+        {
+         "id": "i2",
+         "name": "i2",
+         "q": 0.2
+        },
+        {
+         "id": "i3",
+         "name": "i3",
+         "q": 0.3
+        }
+       ],
+       "order": 3,
+       "probability": 0.006000000000000001,
+       "rank": 1,
+       "share": 0.5454545454545455
+      },
+      {
+       "events": [
+        {
+         "id": "cond",
+         "name": "cond",
+         "q": 0.5
+        },
+        {
+         "id": "inp",
+         "name": "inp",
+         "q": 0.01
+        }
+       ],
+       "order": 2,
+       "probability": 0.005,
+       "rank": 2,
+       "share": 0.45454545454545453
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.01097,
+     "nonCoherent": false,
+     "rareEvent": 0.011000000000000001,
+     "repeatedEvents": [],
+     "total": 2,
+     "treeWalk": 0.01097,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F05 INHIBIT"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F05_inhibit.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.05969999999999999,
+       "cutSetCount": 1,
+       "fv": 0.5442114858705561,
+       "id": "i1",
+       "name": "i1",
+       "q": 0.1,
+       "raw": 5.897903372835004,
+       "rrw": 2.194,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.029849999999999998,
+       "cutSetCount": 1,
+       "fv": 0.5442114858705561,
+       "id": "i2",
+       "name": "i2",
+       "q": 0.2,
+       "raw": 3.176845943482224,
+       "rrw": 2.194,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.019900000000000004,
+       "cutSetCount": 1,
+       "fv": 0.5442114858705561,
+       "id": "i3",
+       "name": "i3",
+       "q": 0.3,
+       "raw": 2.2698268003646307,
+       "rrw": 2.194,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.009940000000000001,
+       "cutSetCount": 1,
+       "fv": 0.4530537830446673,
+       "id": "cond",
+       "name": "cond",
+       "q": 0.5,
+       "raw": 1.453053783044667,
+       "rrw": 1.8283333333333331,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.497,
+       "cutSetCount": 1,
+       "fv": 0.4530537830446673,
+       "id": "inp",
+       "name": "inp",
+       "q": 0.01,
+       "raw": 45.852324521422055,
+       "rrw": 1.8283333333333331,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F05 INHIBIT"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F05_inhibit.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "inp",
+      "cond",
+      "i1",
+      "i2",
+      "i3"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.010970000000000035,
+       0.010970000000000035
+      ],
+      "logBins": false
+     },
+     "mean": 0.010970000000000035,
+     "median": 0.010970000000000035,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.010970000000000035,
+     "p95": 0.010970000000000035,
+     "pointEstimate": 0.010970000000000035,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F05 INHIBIT"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F05_inhibit.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.01,
+       "id": "inp",
+       "model": "fixed",
+       "name": "inp",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.5,
+       "id": "cond",
+       "model": "fixed",
+       "name": "cond",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.1,
+       "id": "i1",
+       "model": "fixed",
+       "name": "i1",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "i2",
+       "model": "fixed",
+       "name": "i2",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.3,
+       "id": "i3",
+       "model": "fixed",
+       "name": "i3",
+       "q": 0.3
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.01097,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.01097,
+      "nonCoherent": false,
+      "rareEvent": 0.011000000000000001,
+      "repeatedEvents": [],
+      "treeWalk": 0.01097,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F05 INHIBIT"
+   }
+  },
+  "validate": {
+   "exitCode": 1,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F05_inhibit.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 1,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": [
+      {
+       "code": "INHIBIT_ARITY",
+       "hintKey": "val.fix.INHIBIT_ARITY",
+       "message": "INHIBIT gate needs exactly one input and one conditioning event (has 3 children, 0 conditioning).",
+       "nodeId": "inh_bad",
+       "nodeName": "inh_bad",
+       "params": {
+        "conditions": 0,
+        "n": 3
+       },
+       "severity": "error"
+      }
+     ]
+    },
+    "title": "F05 INHIBIT"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F05_inhibit.json"
+}

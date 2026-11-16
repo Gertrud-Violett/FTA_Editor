@@ -1,0 +1,184 @@
+{
+  "title": "Space Shuttle Challenger accident (1986), fault tree: illustrative probabilities",
+  "date": "2026-10-10",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Loss of Challenger (STS 51-L)",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "AND",
+    "notes": "Space Shuttle Challenger, mission 51-L. The flight \"began at 11:38 a.m. Eastern Standard Time on January 28, 1986. It ended 73 seconds later in an explosive burn of hydrogen and oxygen propellants that destroyed the External Tank and exposed the Orbiter to severe aerodynamic loads that caused complete structural breakup. All seven crew members perished.\"\n\nThe tree has two branches, as the Commission's report has two chapters on causes: the joint that did not seal (\"The Cause of the Accident\") and the launch that was not stopped (\"The Contributing Cause of the Accident\"). In this model both have to happen, so the top gate is AND. The tree stops at ignition: it does not follow the leak through the 73 seconds of flight.\n\nThe probabilities are illustrative values for learning the tool. They are not from the report and they are not a risk estimate. Read each as: on a day like 28 January 1986, how likely is this event?\n\nTwo events, the cold and the tight squeeze of the O-rings, act on both O-rings of the joint. The secondary O-ring has a link to the node that combines them, so the top event value is the min-cut upper bound (MCUB), computed from the minimal cut sets, which counts the two events once: 0.0684. It is an upper bound; the exact value for these numbers is 0.0670. This node's calculated probability, 0.0349, is the plain tree walk, which counts the cold and the squeeze once for each O-ring, as if each ring had its own; it comes out too low. With Advanced on, the Cut Sets and Importance tabs show the same thing: one cut set, the cold and the squeeze together with the two decision events, carries most of the total. That follows from a simplification of this model, which treats the cold and the squeeze as fully common to both rings.\n\nFor background, an appendix to the report records that estimates of the chance of losing a Shuttle ranged \"from roughly 1 in 100 to 1 in 100,000\", the higher figures from working engineers and the very low ones from management. Those are per flight, in any weather; they are not comparable with this tree's value for one cold day.\n\nSources: Report of the Presidential Commission on the Space Shuttle Challenger Accident (the Rogers Commission report), 6 June 1986, Volume I, Chapter III, p. 19; Volume II, Appendix F (R. P. Feynman).",
+    "links": [],
+    "children": [
+      {
+        "id": "root_0",
+        "name": "Aft field joint does not seal",
+        "type": "Gate",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "The technical cause. \"In view of the findings, the Commission concluded that the cause of the Challenger accident was the failure of the pressure seal in the aft field joint of the right Solid Rocket Motor. The failure was due to a faulty design unacceptably sensitive to a number of factors.\"\n\nEach joint between motor segments is sealed by two rubber O-rings, a primary and a secondary. In this model hot gas escapes only if both fail to seal at ignition, so this gate is AND. The redundancy was weaker than it looks: see the secondary O-ring.\n\nNot in this model: damage to the seals during assembly, erosion of an O-ring by hot gas through a hole in the putty, and what happened to the leak later in the flight.\n\nThis node's own value, 0.140, is a tree-walk value like the top node's. With the cold and the tight squeeze of the O-rings counted once, these numbers give 0.268.\n\nSource: Rogers Commission report, Volume I, Chapter IV, pp. 57-58 and 72.",
+        "links": [],
+        "children": [
+          {
+            "id": "root_0_0",
+            "name": "Primary O-ring does not seal",
+            "type": "Gate",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "The primary O-ring is the first of the two seals. Gas pressure has to push it into place within a fraction of a second after ignition, while the joint is opening. The Commission found the sealing \"sensitive to\" several factors, \"either independently or in combination\". Two ways to fail are modeled here, joined by OR: the O-ring stays compressed in its groove (the cold and a tight squeeze together), or the pressure arrives too late (the putty).\n\nSource: Rogers Commission report, Volume I, Chapter IV, p. 58 and Findings 9 to 11, pp. 70-71.",
+            "links": [],
+            "children": [
+              {
+                "id": "root_0_0_0",
+                "name": "O-rings stay compressed",
+                "type": "Gate",
+                "probability": 1.0,
+                "logicGate": "AND",
+                "notes": "Why the cold mattered. An O-ring that is squeezed tight fills its groove, and gas pressure cannot get behind it to seat it. That matters little while the O-ring is warm: it springs back as the joint opens. A cold O-ring is slow to spring back: \"it may remain compressed in the groove, contact all three surfaces of that groove, and inhibit pressure actuation of the seal.\" It takes both, so this gate is AND. The Commission's tests point the same way: with a wide gap (0.020 inch) \"sealing can be achieved in most instances at temperatures as low as 25 degrees Fahrenheit, while with the 0.004-inch initial gap, sealing is not achieved at 25 degrees Fahrenheit and is marginal even in the 40 and 50 degree Fahrenheit temperature range.\"\n\nBoth O-rings of the joint are equally cold and sit in the same narrow gap, so this node is a common cause: it is a child of the primary O-ring, and the secondary O-ring has a link to it. Treating it as fully common to both rings is the limiting case; the gap opens less at the secondary O-ring.\n\nSource: Rogers Commission report, Volume I, Chapter IV, p. 61 and Finding 10, p. 71.",
+                "links": [],
+                "children": [
+                  {
+                    "id": "root_0_0_0_0",
+                    "name": "Cold O-rings slow to recover",
+                    "type": "Event",
+                    "probability": 0.5,
+                    "logicGate": "OR",
+                    "notes": "\"The ambient temperature at time of launch was 36 degrees Fahrenheit, or 15 degrees lower than the next coldest previous launch.\" At ignition the joint opens, and an O-ring has to spring back to follow it. \"A compressed O-ring at 75 degrees Fahrenheit is five times more responsive in returning to its uncompressed shape than a cold O-ring at 30 degrees Fahrenheit.\" The Commission's finding: \"it is probable that the O-rings in the right solid booster aft field joint were not following the opening of the gap between the tang and clevis at time of ignition.\"\n\n0.5 is illustrative.\n\nSource: Rogers Commission report, Volume I, Chapter IV, Findings 6 and 9, pp. 70-71.",
+                    "links": [],
+                    "children": [],
+                    "calculatedProbability": 0.5
+                  },
+                  {
+                    "id": "root_0_0_0_1",
+                    "name": "O-rings squeezed tight",
+                    "type": "Event",
+                    "probability": 0.5,
+                    "logicGate": "OR",
+                    "notes": "The two motor segments joined here had flown before. \"The diameters of the two Solid Rocket Motor segments had grown as a result of prior use\", and the gap at the O-rings between the tang of one segment and the clevis of the other (the U-shaped end that receives the tang) was narrow: \"With a tang-to-clevis gap of .004 inches, the O-ring in the joint would be compressed to the extent that it pressed against all three walls of the O-ring retaining channel.\" The same gap squeezes both O-rings.\n\n0.5 is illustrative.\n\nSource: Rogers Commission report, Volume I, Chapter IV, Finding 5, p. 70.",
+                    "links": [],
+                    "children": [],
+                    "calculatedProbability": 0.5
+                  }
+                ],
+                "calculatedProbability": 0.25
+              },
+              {
+                "id": "root_0_0_1",
+                "name": "Putty delays the gas pressure",
+                "type": "Event",
+                "probability": 0.1,
+                "logicGate": "OR",
+                "notes": "Insulating putty lies between the combustion chamber and the O-rings, and the gas pressure that seats the primary O-ring has to work through it. \"Experimental evidence indicates that temperature, humidity and other variables in the putty compound used to seal the joint can delay pressure application to the joint by 500 milliseconds or more.\" By then the joint has opened (the opening \"is essentially complete at 600 milliseconds\"), and \"Should pressure actuation be delayed to the extent that the gap has opened considerably, the possibility exists that the rocket's combustion gases will blow by the O-ring and damage or destroy the seals.\"\n\nIn this model the putty acts on its own. In the Commission's tests its effect depended on the cold and the squeeze as well: \"sealing performance is dependent on temperature and initial squeeze\".\n\n0.1 is illustrative.\n\nSource: Rogers Commission report, Volume I, Chapter IV, pp. 58 and 65, and Findings 8 and 11, pp. 70-71.",
+                "links": [],
+                "children": [],
+                "calculatedProbability": 0.1
+              }
+            ],
+            "calculatedProbability": 0.325
+          },
+          {
+            "id": "root_0_1",
+            "name": "Secondary O-ring does not seal",
+            "type": "Gate",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "The secondary O-ring is the backup seal. The joint was first classified as redundant (Criticality 1R) in the Critical Items List of 1980, although the same list already said that the redundancy \"cannot be verified after motor case pressure reaches approximately 40 percent of maximum expected operating pressure.\" After tests in 1982 the managers at NASA's Marshall Space Flight Center accepted that \"the secondary O-ring was no longer functional after the joints rotated when the Solid Rocket Motor reached 40 percent of its maximum expected operating pressure. It obviously followed that the dual O-rings were not a completely redundant system\", and in December 1982 the joint was reclassified Criticality 1, a single failure point.\n\nBesides the two events below, this node has an OR link to \"O-rings stay compressed\" under the primary O-ring: the same cold and the same squeeze act on both rings. Until the accident the redundancy of the secondary O-ring had been analyzed \"in terms of joint or hardware geometry, with no consideration being given to the resiliency of the ring as affected by temperatures.\"\n\nSource: Rogers Commission report, Volume I, Chapter VI, pp. 125-126.",
+            "links": [
+              {
+                "target_id": "root_0_0_0",
+                "relation": "OR"
+              }
+            ],
+            "children": [
+              {
+                "id": "root_0_1_0",
+                "name": "Rotation unseats secondary O-ring",
+                "type": "Event",
+                "probability": 0.2,
+                "logicGate": "OR",
+                "notes": "At ignition the pressure in the motor and the motion of the vehicle open the joint: \"the gap between the tang and the clevis will open as much as .017 and .029 inches at the secondary and primary O-rings, respectively.\" The Critical Items List of 1982 put the consequence in one sentence: \"Leakage of the primary O-ring seal is classified as a single failure point due to possibility of loss of sealing at the secondary O-ring because of joint rotation after motor pressurization.\"\n\n0.2 is illustrative.\n\nSources: Rogers Commission report, Volume I, Chapter IV, Finding 8, p. 70; Chapter VI, p. 126.",
+                "links": [],
+                "children": [],
+                "calculatedProbability": 0.2
+              },
+              {
+                "id": "root_0_1_1",
+                "name": "Ice unseats secondary O-ring",
+                "type": "Event",
+                "probability": 0.05,
+                "logicGate": "OR",
+                "notes": "\"There is a possibility that there was water in the clevis of the STS 51-L joints\" (the clevis is the U-shaped end of one motor segment, which receives the end of the next). \"Analyses and tests conducted show that water will freeze under the environmental conditions experienced prior to the 51-L launch and could unseat the secondary O-ring.\" In tests with water frozen downstream of the secondary O-ring, \"there were conditions under which the O-ring failed to seal.\"\n\n0.05 is illustrative.\n\nSource: Rogers Commission report, Volume I, Chapter IV, p. 64 and Finding 13, p. 71.",
+                "links": [],
+                "children": [],
+                "calculatedProbability": 0.05
+              }
+            ],
+            "calculatedProbability": 0.43
+          }
+        ],
+        "calculatedProbability": 0.13975
+      },
+      {
+        "id": "root_1",
+        "name": "Launch not stopped",
+        "type": "Gate",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "The contributing cause. \"The decision to launch the Challenger was flawed.\" The engineers of the booster's contractor, Morton Thiokol, advised against launching in the cold. In this model two things have to go wrong for the launch to go ahead, so this gate is AND: the contractor's management reverses that advice, and the doubts do not reach the people who make the launch decision. The second event comes after the first, so read its probability as conditional on the first. The Commission's words: \"If the decisionmakers had known all of the facts, it is highly unlikely that they would have decided to launch 51-L on January 28, 1986.\"\n\nNot in this model: Rockwell's concern about ice on the launch pad, and the launch constraints that had been waived (Finding 2).\n\nSource: Rogers Commission report, Volume I, Chapter V, p. 82 and Finding 2, p. 104.",
+        "links": [],
+        "children": [
+          {
+            "id": "root_1_0",
+            "name": "No-launch advice reversed",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "notes": "The contractor's first, written recommendation advised \"against the launch at temperatures below 53 degrees Fahrenheit\". It did not stand: \"The Commission concluded that the Thiokol Management reversed its position and recommended the launch of 51-L, at the urging of Marshall and contrary to the views of its engineers in order to accommodate a major customer.\" (Marshall is NASA's Marshall Space Flight Center, which managed the booster program.)\n\n0.5 is illustrative.\n\nSource: Rogers Commission report, Volume I, Chapter V, p. 82 and Finding 4, p. 104.",
+            "links": [],
+            "children": [],
+            "calculatedProbability": 0.5
+          },
+          {
+            "id": "root_1_1",
+            "name": "Doubts not passed upward",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "notes": "Those who made the decision \"were unaware of the recent history of problems concerning the O-rings and the joint and were unaware of the initial written recommendation of the contractor\". The Commission was \"troubled by what appears to be a propensity of management at Marshall to contain potentially serious problems and to attempt to resolve them internally rather than communicate them forward\", and concluded that had the doubts been clearly stated in the flight readiness process, \"it seems likely that the launch of 51-L might not have occurred when it did.\" (Marshall is NASA's Marshall Space Flight Center.)\n\n0.5 is illustrative: the chance, once the contractor has reversed its advice, that the doubts go no further.\n\nSource: Rogers Commission report, Volume I, Chapter V, p. 82 and Findings 1 and 3, p. 104.",
+            "links": [],
+            "children": [],
+            "calculatedProbability": 0.5
+          }
+        ],
+        "calculatedProbability": 0.25
+      }
+    ],
+    "calculatedProbability": 0.0349375
+  },
+  "analysis": {
+    "missionTime": 8760.0,
+    "timeUnit": "h",
+    "cutsets": {
+      "maxOrder": 6,
+      "maxCount": 5000,
+      "cutoff": 1e-15
+    },
+    "mc": {
+      "n": 10000,
+      "seed": null
+    },
+    "fmeaOccurrenceTable": {
+      "1": 1e-07,
+      "2": 1e-06,
+      "3": 1e-05,
+      "4": 0.0001,
+      "5": 0.0005,
+      "6": 0.002,
+      "7": 0.01,
+      "8": 0.02,
+      "9": 0.05,
+      "10": 0.1
+    }
+  }
+}

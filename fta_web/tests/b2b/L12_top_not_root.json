@@ -1,0 +1,52 @@
+{
+  "title": "L12 top id TOP",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "TOP",
+    "name": "Top with id TOP",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "AND",
+    "children": [
+      {
+        "id": "a",
+        "name": "a",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "g",
+        "name": "g",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "children": [
+          {
+            "id": "b",
+            "name": "b",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [
+          {
+            "target_id": "a",
+            "relation": "OR"
+          }
+        ],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

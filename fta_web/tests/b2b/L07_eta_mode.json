@@ -1,0 +1,78 @@
+{
+  "title": "L07 ETA",
+  "date": "2026-09-28",
+  "mode": "ETA",
+  "tree": {
+    "id": "root",
+    "name": "Initiator",
+    "type": "Root",
+    "probability": 0.01,
+    "logicGate": "",
+    "children": [
+      {
+        "id": "s1",
+        "name": "s1",
+        "type": "Event",
+        "probability": 0.999,
+        "logicGate": "",
+        "children": [
+          {
+            "id": "s1a",
+            "name": "s1a",
+            "type": "Event",
+            "probability": 0.9,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "s1b",
+            "name": "s1b",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "f1",
+        "name": "f1",
+        "type": "Event",
+        "probability": 0.0001,
+        "logicGate": "",
+        "children": [
+          {
+            "id": "f1a",
+            "name": "f1a",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "f1b",
+            "name": "f1b",
+            "type": "Event",
+            "probability": 0.7,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

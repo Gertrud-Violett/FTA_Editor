@@ -1,0 +1,464 @@
+/**
+ * api.js -- the only place in the frontend that talks HTTP.
+ *
+ * CONTRACT
+ * ========
+ *   bootstrapToken()                 read ?t= from the URL, stash it in
+ *                                    sessionStorage, strip it from the address
+ *                                    bar. Returns the active token or null.
+ *   hasToken()                       true when this tab holds a token.
+ *   class ApiError extends Error     fields: code, message, detail, status.
+ *   api.get(path)
+ *   api.post(path, body)
+ *   api.patch(path, body)
+ *   api.del(path)
+ *   api.download(method, path, body)  -> {blob, filename, contentType}
+ *                                    for binary responses (DOCX, XLSX...);
+ *                                    filename from Content-Disposition.
+ *   api.upload(path, file, field?, fields?)  POST one File/Blob as multipart
+ *                                    (POST /api/import/json).
+ *   pendingWrites()                  how many POST/PATCH/DELETE calls are on
+ *                                    the wire right now.
+ *
+ * Every method resolves to the UNWRAPPED payload: the server's
+ * `{"ok": true, ...}` body with the `ok` key removed. So
+ *
+ *     const state = await api.get('/state');   // -> {tree, metadata, dirty, ...}
+ *     const res   = await api.del('/nodes/root_0');
+ *                   // -> {deletedId, tree, zeroNodes, dirty, canUndo, canRedo}
+ *
+ * Every failure -- transport, non-2xx, or a 200 carrying `ok: false` -- throws
+ * an ApiError. There is no success/failure branch on the return value; if the
+ * promise resolves, the call worked.
+ *
+ * `path` is relative to /api. '/state' and 'state' and '/api/state' all work.
+ * Absolute URLs are rejected outright: this app ships offline and must never
+ * reach off-box.
+ *
+ * TOKEN / SECURITY (see fta_web/security.py for the full threat model)
+ * ===================================================================
+ * The token travels in the X-FTA-Token header -- never a cookie, so a foreign
+ * page cannot ride on ambient authority. It arrives once, in the launch URL,
+ * because a browser navigation cannot carry a header; bootstrapToken() moves
+ * it into sessionStorage and rewrites the address bar so it stops leaking into
+ * history and bookmarks.
+ *
+ * sessionStorage is per tab. A second tab opened without ?t= has no token and
+ * every call here would 403. Rather than firing a wall of doomed requests, a
+ * tokenless call fails immediately with code NO_SESSION, and both that case
+ * and a real 403 dispatch `fta:session-invalid` on window so the shell can put
+ * up one clear "relaunch the app" screen.
+ */
+
+/** Must equal config.TOKEN_HEADER in fta_web/config.py. */
+export const TOKEN_HEADER = 'X-FTA-Token';
+
+/** Fired on window when this tab has no usable session. detail: {reason}. */
+export const SESSION_INVALID_EVENT = 'fta:session-invalid';
+
+const TOKEN_KEY = 'fta.session.token';
+const API_PREFIX = '/api';
+const QUERY_PARAM = 't';
+
+/**
+ * Fallback when sessionStorage is unavailable (some privacy modes throw on
+ * access rather than returning null). The app still works for the life of the
+ * page; only a reload loses the token, which is the same failure the user
+ * would get from a blocked sessionStorage anyway.
+ */
+let memoryToken = null;
+
+export class ApiError extends Error {
+  /**
+   * @param {string} code    stable machine code, e.g. NODE_NOT_FOUND. Client
+   *                         side codes: NO_SESSION, NETWORK_ERROR,
+   *                         BAD_RESPONSE, INVALID_PATH.
+   * @param {string} message human-readable; safe to show to the user.
+   * @param {object} [detail] structured context from the server envelope.
+   * @param {number} [status] HTTP status, 0 when the request never completed.
+   */
+  constructor(code, message, detail = null, status = 0) {
+    super(message || code || 'Request failed');
+    this.name = 'ApiError';
+    this.code = code || 'UNKNOWN';
+    this.detail = detail && typeof detail === 'object' ? detail : {};
+    this.status = Number.isFinite(status) ? status : 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// token storage
+// ---------------------------------------------------------------------------
+
+function readStoredToken() {
+  try {
+    return window.sessionStorage.getItem(TOKEN_KEY) || memoryToken;
+  } catch (_err) {
+    return memoryToken;
+  }
+}
+
+function writeStoredToken(token) {
+  memoryToken = token;
+  try {
+    window.sessionStorage.setItem(TOKEN_KEY, token);
+  } catch (_err) {
+    /* memoryToken above is the fallback; nothing else to do. */
+  }
+}
+
+/** The token this tab will send, or null. */
+export function getToken() {
+  return readStoredToken();
+}
+
+/** True when this tab holds a session token. */
+export function hasToken() {
+  return Boolean(readStoredToken());
+}
+
+/** Forget the token (used when the server rejects it, so we stop retrying). */
+export function clearToken() {
+  memoryToken = null;
+  try {
+    window.sessionStorage.removeItem(TOKEN_KEY);
+  } catch (_err) {
+    /* ignore */
+  }
+}
+
+/**
+ * Bootstrap problem #1: the token can only arrive by navigation, i.e. in the
+ * query string. Capture it, persist it, then scrub the URL.
+ *
+ * Storing happens BEFORE the rewrite on purpose: if history.replaceState were
+ * to throw, we would still hold the token rather than having erased the only
+ * copy the tab was given.
+ *
+ * @returns {string|null} the active token.
+ */
+export function bootstrapToken() {
+  let fromUrl = null;
+  try {
+    const url = new URL(window.location.href);
+    fromUrl = url.searchParams.get(QUERY_PARAM);
+    if (fromUrl) {
+      writeStoredToken(fromUrl);
+      url.searchParams.delete(QUERY_PARAM);
+      const query = url.searchParams.toString();
+      // Rebuild by hand: URL.toString() would re-add the origin, and we only
+      // ever want a same-document replace.
+      window.history.replaceState(
+        null,
+        '',
+        url.pathname + (query ? '?' + query : '') + url.hash
+      );
+    }
+  } catch (_err) {
+    // A malformed location or a blocked history API must not stop the app --
+    // the token may still be in sessionStorage from an earlier load.
+  }
+  return readStoredToken();
+}
+
+/**
+ * A message this module writes itself, in the editor's language: main.js's
+ * catalog through window.ftaShell.t, the English text when there is no shell.
+ * (The server's own messages are localized by the server; see uiLanguage.)
+ */
+function message(key, english, vars) {
+  try {
+    const shell = window.ftaShell;
+    if (shell && typeof shell.t === 'function') {
+      const text = shell.t(key, vars);
+      if (typeof text === 'string' && text && text !== key) return text;
+    }
+  } catch (_err) {
+    /* fall through to the English text */
+  }
+  return english;
+}
+
+function announceSessionInvalid(reason) {
+  window.dispatchEvent(
+    new CustomEvent(SESSION_INVALID_EVENT, { detail: { reason } })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// requests
+// ---------------------------------------------------------------------------
+
+/** '/state' | 'state' | '/api/state' -> '/api/state'. Absolute URLs rejected. */
+function toApiPath(path) {
+  const raw = String(path == null ? '' : path);
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//')) {
+    throw new ApiError(
+      'INVALID_PATH',
+      'Refusing to call an absolute address: the editor only talks to its own local server.',
+      { path: raw }
+    );
+  }
+  const withSlash = raw.startsWith('/') ? raw : '/' + raw;
+  if (withSlash === API_PREFIX || withSlash.startsWith(API_PREFIX + '/')) {
+    return withSlash;
+  }
+  return API_PREFIX + withSlash;
+}
+
+/**
+ * The editor's own EN/JA choice, which main.js mirrors on <html lang>. Sent
+ * as Accept-Language so the server words its errors in the language on
+ * screen: left to the browser, they followed the OS locale instead, and a
+ * Japanese browser put Japanese messages into the English UI.
+ */
+export function uiLanguage() {
+  try {
+    const lang = String(document.documentElement.lang || '').toLowerCase();
+    return lang === 'ja' || lang === 'en' ? lang : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+/**
+ * Build the fetch() init for an /api call, or throw NO_SESSION when this tab
+ * holds no token. Shared by request() (JSON) and download() (binary).
+ */
+function buildInit(method, body, accept) {
+  const token = readStoredToken();
+
+  if (!token) {
+    // Bootstrap problem #2. Fail here rather than sending a request that is
+    // guaranteed to 403, so a tokenless tab produces one clear event instead
+    // of a burst of failures in the network log.
+    announceSessionInvalid('no_token');
+    throw new ApiError(
+      'NO_SESSION',
+      message('api.noSession', 'This browser tab has no editor session, so it cannot reach the server.'),
+      { reason: 'no_token' }
+    );
+  }
+
+  const headers = { Accept: accept };
+  headers[TOKEN_HEADER] = token;
+  const lang = uiLanguage();
+  if (lang) headers['Accept-Language'] = lang;
+
+  const init = {
+    method,
+    headers,
+    cache: 'no-store',
+    credentials: 'same-origin',
+    redirect: 'follow',
+  };
+  if (body !== undefined && body !== null) {
+    headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+  return init;
+}
+
+/** Fired on window when a request could not reach the server at all. */
+export const SERVER_UNREACHABLE_EVENT = 'fta:server-unreachable';
+
+/**
+ * Requests that change something (everything but GET) and have not been
+ * answered yet. main.js reads it before it replaces the document with the
+ * server's copy: an edit on the wire is about to answer with a newer one.
+ */
+let writesInFlight = 0;
+
+export function pendingWrites() {
+  return writesInFlight;
+}
+
+async function send(method, url, init) {
+  const writes = String(method).toUpperCase() !== 'GET';
+  if (writes) writesInFlight += 1;
+  try {
+    return await fetch(url, init);
+  } catch (cause) {
+    // The shell shows a banner that stays up, with a way to download the
+    // document this tab still holds (main.js). A toast alone was gone in ten
+    // seconds and offered nothing.
+    try {
+      window.dispatchEvent(new CustomEvent(SERVER_UNREACHABLE_EVENT, { detail: { method, path: url } }));
+    } catch (_err) {
+      /* no window (tests) */
+    }
+    throw new ApiError(
+      'NETWORK_ERROR',
+      message('api.network', 'Could not reach the editor server. It may have been stopped in the terminal.'),
+      { method, path: url, cause: String(cause && cause.message ? cause.message : cause) }
+    );
+  } finally {
+    if (writes) writesInFlight -= 1;
+  }
+}
+
+function parseJson(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_err) {
+    return null;
+  }
+}
+
+/** Turn a failed envelope into an ApiError (and end the session on 403). */
+function envelopeError(response, payload) {
+  const envelope = (payload && payload.error && typeof payload.error === 'object') ? payload.error : {};
+  const error = new ApiError(
+    envelope.code || `HTTP_${response.status}`,
+    envelope.message
+      || message('api.httpFailed', `Request failed with HTTP ${response.status}.`, { status: response.status }),
+    envelope.detail || null,
+    response.status
+  );
+  if (response.status === 403) {
+    // Either the token is wrong/stale or Host/Origin were refused. Either
+    // way this tab is done: drop the token so nothing retries with it.
+    clearToken();
+    announceSessionInvalid(error.detail.reason || 'forbidden');
+  }
+  return error;
+}
+
+async function request(method, path, body) {
+  const url = toApiPath(path);
+  const init = buildInit(method, body, 'application/json');
+  return readEnvelope(method, url, await send(method, url, init));
+}
+
+/**
+ * POST one file as multipart/form-data and read the JSON answer.
+ *
+ * The body is a FormData, so the browser writes the Content-Type itself
+ * (it carries the multipart boundary); buildInit() is asked for a request
+ * with no body and the form is attached afterwards.
+ */
+async function upload(path, file, field, fields) {
+  const url = toApiPath(path);
+  const init = buildInit('POST', undefined, 'application/json');
+  const form = new FormData();
+  form.append(field || 'file', file, file && file.name ? file.name : 'upload.json');
+  // Plain text fields beside the file (`force` of POST /api/import/json).
+  Object.keys(fields || {}).forEach((key) => form.append(key, String(fields[key])));
+  init.body = form;
+  return readEnvelope('POST', url, await send('POST', url, init));
+}
+
+async function readEnvelope(method, url, response) {
+  const text = await response.text().catch(() => '');
+  const payload = parseJson(text);
+
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    // app.py installs handlers so that even 404/405/413/500 come back as the
+    // JSON envelope. Anything else means we are not talking to our server.
+    throw new ApiError(
+      'BAD_RESPONSE',
+      message('api.badResponse', `The server returned an unexpected response (HTTP ${response.status}).`,
+        { status: response.status }),
+      { method, path: url, body: text.slice(0, 200) },
+      response.status
+    );
+  }
+
+  if (!response.ok || payload.ok === false) {
+    throw envelopeError(response, payload);
+  }
+
+  // Unwrap: callers get the payload without the `ok` flag.
+  const { ok: _ok, ...rest } = payload;
+  return rest;
+}
+
+/** filename from a Content-Disposition header (RFC 5987 filename* first). */
+function filenameFrom(disposition) {
+  const raw = String(disposition || '');
+  const star = /filename\*\s*=\s*([^']*)'[^']*'([^;]+)/i.exec(raw);
+  if (star) {
+    try {
+      return decodeURIComponent(star[2].trim().replace(/^"|"$/g, ''));
+    } catch (_err) {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename\s*=\s*("([^"]*)"|[^;]+)/i.exec(raw);
+  if (plain) return (plain[2] !== undefined ? plain[2] : plain[1]).trim();
+  return null;
+}
+
+/**
+ * Fetch a binary response (DOCX, XLSX, PNG...). Resolves {blob, filename,
+ * contentType}; `filename` comes from Content-Disposition or is null. A
+ * non-2xx response, or a 200 that is the JSON envelope with ok:false, throws
+ * an ApiError parsed from the envelope exactly like request().
+ */
+async function download(method, path, body) {
+  const url = toApiPath(path);
+  const verb = String(method || 'GET').toUpperCase();
+  const init = buildInit(verb, verb === 'GET' ? undefined : (body === undefined ? {} : body), '*/*');
+  const response = await send(verb, url, init);
+  const contentType = response.headers.get('Content-Type') || '';
+
+  if (!response.ok || /application\/json/i.test(contentType)) {
+    const text = await response.text().catch(() => '');
+    const payload = parseJson(text);
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      if (!response.ok || payload.ok === false) throw envelopeError(response, payload);
+      // A 200 JSON body that is not an error: hand it back as a blob anyway.
+      return {
+        blob: new Blob([text], { type: contentType || 'application/json' }),
+        filename: filenameFrom(response.headers.get('Content-Disposition')),
+        contentType,
+      };
+    }
+    throw new ApiError(
+      response.ok ? 'BAD_RESPONSE' : `HTTP_${response.status}`,
+      message('api.badResponse', `The server returned an unexpected response (HTTP ${response.status}).`,
+        { status: response.status }),
+      { method: verb, path: url, body: text.slice(0, 200) },
+      response.status
+    );
+  }
+
+  const blob = await response.blob();
+  return {
+    blob,
+    filename: filenameFrom(response.headers.get('Content-Disposition')),
+    contentType,
+  };
+}
+
+export const api = {
+  /** @returns {Promise<object>} */
+  get(path) {
+    return request('GET', path);
+  },
+  /** Body defaults to {} -- every POST endpoint tolerates an empty object. */
+  post(path, body) {
+    return request('POST', path, body === undefined ? {} : body);
+  },
+  patch(path, body) {
+    return request('PATCH', path, body === undefined ? {} : body);
+  },
+  del(path) {
+    return request('DELETE', path);
+  },
+  /**
+   * Binary download. @returns {Promise<{blob: Blob, filename: string|null,
+   * contentType: string}>}. Errors throw ApiError, parsed from the JSON
+   * envelope when the server sent one.
+   */
+  download(method, path, body) {
+    return download(method, path, body);
+  },
+  /** POST a File/Blob as multipart. @returns {Promise<object>} the payload. */
+  upload(path, file, field, fields) {
+    return upload(path, file, field, fields);
+  },
+};
+
+export default api;

@@ -1,0 +1,269 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L15_dangling_links.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.5
+        },
+        {
+         "id": "b",
+         "name": "b",
+         "q": 0.5
+        }
+       ],
+       "order": 2,
+       "probability": 0.25,
+       "rank": 1,
+       "share": 0.7142857142857143
+      },
+      {
+       "events": [
+        {
+         "id": "c",
+         "name": "c",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 2,
+       "share": 0.28571428571428575
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.325,
+     "nonCoherent": false,
+     "rareEvent": 0.35,
+     "repeatedEvents": [
+      {
+       "id": "c",
+       "name": "c"
+      }
+     ],
+     "total": 2,
+     "treeWalk": 0.3925,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L15 dangling links"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L15_dangling_links.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.45,
+       "cutSetCount": 1,
+       "fv": 0.6923076923076923,
+       "id": "a",
+       "name": "a",
+       "q": 0.5,
+       "raw": 1.6923076923076923,
+       "rrw": 3.25,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.45,
+       "cutSetCount": 1,
+       "fv": 0.6923076923076923,
+       "id": "b",
+       "name": "b",
+       "q": 0.5,
+       "raw": 1.6923076923076923,
+       "rrw": 3.25,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.75,
+       "cutSetCount": 1,
+       "fv": 0.23076923076923078,
+       "id": "c",
+       "name": "c",
+       "q": 0.1,
+       "raw": 3.0769230769230766,
+       "rrw": 1.3,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L15 dangling links"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L15_dangling_links.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b",
+      "c"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.325,
+       0.325
+      ],
+      "logBins": false
+     },
+     "mean": 0.325,
+     "median": 0.325,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.325,
+     "p95": 0.325,
+     "pointEstimate": 0.325,
+     "repeatedEvents": [
+      {
+       "id": "c",
+       "name": "c"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L15 dangling links"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L15_dangling_links.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.5,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.5,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.1,
+       "id": "c",
+       "model": "fixed",
+       "name": "c",
+       "q": 0.1
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.325,
+      "headlineMethod": "mcub",
+      "mcub": 0.325,
+      "nonCoherent": false,
+      "rareEvent": 0.35,
+      "repeatedEvents": [
+       {
+        "id": "c",
+        "name": "c"
+       }
+      ],
+      "treeWalk": 0.3925,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L15 dangling links"
+   }
+  },
+  "validate": {
+   "exitCode": 1,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L15_dangling_links.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 3,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": [
+      {
+       "code": "DANGLING_LINK",
+       "hintKey": "val.fix.DANGLING_LINK",
+       "message": "Link points to node 'nowhere', which does not exist.",
+       "nodeId": "g",
+       "nodeName": "g",
+       "params": {
+        "relation": "AND",
+        "targetId": "nowhere"
+       },
+       "severity": "error"
+      },
+      {
+       "code": "DANGLING_LINK",
+       "hintKey": "val.fix.DANGLING_LINK",
+       "message": "Link points to node '', which does not exist.",
+       "nodeId": "g",
+       "nodeName": "g",
+       "params": {
+        "relation": "OR",
+        "targetId": ""
+       },
+       "severity": "error"
+      },
+      {
+       "code": "DANGLING_LINK",
+       "hintKey": "val.fix.DANGLING_LINK",
+       "message": "Link points to node '', which does not exist.",
+       "nodeId": "g",
+       "nodeName": "g",
+       "params": {
+        "relation": "OR",
+        "targetId": ""
+       },
+       "severity": "error"
+      }
+     ]
+    },
+    "title": "L15 dangling links"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L15_dangling_links.json"
+}

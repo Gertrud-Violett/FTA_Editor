@@ -1,0 +1,193 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T03_standby_exp.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "SB",
+         "name": "SB",
+         "q": 0.036
+        }
+       ],
+       "order": 1,
+       "probability": 0.036,
+       "rank": 1,
+       "share": 0.783457448303568
+      },
+      {
+       "events": [
+        {
+         "id": "EXP",
+         "name": "EXP",
+         "q": 0.00995016625083
+        }
+       ],
+       "order": 1,
+       "probability": 0.00995016625083,
+       "rank": 2,
+       "share": 0.21654255169643202
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.04559196026580012,
+     "nonCoherent": false,
+     "rareEvent": 0.045950166250829996,
+     "repeatedEvents": [],
+     "total": 2,
+     "treeWalk": 0.0455919602658,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "T03 standby + exponential"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T03_standby_exp.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.99004983374917,
+       "cutSetCount": 1,
+       "fv": 0.781756121192843,
+       "id": "SB",
+       "name": "SB",
+       "q": 0.036,
+       "raw": 21.933691689719463,
+       "rrw": 4.5820299999507075,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.964,
+       "cutSetCount": 1,
+       "fv": 0.21038709917009937,
+       "id": "EXP",
+       "name": "EXP",
+       "q": 0.00995016625083,
+       "raw": 21.933691689719463,
+       "rrw": 1.26644334071667,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "T03 standby + exponential"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T03_standby_exp.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "SB",
+      "EXP"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.04559196026580015,
+       0.04559196026580015
+      ],
+      "logBins": false
+     },
+     "mean": 0.04559196026580015,
+     "median": 0.04559196026580015,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.04559196026580015,
+     "p95": 0.04559196026580015,
+     "pointEstimate": 0.04559196026580015,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "T03 standby + exponential"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T03_standby_exp.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.036,
+       "id": "SB",
+       "model": "standby",
+       "name": "SB",
+       "q": 0.036
+      },
+      {
+       "calculated": 0.00995016625083,
+       "id": "EXP",
+       "model": "rate",
+       "name": "EXP",
+       "q": 0.00995016625083
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.0455919602658,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.04559196026580012,
+      "nonCoherent": false,
+      "rareEvent": 0.045950166250829996,
+      "repeatedEvents": [],
+      "treeWalk": 0.0455919602658,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "T03 standby + exponential"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T03_standby_exp.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "T03 standby + exponential"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/T03_standby_exp.json"
+}

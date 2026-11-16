@@ -1,0 +1,360 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F04_xor.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [
+      {
+       "code": "NONCOHERENT_XOR",
+       "nodeId": "x2",
+       "params": {
+        "n": 2
+       }
+      },
+      {
+       "code": "NONCOHERENT_XOR",
+       "nodeId": "x3",
+       "params": {
+        "n": 3
+       }
+      },
+      {
+       "code": "XOR_ARITY",
+       "nodeId": "x3",
+       "params": {
+        "n": 3
+       }
+      }
+     ],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "e",
+         "name": "e",
+         "q": 0.3
+        }
+       ],
+       "order": 1,
+       "probability": 0.3,
+       "rank": 1,
+       "share": 0.3333333333333333
+      },
+      {
+       "events": [
+        {
+         "id": "b",
+         "name": "b",
+         "q": 0.2
+        }
+       ],
+       "order": 1,
+       "probability": 0.2,
+       "rank": 2,
+       "share": 0.22222222222222224
+      },
+      {
+       "events": [
+        {
+         "id": "d",
+         "name": "d",
+         "q": 0.2
+        }
+       ],
+       "order": 1,
+       "probability": 0.2,
+       "rank": 3,
+       "share": 0.22222222222222224
+      },
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 4,
+       "share": 0.11111111111111112
+      },
+      {
+       "events": [
+        {
+         "id": "c",
+         "name": "c",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 5,
+       "share": 0.11111111111111112
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.63712,
+     "nonCoherent": true,
+     "rareEvent": 0.9,
+     "repeatedEvents": [],
+     "total": 5,
+     "treeWalk": 0.55896,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F04 XOR"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F04_xor.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.5184,
+       "cutSetCount": 1,
+       "fv": 0.2440984429934706,
+       "id": "e",
+       "name": "e",
+       "q": 0.3,
+       "raw": 1.5695630336514315,
+       "rrw": 1.3229235880398673,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.45359999999999995,
+       "cutSetCount": 1,
+       "fv": 0.14239075841285784,
+       "id": "b",
+       "name": "b",
+       "q": 0.2,
+       "raw": 1.5695630336514315,
+       "rrw": 1.1660322108345536,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.45359999999999995,
+       "cutSetCount": 1,
+       "fv": 0.14239075841285784,
+       "id": "d",
+       "name": "d",
+       "q": 0.2,
+       "raw": 1.5695630336514315,
+       "rrw": 1.1660322108345536,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.4032,
+       "cutSetCount": 1,
+       "fv": 0.06328478151682572,
+       "id": "a",
+       "name": "a",
+       "q": 0.1,
+       "raw": 1.5695630336514315,
+       "rrw": 1.0675603217158178,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.4032,
+       "cutSetCount": 1,
+       "fv": 0.06328478151682572,
+       "id": "c",
+       "name": "c",
+       "q": 0.1,
+       "raw": 1.5695630336514315,
+       "rrw": 1.0675603217158178,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F04 XOR"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F04_xor.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.63712,
+       0.63712
+      ],
+      "logBins": false
+     },
+     "mean": 0.63712,
+     "median": 0.63712,
+     "method": "cutsets",
+     "nonCoherent": true,
+     "p05": 0.63712,
+     "p95": 0.63712,
+     "pointEstimate": 0.63712,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F04 XOR"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F04_xor.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.1,
+       "id": "c",
+       "model": "fixed",
+       "name": "c",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "d",
+       "model": "fixed",
+       "name": "d",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.3,
+       "id": "e",
+       "model": "fixed",
+       "name": "e",
+       "q": 0.3
+      }
+     ],
+     "summary": {
+      "approximations": [
+       {
+        "code": "NONCOHERENT_XOR",
+        "nodeId": "x2",
+        "params": {
+         "n": 2
+        }
+       },
+       {
+        "code": "NONCOHERENT_XOR",
+        "nodeId": "x3",
+        "params": {
+         "n": 3
+        }
+       },
+       {
+        "code": "XOR_ARITY",
+        "nodeId": "x3",
+        "params": {
+         "n": 3
+        }
+       }
+      ],
+      "capped": false,
+      "headline": 0.63712,
+      "headlineMethod": "mcub",
+      "mcub": 0.63712,
+      "nonCoherent": true,
+      "rareEvent": 0.9,
+      "repeatedEvents": [],
+      "treeWalk": 0.55896,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F04 XOR"
+   }
+  },
+  "validate": {
+   "exitCode": 1,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F04_xor.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 1,
+      "info": 0,
+      "warning": 1
+     },
+     "issues": [
+      {
+       "code": "XOR_ARITY",
+       "hintKey": "val.fix.XOR_ARITY",
+       "message": "XOR gate needs exactly 2 inputs (has 3).",
+       "nodeId": "x3",
+       "nodeName": "x3",
+       "params": {
+        "n": 3
+       },
+       "severity": "error"
+      },
+      {
+       "code": "NONCOHERENT_XOR",
+       "hintKey": "val.fix.NONCOHERENT_XOR",
+       "message": "The tree has 2 XOR gate(s); cut-set results are approximate.",
+       "nodeId": "x2",
+       "nodeName": "x2",
+       "params": {
+        "count": 2,
+        "nodeIds": [
+         "x2",
+         "x3"
+        ]
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "F04 XOR"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F04_xor.json"
+}

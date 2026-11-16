@@ -1,0 +1,268 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F17_quant_missing.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "no_mu",
+         "name": "no_mu",
+         "q": 0.04
+        }
+       ],
+       "order": 1,
+       "probability": 0.04,
+       "rank": 1,
+       "share": 0.4444444444444445
+      },
+      {
+       "events": [
+        {
+         "id": "no_tau",
+         "name": "no_tau",
+         "q": 0.03
+        }
+       ],
+       "order": 1,
+       "probability": 0.03,
+       "rank": 2,
+       "share": 0.3333333333333333
+      },
+      {
+       "events": [
+        {
+         "id": "no_lambda",
+         "name": "no_lambda",
+         "q": 0.02
+        }
+       ],
+       "order": 1,
+       "probability": 0.02,
+       "rank": 3,
+       "share": 0.22222222222222224
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.087424,
+     "nonCoherent": false,
+     "rareEvent": 0.09,
+     "repeatedEvents": [],
+     "total": 3,
+     "treeWalk": 0.087424,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F17 missing params"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F17_quant_missing.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9506,
+       "cutSetCount": 1,
+       "fv": 0.43493777452415816,
+       "id": "no_mu",
+       "name": "no_mu",
+       "q": 0.04,
+       "raw": 11.438506588579795,
+       "rrw": 1.7697165991902835,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9408,
+       "cutSetCount": 1,
+       "fv": 0.3228404099560761,
+       "id": "no_tau",
+       "name": "no_tau",
+       "q": 0.03,
+       "raw": 11.438506588579795,
+       "rrw": 1.4767567567567568,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9312,
+       "cutSetCount": 1,
+       "fv": 0.21303074670571012,
+       "id": "no_lambda",
+       "name": "no_lambda",
+       "q": 0.02,
+       "raw": 11.438506588579795,
+       "rrw": 1.2706976744186045,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F17 missing params"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F17_quant_missing.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "no_lambda",
+      "no_tau",
+      "no_mu"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.08742400000000006,
+       0.08742400000000006
+      ],
+      "logBins": false
+     },
+     "mean": 0.08742400000000006,
+     "median": 0.08742400000000006,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.08742400000000006,
+     "p95": 0.08742400000000006,
+     "pointEstimate": 0.08742400000000006,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F17 missing params"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F17_quant_missing.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.02,
+       "id": "no_lambda",
+       "model": "rate",
+       "name": "no_lambda",
+       "q": 0.02
+      },
+      {
+       "calculated": 0.03,
+       "id": "no_tau",
+       "model": "standby",
+       "name": "no_tau",
+       "q": 0.03
+      },
+      {
+       "calculated": 0.04,
+       "id": "no_mu",
+       "model": "repairable",
+       "name": "no_mu",
+       "q": 0.04
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.087424,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.087424,
+      "nonCoherent": false,
+      "rareEvent": 0.09,
+      "repeatedEvents": [],
+      "treeWalk": 0.087424,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F17 missing params"
+   }
+  },
+  "validate": {
+   "exitCode": 1,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F17_quant_missing.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 3,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": [
+      {
+       "code": "QUANT_PARAM_MISSING",
+       "hintKey": "val.fix.QUANT_PARAM_MISSING",
+       "message": "The 'rate' model is missing: lambda. The previous probability is used.",
+       "nodeId": "no_lambda",
+       "nodeName": "no_lambda",
+       "params": {
+        "missing": [
+         "lambda"
+        ],
+        "model": "rate"
+       },
+       "severity": "error"
+      },
+      {
+       "code": "QUANT_PARAM_MISSING",
+       "hintKey": "val.fix.QUANT_PARAM_MISSING",
+       "message": "The 'standby' model is missing: tau. The previous probability is used.",
+       "nodeId": "no_tau",
+       "nodeName": "no_tau",
+       "params": {
+        "missing": [
+         "tau"
+        ],
+        "model": "standby"
+       },
+       "severity": "error"
+      },
+      {
+       "code": "QUANT_PARAM_MISSING",
+       "hintKey": "val.fix.QUANT_PARAM_MISSING",
+       "message": "The 'repairable' model is missing: mu. The previous probability is used.",
+       "nodeId": "no_mu",
+       "nodeName": "no_mu",
+       "params": {
+        "missing": [
+         "mu"
+        ],
+        "model": "repairable"
+       },
+       "severity": "error"
+      }
+     ]
+    },
+    "title": "F17 missing params"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F17_quant_missing.json"
+}

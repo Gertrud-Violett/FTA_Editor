@@ -1,0 +1,445 @@
+# FTA/ETA Editor
+
+A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor with advanced probability calculations, visual tree editing, AI-powered analysis assistant, and export capabilities.
+
+[![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
+[![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Version](https://img.shields.io/badge/version-1.9.1-green.svg)](CHANGELOG.md)
+
+There are two ways to run it:
+
+| | Runs in | Needs | Status |
+|---|---|---|---|
+| **Web app** (`fta_web/`) — **the primary path** | your browser, served from `127.0.0.1` | Python 3.10+ and Flask — **no Graphviz** | actively developed; all new features land here |
+| **Legacy desktop app** (`desktop/`) — backup / fallback | a Tkinter window | Python 3.10+, Tk, **Graphviz**, Pillow | frozen at 1.5.1 behaviour; kept as a fallback, not maintained |
+
+Both edit the same files, keep AI credentials in the same place, and produce the
+same diagrams. Use the web app unless you specifically need the old Tk window;
+see [desktop/README.md](desktop/README.md) for what the fallback does not fix.
+
+**1.7 files in the desktop app.** The 1.7 file format is additive. The desktop
+app still opens 1.7 files, but it reads only `logicGate` (AND/OR) and
+`probability`:
+
+- Advanced gates are projected to AND or OR.
+- Model-derived probabilities are written into `probability`, so they stay
+  meaningful.
+- Transfer gates and house events are not understood.
+- Saving from the desktop app keeps the new node keys but drops the top-level
+  `analysis` block (mission time, cut-set limits, Monte Carlo settings, FMEA
+  occurrence table).
+
+Details are in
+[USER_GUIDE.md → Desktop app compatibility](docs/USER_GUIDE.md#desktop-app-compatibility).
+
+## Features
+
+- **Interactive Tree Editor** with live diagram preview
+- **Dual Analysis Modes**: FTA (bottom-up) and ETA (top-down)  
+- **AI-Powered Assistant**: Integrated chat interface for FTA analysis and suggestions
+- **Accurate Probability Calculations** with AND/OR logic gates
+- **International Support**: Japanese/Chinese/Korean fonts (Noto Sans CJK)
+- **Visual Diagram Generation** with Graphviz - logic gates displayed in nodes
+- **Multiple Export Formats** (JSON, XML, Excel with hierarchical structure)
+- **Zero-Probability Node Highlighting** for quick issue identification
+- **Secure Credential Storage**: API keys stored locally, never in repository
+
+New in **1.9** (web app):
+
+- **Before you upgrade:** files with CCF groups lose the groups when saved by
+  FTA Editor 1.8.x (it warns 'reset to their defaults: ccfGroups' when it opens
+  the file), and lose all analysis settings when saved by the desktop app.
+- **CCF groups**: common-cause failure groups with a beta factor or an alpha
+  factor, in the headline, the cut sets, importance, Monte Carlo, the report and
+  the command line. See [CCF groups](docs/CCF.md).
+- **Grid tab**: every basic event in one table, with sort, filter and paste
+  from Excel. See [the Grid tab](docs/USER_GUIDE.md#the-grid-tab-every-basic-event-paste-from-excel).
+- **What-if tab**: scale an event's main parameter by a factor from 1/100 to 100
+  and watch the top event move, without changing the file. See
+  [the What-if tab](docs/USER_GUIDE.md#the-what-if-tab).
+
+New in **1.7** (web app), for reliability and safety engineers:
+
+- **Failure-rate models**: fixed q, constant rate 1−e^(−λT) with a document
+  mission time, periodically tested standby λτ/2, and repairable λ/(λ+μ).
+  λ can be entered in /h, /y or FIT, and a data-source field keeps
+  provenance in the file.
+- **Standard gates and events**: k-out-of-n voting, XOR, INHIBIT with a
+  conditioning event, Priority-AND (approximated and flagged), same-file
+  transfer, and house and undeveloped events.
+- **Minimal cut sets** (MOCUS), with the min-cut upper bound used as the
+  headline when events are repeated.
+- **Importance measures** (Fussell-Vesely, Birnbaum, RAW, RRW) with an FV
+  colour overlay on the diagram.
+- **Monte Carlo uncertainty**: lognormal error factors, a seeded and
+  time-capped run, and mean, median and 5th/95th percentiles.
+- **Validation** with 23 rules, a plain-language fix for each, and click to
+  jump to the node.
+- **Traceability fields**: requirement, test reference, owner, status,
+  evidence and tags, searchable with `tag:`, `owner:`, `status:`, `req:` and
+  `fmea:`.
+- **FMEA import** from CSV or XLSX, with an editable AIAG occurrence table and
+  in-place re-import.
+- **DOCX report**, plus flat **Events** and **Analysis** sheets in the Excel
+  export.
+- **Standard FTA symbols** (IEC 61025 / NUREG-0492) and a top-down layout.
+- **Significant-figures** display setting (1–6).
+- **Command-line batch mode**: `fta_editor validate *.json --json`.
+- **Basic / Advanced switch**: juniors see AND/OR plus the Details and
+  Validation tabs. Advanced shows every gate, model and analysis tab. Files
+  and results are identical either way.
+
+See [USER_GUIDE.md → Analysis features (1.7)](docs/USER_GUIDE.md#analysis-features-17).
+
+## Quick Start
+
+```bash
+# Clone repository
+git clone https://github.com/Gertrud-Violett/FTA_Editor.git
+cd FTA_Editor
+```
+
+### Web app (recommended)
+
+Dependencies are declared once, in `pyproject.toml`. Install them with
+[uv](https://docs.astral.sh/uv/) if you have it — it's faster and pins exact
+versions via the committed `uv.lock` — or with plain pip if you don't:
+
+```bash
+# with uv (recommended)
+uv sync --extra web --extra excel --extra ai --extra report   # or: uv sync --extra all
+uv run python fta_web/run.py
+
+# or with pip
+pip install -r requirements.txt -r fta_web/requirements.txt
+python3 fta_web/run.py
+```
+
+`report` adds `python-docx` for the DOCX report, and `all` includes it. The
+editor runs without it; the report control then explains what to install.
+
+The analysis tabs, advanced gates and failure-rate models are behind the
+**Advanced** switch in the top bar. It is off by default, so a new user sees a
+plain AND/OR editor with validation.
+
+**Batch / CI use.** The same analyses run from the command line without
+starting a server:
+
+```bash
+uv run python fta_web/run.py validate trees/*.json --json   # exit 1 on validation errors
+uv run python fta_web/run.py cutsets plant.json --top 20 --csv
+fta_editor.exe quantify plant.json --mission-time 17520      # the standalone build
+```
+
+Commands: `quantify`, `cutsets`, `importance`, `mc`, `validate`, `report`.
+Exit codes: 0 ok, 1 validation errors or analysis failure, 2 usage, 3
+unreadable file. See the
+[CLI reference](docs/USER_GUIDE.md#command-line-interface).
+
+That starts a server on `127.0.0.1` and opens your browser on it. The terminal
+prints the URL, which carries a **one-time session token** for this launch —
+if the browser does not open by itself, paste that URL in. Press `Ctrl-C` to
+stop; quitting the server invalidates the token and every page holding it.
+
+```bash
+python3 fta_web/run.py --port 8800     # another port than the default 8765 (0: any free port)
+python3 fta_web/run.py --no-browser    # just print the URL
+python3 fta_web/run.py --root ~/trees  # restrict the file browser to a directory
+```
+
+The server binds to loopback only and is not configurable to do otherwise: it
+can read and write files on your machine, so it is deliberately unreachable
+from the network. It is a single-user tool and runs as a single process — do
+not put it behind gunicorn or uWSGI, which it refuses to start under.
+
+**No Graphviz needed.** The diagram is rendered in your browser by a bundled
+WebAssembly build of Graphviz. If you *do* have Graphviz installed, the PNG
+export of the compact style uses it for a native 300 dpi image; otherwise the
+PNG is rasterised in the browser. Anything unavailable — `openpyxl` for Excel,
+an AI provider SDK — shows up as a disabled control with an explanation, never
+as a button that fails when you press it.
+
+### Standalone executable (no Python required)
+
+For machines without a Python installation, the web app can be frozen into a
+single folder containing everything, Graphviz included:
+
+```bash
+uv sync --extra all --extra build
+uv run python -m PyInstaller --clean --noconfirm \
+    --distpath build/dist --workpath build/build \
+    build/fta_editor.spec
+
+./build/dist/fta_editor/fta_editor
+```
+
+Ship the whole `build/dist/fta_editor/` folder — the executable needs its
+`_internal/` sibling. See [build/README.md](build/README.md) for prerequisites,
+per-OS notes and how to verify a build.
+
+### Legacy desktop app (fallback)
+
+The original Tkinter application, moved to `desktop/` and frozen:
+
+```bash
+# with uv
+uv sync --extra desktop --extra excel --extra ai
+uv run python desktop/src/FTA_Editor_UI.py
+
+# or with pip
+pip install -r requirements.txt
+python desktop/src/FTA_Editor_UI.py
+```
+
+### Requirements
+
+- Python 3.10+
+- Graphviz — **required by the desktop app**, optional for the web app
+  ([graphviz.org](https://graphviz.org/download/))
+- Tk — part of the standard library, but packaged separately by the OS; see
+  `python3 -c "import tkinter"` and your OS's `python3-tk` (or equivalent)
+  package if that fails. Desktop app only, not installable via pip/uv.
+- Everything else is declared in `pyproject.toml` as optional extras
+  (`web`, `desktop`, `excel`, `report`, `ai`; `all` = all of them) — `uv sync --extra <name>`, or see
+  `requirements.txt` / `fta_web/requirements.txt` for the pip equivalent.
+
+## AI Assistant Setup
+
+The FTA Editor includes an integrated AI assistant supporting multiple providers: **OpenAI**, **Microsoft Copilot**, **Anthropic Claude**, and **Google Gemini**.
+
+**Quick Setup:**
+1. Get API key from your provider:
+   - **Google Gemini**: https://aistudio.google.com/apikey (free tier available)
+   - **OpenAI**: https://platform.openai.com/api-keys
+   - **Microsoft Copilot**: https://portal.azure.com (Azure OpenAI service)
+   - **Anthropic Claude**: https://console.anthropic.com/settings/keys
+
+2. Open FTA Editor → Click AI Settings (⚙)
+
+3. Select provider, paste API key (for Microsoft Copilot, also enter your Azure endpoint), click "Test & Save"
+
+Your credentials are stored locally at `~/.fta_editor/ai_credentials.json` (never in repository or cloud).
+
+For detailed setup instructions, see [docs/QUICK_AI_SETUP.md](docs/QUICK_AI_SETUP.md) and [docs/MULTI_PROVIDER_SETUP.md](docs/MULTI_PROVIDER_SETUP.md).
+
+### Quick Actions
+- **Analyze FTA**: Posts an assessment and suggestions to chat; does not modify your tree.
+- **Update FTA**: The AI is asked to rewrite the whole tree, keeping the existing nodes and adding to them. The button asks before it sends the tree. The answer is shown first as a list of the nodes it would add, change and remove; nothing is changed until you press **Apply update**, and **Discard** drops it. One Ctrl+Z undoes an applied update. If the AI output is invalid, nothing is changed and the chat shows what failed.
+
+Or type any question in the chat, for example:
+- "What root causes might be missing from this failure mode?"
+- "Can you review the probabilities in this tree?"
+- "Suggest additional failure modes for the selected node"
+- "What are common causes of pump failures I should consider?"
+
+## Usage
+
+### Web application
+
+```bash
+python3 fta_web/run.py
+```
+
+Open the printed URL. The left panel is the tree, the middle the live diagram,
+the right the AI assistant; the node details are the **Details** tab of the
+bottom panel. Everything is in one page — there is nothing to install in the
+browser.
+
+### Example analyses
+
+Two worked examples ship with the editor, each in English and in Japanese.
+Open one, read the notes on each node, change a number and watch the result
+move; then use it as the starting point for your own analysis.
+
+| File | What it is | What to look at |
+|---|---|---|
+| `challenger_fta_en.json`, `challenger_fta_ja.json` | A fault tree of the loss of the Space Shuttle Challenger (STS 51-L, 1986): the joint that did not seal, and the launch that was not stopped | A common cause. The cold and the tight squeeze act on both O-rings, so the top event (0.0684, with the **MCUB** badge, also in the diagram's top box) is higher than the root node's own tree-walk value (0.0349), shown beside it. **Cut Sets** and **Importance** show why |
+| `tmi2_eta_en.json`, `tmi2_eta_ja.json` | An event tree of the accident at Three Mile Island Unit 2 (1979): relief valve, block valve, high pressure injection, containment | ETA mode. Each end state is the product of the branch probabilities on the way to it; the branches marked "(actual)" are the path the accident took |
+| `sampleFTA.json` | The small AND/OR tree of the 1.x releases | |
+
+Each node's notes say what happened and cite the accident report it comes
+from, with the finding or page: the Rogers Commission report for Challenger,
+the Kemeny Commission report for Three Mile Island. **The probabilities are
+illustrative.** They show how the tool computes; they are not from the
+reports, and neither file is a risk estimate.
+
+To open one, click **Open an example** in the hint a new analysis shows, or
+**Load** and then **Open an example…**, and pick it from the list. It opens
+as an untitled copy: **Save** asks where to put your version, and the example
+itself is never changed.
+
+The files are in `fta_web/examples/` in a source checkout and in
+`fta_editor\_internal\examples\` in the standalone build.
+
+### Legacy desktop application (fallback)
+
+```bash
+python desktop/src/FTA_Editor_UI.py
+```
+
+**Keyboard Shortcuts:**
+- `Ctrl+N`: New analysis
+- `Ctrl+A`: Add node
+- `Ctrl+E`: Edit node
+- `Ctrl+D`: Delete node
+- `Ctrl+S`: Save
+- `Ctrl+R`: Render diagram
+
+### Programmatic API
+
+The probability engine is a plain Python module. Use the web app's copy
+(`fta_web/core/`), which carries the documented fixes:
+
+```python
+import sys
+sys.path.insert(0, "fta_web/core")   # the modules import each other by bare name
+from FTA_Editor_core import FTACore
+
+core = FTACore()
+core.set_metadata(title="Analysis", mode="FTA")
+core.load_from_json("fta_web/examples/sampleFTA.json")
+core.recalculate_probabilities()
+core.export_to_excel("output.xlsx")
+```
+
+For the 1.7 semantics (advanced gates, rate models, the `analysis` block), use
+`fta_web/engine.py`'s `WebCore`, a subclass of `FTACore`, together with
+`cutsets`, `importance`, `uncertainty` and `lint`. See
+[API_REFERENCE.md → Python analysis modules](docs/API_REFERENCE.md#python-analysis-modules-17).
+
+## Project Structure
+
+```
+FTA_Editor/
+├── fta_web/                      # Web application -- THE PRIMARY PATH
+│   ├── run.py                   # Launcher -- the only supported entry point
+│   ├── app.py                   # Flask app factory
+│   ├── security.py              # Session token, Host/Origin pinning
+│   ├── routes/                  # /api blueprints: tree, render, files, ai, analysis, validate, report, fmea
+│   ├── engine.py                # WebCore(FTACore): 1.7 gates, rate models, `analysis` block
+│   ├── logic.py, cutsets.py     # structure function, minimal cut sets (MOCUS)
+│   ├── importance.py, uncertainty.py, lint.py   # FV/RAW/RRW, Monte Carlo, validation rules
+│   ├── report_docx.py, excel_events.py, fmea_import.py, cli.py
+│   ├── core/                    # Vendored fork of desktop/src/ -- see DIVERGENCE.md
+│   ├── examples/                # Worked examples (Challenger FTA, TMI-2 ETA; EN and JA) and sampleFTA.json
+│   ├── static/, templates/      # Frontend, incl. WebAssembly Graphviz
+│   └── tests/                   # Web app test suite + vendor freeze guard
+├── desktop/                      # Legacy Tkinter app -- BACKUP / FALLBACK, frozen
+│   ├── src/                     # FTA_Editor_UI.py, FTA_Editor_core.py, json_viewer.py, AI_*
+│   ├── tests/                   # Its original test suite
+│   ├── data/examples/           # Its copy of the sample data
+│   └── README.md                # Status, how to run, known unpatched defects
+├── build/                        # PyInstaller spec for the standalone web-app build
+├── docs/                        # Documentation
+├── pyproject.toml                # Dependencies (source of truth) + uv config
+├── uv.lock                       # Exact resolved versions, for `uv sync`
+└── requirements.txt             # Python dependencies, for the pip fallback
+```
+
+`fta_web/core/` is a **vendored fork** of four modules from `desktop/src/`,
+taken at a pinned commit and patched for defects that are documented one by
+one in [`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md).
+`desktop/src/`, `desktop/tests/` and `desktop/data/` are frozen; the source
+and the sample data are pinned by hash, and
+`fta_web/tests/test_vendor_integrity.py` fails if either side changes without
+the record being updated.
+
+## Testing
+
+```bash
+python -m pytest                   # both suites (pytest.ini lists them)
+python -m pytest fta_web/tests/    # web app, vendored core, and the freeze guard
+python -m pytest desktop/tests/    # the frozen legacy suite
+```
+
+## Analysis Modes
+
+**FTA (Fault Tree Analysis)**: Bottom-up reliability analysis
+- Root = System failure event
+- Leaves = Component failure causes
+- Calculates failure probability from component failures
+
+**ETA (Event Tree Analysis)**: Top-down consequence analysis  
+- Root = Initiating event
+- Leaves = Final outcomes
+- Calculates outcome probabilities from event sequences
+
+## Export Formats
+
+- **JSON**: Complete tree data with metadata
+- **XML**: The tree as nested `<Node>` elements (the editor's own layout, not a standard exchange format)
+- **Excel**: Hierarchical spreadsheet with color coding, plus flat **Events** and **Analysis** sheets (1.7)
+- **DOCX report** (1.7, needs the `report` extra): headline, assumptions, diagram, events, cut sets, importance, uncertainty, validation, traceability
+
+## Documentation
+
+- [Quick Start Guide](QUICKSTART.md) - Get running in 3 steps
+- [Build Guide](build/README.md) - Packaging the web app as a standalone executable
+- [User Guide](docs/USER_GUIDE.md) - Complete manual
+- **AI Provider Setup Guides:**
+  - [Microsoft Copilot Setup](docs/MICROSOFT_COPILOT_SETUP.md) - Azure OpenAI configuration
+  - [Multi-Provider Setup](docs/MULTI_PROVIDER_SETUP.md) - OpenAI, Claude, Gemini
+- [ETA Mode](docs/ETA_MODE.md) - Event Tree Analysis
+- [CCF groups (beta factor and alpha factor)](docs/CCF.md) - Common-cause failure groups: formulas, sources, assumptions, worked examples
+- [API Reference](docs/API_REFERENCE.md) - Programming interface
+- [Code Review 2026-09](docs/CODE_REVIEW_2026-09.md) - Known defects, ranked, with fix order
+- [Code Review 2026-10](docs/CODE_REVIEW_2026-10.md) - October 2026 review: what was fixed, what is left open, feature status
+- [Roadmap for mechanical engineers](docs/ROADMAP_MECHANICAL_ENGINEERS.md) - Proposed features and UI changes
+- [Legacy desktop app](desktop/README.md) - The frozen Tkinter fallback and what it does not fix
+
+## Troubleshooting
+
+### AI Assistant Issues
+
+**"AI not configured" error:**
+- Click the ⚙ button and enter your API credentials
+
+**"Connection failed" during test:**
+- Verify your API key is correct and active
+- Check your internet connection
+- Ensure the API endpoint URL is correct
+- For Azure, verify your deployment name is correct
+
+**Slow responses:**
+- Consider using `gpt-4o-mini` for faster responses
+- Check your API rate limits
+
+### General Issues
+
+**Graphviz not found:**
+- *Web app*: the diagram still renders — it is drawn in your browser by a
+  bundled WebAssembly Graphviz. PNG export is then rasterised in the browser
+  instead of natively at 300 dpi, and the capability indicator says so.
+- *Desktop app*: install Graphviz from
+  [graphviz.org](https://graphviz.org/download/), add it to your `PATH`, and
+  restart the application.
+
+**Diagram not displaying:**
+- *Web app*: check the browser console; `/static/vendor/viz-js/viz.js` must load.
+- *Desktop app*: ensure Pillow is installed (`pip install Pillow`) and verify
+  your Graphviz installation.
+
+### Web App Issues
+
+**"Forbidden" / 403 on every action:**
+- The page was opened without this launch's session token. Use the URL the
+  terminal printed, including its `?t=` part. A token is minted per launch, so
+  a URL from a previous run will not work.
+
+**The browser did not open:**
+- Copy the URL from the terminal. Or start with `--no-browser`, which only
+  prints it.
+
+**"Excel export unavailable":**
+- `pip install openpyxl`, then restart the server.
+
+## License
+
+BSD-2 License - Copyright (c) makkiblog.com
+
+## Support
+
+- Issues: [GitHub Issues](https://github.com/Gertrud-Violett/FTA_Editor/issues)
+- Examples: [fta_web/examples/](fta_web/examples/), described under
+  [Example analyses](#example-analyses)

@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""
+Launcher for the FTA Editor web UI.
+
+    python3 fta_web/run.py                  # port 8765, opens a browser
+    python3 fta_web/run.py --port 8800      # another fixed port
+    python3 fta_web/run.py --port 0         # any free port
+    python3 fta_web/run.py --no-browser     # print the URL, open it yourself
+    python3 fta_web/run.py --root ~/trees   # restrict the file sandbox
+
+This is the only supported entry point. It mints the per-launch session token,
+hands it to the browser in the bootstrap URL, and starts a single-process
+server bound to loopback. See security.py for why each of those matters.
+
+It is also the entry script of the frozen build (build/fta_editor.spec), where
+the same flags are spelled ``./fta_editor --port 8765``.
+"""
+import argparse
+import logging
+import socket
+import sys
+import threading
+import time
+import webbrowser
+from pathlib import Path
+from typing import Optional, Tuple
+
+# Make the bare-name imports below work regardless of how this file was
+# invoked (``python3 fta_web/run.py``, an absolute path, or a symlink).
+#
+# Frozen, ``__file__`` points inside the PyInstaller archive rather than at a
+# directory holding sibling modules, so the sys.path entry has to be
+# ``sys._MEIPASS``. This one check is open-coded because it runs *before*
+# runtime_paths is importable in a source checkout; every other frozen/source
+# path decision in the app goes through runtime_paths.py.
+if getattr(sys, "frozen", False):
+    _FTA_WEB_DIR = str(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)).resolve())
+else:
+    _FTA_WEB_DIR = str(Path(__file__).resolve().parent)
+if _FTA_WEB_DIR not in sys.path:
+    sys.path.insert(0, _FTA_WEB_DIR)
+
+import config  # noqa: E402
+import recovery  # noqa: E402
+import security  # noqa: E402
+from app import create_app  # noqa: E402
+
+#: How long the browser-opener waits for the server to accept connections
+#: before giving up and opening the URL anyway.
+_STARTUP_TIMEOUT_S = 10.0
+_STARTUP_POLL_S = 0.05
+
+
+class QuietPing(logging.Filter):
+    """Keep the page's "are you there" request out of the request log.
+
+    A visible tab asks ``GET /api/revision`` every few seconds (main.js), and
+    the development server prints a line for every request. Left alone that
+    is some seven hundred lines an hour, and it scrolls the start-up lines
+    out of the terminal -- the URL among them, which is the only copy the
+    user has when the browser did not open. Only the answered ping is
+    dropped: a refused or failed one is still printed, like every other
+    request.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # a record that cannot be formatted is not ours to judge
+            return True
+        return not ("GET /api/revision " in message and '" 200 ' in message)
+
+
+def _free_port() -> int:
+    """Ask the OS for an unused ephemeral port on the loopback interface.
+
+    Bind-and-release: there is a small window in which another process could
+    take the port before the server binds it. Acceptable for a desktop tool --
+    the failure is a clear "address in use" at startup, not a silent
+    misbinding -- and ``--port`` is there when a fixed port is needed.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((config.HOST, 0))
+        return sock.getsockname()[1]
+
+
+def _port_is_free(port: int) -> bool:
+    """Whether this process could listen on ``port`` right now.
+
+    A bind that is released again, like :func:`_free_port`. Windows lets a
+    second socket bind a port somebody is listening on when it asks for
+    address reuse (and Werkzeug's server asks for it), so the question is put
+    with SO_EXCLUSIVEADDRUSE there: the bind fails whenever anything holds
+    the port. Elsewhere address reuse is the right question: it still fails
+    on a listening port, and it does not fail on a port a server that has
+    just stopped left in TIME_WAIT -- the port the next start should reuse.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+            if exclusive is not None:
+                sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+            else:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((config.HOST, port))
+        except OSError:
+            return False
+    return True
+
+
+def choose_port(requested: Optional[int]) -> Tuple[int, bool]:
+    """``(port, fell_back)`` for the ``--port`` that was given.
+
+    * a number: that port, and a clear failure at startup if it is taken;
+    * ``0``: any free port (what the default was up to 1.8.0);
+    * nothing: ``config.DEFAULT_PORT``, or a free port when that one is taken
+      (``fell_back`` is then true), so that a second copy still starts.
+
+    Why a fixed default: a browser keeps what a page stores (Advanced, the
+    language, the theme, significant figures, the diagram style) per origin,
+    and the port is part of the origin. A new port at every start meant a
+    page with nothing remembered at every start.
+    """
+    if requested is not None:
+        return (requested if requested else _free_port()), False
+    if _port_is_free(config.DEFAULT_PORT):
+        return config.DEFAULT_PORT, False
+    return _free_port(), True
+
+
+def _wait_until_serving(port: int, timeout: float = _STARTUP_TIMEOUT_S) -> bool:
+    """Poll the port until the server accepts a connection."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((config.HOST, port), timeout=0.25):
+                return True
+        except OSError:
+            time.sleep(_STARTUP_POLL_S)
+    return False
+
+
+def _open_browser_when_ready(url: str, port: int) -> None:
+    """Open the bootstrap URL once the socket is live.
+
+    Opening it before the server is listening gives the user a "connection
+    refused" page and a confusing first impression, so wait for the port
+    rather than sleeping a fixed interval.
+    """
+
+    def _worker():
+        if not _wait_until_serving(port):
+            print(
+                "Server did not come up in time; open the URL above manually.",
+                file=sys.stderr,
+            )
+            return
+        try:
+            webbrowser.open(url)
+        except Exception as exc:  # pragma: no cover - platform dependent
+            print("Could not open a browser (%s). Use the URL above." % exc,
+                  file=sys.stderr)
+
+    # Daemon thread: it must never keep the process alive after Ctrl-C.
+    threading.Thread(target=_worker, name="open-browser", daemon=True).start()
+
+
+def _resolve_root(raw: str) -> Path:
+    root = Path(raw).expanduser().resolve()
+    if not root.is_dir():
+        raise SystemExit("--root is not a directory: %s" % root)
+    return root
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        # Frozen, "python3 fta_web/run.py" is not a command the user can type;
+        # --help has to name the executable they actually launched.
+        prog=(
+            Path(sys.executable).name
+            if getattr(sys, "frozen", False)
+            else "fta_web/run.py"
+        ),
+        description="Run the FTA Editor web UI on localhost.",
+        epilog="Batch analysis without a server: quantify, cutsets, importance, mc, "
+               "validate, report. Run '%(prog)s help' for the command list.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="port to listen on (default: %d, or a free port when that one is "
+             "in use; 0: any free port)" % config.DEFAULT_PORT,
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="do not open a browser; just print the URL",
+    )
+    parser.add_argument(
+        "--root",
+        default=None,
+        metavar="DIR",
+        help="root directory for the file sandbox (default: your home directory)",
+    )
+    args = parser.parse_args(argv)
+    if args.port is not None and not (0 <= args.port < 65536):
+        parser.error("--port must be between 0 and 65535")
+    return args
+
+
+def main(argv=None) -> int:
+    # Batch subcommands (``validate x.json`` ...) go to cli.py before any
+    # token, Flask app or browser exists: they must never start the server.
+    # ``help`` and ``--version`` belong to the CLI too (the server has neither).
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and (not raw_argv[0].startswith("-") or raw_argv[0] == "--version"):
+        import cli  # noqa: E402  (bare name: fta_web/ or _MEIPASS is on sys.path)
+
+        if raw_argv[0] == "help":
+            return cli.main(["--help"])
+        if raw_argv[0] in cli.COMMANDS or raw_argv[0] == "--version":
+            return cli.main(raw_argv)
+        # Not a flag and not a command: most likely a mistyped command or a
+        # file given without one. The server takes no positional arguments,
+        # so argparse would only say "unrecognized arguments"; name the
+        # commands instead.
+        print("error: unknown command '%s'. Commands: %s, help. Run with --help "
+              "for the web UI options." % (raw_argv[0], ", ".join(cli.COMMANDS)),
+              file=sys.stderr)
+        return 2
+
+    args = parse_args(argv)
+
+    port, fell_back = choose_port(args.port)
+    fs_root = _resolve_root(args.root) if args.root else config.DEFAULT_FS_ROOT
+
+    # One token per launch. It is never persisted, so quitting the server
+    # invalidates every page that holds it.
+    token = security.generate_token()
+    app = create_app(token=token, port=port, fs_root=fs_root)
+
+    url = "http://%s:%d/?t=%s" % (config.HOST, port, token)
+
+    # Printed in full, including the token: this is the only copy the user can
+    # get if the browser does not open (headless box, SSH, WSL, a locked-down
+    # default browser). The terminal is already as trusted as this process.
+    print("FTA Editor")
+    print("  URL       : %s" % url)
+    print("  Sandbox   : %s" % fs_root)
+    print("  Bound to  : %s:%d (loopback only)" % (config.HOST, port))
+    print("  Auth      : %s header, validated against this launch's token"
+          % config.TOKEN_HEADER)
+    if fell_back:
+        print("  Note      : port %d is in use (another FTA Editor?), so this one is on "
+              "%d; preferences kept by the browser will not carry over."
+              % (config.DEFAULT_PORT, port))
+    print("Press Ctrl-C to stop.")
+    sys.stdout.flush()
+
+    logging.getLogger("werkzeug").addFilter(QuietPing())
+
+    # From here on unsaved work is copied to the per-user folder, and a copy
+    # an earlier run left behind is offered by the page (recovery.py).
+    recovery.start()
+
+    if not args.no_browser:
+        _open_browser_when_ready(url, port)
+
+    try:
+        app.run(
+            host=config.HOST,  # never 0.0.0.0: the file endpoints are unguarded
+                               # against the network, only against the browser.
+            port=port,
+            debug=False,       # the debugger is an RCE console on a port that
+                               # any local page can reach.
+            use_reloader=False,  # the reloader forks a child: two processes,
+                                 # two copies of the editor state, edits lost
+                                 # at random. Never enable it here.
+            threaded=True,      # Flask's default. Requests are served
+                                # concurrently, so shared editor state must be
+                                # mutated under a lock (see state.py).
+        )
+    except KeyboardInterrupt:  # pragma: no cover - interactive
+        print("\nStopped.")
+    finally:
+        # A clean exit: this session leaves no recovery copy behind.
+        recovery.end_session()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

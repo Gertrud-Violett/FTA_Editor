@@ -1,0 +1,193 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F13_trace_fmea.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "t1",
+         "name": "t1",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 1,
+       "share": 0.5341383013480354
+      },
+      {
+       "events": [
+        {
+         "id": "t2",
+         "name": "t2",
+         "q": 0.00872174299196
+        }
+       ],
+       "order": 1,
+       "probability": 0.00872174299196,
+       "rank": 2,
+       "share": 0.4658616986519646
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.0186345255620404,
+     "nonCoherent": false,
+     "rareEvent": 0.01872174299196,
+     "repeatedEvents": [],
+     "total": 2,
+     "treeWalk": 0.018634525562,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F13 trace/FMEA"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F13_trace_fmea.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.99127825700804,
+       "cutSetCount": 1,
+       "fv": 0.5319578723417198,
+       "id": "t1",
+       "name": "t1",
+       "q": 0.01,
+       "raw": 53.66382936183025,
+       "rrw": 2.136559811406773,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.99,
+       "cutSetCount": 1,
+       "fv": 0.46336170638169744,
+       "id": "t2",
+       "name": "t2",
+       "q": 0.00872174299196,
+       "raw": 53.66382936183025,
+       "rrw": 1.8634525562040398,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F13 trace/FMEA"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F13_trace_fmea.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "t1",
+      "t2"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.018634525562040483,
+       0.018634525562040483
+      ],
+      "logBins": false
+     },
+     "mean": 0.018634525562040483,
+     "median": 0.018634525562040483,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.018634525562040483,
+     "p95": 0.018634525562040483,
+     "pointEstimate": 0.018634525562040483,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F13 trace/FMEA"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F13_trace_fmea.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.01,
+       "id": "t1",
+       "model": "fixed",
+       "name": "t1",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.00872174299196,
+       "id": "t2",
+       "model": "rate",
+       "name": "t2",
+       "q": 0.00872174299196
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.018634525562,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.0186345255620404,
+      "nonCoherent": false,
+      "rareEvent": 0.01872174299196,
+      "repeatedEvents": [],
+      "treeWalk": 0.018634525562,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F13 trace/FMEA"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F13_trace_fmea.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "F13 trace/FMEA"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F13_trace_fmea.json"
+}

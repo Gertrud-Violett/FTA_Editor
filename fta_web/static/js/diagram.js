@@ -1,0 +1,1782 @@
+/**
+ * diagram.js -- the interactive diagram panel.
+ *
+ * The desktop app shells out to `json_viewer.py`, rasterises a PNG and shows it
+ * in a Tk canvas (src/FTA_Editor_UI.py:1133-1198). v1.6 keeps the same DOT --
+ * the server hands us `build_dot()` output verbatim -- but renders it to SVG in
+ * the browser with a vendored Graphviz-on-WASM build.
+ *
+ * Doing it as SVG rather than PNG buys three things the desktop cannot do:
+ * crisp zoom at any scale, selectable/searchable label text, and nodes that can
+ * be clicked to drive the selection in the tree.
+ *
+ * Renderers
+ * ---------
+ * `GET /api/dot` reports which renderer the *server* would use. When a native
+ * Graphviz is present the server can rasterise at 300 dpi for PNG export; when
+ * it is not, everything happens here. The panel always states which engine
+ * produced what is on screen, because a user comparing output against the
+ * desktop app needs to know whether it is even the same engine (spec 6.8).
+ *
+ * 1.7 (workstream B)
+ * ------------------
+ *   * Style (Compact boxes | Standard symbols) and Layout (LR | TB) live in the
+ *     Aa popover and persist in `fta.diagram.settings`; both are display-only.
+ *     They travel to /api/dot and /api/render with the sig-fig preference.
+ *   * In the symbols style the Graphviz approximations are replaced with true
+ *     IEC 61025 / NUREG-0492 symbols by fta_symbols.js after sanitizeSvg().
+ *     Export (SVG, canvas PNG, ftaShell.diagramPng) uses that processed SVG.
+ *   * Click-to-select resolves a node's <title> through the response `idMap`
+ *     (every DOT name -> node id, gate/event symbol nodes included) and falls
+ *     back to the sanitizeId mirror below.
+ *   * store.onHighlight outlines the matching nodes (`is-highlighted`),
+ *     store.onOverlay({kind:'fv', values}) fills events on a sequential scale
+ *     with a legend, and `fta:jump` {id} centres a node.
+ */
+import { api, ApiError } from './api.js';
+import { store } from './store.js';
+import { el, clear, injectStyles } from './dialogs.js';
+import { formatProb, getSigFigs } from './numfmt.js';
+import { replaceGateShapes } from './fta_symbols.js';
+import diagramCatalog from './i18n/diagram.js';
+import { scaleColor, overlayMax } from './overlay_scale.js';
+
+function registerCatalog() {
+  try {
+    if (window.ftaShell && typeof window.ftaShell.registerStrings === 'function') {
+      window.ftaShell.registerStrings(diagramCatalog);
+    }
+  } catch (_err) {
+    /* t() below falls back to the catalog itself */
+  }
+}
+registerCatalog();
+
+const DIAGRAM_STYLES = ['compact', 'symbols'];
+/** What the panel draws until the user picks a style in the Aa popover. */
+const DEFAULT_DIAGRAM_STYLE = 'symbols';
+const DIAGRAM_RANKDIRS = ['LR', 'TB'];
+
+const RENDER_DEBOUNCE_MS = 150; // config.RENDER_DEBOUNCE_MS
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 8;
+// Fitting only ever shrinks: a one-node document on a wide screen used to be
+// blown up to ~700%, painting the title in giant letters across the panel.
+// Zooming in past 100% stays available through +, Ctrl+wheel and Ctrl+=.
+const FIT_MAX = 1;
+const FIT_MARGIN_PX = 24;
+
+/**
+ * The zoom that fits a `width` x `height` diagram into a stage of
+ * `stageWidth` x `stageHeight` pixels: shrink to fit, never enlarge past 100%.
+ * Shared by auto-fit (each render, stage resize) and the Fit button / Ctrl+0.
+ */
+export function fitScale(stageWidth, stageHeight, width, height) {
+  const fitted = Math.min((stageWidth - FIT_MARGIN_PX) / width, (stageHeight - FIT_MARGIN_PX) / height);
+  if (!Number.isFinite(fitted)) return FIT_MAX;
+  return Math.min(FIT_MAX, Math.max(ZOOM_MIN, fitted));
+}
+const ZOOM_STEP = 1.1;
+const PAN_SLOP_PX = 4; // movement below this is a click, not a pan
+const WHEEL_NOTCH = 100; // deltaY of one notch of a mouse wheel, in pixels
+
+/** Single WASM instance. It is ~1.1 MB -- never build one per render. */
+let vizPromise = null;
+function getViz() {
+  if (!vizPromise) {
+    vizPromise = import('../vendor/viz-js/viz.js')
+      .then((mod) => mod.instance())
+      .catch((err) => {
+        vizPromise = null; // let a later attempt retry rather than latching the failure
+        throw err;
+      });
+  }
+  return vizPromise;
+}
+
+/**
+ * The symbols style asks for right-angle edges (`splines=ortho`). The
+ * WebAssembly build of Graphviz cannot route them for a large graph: above
+ * some 60 nodes it runs out of memory or fails an assertion, and nothing is
+ * drawn. Native `dot` has no such limit.
+ *
+ * So a graph with more edges than ORTHO_MAX_EDGES (two per node in that
+ * style, about 50 nodes) is laid out with straight segments from the start,
+ * and a smaller one that still fails is laid out again that way. A failed
+ * layout leaves the instance unusable, so it is dropped first.
+ */
+const ORTHO = /\bsplines=ortho\b/;
+const ORTHO_FALLBACK = 'splines=polyline';
+const ORTHO_MAX_EDGES = 100;
+
+export function withoutOrtho(dot) {
+  return String(dot).replace(ORTHO, ORTHO_FALLBACK);
+}
+
+export function wasmSafeDot(dot) {
+  const text = String(dot);
+  if (!ORTHO.test(text)) return text;
+  const edges = (text.match(/ -> /g) || []).length;
+  return edges > ORTHO_MAX_EDGES ? withoutOrtho(text) : text;
+}
+
+async function layoutSvg(dot) {
+  const safe = wasmSafeDot(dot);
+  try {
+    return (await getViz()).renderString(safe, { format: 'svg' });
+  } catch (err) {
+    vizPromise = null;
+    if (!ORTHO.test(safe)) throw err;
+    return (await getViz()).renderString(withoutOrtho(safe), { format: 'svg' });
+  }
+}
+
+function t(key, fallback) {
+  const fn = window.ftaShell && window.ftaShell.t;
+  const out = typeof fn === 'function' ? fn(key) : key;
+  if (out !== key) return out;
+  const lang = window.ftaShell && window.ftaShell.language === 'ja' ? 'ja' : 'en';
+  const own = (diagramCatalog[lang] && diagramCatalog[lang][key]) || (diagramCatalog.en && diagramCatalog.en[key]);
+  return own || fallback;
+}
+
+/** The user's significant-figure preference, through the shell when present. */
+function currentSigFigs() {
+  try {
+    if (window.ftaShell && typeof window.ftaShell.sigFigs === 'function') return window.ftaShell.sigFigs();
+  } catch (_err) {
+    /* fall through */
+  }
+  return getSigFigs();
+}
+
+// ---------------------------------------------------------------------------
+// box sizing: font auto-detect + a manual scale override.
+//
+// The mismatch this exists to close: viz-js (WASM Graphviz) lays out each
+// node's HTML label using its OWN estimate of the named font's metrics, then
+// the browser paints the same text with whatever font it actually resolves
+// "fontname" to. When those two disagree -- most commonly because the
+// requested font is not installed and the browser silently substitutes one
+// with different glyph widths -- the drawn text can crowd or cross the box
+// border that was sized for the *other* font's metrics.
+//
+// Detecting which candidate fonts this browser/OS actually has narrows that
+// gap (both sides now agree on a font that really exists here), and the
+// manual scale is the escape hatch for whatever gap is left: it inflates
+// font size and padding together, which is what grows the box, since a box
+// has no size of its own beyond what its label needs.
+// ---------------------------------------------------------------------------
+
+/** Preference order: Meiryo first per spec, then other common CJK-capable
+ * fonts, ending in a generic family that is always considered "available". */
+const FONT_CANDIDATES = [
+  'Meiryo',
+  'Yu Gothic UI',
+  'Yu Gothic',
+  'Hiragino Sans',
+  'Hiragino Kaku Gothic Pro',
+  'Noto Sans CJK JP',
+  'Noto Sans JP',
+  'MS PGothic',
+  'sans-serif',
+];
+
+const DIAGRAM_SETTINGS_KEY = 'fta.diagram.settings';
+// "Scale" is a count of trailing blank characters appended to every node's
+// text (json_viewer.node_label on the server): a computed pixel/point width
+// was tried twice and still left text spilling past the border in some
+// cases, because it depended on guessing the same unknowable thing -- how
+// wide this exact text renders in whichever font actually gets used. Padding
+// spaces are measured by that same (mis-)guess, so the box grows by exactly
+// as much room as they need, no separate width arithmetic required.
+const SCALE_MIN = 0;
+const SCALE_MAX = 30;
+const SCALE_DEFAULT = 4;
+
+function readDiagramSettings() {
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(DIAGRAM_SETTINGS_KEY);
+  } catch (_err) {
+    raw = null;
+  }
+  // fontChoice '' means "auto-detect"; popoverLeft/Top null means "not moved
+  // yet, use the default lower-right pin". A browser with nothing saved gets
+  // the gate symbols; a saved style, compact included, is kept as it is.
+  const out = {
+    fontChoice: '', scale: SCALE_DEFAULT, popoverLeft: null, popoverTop: null,
+    style: DEFAULT_DIAGRAM_STYLE, rankdir: 'LR',
+  };
+  if (!raw) return out;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.fontChoice === 'string') out.fontChoice = parsed.fontChoice;
+    const scale = Math.round(Number(parsed && parsed.scale));
+    if (Number.isFinite(scale)) out.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, scale));
+    const left = Number(parsed && parsed.popoverLeft);
+    const top = Number(parsed && parsed.popoverTop);
+    if (Number.isFinite(left)) out.popoverLeft = left;
+    if (Number.isFinite(top)) out.popoverTop = top;
+    if (parsed && DIAGRAM_STYLES.indexOf(parsed.style) !== -1) out.style = parsed.style;
+    if (parsed && DIAGRAM_RANKDIRS.indexOf(parsed.rankdir) !== -1) out.rankdir = parsed.rankdir;
+  } catch (_err) {
+    /* corrupt entry: keep the defaults */
+  }
+  return out;
+}
+
+function writeDiagramSettings(settings) {
+  try {
+    window.localStorage.setItem(DIAGRAM_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (_err) {
+    /* private mode: the choice just does not persist across reloads */
+  }
+}
+
+/**
+ * True when the diagram should be drawn dark. Reads the same signal main.js
+ * sets on `<html data-theme>` (main.js owns the theme cycle; this only reads
+ * its result) -- 'system' leaves the attribute off, so that case falls
+ * through to the OS/browser preference via `prefers-color-scheme`.
+ */
+function isDarkMode() {
+  const attr = document.documentElement.getAttribute('data-theme');
+  if (attr === 'dark') return true;
+  if (attr === 'light') return false;
+  try {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  } catch (_err) {
+    return false;
+  }
+}
+
+/** First candidate this browser reports as available, cached for the page's
+ * lifetime -- `document.fonts.check` is cheap but there is no reason to
+ * repeat it on every render. */
+let detectedFontCache = null;
+function detectFont() {
+  if (detectedFontCache) return detectedFontCache;
+  let found = FONT_CANDIDATES[FONT_CANDIDATES.length - 1]; // 'sans-serif': always matches
+  try {
+    for (const name of FONT_CANDIDATES) {
+      if (name === 'sans-serif') break;
+      if (document.fonts && document.fonts.check(`14px "${name}"`)) {
+        found = name;
+        break;
+      }
+    }
+  } catch (_err) {
+    /* document.fonts unsupported (very old browser): fall back to generic */
+  }
+  detectedFontCache = found;
+  return found;
+}
+
+/**
+ * Synchronous SHA-1 (hex). The WebCrypto digest is async and the id map is
+ * built inside a click handler, so a small in-line implementation is used;
+ * inputs are node ids, never more than a few hundred bytes.
+ */
+function sha1Hex(text) {
+  const bytes = new TextEncoder().encode(text);
+  const ml = bytes.length;
+  const wordCount = (((ml + 8) >> 6) << 4) + 16;
+  const words = new Uint32Array(wordCount);
+  for (let i = 0; i < ml; i += 1) words[i >> 2] |= bytes[i] << (24 - (i % 4) * 8);
+  words[ml >> 2] |= 0x80 << (24 - (ml % 4) * 8);
+  words[wordCount - 1] = ml * 8;
+
+  let h0 = 0x67452301;
+  let h1 = 0xefcdab89;
+  let h2 = 0x98badcfe;
+  let h3 = 0x10325476;
+  let h4 = 0xc3d2e1f0;
+  const w = new Uint32Array(80);
+  for (let block = 0; block < wordCount; block += 16) {
+    for (let i = 0; i < 16; i += 1) w[i] = words[block + i];
+    for (let i = 16; i < 80; i += 1) {
+      const x = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+      w[i] = (x << 1) | (x >>> 31);
+    }
+    let a = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i += 1) {
+      let f;
+      let k;
+      if (i < 20) { f = (b & c) | (~b & d); k = 0x5a827999; }
+      else if (i < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
+      else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
+      else { f = b ^ c ^ d; k = 0xca62c1d6; }
+      const next = (((a << 5) | (a >>> 27)) + f + e + k + w[i]) >>> 0;
+      e = d;
+      d = c;
+      c = (b << 30) | (b >>> 2);
+      b = a;
+      a = next;
+    }
+    h0 = (h0 + a) >>> 0;
+    h1 = (h1 + b) >>> 0;
+    h2 = (h2 + c) >>> 0;
+    h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0;
+  }
+  return [h0, h1, h2, h3, h4].map((v) => v.toString(16).padStart(8, '0')).join('');
+}
+
+/**
+ * Mirror of `json_viewer.sanitize_id`: an id made only of [0-9A-Za-z_] is
+ * kept; any other id is replaced character-for-character and suffixed with
+ * the first 8 hex digits of its SHA-1, so "a.b" and "a b" no longer collide.
+ * Graphviz writes the sanitized id into each node's <title>, which is what
+ * click-to-select matches against.
+ */
+function sanitizeId(value) {
+  const raw = String(value);
+  const clean = raw.replace(/[^0-9A-Za-z_]/g, '_');
+  if (clean === raw) return raw;
+  return clean + '_' + sha1Hex(raw).slice(0, 8);
+}
+
+/**
+ * Centre every node label in its box and keep it inside.
+ *
+ * Graphviz sizes and positions label text from its own font metrics
+ * (Times-like in the WASM build), which run 20-25% narrower than the fonts
+ * the page actually draws with (Meiryo, Segoe UI). Server-side padding
+ * widens the boxes, but a start-anchored label still drifts off-centre and
+ * very long rows can still spill. So, per label: trim Graphviz's padding
+ * spaces, anchor the text at the centre of the smallest shape that contains
+ * it, and only if the real rendered width still exceeds that shape, squeeze
+ * it with textLength. Gate/event symbol nodes are left alone.
+ */
+const LABEL_MARGIN = 4; // px of air kept on each side of a squeezed label
+
+function fitLabels(svg) {
+  const nodes = svg.querySelectorAll('g.node');
+  for (const g of nodes) {
+    const cls = g.getAttribute('class') || '';
+    if (/\bfta-(gate|event)\b/.test(cls)) continue;
+    const shapes = [];
+    for (const s of g.querySelectorAll('polygon, ellipse')) {
+      let b;
+      try { b = s.getBBox(); } catch (_) { continue; }
+      if (b && b.width > 0 && b.height > 0) shapes.push(b);
+    }
+    if (!shapes.length) continue; // hidden panel: nothing measurable yet
+    for (const text of g.querySelectorAll('text')) {
+      const raw = text.textContent || '';
+      const trimmed = raw.replace(/^[\s ]+|[\s ]+$/g, '');
+      if (!trimmed) continue;
+      let tb;
+      try { tb = text.getBBox(); } catch (_) { continue; }
+      const cy = tb.y + tb.height / 2;
+      const cx = tb.x + tb.width / 2;
+      let cell = null;
+      for (const b of shapes) {
+        if (cy < b.y || cy > b.y + b.height) continue;
+        if (cx < b.x - tb.width || cx > b.x + b.width + tb.width) continue;
+        if (!cell || b.width * b.height < cell.width * cell.height) cell = b;
+      }
+      if (!cell) continue;
+      if (trimmed !== raw) text.textContent = trimmed;
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('x', String(cell.x + cell.width / 2));
+      text.removeAttribute('textLength');
+      let width = 0;
+      try { width = text.getComputedTextLength(); } catch (_) { width = 0; }
+      const room = cell.width - 2 * LABEL_MARGIN;
+      if (width > room && room > 0) {
+        text.setAttribute('textLength', String(room));
+        text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      }
+    }
+  }
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * SVG elements dropped with everything inside them. The vendored Graphviz
+ * writes none of these for this app's DOT (svg, g, title, polygon, ellipse,
+ * path and text are all it emits). Each can run script, navigate, restyle the
+ * whole page or load from off the box: `set`/`animate*` by rewriting an href
+ * after it was vetted, `style` for the entire document, and a lower-case
+ * `foreignobject` because the HTML inside it stays live.
+ */
+const UNSAFE_SVG_ELEMENTS = new Set([
+  'script', 'foreignobject', 'style', 'set', 'animate', 'animatemotion',
+  'animatetransform', 'discard', 'handler', 'listener',
+]);
+
+/** Same-document references only: the diagram never links to or loads anything. */
+const SAFE_HREF = /^#/;
+
+/** CSS escapes decoded (`u\72 l(` is `url(`), so a reference cannot hide behind them. */
+function cssUnescape(text) {
+  return String(text).replace(/\\([0-9a-fA-F]{1,6})\s?|\\([\s\S])/g, (_m, hex, ch) => {
+    if (hex === undefined) return ch;
+    const code = parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '\ufffd';
+  });
+}
+
+/** True when an attribute value points outside this document through url(...). */
+function hasForeignUrl(value) {
+  const pattern = /url\s*\(\s*['"]?\s*([^'")\s]*)/gi;
+  const text = cssUnescape(value);
+  let match;
+  while ((match = pattern.exec(text))) {
+    if (match[1].charAt(0) !== '#') return true;
+  }
+  return false;
+}
+
+/**
+ * Defence in depth on the Graphviz output: node names are escaped on the
+ * server, but the SVG is still imported into the live document, so anything
+ * that could run script, navigate, hijack the page or reach off the box is
+ * stripped here regardless. Every element outside the SVG namespace goes --
+ * an XHTML <iframe srcdoc>, <base href> or <link> placed in the SVG is live
+ * HTML once imported -- as do the elements above, event-handler and style
+ * attributes, hrefs that are not same-document fragments, and url()
+ * references to anything but a fragment.
+ */
+function sanitizeSvg(root) {
+  if (!root || root.namespaceURI !== SVG_NS) throw new Error('Graphviz returned invalid SVG.');
+  const pending = [root];
+  while (pending.length) {
+    const node = pending.pop();
+    for (const attr of Array.from(node.attributes)) {
+      const local = String(attr.localName || attr.name).toLowerCase();
+      if (local.startsWith('on') || local === 'style') node.removeAttributeNode(attr);
+      else if (local === 'href') {
+        if (!SAFE_HREF.test(attr.value.trim())) node.removeAttributeNode(attr);
+      } else if (hasForeignUrl(attr.value)) node.removeAttributeNode(attr);
+    }
+    for (const child of Array.from(node.children)) {
+      const unsafe =
+        child.namespaceURI !== SVG_NS || UNSAFE_SVG_ELEMENTS.has(String(child.localName).toLowerCase());
+      if (unsafe) child.remove();
+      else pending.push(child);
+    }
+  }
+}
+
+/**
+ * sanitized -> real id. Sanitizing is lossy ("a.b" and "a b" collide), so a
+ * collision is recorded and left unmapped rather than resolved arbitrarily:
+ * selecting the wrong node is worse than selecting none.
+ */
+function buildIdMap(flat) {
+  const map = new Map();
+  const collided = new Set();
+  for (const entry of flat) {
+    const real = String(entry.id);
+    const key = sanitizeId(real);
+    if (map.has(key) && map.get(key) !== real) collided.add(key);
+    else map.set(key, real);
+  }
+  for (const key of collided) map.delete(key);
+  return map;
+}
+
+
+/** The node's main shape: the event box / table background, never a symbol. */
+function isMainGroup(g) {
+  const cls = g.getAttribute('class') || '';
+  if (/\bfta-event-conditioning\b/.test(cls)) return true;
+  return !/\bfta-(gate|event)\b/.test(cls);
+}
+
+function mainShape(g) {
+  for (const child of Array.from(g.children)) {
+    const tag = child.localName || child.nodeName;
+    if (tag === 'polygon' || tag === 'ellipse' || tag === 'path') return child;
+  }
+  return null;
+}
+
+export function initDiagram(container) {
+  if (!container) throw new Error('initDiagram(container): container is required');
+  registerCatalog();
+
+  injectStyles('fta-diagram-styles', STYLES);
+  clear(container);
+
+  const status = el('div', { class: 'diagram__status', role: 'status', 'aria-live': 'polite' });
+  // Shown while the top box carries the MCUB headline instead of the root's
+  // tree-walk value (/api/dot `rootHeadline`): what the two numbers are.
+  const caption = el('div', { class: 'diagram__caption', hidden: true });
+  let captionOn = false;
+  let captionCcf = false; // CCF gate values on show (F2): the caption says what they are
+  const stage = el('div', { class: 'diagram__stage', tabindex: '0' });
+  const canvas = el('div', { class: 'diagram__canvas' });
+  stage.appendChild(canvas);
+
+  const zoomLabel = el('span', { class: 'diagram__zoom' }, '100%');
+  const btn = (label, key, fallback, onClick) => {
+    const b = el('button', { type: 'button', class: 'diagram__btn', onclick: onClick }, label);
+    b.dataset.i18nTitle = key;      // so retitleToolbar() and a language switch can find it
+    b._fallback = fallback;
+    return b;
+  };
+
+  // ---- box-sizing popover (font auto-detect + manual scale) --------------
+  const boxSettings = readDiagramSettings();
+
+  const fontAutoOption = el('option', { value: '', text: t('diagram17.fontAuto', 'Auto-detect') });
+  const fontSystemOption = el('option', { value: 'sans-serif', text: t('diagram17.fontSystem', 'System default') });
+  const fontSelect = el('select', { 'aria-label': t('diagram.fontLabel', 'Font') }, [
+    fontAutoOption,
+    ...FONT_CANDIDATES.filter((n) => n !== 'sans-serif').map((n) => el('option', { value: n, text: n })),
+    fontSystemOption,
+  ]);
+  fontSelect.value = boxSettings.fontChoice;
+
+  const scaleInput = el('input', {
+    type: 'number',
+    min: String(SCALE_MIN),
+    max: String(SCALE_MAX),
+    step: '1',
+    'aria-label': t('diagram.scaleLabel', 'Box padding (0-30)'),
+    value: String(boxSettings.scale),
+  });
+
+  const fontDetectedNote = el('span', { class: 'diagram__fontnote' });
+
+  const styleSelect = el('select', { 'aria-label': 'Diagram style' });
+  const layoutSelect = el('select', { 'aria-label': 'Diagram layout' });
+  const styleLabel = el('span');
+  const layoutLabel = el('span');
+  function relabelLayoutControls() {
+    clear(styleSelect);
+    styleSelect.appendChild(el('option', { value: 'compact', text: t('diagram17.styleCompact', 'Compact boxes') }));
+    styleSelect.appendChild(el('option', { value: 'symbols', text: t('diagram17.styleSymbols', 'Standard symbols') }));
+    styleSelect.value = boxSettings.style;
+    clear(layoutSelect);
+    layoutSelect.appendChild(el('option', { value: 'LR', text: t('diagram17.layoutLR', 'Left → right') }));
+    layoutSelect.appendChild(el('option', { value: 'TB', text: t('diagram17.layoutTB', 'Top → down') }));
+    layoutSelect.value = boxSettings.rankdir;
+    styleLabel.textContent = t('diagram17.style', 'Style');
+    layoutLabel.textContent = t('diagram17.layout', 'Layout');
+    styleSelect.setAttribute('aria-label', t('diagram17.style', 'Style'));
+    layoutSelect.setAttribute('aria-label', t('diagram17.layout', 'Layout'));
+  }
+  relabelLayoutControls();
+
+  function refreshFontNote() {
+    const active = boxSettings.fontChoice ? boxSettings.fontChoice : detectFont();
+    fontDetectedNote.textContent = boxSettings.fontChoice
+      ? ''
+      : t('diagram.fontAutoUsing', 'Detected: ') + active;
+  }
+
+  const popoverCloseBtn = el('button', {
+    type: 'button',
+    class: 'diagram__popoverHead__close',
+    'aria-label': t('diagram.fontSettingsClose', 'Close'),
+    text: '×',
+    onclick: () => closePopover(true),
+  });
+  const popoverTitle = el('span', { text: t('diagram.fontSettings', 'Diagram settings') });
+  const fontLabel = el('span', { text: t('diagram.fontLabel', 'Font') });
+  const scaleLabel = el('span', { text: t('diagram.scaleLabel', 'Box padding (0-30)') });
+  const scaleHint = el('p', { class: 'diagram__popoverHint' }, [
+    t('diagram.scaleHint', 'Blank space added around the text of every box. Raise it if text spills out of a box.'),
+  ]);
+  /** The popover's fixed texts, again after a language switch. */
+  function relabelPopover() {
+    popoverTitle.textContent = t('diagram.fontSettings', 'Diagram settings');
+    popoverCloseBtn.setAttribute('aria-label', t('diagram.fontSettingsClose', 'Close'));
+    fontLabel.textContent = t('diagram.fontLabel', 'Font');
+    scaleLabel.textContent = t('diagram.scaleLabel', 'Box padding (0-30)');
+    scaleHint.textContent = t('diagram.scaleHint', 'Blank space added around the text of every box. Raise it if text spills out of a box.');
+    settingsText.textContent = t('diagram3.settingsButton', 'Settings');
+    fontAutoOption.textContent = t('diagram17.fontAuto', 'Auto-detect');
+    fontSystemOption.textContent = t('diagram17.fontSystem', 'System default');
+    fontSelect.setAttribute('aria-label', t('diagram.fontLabel', 'Font'));
+    scaleInput.setAttribute('aria-label', t('diagram.scaleLabel', 'Box padding (0-30)'));
+  }
+  const popoverHead = el('div', { class: 'diagram__popoverHead' }, [
+    popoverTitle,
+    popoverCloseBtn,
+  ]);
+
+  const popover = el(
+    'div',
+    { class: 'diagram__popover', hidden: true },
+    [
+      popoverHead,
+      el('label', { class: 'diagram__popoverRow' }, [styleLabel, styleSelect]),
+      el('label', { class: 'diagram__popoverRow' }, [layoutLabel, layoutSelect]),
+      el('label', { class: 'diagram__popoverRow' }, [fontLabel, fontSelect]),
+      fontDetectedNote,
+      el('label', { class: 'diagram__popoverRow' }, [scaleLabel, scaleInput]),
+      scaleHint,
+    ]
+  );
+
+  // The button that opens it says what it is. It was "Aa", titled "Font &
+  // box size", and the two settings people look for (Style and Layout) were
+  // behind it with nothing to say so.
+  const settingsText = el('span', { text: t('diagram3.settingsButton', 'Settings') });
+  const aaBtn = btn('', 'diagram.fontSettings', 'Diagram settings', () => {
+    if (popover.hidden) openPopover();
+    else closePopover();
+  });
+  aaBtn.dataset.role = 'diagram-settings';
+  aaBtn.setAttribute('aria-haspopup', 'dialog');
+  aaBtn.append(el('span', { 'aria-hidden': 'true', text: '⚙ ' }), settingsText);
+
+  const POPOVER_MARGIN = 8;
+
+  function clampPopoverPosition(left, top, width, height) {
+    const maxLeft = Math.max(POPOVER_MARGIN, window.innerWidth - width - POPOVER_MARGIN);
+    const maxTop = Math.max(POPOVER_MARGIN, window.innerHeight - height - POPOVER_MARGIN);
+    return {
+      left: Math.max(POPOVER_MARGIN, Math.min(left, maxLeft)),
+      top: Math.max(POPOVER_MARGIN, Math.min(top, maxTop)),
+    };
+  }
+
+  function placePopover(left, top) {
+    const width = popover.offsetWidth;
+    const height = popover.offsetHeight;
+    const pos = clampPopoverPosition(left, top, width, height);
+    popover.style.left = `${pos.left}px`;
+    popover.style.top = `${pos.top}px`;
+    return pos;
+  }
+
+  /**
+   * Positioned as `position: fixed` and appended straight to `document.body`
+   * (see below), not inside the toolbar: the toolbar lives inside
+   * `#diagram-root`, which -- like every `.panel` -- has `overflow: hidden`
+   * so a long diagram or a wide SVG cannot blow out the surrounding layout.
+   * A merely `position: absolute` popover would be clipped by that the
+   * moment the diagram panel is narrower than the popover, which is exactly
+   * what made this menu vanish or run off-screen before. Anchoring by
+   * `getBoundingClientRect()` and clamping to the viewport keeps it fully
+   * visible regardless of panel width.
+   *
+   * Default position is the diagram panel's lower-right corner (pinned
+   * there, as requested); once the user drags it, that spot is remembered
+   * (in localStorage) and used instead until they drag it again.
+   */
+  function openPopover() {
+    popover.hidden = false;
+    if (boxSettings.popoverLeft !== null && boxSettings.popoverTop !== null) {
+      placePopover(boxSettings.popoverLeft, boxSettings.popoverTop);
+      return;
+    }
+    const stageRect = stage.getBoundingClientRect();
+    const width = popover.offsetWidth;
+    const height = popover.offsetHeight;
+    placePopover(
+      stageRect.right - width - POPOVER_MARGIN,
+      stageRect.bottom - height - POPOVER_MARGIN
+    );
+  }
+
+  function closePopover(returnFocus) {
+    const wasOpen = !popover.hidden;
+    popover.hidden = true;
+    if (wasOpen && returnFocus) aaBtn.focus();
+  }
+
+  // Escape closes the popover and hands focus back to the Aa button. Handled
+  // here (and stopped) while focus is inside it, so the shell's global Escape
+  // -- toast dismissal -- does not also fire; an open native <select> list
+  // swallows its own Escape before this sees it.
+  popover.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape' || popover.hidden) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    closePopover(true);
+  });
+  // Escape with focus elsewhere (the Aa button, the stage): the shell asks
+  // first through the cancelable fta:escape; an open popover claims it.
+  const onShellEscape = (ev) => {
+    if (popover.hidden) return;
+    const inside = popover.contains(document.activeElement) || document.activeElement === aaBtn;
+    closePopover(inside);
+    ev.preventDefault();
+  };
+  window.addEventListener('fta:escape', onShellEscape);
+
+  // ---- dragging: pointerdown on the header moves the whole popover -------
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let draggingPopover = false;
+  popoverHead.addEventListener('pointerdown', (ev) => {
+    if (ev.target === popoverCloseBtn || ev.button !== 0) return;
+    draggingPopover = true;
+    const rect = popover.getBoundingClientRect();
+    dragOffsetX = ev.clientX - rect.left;
+    dragOffsetY = ev.clientY - rect.top;
+    popoverHead.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+  });
+  popoverHead.addEventListener('pointermove', (ev) => {
+    if (!draggingPopover) return;
+    const pos = placePopover(ev.clientX - dragOffsetX, ev.clientY - dragOffsetY);
+    boxSettings.popoverLeft = pos.left;
+    boxSettings.popoverTop = pos.top;
+  });
+  const endPopoverDrag = (ev) => {
+    if (!draggingPopover) return;
+    draggingPopover = false;
+    try { popoverHead.releasePointerCapture(ev.pointerId); } catch (_err) { /* already released */ }
+    writeDiagramSettings(boxSettings);
+  };
+  popoverHead.addEventListener('pointerup', endPopoverDrag);
+  popoverHead.addEventListener('pointercancel', endPopoverDrag);
+
+  fontSelect.addEventListener('change', () => {
+    boxSettings.fontChoice = fontSelect.value;
+    writeDiagramSettings(boxSettings);
+    refreshFontNote();
+    schedule();
+  });
+  styleSelect.addEventListener('change', () => {
+    boxSettings.style = DIAGRAM_STYLES.indexOf(styleSelect.value) !== -1 ? styleSelect.value : 'compact';
+    writeDiagramSettings(boxSettings);
+    resetView = true;
+    schedule();
+  });
+  layoutSelect.addEventListener('change', () => {
+    boxSettings.rankdir = DIAGRAM_RANKDIRS.indexOf(layoutSelect.value) !== -1 ? layoutSelect.value : 'LR';
+    writeDiagramSettings(boxSettings);
+    resetView = true;
+    schedule();
+  });
+  scaleInput.addEventListener('change', () => {
+    const value = Math.round(Number(scaleInput.value));
+    boxSettings.scale = Number.isFinite(value)
+      ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, value))
+      : SCALE_DEFAULT;
+    scaleInput.value = String(boxSettings.scale);
+    writeDiagramSettings(boxSettings);
+    schedule();
+  });
+  const onDocClickClosePopover = (ev) => {
+    if (popover.hidden) return;
+    if (popover.contains(ev.target) || aaBtn.contains(ev.target)) return;
+    closePopover();
+  };
+  document.addEventListener('click', onDocClickClosePopover);
+  // A resize can invalidate the position this was last opened at (or the
+  // panel it belongs to may no longer even be on screen); closing rather
+  // than repositioning avoids a popover stranded over the wrong panel.
+  const onWindowResizeClosePopover = () => closePopover();
+  window.addEventListener('resize', onWindowResizeClosePopover);
+  refreshFontNote();
+  // Appended to <body>, not the toolbar -- see openPopover()'s comment.
+  document.body.appendChild(popover);
+
+  const toolbar = el('div', { class: 'diagram__toolbar' }, [
+    btn('−', 'diagram.zoomOut', 'Zoom out', () => zoomBy(1 / ZOOM_STEP)),
+    zoomLabel,
+    btn('+', 'diagram.zoomIn', 'Zoom in', () => zoomBy(ZOOM_STEP)),
+    btn('⤢', 'diagram.fit', 'Fit to window', () => fit()),
+    btn('1:1', 'diagram3.actualSize', 'Actual size (100%)', () => zoomTo(1)),
+    btn('◎', 'diagram3.toSelection', 'Show the selected node at a readable size', () => showSelection()),
+    el('span', { class: 'diagram__spacer' }),
+    aaBtn,
+    btn('SVG', 'diagram.exportSvg', 'Export as SVG', () => exportSvg()),
+    btn('PNG', 'diagram.exportPng', 'Export as PNG', () => exportPng()),
+  ]);
+
+  function retitleToolbar() {
+    for (const b of toolbar.querySelectorAll('button[data-i18n-title]')) {
+      const label = t(b.dataset.i18nTitle, b._fallback);
+      b.title = label;
+      b.setAttribute('aria-label', label);
+    }
+  }
+  retitleToolbar();
+
+  container.appendChild(toolbar);
+  container.appendChild(caption);
+  container.appendChild(stage);
+  container.appendChild(status);
+
+  function renderCaption() {
+    caption.hidden = !(captionOn || captionCcf);
+    caption.textContent = captionCcf
+      ? t('diagram.ccfGates', 'Boxes above or linking to a CCF member show the min-cut upper bound (MCUB) of the expanded tree, or n/a (CCF) when the cut sets are incomplete. Other boxes show tree-walk values. indep. = independent part.')
+      : captionOn
+      ? t('diagram17.rootMcub', 'Top box: top-event probability by MCUB (repeated events counted once), with its tree-walk value. Other boxes: tree-walk values.')
+      : '';
+  }
+
+  /** The font/scale to actually send with this render -- the single place
+   * both /api/dot and /api/render's native path read from, so the on-screen
+   * preview and any exported file always agree on box sizing. */
+  function effectiveBoxSettings() {
+    return {
+      font: boxSettings.fontChoice || detectFont(),
+      scale: boxSettings.scale,
+      dark: isDarkMode(),
+      style: boxSettings.style,
+      rankdir: boxSettings.rankdir,
+      sigFigs: currentSigFigs(),
+    };
+  }
+
+  /**
+   * The same settings for a file: always the light colours. A picture goes
+   * into a report or a slide with a white page behind it, whatever theme the
+   * editor is in; the dark preview exported as it was gave a dark PNG with a
+   * white strip where the canvas was larger than the drawing.
+   */
+  function exportBoxSettings() {
+    return { ...effectiveBoxSettings(), dark: false };
+  }
+
+  function dotUrl(box) {
+    const hideZero = !!(window.ftaShell && window.ftaShell.hideZero);
+    return `/dot?hideZero=${hideZero ? 'true' : 'false'}&font=${encodeURIComponent(box.font)}` +
+      `&scale=${box.scale}&dark=${box.dark ? 'true' : 'false'}` +
+      `&style=${encodeURIComponent(box.style)}&rankdir=${encodeURIComponent(box.rankdir)}` +
+      `&sigFigs=${encodeURIComponent(box.sigFigs)}`;
+  }
+
+  let scale = 1;
+  let tx = 0;
+  let ty = 0;
+  let svgEl = null;
+  let lastSvgText = '';
+  // Set once a diagram is drawn (the fitted, symbol-processed SVG as text).
+  // Exports are built from the live SVG when they are asked for, see
+  // buildExportSvg(); this only says that there is something to export.
+  let exportSvgText = '';
+  let renderedDark = false;      // the preview on screen was laid out in dark colours
+  let dotIdMap = new Map();      // DOT node name -> node id, from /api/dot
+  let fallbackIdMap = null;      // sanitizeId mirror, built lazily per render
+  let resetView = false;         // re-fit after a style/layout switch
+  // True until the user zooms, pans or jumps: each render then re-fits, so a
+  // diagram that grows from one box (fit at 400%) stays in view instead of
+  // spilling off the stage at the old zoom.
+  let autoFit = true;
+  let pendingJump = null;
+  let pendingReveal = null;      // a selection made while a new diagram was on its way
+  let renderer = 'wasm';
+  let timer = null;
+  let generation = 0;
+  let destroyed = false;
+
+  const metaHost = document.getElementById('diagram-meta');
+
+  function applyTransform() {
+    canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    zoomLabel.textContent = `${Math.round(scale * 100)}%`;
+  }
+
+  /**
+   * The point a zoom without a cursor holds still (the + and - buttons,
+   * Ctrl +/-): the selected node when it is on the stage, else the middle of
+   * the stage. Zooming about the canvas's top-left corner, as this did, slid
+   * the diagram out of view to the lower right within a few presses.
+   */
+  function zoomAnchor() {
+    const view = stage.getBoundingClientRect();
+    const selected = svgEl ? svgEl.querySelector('g.node.is-selected') : null;
+    if (selected) {
+      const box = selected.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      if (x >= view.left && x <= view.right && y >= view.top && y <= view.bottom) return { x, y };
+    }
+    return { x: view.left + view.width / 2, y: view.top + view.height / 2 };
+  }
+
+  function zoomBy(factor, originX, originY) {
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale * factor));
+    autoFit = false;
+    if (next === scale) return;
+    // Keep one point fixed while zooming: the one under the cursor, or
+    // zoomAnchor() when there is no cursor to go by.
+    const anchor = typeof originX === 'number' ? { x: originX, y: originY } : zoomAnchor();
+    const rect = stage.getBoundingClientRect();
+    const px = anchor.x - rect.left;
+    const py = anchor.y - rect.top;
+    tx = px - ((px - tx) * next) / scale;
+    ty = py - ((py - ty) * next) / scale;
+    scale = next;
+    applyTransform();
+  }
+
+  /** Set the zoom to exactly `next` (1 = 100%), about zoomAnchor(). */
+  function zoomTo(next) {
+    if (!svgEl) return;
+    if (scale === next) {
+      autoFit = false;
+      return;
+    }
+    zoomBy(next / scale);
+    scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next)); // no 99.99999% from the division
+    applyTransform();
+  }
+
+  /** The main box of node `id` in the diagram on screen, or null. */
+  function mainGroupOf(id) {
+    const wanted = String(id);
+    const found = nodeGroups().find(({ g, id: gid }) => gid === wanted && isMainGroup(g));
+    return found ? found.g : null;
+  }
+
+  /**
+   * Move the diagram by the least that puts node `id` wholly on the stage
+   * (centred along an axis it is too large for). The zoom is not touched.
+   * Selecting a row in the tree did nothing for a zoomed diagram: the node
+   * was outlined somewhere off the stage. @returns {boolean} true when moved.
+   */
+  const REVEAL_MARGIN_PX = 8;
+  function panIntoView(id) {
+    const g = svgEl ? mainGroupOf(id) : null;
+    if (!g) return false;
+    const box = g.getBoundingClientRect();
+    const view = stage.getBoundingClientRect();
+    if (!view.width || !view.height || !box.width) return false;
+    const shift = (lo, hi, viewLo, viewHi) => {
+      const room = viewHi - viewLo - 2 * REVEAL_MARGIN_PX;
+      if (hi - lo > room) return (viewLo + viewHi) / 2 - (lo + hi) / 2;
+      if (lo < viewLo + REVEAL_MARGIN_PX) return viewLo + REVEAL_MARGIN_PX - lo;
+      if (hi > viewHi - REVEAL_MARGIN_PX) return viewHi - REVEAL_MARGIN_PX - hi;
+      return 0;
+    };
+    const dx = shift(box.left, box.right, view.left, view.right);
+    const dy = shift(box.top, box.bottom, view.top, view.bottom);
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return false;
+    autoFit = false;
+    tx += dx;
+    ty += dy;
+    applyTransform();
+    return true;
+  }
+
+  /**
+   * The selected node in the middle of the stage, at 100% or the current
+   * zoom if that is larger. With nothing selected (or the node not drawn,
+   * under Hide Zero), the whole diagram.
+   */
+  function showSelection() {
+    const id = store.selectedId;
+    const g = svgEl && id !== null && id !== undefined ? mainGroupOf(id) : null;
+    if (!g) {
+      fit();
+      return;
+    }
+    autoFit = false;
+    const next = Math.min(ZOOM_MAX, Math.max(1, scale));
+    const view = stage.getBoundingClientRect();
+    const box = g.getBoundingClientRect();
+    // The node's centre in diagram coordinates, then where the stage centre is.
+    const cx = (box.left + box.width / 2 - view.left - tx) / scale;
+    const cy = (box.top + box.height / 2 - view.top - ty) / scale;
+    scale = next;
+    tx = view.width / 2 - cx * scale;
+    ty = view.height / 2 - cy * scale;
+    applyTransform();
+  }
+
+  function fit() {
+    if (!svgEl) return;
+    const rect = stage.getBoundingClientRect();
+    const w = svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width
+      ? svgEl.viewBox.baseVal.width
+      : svgEl.getBoundingClientRect().width / (scale || 1);
+    const h = svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.height
+      ? svgEl.viewBox.baseVal.height
+      : svgEl.getBoundingClientRect().height / (scale || 1);
+    if (!w || !h) return;
+    autoFit = true;
+    scale = fitScale(rect.width, rect.height, w, h);
+    tx = (rect.width - w * scale) / 2;
+    ty = 12;
+    applyTransform();
+  }
+
+  // ---- pan ---------------------------------------------------------------
+  // Pointer capture is taken only once the pointer has actually MOVED past
+  // PAN_SLOP_PX. Capturing on pointerdown -- which is what this did until
+  // 1.6.4 -- retargets the compatibility mouse events, so the `click` that
+  // follows is dispatched at the stage <div> instead of the <g class="node">
+  // that was pressed, and click-to-select below could never find a node.
+  let pressing = false;   // left button is down inside the stage
+  let dragging = false;   // ...and it has moved far enough to be a pan
+  let dragX = 0;
+  let dragY = 0;
+  let pressX = 0;
+  let pressY = 0;
+  let pressNode = null;   // the <g class="node"> under pointerdown, if any
+  stage.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    pressing = true;
+    dragging = false;
+    pressX = ev.clientX;
+    pressY = ev.clientY;
+    dragX = ev.clientX - tx;
+    dragY = ev.clientY - ty;
+    // Remembered here because the click event may be retargeted (a capture
+    // taken mid-gesture, or a press on a node that scrolls out from under the
+    // pointer); the press target is the honest answer to "which node?".
+    pressNode = (ev.target.closest && ev.target.closest('g.node')) || null;
+  });
+  stage.addEventListener('pointermove', (ev) => {
+    if (!pressing) return;
+    if (!dragging) {
+      if (Math.abs(ev.clientX - pressX) < PAN_SLOP_PX
+        && Math.abs(ev.clientY - pressY) < PAN_SLOP_PX) return;
+      dragging = true;
+      pressNode = null; // a drag is a pan, never a selection
+      autoFit = false;
+      try { stage.setPointerCapture(ev.pointerId); } catch (_) { /* not capturable */ }
+      stage.classList.add('is-panning');
+    }
+    tx = ev.clientX - dragX;
+    ty = ev.clientY - dragY;
+    applyTransform();
+  });
+  const endPan = (ev) => {
+    if (!pressing) return;
+    pressing = false;
+    if (!dragging) return;
+    dragging = false;
+    try { stage.releasePointerCapture(ev.pointerId); } catch (_) { /* already released */ }
+    stage.classList.remove('is-panning');
+  };
+  stage.addEventListener('pointerup', endPan);
+  stage.addEventListener('pointercancel', (ev) => {
+    pressNode = null;
+    endPan(ev);
+  });
+
+  // The wheel zooms about the cursor, with or without Ctrl. The stage never
+  // scrolls (overflow: hidden), so a plain wheel used to do nothing at all,
+  // and Ctrl+wheel was the only way in that nobody was told about. One notch
+  // of a mouse wheel (a delta of 100 or more, or any line/page delta) is one
+  // ZOOM_STEP; a trackpad's stream of small deltas zooms in proportion, so
+  // two fingers do not send it from 10% to 800% in one stroke.
+  stage.addEventListener('wheel', (ev) => {
+    if (!ev.deltaY) return; // a sideways wheel is not a zoom
+    ev.preventDefault();
+    const notches = ev.deltaMode === 0 ? Math.max(-1, Math.min(1, ev.deltaY / WHEEL_NOTCH)) : Math.sign(ev.deltaY);
+    zoomBy(Math.pow(ZOOM_STEP, -notches), ev.clientX, ev.clientY);
+  }, { passive: false });
+
+  stage.addEventListener('keydown', (ev) => {
+    if (!ev.ctrlKey && !ev.metaKey) return;
+    if (ev.key === '+' || ev.key === '=') { ev.preventDefault(); zoomBy(ZOOM_STEP); }
+    else if (ev.key === '-') { ev.preventDefault(); zoomBy(1 / ZOOM_STEP); }
+    else if (ev.key === '0') { ev.preventDefault(); fit(); }
+  });
+
+  // ---- click a node -> select it in the tree ------------------------------
+  stage.addEventListener('click', (ev) => {
+    // Any <a> left in the SVG has had its href vetted, but navigation away
+    // from the editor is never what a click on the diagram means.
+    const anchor = ev.target.closest && ev.target.closest('a');
+    if (anchor && stage.contains(anchor)) ev.preventDefault();
+    const g = (ev.target.closest && ev.target.closest('g.node')) || pressNode;
+    pressNode = null;
+    if (!svgEl) return;
+    if (!g) return;
+    const title = g.querySelector('title');
+    if (!title) return;
+    // A gate or event symbol resolves (through idMap) to its event node.
+    const real = resolveNodeId(title.textContent.trim());
+    if (real) store.select(real);
+  });
+
+  /** DOT node name -> tree node id: the server's idMap, else the sanitizeId mirror. */
+  function resolveNodeId(name) {
+    if (dotIdMap.has(name)) return dotIdMap.get(name);
+    if (!fallbackIdMap) fallbackIdMap = buildIdMap(store.flat ? store.flat() : []);
+    return fallbackIdMap.get(name) || null;
+  }
+
+  /** [{g, id}] for every node group of `root` (default: the diagram on screen). */
+  function nodeGroups(root) {
+    const from = root || svgEl;
+    if (!from) return [];
+    const out = [];
+    from.querySelectorAll('g.node').forEach((g) => {
+      const title = g.querySelector('title');
+      const id = title ? resolveNodeId(title.textContent.trim()) : null;
+      if (id !== null && id !== undefined) out.push({ g, id: String(id) });
+    });
+    return out;
+  }
+
+  function markSelection() {
+    if (!svgEl) return;
+    fallbackIdMap = null; // the tree may have changed since the last lookup
+    const selected = store.selectedId ? String(store.selectedId) : null;
+    for (const { g, id } of nodeGroups()) g.classList.toggle('is-selected', !!selected && id === selected);
+  }
+
+  // ---- highlight / overlay / jump ----------------------------------------
+  let highlight = store.highlight || { ids: [], source: null };
+  let overlay = store.overlay || null;
+
+  const legendTitle = el('span', { class: 'diagram__legendTitle' });
+  const legendLow = el('span');
+  const legendHigh = el('span');
+  const legend = el('div', { class: 'diagram__legend', hidden: true }, [
+    legendTitle,
+    el('span', { class: 'diagram__legendBar' }),
+    el('div', { class: 'diagram__legendScale' }, [legendLow, legendHigh]),
+  ]);
+  stage.appendChild(legend);
+
+  function applyHighlight() {
+    const ids = new Set((highlight && highlight.ids) || []);
+    for (const { g, id } of nodeGroups()) g.classList.toggle('is-highlighted', ids.has(id));
+  }
+
+  function overlayValues(over) {
+    return over && over.values && typeof over.values === 'object' ? over.values : null;
+  }
+
+  /** The legend's three texts for an overlay: its title and the two ends. */
+  function legendTexts(over) {
+    const kind = String((over && over.kind) || '');
+    return {
+      title: kind === 'fv' ? t('diagram17.legendFv', 'Fussell-Vesely importance') : kind.toUpperCase(),
+      low: t('diagram17.legendLow', 'low') + ' 0',
+      high: formatProb(overlayMax(overlayValues(over)), currentSigFigs()) + ' ' + t('diagram17.legendHigh', 'high'),
+    };
+  }
+
+  /**
+   * Fill the event boxes of `root` by `over` (or clear the fills when it is
+   * null). The diagram on screen and the copy an export is made from are
+   * painted by the same code, so the file shows what the screen shows.
+   */
+  function paintOverlay(root, over) {
+    const values = overlayValues(over);
+    const max = overlayMax(values);
+    for (const { g, id } of nodeGroups(root)) {
+      if (!isMainGroup(g)) continue;
+      const shape = mainShape(g);
+      if (!shape) continue;
+      const v = values ? Number(values[id]) : NaN;
+      if (values && Number.isFinite(v)) {
+        shape.style.fill = scaleColor(max > 0 ? v / max : 0);
+        g.classList.add('has-overlay');
+      } else {
+        shape.style.removeProperty('fill');
+        if (!shape.getAttribute('style')) shape.removeAttribute('style');
+        g.classList.remove('has-overlay');
+      }
+    }
+  }
+
+  function applyOverlay() {
+    const values = overlayValues(overlay);
+    paintOverlay(svgEl, overlay);
+    legend.hidden = !values;
+    if (values) {
+      const texts = legendTexts(overlay);
+      legendTitle.textContent = texts.title;
+      legendLow.textContent = texts.low;
+      legendHigh.textContent = texts.high;
+    }
+  }
+
+  /**
+   * Bring node `id` into view without changing the zoom: centred in the
+   * stage when it is (partly) outside it, left alone when it is already
+   * fully on it. Jumping to a visible node used to centre it all the same,
+   * which pushed half of a fitted diagram off the stage and, because a pan
+   * ends auto-fit, left it there through every later edit.
+   */
+  function jumpTo(id) {
+    if (!svgEl) {
+      pendingJump = id;
+      return;
+    }
+    const group = mainGroupOf(id);
+    if (!group) return;
+    const box = group.getBoundingClientRect();
+    const view = stage.getBoundingClientRect();
+    const inView = box.left >= view.left && box.right <= view.right
+      && box.top >= view.top && box.bottom <= view.bottom;
+    if (inView) return;
+    autoFit = false;
+    tx += view.left + view.width / 2 - (box.left + box.width / 2);
+    ty += view.top + view.height / 2 - (box.top + box.height / 2);
+    applyTransform();
+  }
+
+  function decorate() {
+    markSelection();
+    applyHighlight();
+    applyOverlay();
+  }
+
+  function setStatusMessage(text, kind) {
+    status.textContent = text || '';
+    status.className = 'diagram__status' + (kind ? ` diagram__status--${kind}` : '');
+  }
+
+  function setMeta(text) {
+    if (metaHost) metaHost.textContent = text;
+  }
+
+  /**
+   * Graphviz's SVG text as an element of this document: parsed, sanitized,
+   * the gate symbols drawn (symbols style) and given a pixel size. Not yet
+   * attached anywhere, and its labels not yet fitted (that needs layout).
+   */
+  function svgFromText(svgText, style, rankdir) {
+    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    const parsed = doc.documentElement;
+    if (!parsed || parsed.nodeName === 'parsererror') throw new Error('Graphviz returned invalid SVG.');
+    sanitizeSvg(parsed);
+    // After sanitizing: the symbol paths are built from numbers only.
+    if (style === 'symbols') replaceGateShapes(parsed, rankdir);
+    const node = document.importNode(parsed, true);
+    // Give the SVG real intrinsic pixel size from its own viewBox rather
+    // than stripping width/height outright. .diagram__canvas is
+    // position:absolute with no explicit size (it shrink-wraps its child so
+    // the zoom transform has something concrete to scale), and a naked <svg>
+    // with only a viewBox inside such a parent has nothing to lay out
+    // against -- Chromium collapses it to 0x0 instead of falling back to a
+    // UA default, so the rendered diagram becomes invisible while still
+    // being fully present in the DOM (every existing check -- "does a <svg>
+    // exist", "does it contain this text" -- passes anyway). Zoom still
+    // comes entirely from .diagram__canvas's own `transform: scale()` in
+    // applyTransform(), which multiplies this intrinsic size, so fixing the
+    // collapse does not fight zoom.
+    const vb = node.viewBox && node.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      node.setAttribute('width', String(vb.width));
+      node.setAttribute('height', String(vb.height));
+    } else {
+      node.removeAttribute('width');
+      node.removeAttribute('height');
+    }
+    return node;
+  }
+
+  async function render() {
+    const mine = ++generation;
+    try {
+      const box = effectiveBoxSettings();
+      const payload = await api.get(dotUrl(box));
+      if (mine !== generation || destroyed) return; // a newer render superseded this one
+      renderer = payload.renderer || 'wasm';
+      const idMap = new Map();
+      if (payload.idMap && typeof payload.idMap === 'object') {
+        for (const key of Object.keys(payload.idMap)) idMap.set(key, String(payload.idMap[key]));
+      }
+      const renderedStyle = payload.style || box.style;
+      const renderedRankdir = payload.rankdir || box.rankdir;
+
+      const svgText = await layoutSvg(payload.dot);
+      if (mine !== generation || destroyed) return;
+      lastSvgText = svgText;
+
+      const fresh = svgFromText(svgText, renderedStyle, renderedRankdir);
+      clear(canvas);
+      dotIdMap = idMap;
+      fallbackIdMap = null;
+      captionOn = Boolean(payload.rootHeadline && payload.rootHeadline.method === 'mcub');
+      captionCcf = payload.ccfGates === true;
+      renderCaption();
+      svgEl = fresh;
+      renderedDark = Boolean(box.dark);
+      canvas.appendChild(svgEl);
+      // Must run after appendChild: it measures the text with the page's
+      // real font. Browser exports use the fitted SVG as well.
+      fitLabels(svgEl);
+      exportSvgText = new XMLSerializer().serializeToString(svgEl);
+
+      decorate();
+      if (resetView || autoFit || (scale === 1 && tx === 0 && ty === 0)) {
+        resetView = false;
+        fit();
+      }
+      if (pendingJump !== null) {
+        const id = pendingJump;
+        pendingJump = null;
+        jumpTo(id);
+      }
+      if (pendingReveal !== null) {
+        const id = pendingReveal;
+        pendingReveal = null;
+        panIntoView(id);
+      }
+      setStatusMessage('');
+      // What is on screen always comes from the in-browser renderer; a
+      // system Graphviz (renderer 'native') only serves the PNG export of the
+      // compact style. 1.7.0 said "Rendered by system Graphviz" instead.
+      const onScreen = t('diagram.rendererWasm', 'Rendered in-browser (Graphviz WASM)');
+      setMeta(renderer === 'native' && renderedStyle !== 'symbols'
+        ? onScreen + ' · ' + t('diagram17.pngNative', 'PNG export: system Graphviz')
+        : onScreen);
+    } catch (err) {
+      if (mine !== generation || destroyed) return;
+      svgEl = null;
+      exportSvgText = '';
+      clear(canvas);
+      captionOn = false;
+      captionCcf = false;
+      renderCaption();
+      const msg = err instanceof ApiError ? err.message : String((err && err.message) || err);
+      setStatusMessage(t('diagram.error', 'Could not render the diagram: ') + msg, 'error');
+      setMeta('');
+    }
+  }
+
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; render(); }, RENDER_DEBOUNCE_MS);
+  }
+
+  // ---- export ------------------------------------------------------------
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: filename });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /**
+   * The file name and the toast of a download, from the shell: the same name
+   * as the Render button gives (the open file's, or the title's) and the
+   * same sentence saying where a download goes. These buttons used to save
+   * "fta_diagram.png" without a word.
+   */
+  function exportName(extension) {
+    const shell = window.ftaShell;
+    try {
+      if (shell && typeof shell.exportFilename === 'function') return shell.exportFilename(extension);
+    } catch (_err) {
+      /* fall through */
+    }
+    return 'fta_diagram.' + extension;
+  }
+
+  function downloaded(name) {
+    const shell = window.ftaShell;
+    setStatusMessage('');
+    if (shell && typeof shell.toastDownloaded === 'function') shell.toastDownloaded(name);
+  }
+
+  /** A second, light-coloured layout of the diagram on screen, for a file. */
+  async function lightSvg() {
+    const box = exportBoxSettings();
+    const payload = await api.get(dotUrl(box));
+    const node = svgFromText(await layoutSvg(payload.dot), payload.style || box.style, payload.rankdir || box.rankdir);
+    // fitLabels measures: the copy has to be laid out, off the screen.
+    const bench = el('div', {
+      'aria-hidden': 'true',
+      style: 'position:fixed; left:-100000px; top:0; visibility:hidden; pointer-events:none;',
+    });
+    document.body.appendChild(bench);
+    try {
+      bench.appendChild(node);
+      fitLabels(node);
+    } finally {
+      bench.remove();
+    }
+    return node;
+  }
+
+  const LEGEND_HEIGHT = 46;
+  const LEGEND_MIN_WIDTH = 230;
+
+  /** The overlay's legend, drawn into the export under the diagram. */
+  function appendLegend(root, over, font) {
+    const vb = root.viewBox.baseVal;
+    const x0 = vb.x;
+    const y0 = vb.y;
+    const height = vb.height;
+    const width = Math.max(vb.width, LEGEND_MIN_WIDTH);
+    const top = y0 + height;
+    const texts = legendTexts(over);
+    const make = (tag, attrs, text) => {
+      const node = document.createElementNS(SVG_NS, tag);
+      for (const key of Object.keys(attrs)) node.setAttribute(key, String(attrs[key]));
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    const gradient = make('linearGradient', { id: 'fta-overlay-scale', x1: '0', y1: '0', x2: '1', y2: '0' });
+    gradient.append(
+      make('stop', { offset: '0', 'stop-color': scaleColor(0) }),
+      make('stop', { offset: '1', 'stop-color': scaleColor(1) })
+    );
+    const defs = make('defs', {});
+    defs.appendChild(gradient);
+    const x = x0 + 8;
+    const barWidth = 150;
+    const textAttrs = { 'font-family': font || 'sans-serif', 'font-size': '11', fill: '#10151c' };
+    const group = make('g', { class: 'fta-legend' });
+    group.append(
+      make('rect', { x: x0, y: y0, width, height: height + LEGEND_HEIGHT, fill: '#ffffff' }),
+    );
+    const key = make('g', { class: 'fta-legend-key' });
+    key.append(
+      make('text', { ...textAttrs, x, y: top + 13, 'font-weight': 'bold' }, texts.title),
+      make('rect', {
+        x, y: top + 19, width: barWidth, height: 8, fill: 'url(#fta-overlay-scale)', stroke: '#8a94a0', 'stroke-width': '0.5',
+      }),
+      make('text', { ...textAttrs, x, y: top + 40 }, texts.low),
+      make('text', { ...textAttrs, x: x + barWidth, y: top + 40, 'text-anchor': 'end' }, texts.high)
+    );
+    // The white sheet goes behind everything, the key on top.
+    root.insertBefore(group, root.firstChild);
+    root.insertBefore(defs, root.firstChild);
+    root.appendChild(key);
+    root.setAttribute('viewBox', `${x0} ${y0} ${width} ${height + LEGEND_HEIGHT}`);
+    root.setAttribute('width', String(width));
+    root.setAttribute('height', String(height + LEGEND_HEIGHT));
+  }
+
+  /**
+   * The diagram as a file: `{text, width, height}`, or null with nothing drawn.
+   *
+   * Built when it is asked for, from what is on screen: the fitted labels,
+   * the true symbols and the overlay colours with their legend (the SVG kept
+   * at render time was taken before the overlay was painted, so a diagram
+   * coloured by importance exported plain). Always in the light colours: a
+   * dark preview is laid out a second time for the file. The selection
+   * outline and the highlight are marks of the session and stay out.
+   *
+   * `options.overlay`: leave it out for the overlay on screen, null for
+   * none, or `{kind, values}` to colour the file by that (the report).
+   */
+  async function buildExportSvg(options) {
+    if (!svgEl) return null;
+    const over = options && Object.prototype.hasOwnProperty.call(options, 'overlay') ? options.overlay : overlay;
+    const copy = renderedDark ? await lightSvg() : svgEl.cloneNode(true);
+    for (const g of copy.querySelectorAll('g.node')) g.classList.remove('is-selected', 'is-highlighted');
+    paintOverlay(copy, over || null);
+    if (overlayValues(over)) appendLegend(copy, over, exportBoxSettings().font);
+    if (!copy.getAttribute('xmlns')) copy.setAttribute('xmlns', SVG_NS);
+    const vb = copy.viewBox && copy.viewBox.baseVal;
+    return {
+      text: new XMLSerializer().serializeToString(copy),
+      width: (vb && vb.width) || 1200,
+      height: (vb && vb.height) || 800,
+    };
+  }
+
+  async function exportSvg() {
+    const built = exportSvgText ? await buildExportSvg().catch(() => null) : null;
+    if (!built) {
+      setStatusMessage(t('diagram.nothingToExport', 'Nothing to export yet.'), 'error');
+      return;
+    }
+    const name = exportName('svg');
+    download(new Blob([built.text], { type: 'image/svg+xml;charset=utf-8' }), name);
+    downloaded(name);
+  }
+
+  async function exportPng() {
+    if (!lastSvgText) {
+      setStatusMessage(t('diagram.nothingToExport', 'Nothing to export yet.'), 'error');
+      return;
+    }
+    const name = exportName('png');
+    const caps = (store.state && store.state.capabilities) || {};
+    // The true gate symbols are drawn in the browser (fta_symbols.js); native
+    // `dot` only knows the placeholder polygons, so a symbols-style PNG must
+    // come from the processed preview, never from /api/render. The same goes
+    // for a diagram coloured by an overlay: the server does not know it.
+    if (caps.nativeDot && effectiveBoxSettings().style !== 'symbols' && !overlayValues(overlay)) {
+      // A real `dot` rasterises at 300 dpi; prefer it over a canvas upscale.
+      try {
+        const box = exportBoxSettings();
+        const res = await api.post('/render', {
+          format: 'png',
+          hideZero: !!(window.ftaShell && window.ftaShell.hideZero),
+          highQuality: true,
+          font: box.font,
+          scale: box.scale,
+          dark: box.dark,
+          style: box.style,
+          rankdir: box.rankdir,
+          sigFigs: box.sigFigs,
+        });
+        const bin = atob(res.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+        download(new Blob([bytes], { type: res.contentType || 'image/png' }), name);
+        downloaded(name);
+        return;
+      } catch (err) {
+        // 503 here means `dot` vanished since startup; fall through to canvas.
+        setStatusMessage(t('diagram.nativeFellBack', 'System Graphviz unavailable; exported from the browser renderer instead.'), 'warn');
+      }
+    }
+    await exportPngViaCanvas(name);
+  }
+
+  async function exportPngViaCanvas(name) {
+    const blob = await toPngBlob();
+    const file = name || exportName('png');
+    if (blob) {
+      download(blob, file);
+      downloaded(file);
+    } else setStatusMessage(t('diagram.pngFailed', 'Could not rasterise the diagram to PNG.'), 'error');
+  }
+
+  /**
+   * Rasterise the current preview to a PNG Blob without downloading it.
+   * Resolves null when nothing is rendered yet or rasterising fails. Used by
+   * exportPngViaCanvas() and by window.ftaShell.diagramPng() (report export).
+   */
+  async function toPngBlob(options) {
+    let built = null;
+    try {
+      built = exportSvgText ? await buildExportSvg(options) : null;
+    } catch (_err) {
+      built = null;
+    }
+    if (!built) return null;
+    return new Promise((resolve) => {
+      const scaleUp = 2;
+      const w = built.width;
+      const h = built.height;
+      const img = new Image();
+      const svgBlob = new Blob([built.text], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = Math.round(w * scaleUp);
+        c.height = Math.round(h * scaleUp);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff'; // PNG has no page behind it; transparent reads as black in many viewers
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob((blob) => resolve(blob || null), 'image/png');
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
+    });
+  }
+
+  // ---- wiring ------------------------------------------------------------
+  // A selection change (store.select) or a display-only touch() notifies with
+  // the same state object: that is a new outline, not a new graph. Only a new
+  // document state (every mutation, open, undo) re-fetches the DOT and
+  // re-runs the layout -- 1.7.0 re-laid-out the whole diagram on every click.
+  let renderedState;
+  let seenSelection = store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
+  const unsubscribe = store.subscribe(() => {
+    markSelection();
+    const selected = store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
+    const reselected = selected !== seenSelection;
+    seenSelection = selected;
+    if (store.state === renderedState) {
+      // A row picked in the tree (or a table): bring its box onto the stage.
+      if (reselected && selected) panIntoView(selected);
+      return;
+    }
+    renderedState = store.state;
+    // The diagram for this state is not drawn yet; look for the node then.
+    // A fitted diagram shows every node, so only a zoomed one needs it.
+    if (reselected && selected && !autoFit) pendingReveal = selected;
+    schedule();
+  });
+  const unsubscribeHighlight = typeof store.onHighlight === 'function'
+    ? store.onHighlight((next) => { highlight = next || { ids: [], source: null }; applyHighlight(); })
+    : null;
+  const unsubscribeOverlay = typeof store.onOverlay === 'function'
+    ? store.onOverlay((next) => { overlay = next || null; applyOverlay(); })
+    : null;
+  const onJump = (ev) => {
+    const id = ev && ev.detail && ev.detail.id;
+    if (id !== undefined && id !== null && id !== '') jumpTo(id);
+  };
+  window.addEventListener('fta:jump', onJump);
+  // A different document (New, Open): the zoom and pan of the old one mean
+  // nothing for it. Kept, a view panned off one tree left the next one
+  // entirely off the stage, which then looked empty.
+  const onDocument = () => {
+    autoFit = true;
+    resetView = true;
+    schedule();
+  };
+  window.addEventListener('fta:document', onDocument);
+  const onSigFigs = () => schedule();
+  window.addEventListener('fta:sigfigs', onSigFigs);
+  const onHideZero = () => schedule();
+  window.addEventListener('fta:hide-zero', onHideZero);
+  // The toolbar buttons carry glyphs, not words, so a sighted user sees nothing
+  // stale on a language switch -- but the title/aria-label do change, and a
+  // screen-reader user switching mid-session would otherwise hear the old
+  // language. Re-render on the next diagram update picks up the meta line for
+  // free; the toolbar needs this.
+  const onLanguage = () => { retitleToolbar(); refreshFontNote(); relabelLayoutControls(); relabelPopover(); renderCaption(); schedule(); };
+  window.addEventListener('fta:language', onLanguage);
+
+  // Explicit light/dark from the theme toggle...
+  const onThemeChange = () => schedule();
+  window.addEventListener('fta:theme', onThemeChange);
+  // ...and the OS-level preference, for when the toggle is left on 'system'
+  // (isDarkMode() falls through to this same media query at render time).
+  let darkMediaQuery = null;
+  try {
+    darkMediaQuery = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (darkMediaQuery) darkMediaQuery.addEventListener('change', onThemeChange);
+  } catch (_err) {
+    darkMediaQuery = null;
+  }
+
+  applyTransform();
+  schedule();
+
+  // A resized stage (window, splitters, phone rotation) keeps a fitted
+  // diagram fitted; once the user has zoomed or panned, their view stays.
+  let resizeFrame = 0;
+  const stageObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => {
+      if (!autoFit || !svgEl || resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        if (autoFit && !destroyed) fit();
+      });
+    })
+    : null;
+  if (stageObserver) stageObserver.observe(stage);
+
+  return {
+    refresh: schedule,
+    exportSvg,
+    exportPng,
+    toPngBlob,
+    /** True once a diagram has been drawn (there is something to export). */
+    hasDiagram: () => Boolean(exportSvgText),
+    getBoxSettings: effectiveBoxSettings,
+    /** The settings a file is made with: the preview's, in the light colours. */
+    getExportSettings: exportBoxSettings,
+    buildExportSvg,
+    /** True while the diagram is coloured by an overlay (importance). */
+    hasOverlay: () => Boolean(overlayValues(overlay)),
+    jumpTo,
+    destroy() {
+      destroyed = true;
+      if (timer) clearTimeout(timer);
+      if (stageObserver) stageObserver.disconnect();
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
+      window.removeEventListener('fta:hide-zero', onHideZero);
+      window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:document', onDocument);
+      window.removeEventListener('fta:sigfigs', onSigFigs);
+      if (typeof unsubscribeHighlight === 'function') unsubscribeHighlight();
+      if (typeof unsubscribeOverlay === 'function') unsubscribeOverlay();
+      window.removeEventListener('fta:language', onLanguage);
+      window.removeEventListener('fta:theme', onThemeChange);
+      if (darkMediaQuery) darkMediaQuery.removeEventListener('change', onThemeChange);
+      window.removeEventListener('resize', onWindowResizeClosePopover);
+      window.removeEventListener('fta:escape', onShellEscape);
+      document.removeEventListener('click', onDocClickClosePopover);
+      if (popover.parentNode) popover.parentNode.removeChild(popover);
+      if (typeof unsubscribe === 'function') unsubscribe();
+      clear(container);
+    },
+  };
+}
+
+const STYLES = `
+.diagram__toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:4px 8px;
+  border-bottom:1px solid var(--fta-border, #d7dde5); flex:0 0 auto; }
+.diagram__spacer { flex:1 1 auto; }
+.diagram__zoom { font-variant-numeric: tabular-nums; font-size:12px; min-width:44px;
+  text-align:center; color: var(--fta-muted-fg, #5d6a78); }
+.diagram__btn { font:inherit; font-size:12px; line-height:1; padding:4px 8px; cursor:pointer;
+  background: var(--fta-surface, #fff); color: var(--fta-fg, #10151c);
+  border:1px solid var(--fta-border, #d7dde5); border-radius:4px; }
+.diagram__btn:hover { background: var(--fta-surface-hover, #eef2f6); }
+.diagram__btn:focus-visible { outline:2px solid var(--fta-accent, #14507d); outline-offset:1px; }
+.diagram__stage { position:relative; overflow:hidden; flex:1 1 auto; min-height:0;
+  background: var(--fta-canvas, #fff); cursor:grab; }
+.diagram__stage.is-panning { cursor:grabbing; }
+.diagram__stage:focus-visible { outline:2px solid var(--fta-accent, #14507d); outline-offset:-2px; }
+.diagram__canvas { position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
+.diagram__canvas g.node { cursor:pointer; }
+.diagram__canvas g.node.is-selected > polygon,
+.diagram__canvas g.node.is-selected > path,
+.diagram__canvas g.node.is-selected > ellipse {
+  stroke: var(--fta-accent, #14507d); stroke-width:2.5px; }
+.diagram__canvas g.node.is-highlighted > polygon,
+.diagram__canvas g.node.is-highlighted > path,
+.diagram__canvas g.node.is-highlighted > ellipse {
+  stroke: var(--fta-accent, #14507d); stroke-width:4.5px; }
+.diagram__canvas g.node.is-highlighted { filter: drop-shadow(0 0 3px var(--fta-accent, #14507d)); }
+.diagram__legend { position:absolute; left:8px; bottom:8px; z-index:2; display:flex; flex-direction:column;
+  gap:2px; padding:6px 8px; font-size:11px; border-radius:4px; pointer-events:none;
+  background: var(--fta-surface, #fff); color: var(--fta-fg, #10151c);
+  border:1px solid var(--fta-border, #d7dde5); box-shadow: 0 2px 6px rgba(16,20,24,0.15); }
+.diagram__legend[hidden] { display:none; }
+.diagram__legendTitle { font-weight:600; }
+.diagram__legendBar { display:block; width:9rem; height:8px; border-radius:2px;
+  border:1px solid var(--fta-border, #d7dde5);
+  background: linear-gradient(to right, rgb(255,244,229), rgb(230,85,13)); }
+.diagram__legendScale { display:flex; justify-content:space-between; gap:8px;
+  color: var(--fta-muted-fg, #5d6a78); font-variant-numeric: tabular-nums; }
+.diagram__caption { flex:0 0 auto; padding:3px 8px; font-size:11px; line-height:1.35;
+  color: var(--fta-muted-fg, #5d6a78); border-bottom:1px solid var(--fta-border, #d7dde5); }
+.diagram__caption[hidden] { display:none; }
+.diagram__status { flex:0 0 auto; padding:4px 8px; font-size:12px; min-height:0;
+  color: var(--fta-fg, #10151c); }
+.diagram__status--error { color: var(--fta-danger-fg, #a8321c); }
+.diagram__status--warn { color: var(--fta-warn-fg, #a85b00); }
+.diagram__popover {
+  /* Fixed and appended to <body> (see openPopover() in the JS): a diagram
+     panel is a .panel with overflow: hidden, which would otherwise clip
+     this the moment the panel is narrower than the popover. Position
+     defaults to the diagram's lower-right corner and is user-draggable
+     (see the pointerdown wiring on .diagram__popoverHead below); both are
+     computed/clamped to the viewport in JS. */
+  position:fixed; z-index:1000;
+  display:flex; flex-direction:column; gap:6px; width:15rem; max-width:calc(100vw - 8px);
+  padding:10px;
+  background: var(--fta-surface, #fff); color: var(--fta-fg, #10151c);
+  border:1px solid var(--fta-border, #d7dde5); border-radius:6px;
+  box-shadow: 0 8px 24px rgba(16,20,24,0.20); font-size:12px;
+}
+/* The explicit display:flex above outranks the UA's [hidden] rule, so a
+   closed popover kept its box and swallowed clicks on whatever it overlapped. */
+.diagram__popover[hidden] {
+  display:none;
+}
+.diagram__popover[hidden] { display:none; }
+.diagram__popoverHead {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin:-10px -10px 0; padding:6px 8px;
+  border-bottom:1px solid var(--fta-border, #d7dde5);
+  background: var(--fta-surface-2, #f4f6f8);
+  border-radius:6px 6px 0 0;
+  cursor:move; touch-action:none; user-select:none;
+  font-weight:600;
+}
+.diagram__popoverHead__close { font:inherit; font-size:14px; line-height:1; padding:0 4px;
+  cursor:pointer; background:transparent; color:inherit; border:0; }
+.diagram__popoverRow { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.diagram__popoverRow select,
+.diagram__popoverRow input { font:inherit; font-size:12px; padding:2px 4px;
+  border:1px solid var(--fta-border, #d7dde5); border-radius:4px;
+  background: var(--fta-surface, #fff); color: inherit; }
+.diagram__popoverRow input[type="number"] { width:4.5rem; }
+.diagram__fontnote { color: var(--fta-muted-fg, #5d6a78); font-size:11px; min-height:1.2em; overflow-wrap:anywhere; }
+.diagram__popoverHint { margin:0; color: var(--fta-muted-fg, #5d6a78); font-size:11px; line-height:1.4; }
+`;
+
+export default initDiagram;

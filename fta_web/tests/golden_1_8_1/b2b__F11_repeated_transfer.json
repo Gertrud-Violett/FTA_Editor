@@ -1,0 +1,237 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F11_repeated_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "C",
+         "name": "C",
+         "q": 0.3
+        }
+       ],
+       "order": 2,
+       "probability": 0.03,
+       "rank": 1,
+       "share": 0.6
+      },
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        },
+        {
+         "id": "B",
+         "name": "B",
+         "q": 0.2
+        }
+       ],
+       "order": 2,
+       "probability": 0.020000000000000004,
+       "rank": 2,
+       "share": 0.4000000000000001
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.0494,
+     "nonCoherent": false,
+     "rareEvent": 0.05,
+     "repeatedEvents": [
+      {
+       "id": "A",
+       "name": "A"
+      }
+     ],
+     "total": 2,
+     "treeWalk": 0.0494,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F11 repeated via transfer"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F11_repeated_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.43999999999999995,
+       "cutSetCount": 2,
+       "fv": 1.0,
+       "id": "A",
+       "name": "A",
+       "q": 0.1,
+       "raw": 8.906882591093117,
+       "rrw": null,
+       "rrwInfinite": true
+      },
+      {
+       "birnbaum": 0.098,
+       "cutSetCount": 1,
+       "fv": 0.5951417004048583,
+       "id": "C",
+       "name": "C",
+       "q": 0.3,
+       "raw": 2.388663967611336,
+       "rrw": 2.4699999999999993,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.097,
+       "cutSetCount": 1,
+       "fv": 0.39271255060728755,
+       "id": "B",
+       "name": "B",
+       "q": 0.2,
+       "raw": 2.57085020242915,
+       "rrw": 1.6466666666666667,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F11 repeated via transfer"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F11_repeated_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "A",
+      "B",
+      "C"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.0494,
+       0.0494
+      ],
+      "logBins": false
+     },
+     "mean": 0.0494,
+     "median": 0.0494,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.0494,
+     "p95": 0.0494,
+     "pointEstimate": 0.0494,
+     "repeatedEvents": [
+      {
+       "id": "A",
+       "name": "A"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F11 repeated via transfer"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F11_repeated_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "A",
+       "model": "fixed",
+       "name": "A",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "B",
+       "model": "fixed",
+       "name": "B",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.3,
+       "id": "C",
+       "model": "fixed",
+       "name": "C",
+       "q": 0.3
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.0494,
+      "headlineMethod": "mcub",
+      "mcub": 0.0494,
+      "nonCoherent": false,
+      "rareEvent": 0.05,
+      "repeatedEvents": [
+       {
+        "id": "A",
+        "name": "A"
+       }
+      ],
+      "treeWalk": 0.0494,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F11 repeated via transfer"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F11_repeated_transfer.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "F11 repeated via transfer"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F11_repeated_transfer.json"
+}

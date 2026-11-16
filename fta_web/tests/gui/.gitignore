@@ -1,0 +1,3 @@
+# npm ci output and everything a run writes (screenshots, logs, results, exports)
+node_modules/
+out/

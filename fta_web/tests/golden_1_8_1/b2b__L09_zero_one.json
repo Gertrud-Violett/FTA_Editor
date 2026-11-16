@@ -1,0 +1,284 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L09_zero_one.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "one",
+         "name": "one",
+         "q": 1.0
+        }
+       ],
+       "order": 1,
+       "probability": 1.0,
+       "rank": 1,
+       "share": 0.6666666666666666
+      },
+      {
+       "events": [
+        {
+         "id": "q",
+         "name": "q",
+         "q": 0.25
+        }
+       ],
+       "order": 1,
+       "probability": 0.25,
+       "rank": 2,
+       "share": 0.16666666666666666
+      },
+      {
+       "events": [
+        {
+         "id": "one2",
+         "name": "one2",
+         "q": 1.0
+        },
+        {
+         "id": "q2",
+         "name": "q2",
+         "q": 0.25
+        }
+       ],
+       "order": 2,
+       "probability": 0.25,
+       "rank": 3,
+       "share": 0.16666666666666666
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 1.0,
+     "nonCoherent": false,
+     "rareEvent": 1.5,
+     "repeatedEvents": [],
+     "total": 3,
+     "treeWalk": 1.0,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L09 zero/one"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L09_zero_one.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.5625,
+       "cutSetCount": 1,
+       "fv": 0.5625,
+       "id": "one",
+       "name": "one",
+       "q": 1.0,
+       "raw": 1.0,
+       "rrw": 2.2857142857142856,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "one2",
+       "name": "one2",
+       "q": 1.0,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "q",
+       "name": "q",
+       "q": 0.25,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "q2",
+       "name": "q2",
+       "q": 0.25,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L09 zero/one"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L09_zero_one.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "z",
+      "h",
+      "one",
+      "q",
+      "one2",
+      "q2"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       1.0,
+       1.0
+      ],
+      "logBins": false
+     },
+     "mean": 1.0,
+     "median": 1.0,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 1.0,
+     "p95": 1.0,
+     "pointEstimate": 1.0,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L09 zero/one"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L09_zero_one.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.0,
+       "id": "z",
+       "model": "fixed",
+       "name": "z",
+       "q": 0.0
+      },
+      {
+       "calculated": 0.5,
+       "id": "h",
+       "model": "fixed",
+       "name": "h",
+       "q": 0.5
+      },
+      {
+       "calculated": 1.0,
+       "id": "one",
+       "model": "fixed",
+       "name": "one",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.25,
+       "id": "q",
+       "model": "fixed",
+       "name": "q",
+       "q": 0.25
+      },
+      {
+       "calculated": 1.0,
+       "id": "one2",
+       "model": "fixed",
+       "name": "one2",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.25,
+       "id": "q2",
+       "model": "fixed",
+       "name": "q2",
+       "q": 0.25
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 1.0,
+      "headlineMethod": "treeWalk",
+      "mcub": 1.0,
+      "nonCoherent": false,
+      "rareEvent": 1.5,
+      "repeatedEvents": [],
+      "treeWalk": 1.0,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L09 zero/one"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L09_zero_one.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 2
+     },
+     "issues": [
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "one",
+       "nodeName": "one",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "one2",
+       "nodeName": "one2",
+       "params": {},
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "L09 zero/one"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L09_zero_one.json"
+}

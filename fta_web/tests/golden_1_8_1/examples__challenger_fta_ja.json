@@ -1,0 +1,373 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/challenger_fta_ja.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "root_0_0_0_1",
+         "name": "Oリングのつぶしが過大",
+         "q": 0.5
+        },
+        {
+         "id": "root_0_0_0_0",
+         "name": "低温でOリングの戻りが遅い",
+         "q": 0.5
+        },
+        {
+         "id": "root_1_1",
+         "name": "懸念が上に伝わらない",
+         "q": 0.5
+        },
+        {
+         "id": "root_1_0",
+         "name": "打ち上げ反対の勧告が覆される",
+         "q": 0.5
+        }
+       ],
+       "order": 4,
+       "probability": 0.0625,
+       "rank": 1,
+       "share": 0.9090909090909091
+      },
+      {
+       "events": [
+        {
+         "id": "root_0_0_1",
+         "name": "パテが圧力の伝わりを遅らせる",
+         "q": 0.1
+        },
+        {
+         "id": "root_1_1",
+         "name": "懸念が上に伝わらない",
+         "q": 0.5
+        },
+        {
+         "id": "root_1_0",
+         "name": "打ち上げ反対の勧告が覆される",
+         "q": 0.5
+        },
+        {
+         "id": "root_0_1_0",
+         "name": "継手の回転で二次Oリングが浮く",
+         "q": 0.2
+        }
+       ],
+       "order": 4,
+       "probability": 0.005000000000000001,
+       "rank": 2,
+       "share": 0.07272727272727274
+      },
+      {
+       "events": [
+        {
+         "id": "root_0_0_1",
+         "name": "パテが圧力の伝わりを遅らせる",
+         "q": 0.1
+        },
+        {
+         "id": "root_1_1",
+         "name": "懸念が上に伝わらない",
+         "q": 0.5
+        },
+        {
+         "id": "root_1_0",
+         "name": "打ち上げ反対の勧告が覆される",
+         "q": 0.5
+        },
+        {
+         "id": "root_0_1_1",
+         "name": "氷で二次Oリングが浮く",
+         "q": 0.05
+        }
+       ],
+       "order": 4,
+       "probability": 0.0012500000000000002,
+       "rank": 3,
+       "share": 0.018181818181818184
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.068353515625,
+     "nonCoherent": false,
+     "rareEvent": 0.06875,
+     "repeatedEvents": [
+      {
+       "id": "root_0_0_0_0",
+       "name": "低温でOリングの戻りが遅い"
+      },
+      {
+       "id": "root_0_0_0_1",
+       "name": "Oリングのつぶしが過大"
+      }
+     ],
+     "total": 3,
+     "treeWalk": 0.0349375,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "スペースシャトル・チャレンジャー号事故（1986年）のフォルトツリー：確率は例示"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/challenger_fta_ja.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.135915625,
+       "cutSetCount": 3,
+       "fv": 1.0,
+       "id": "root_1_1",
+       "name": "懸念が上に伝わらない",
+       "q": 0.5,
+       "raw": 1.9884218647312624,
+       "rrw": null,
+       "rrwInfinite": true
+      },
+      {
+       "birnbaum": 0.135915625,
+       "cutSetCount": 3,
+       "fv": 1.0,
+       "id": "root_1_0",
+       "name": "打ち上げ反対の勧告が覆される",
+       "q": 0.5,
+       "raw": 1.9884218647312624,
+       "rrw": null,
+       "rrwInfinite": true
+      },
+      {
+       "birnbaum": 0.12421953125,
+       "cutSetCount": 1,
+       "fv": 0.9086550275737919,
+       "id": "root_0_0_0_1",
+       "name": "Oリングのつぶしが過大",
+       "q": 0.5,
+       "raw": 1.9086550275737917,
+       "rrw": 10.94751001001001,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.12421953125,
+       "cutSetCount": 1,
+       "fv": 0.9086550275737919,
+       "id": "root_0_0_0_0",
+       "name": "低温でOリングの戻りが遅い",
+       "q": 0.5,
+       "raw": 1.9086550275737917,
+       "rrw": 10.94751001001001,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.05800781250000001,
+       "cutSetCount": 2,
+       "fv": 0.08563591164956996,
+       "id": "root_0_0_1",
+       "name": "パテが圧力の伝わりを遅らせる",
+       "q": 0.1,
+       "raw": 1.7630082578506727,
+       "rrw": 1.0936562500000002,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.023408203125,
+       "cutSetCount": 1,
+       "fv": 0.0684915849929994,
+       "id": "root_0_1_0",
+       "name": "継手の回転で二次Oリングが浮く",
+       "q": 0.2,
+       "raw": 1.2739663399719974,
+       "rrw": 1.0735276073619633,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.023320312500000002,
+       "cutSetCount": 1,
+       "fv": 0.017058605023287713,
+       "id": "root_0_1_1",
+       "name": "氷で二次Oリングが浮く",
+       "q": 0.05,
+       "raw": 1.3241134954424663,
+       "rrw": 1.0173546511627907,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "スペースシャトル・チャレンジャー号事故（1986年）のフォルトツリー：確率は例示"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/challenger_fta_ja.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "root_0_0_0_0",
+      "root_0_0_0_1",
+      "root_0_0_1",
+      "root_0_1_0",
+      "root_0_1_1",
+      "root_1_0",
+      "root_1_1"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.068353515625,
+       0.068353515625
+      ],
+      "logBins": false
+     },
+     "mean": 0.068353515625,
+     "median": 0.068353515625,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.068353515625,
+     "p95": 0.068353515625,
+     "pointEstimate": 0.068353515625,
+     "repeatedEvents": [
+      {
+       "id": "root_0_0_0_0",
+       "name": "低温でOリングの戻りが遅い"
+      },
+      {
+       "id": "root_0_0_0_1",
+       "name": "Oリングのつぶしが過大"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "スペースシャトル・チャレンジャー号事故（1986年）のフォルトツリー：確率は例示"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/challenger_fta_ja.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.5,
+       "id": "root_0_0_0_0",
+       "model": "fixed",
+       "name": "低温でOリングの戻りが遅い",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.5,
+       "id": "root_0_0_0_1",
+       "model": "fixed",
+       "name": "Oリングのつぶしが過大",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.1,
+       "id": "root_0_0_1",
+       "model": "fixed",
+       "name": "パテが圧力の伝わりを遅らせる",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "root_0_1_0",
+       "model": "fixed",
+       "name": "継手の回転で二次Oリングが浮く",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.05,
+       "id": "root_0_1_1",
+       "model": "fixed",
+       "name": "氷で二次Oリングが浮く",
+       "q": 0.05
+      },
+      {
+       "calculated": 0.5,
+       "id": "root_1_0",
+       "model": "fixed",
+       "name": "打ち上げ反対の勧告が覆される",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.5,
+       "id": "root_1_1",
+       "model": "fixed",
+       "name": "懸念が上に伝わらない",
+       "q": 0.5
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.068353515625,
+      "headlineMethod": "mcub",
+      "mcub": 0.068353515625,
+      "nonCoherent": false,
+      "rareEvent": 0.06875,
+      "repeatedEvents": [
+       {
+        "id": "root_0_0_0_0",
+        "name": "低温でOリングの戻りが遅い"
+       },
+       {
+        "id": "root_0_0_0_1",
+        "name": "Oリングのつぶしが過大"
+       }
+      ],
+      "treeWalk": 0.0349375,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "スペースシャトル・チャレンジャー号事故（1986年）のフォルトツリー：確率は例示"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/challenger_fta_ja.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "スペースシャトル・チャレンジャー号事故（1986年）のフォルトツリー：確率は例示"
+   }
+  }
+ },
+ "file": "fta_web/examples/challenger_fta_ja.json"
+}

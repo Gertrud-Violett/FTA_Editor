@@ -1,0 +1,1605 @@
+/* ==========================================================================
+   app.css -- layout and components. Reads tokens from theme.css; defines no
+   colour literals of its own so a palette change is a one-file change.
+   ==========================================================================
+
+   Notes for the tree/details/dialogs modules
+   ------------------------------------------
+   * Bare form elements (input, select, textarea, button) inside a .panel are
+     already styled, so a panel built from plain HTML looks right without
+     inventing class names.
+   * Conventions this stylesheet honours, so you get behaviour for free:
+       .is-selected     on a tree row  -> selection highlight
+       .is-zero         on a tree row  -> dimmed, and HIDDEN when the
+                                          "Hide Zero" box is ticked (the shell
+                                          sets [data-hide-zero="1"] on <html>)
+       .is-dangling     on a link row  -> warning tint
+       .field           label+control wrapper in the details form
+   * Modals: give the backdrop `data-fta-modal="open"`. The shell suppresses
+     its keyboard shortcuts while such an element exists and lets Escape
+     through to you (see the fta:escape event in main.js).
+   ========================================================================== */
+
+/* ---- base ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { height: 100%; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p, figure { margin: 0; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s-2);
+  top: -3rem;
+  z-index: 100;
+  padding: var(--s-2) var(--s-3);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  transition: top var(--dur);
+}
+.skip-link:focus { top: var(--s-2); }
+
+/* ---- controls ------------------------------------------------------------ */
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--ctl-h);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur), border-color var(--dur), color var(--dur);
+}
+.btn:hover { background: var(--surface-hover); }
+.btn:active { background: var(--surface-active); }
+
+.btn--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.btn--primary:hover { background: var(--accent-hover); }
+.btn--primary:active { background: var(--accent-hover); }
+
+.btn--danger { color: var(--danger); border-color: var(--border); }
+.btn--danger:hover { background: var(--danger-soft); border-color: var(--danger); }
+
+.btn--icon {
+  width: var(--ctl-h);
+  min-width: var(--ctl-h);
+  padding: 0;
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+.btn--ghost { background: transparent; border-color: transparent; }
+.btn--ghost:hover { background: var(--surface-hover); }
+
+/* ---- desktop-parity action bar -------------------------------------------
+   The Tkinter button bar coloured every action a distinct pastel rather than
+   using one accent everywhere (FTA_Editor_UI.py:_build_button_bar). Same
+   idea here, keyed off the action bar's own data-action attribute so the
+   markup needs no extra classes. Hover/active just brighten or dim the same
+   fill -- Tk buttons had no hover state to match, so this is new feedback,
+   not a fidelity target. */
+.actionbar .btn[data-action] {
+  color: var(--btn-text);
+  border-color: rgba(0, 0, 0, .18);
+}
+:root[data-theme="dark"] .actionbar .btn[data-action] {
+  border-color: rgba(0, 0, 0, .35);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .actionbar .btn[data-action] {
+    border-color: rgba(0, 0, 0, .35);
+  }
+}
+.actionbar .btn[data-action="new"]     { background: var(--btn-new); }
+.actionbar .btn[data-action="add"]     { background: var(--btn-add); }
+.actionbar .btn[data-action="edit"]    { background: var(--btn-edit); }
+.actionbar .btn[data-action="delete"]  { background: var(--btn-delete); }
+.actionbar .btn[data-action="load"]    { background: var(--btn-load); }
+.actionbar .btn[data-action="save"]    { background: var(--btn-save); }
+.actionbar .btn[data-action="save-as"] { background: var(--btn-save-as); }
+.actionbar .btn[data-action="json"]    { background: var(--btn-json); }
+.actionbar .btn[data-action="xml"]     { background: var(--btn-xml); }
+.actionbar .btn[data-action="excel"]   { background: var(--btn-excel); }
+.actionbar .btn[data-action="render"]  { background: var(--btn-render); }
+
+.actionbar .btn[data-action]:hover:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(0.94);
+}
+.actionbar .btn[data-action]:active:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(0.88);
+}
+/* A missing-dependency button (spec 6.8) stays legible: grey out the fill
+   rather than dimming a colour that would otherwise read as "still usable". */
+.actionbar .btn[data-action][aria-disabled="true"],
+.actionbar .btn[data-action]:disabled {
+  background: var(--surface-2);
+  color: var(--text-faint);
+  border-color: var(--border);
+}
+
+/* Not-yet-built actions stay focusable so a keyboard user can reach them and
+   read the tooltip; the click handler explains instead of doing nothing. */
+.btn[aria-disabled="true"],
+.btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
+.btn[aria-disabled="true"]:hover,
+.btn:disabled:hover { background: var(--surface-2); }
+
+.btn[aria-disabled="true"]::after {
+  content: attr(data-phase);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.btn[aria-disabled="true"]:not([data-phase])::after { content: none; }
+
+input[type="text"],
+input[type="number"],
+input[type="search"],
+select,
+textarea {
+  min-height: var(--ctl-h);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  max-width: 100%;
+}
+textarea { min-height: 4.5em; resize: vertical; line-height: 1.4; }
+input:hover, select:hover, textarea:hover { border-color: var(--border-strong); }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+input[readonly], input:disabled, select:disabled, textarea:disabled {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+.field { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.field > label,
+.field-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ---- top bar ------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--chrome-desktop);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.topbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.topbar__group--grow { flex: 1 1 220px; }
+.topbar__group--end { margin-left: auto; }
+
+.topbar__label {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+#title-input { flex: 1 1 200px; min-width: 120px; }
+/* 10 characters of YYYY-MM-DD plus the input's own padding; never shrinks,
+   so the extra 1.7 top-bar controls cannot clip the date. */
+#date-input { width: calc(10ch + 2.5em); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+/* 7.5ch clipped "FTA"/"ETA" under the native dropdown arrow, which is not
+   part of the ch-based text measurement; a bit of extra room clears it. */
+#mode-select { width: 10ch; }
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+/* dirty indicator ---------------------------------------------------------- */
+.dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: var(--ctl-h);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.dirty__dot { font-size: 10px; line-height: 1; color: var(--ok); }
+/* One width for "Saved" and "Unsaved changes", in any language. The pill is a
+   two-column grid, the dot and the text; both wordings sit unseen in the text
+   column (main.js puts them in data-saved / data-unsaved) and the wider one
+   sets its width. The pill used to grow on the first edit, and the top bar
+   wrapped onto a second row and pushed the whole workspace down. */
+.dirty { display: inline-grid; grid-template-columns: auto auto; column-gap: 6px; }
+.dirty > #dirty-text { grid-column: 2; grid-row: 1; }
+.dirty::before,
+.dirty::after {
+  grid-column: 2;
+  grid-row: 1;
+  visibility: hidden;
+  pointer-events: none;
+}
+.dirty::before { content: attr(data-saved); }
+.dirty::after { content: attr(data-unsaved); }
+.dirty[data-dirty="true"] { background: var(--warn-soft); border-color: var(--warn); }
+.dirty[data-dirty="true"] .dirty__dot { color: var(--warn); }
+
+/* The version: the last item of the bar, a zero-size flex item that only takes free space (up to its text), so it
+   never creates or moves a line break: its outer size (basis 0 + margin -gap) cancels the bar's gap. main.js hides
+   it (hidden) when its box is narrower than its text. --text-dim keeps 5.5:1 (light) / 7.4:1 (dark) on the bar. */
+#app-version {
+  flex: 1000 1 0;                      /* basis 0: hypothetical size 0 */
+  min-width: 0;
+  max-width: max-content;              /* takes free space only up to its text */
+  margin-left: calc(-1 * var(--s-3));  /* outer size = -gap, cancels the bar's gap: the line fill is unchanged */
+  text-indent: var(--s-3);             /* gives the gap back visually (padding would count in the basis) */
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  user-select: text;
+  cursor: default;
+}
+
+/* ---- workspace grid ------------------------------------------------------ */
+
+.workspace {
+  display: grid;
+  min-height: 0;
+  padding: var(--s-2);
+  grid-template-columns:
+    var(--tree-w, 320px) var(--splitter) minmax(0, 1fr) var(--splitter) var(--ai-w, 340px);
+  grid-template-rows:
+    minmax(0, 1fr) var(--splitter) var(--details-h, 260px);
+  grid-template-areas:
+    "tree          split-tree    diagram       split-ai ai"
+    "split-details split-details split-details split-ai ai"
+    "details       details       details       split-ai ai";
+}
+
+#tree-panel    { grid-area: tree; }
+#diagram-panel { grid-area: diagram; }
+#details-panel { grid-area: details; }
+#ai-panel      { grid-area: ai; }
+[data-splitter="tree"]    { grid-area: split-tree; }
+[data-splitter="ai"]      { grid-area: split-ai; }
+[data-splitter="details"] { grid-area: split-details; }
+
+/* ---- splitters ----------------------------------------------------------- */
+
+.splitter {
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  touch-action: none;
+}
+.splitter::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  background: var(--border);
+  border-radius: 2px;
+  transition: background var(--dur);
+}
+.splitter--v { cursor: col-resize; }
+.splitter--v::before { width: 2px; height: 34px; }
+.splitter--h { cursor: row-resize; }
+.splitter--h::before { height: 2px; width: 34px; }
+.splitter:hover::before,
+.splitter:focus-visible::before,
+.splitter.is-dragging::before { background: var(--accent); }
+.splitter--v:hover::before,
+.splitter--v.is-dragging::before { height: 100%; }
+.splitter--h:hover::before,
+.splitter--h.is-dragging::before { width: 100%; }
+
+/* While a drag is in flight the cursor must not flicker over child elements. */
+body.is-resizing { user-select: none; }
+body.is-resizing--v, body.is-resizing--v * { cursor: col-resize !important; }
+body.is-resizing--h, body.is-resizing--h * { cursor: row-resize !important; }
+
+/* ---- panels -------------------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 5px 8px 5px 10px;
+  min-height: 34px;
+  background: var(--panel-header);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Desktop: the AI panel's title strip was its own light blue
+   (title_frame bg="#e6f3ff" in _build_ai_chat_panel), distinct from the
+   other panels' plain header. */
+#ai-panel > .panel__head { background: var(--ai-header-bg); }
+
+.panel__title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.panel__meta {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.panel__spacer { flex: 1 1 auto; }
+
+.panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s-2);
+}
+.panel__body--flush { padding: 0; }
+
+/* ---- placeholders for panels that arrive in a later phase ---------------- */
+
+.placeholder {
+  height: 100%;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  text-align: center;
+  color: var(--text-faint);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--surface-2) 0 10px,
+      transparent 10px 20px
+    );
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+}
+.placeholder__glyph { font-size: 26px; line-height: 1; opacity: .8; }
+.placeholder__title { font-size: var(--fs-lg); font-weight: 600; color: var(--text-dim); }
+.placeholder__note { font-size: var(--fs-sm); max-width: 34ch; }
+.placeholder__badge {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- AI panel status dot ------------------------------------------------- */
+
+.status-dot { font-size: 11px; line-height: 1; color: var(--text-faint); }
+.status-dot[data-on="true"] { color: var(--ok); }
+
+/* ---- AI assistant panel (chat.js) ---------------------------------------
+   The panel is a column: an invitation when nothing is set up, the message
+   log (the only part that scrolls), a busy line, the quick actions, and the
+   composer. Everything is built by chat.js; only the looks live here.        */
+
+#ai-root { overflow: hidden; }
+
+.chat {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+}
+
+/* Not configured is an invitation, never a warning: accent tones, not amber.
+   The same reasoning as the AI row in capabilities.js -- an assistant nobody
+   has set up yet is the expected default, not a fault. */
+.chat__invite {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.chat__invite[hidden] { display: none; }
+.chat-invite__title { font-size: var(--fs-lg); font-weight: 600; }
+.chat-invite__body,
+.chat-invite__free { font-size: var(--fs-sm); color: var(--text-dim); }
+.chat-invite__btn { align-self: flex-start; }
+
+.chat__log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+}
+.chat-msg__role {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.chat-msg__body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* A reply drawn as Markdown (the MD switch in the chat's action row). */
+.chat-msg__body--md { white-space: normal; }
+.chat-msg__body--md > * { margin: 0; }
+.chat-msg__body--md > * + * { margin-top: 6px; }
+.chat-msg__body--md h1,
+.chat-msg__body--md h2,
+.chat-msg__body--md h3,
+.chat-msg__body--md h4,
+.chat-msg__body--md h5,
+.chat-msg__body--md h6 { font-size: var(--fs-sm); font-weight: 700; line-height: 1.3; }
+.chat-msg__body--md h1 { font-size: var(--fs-lg); }
+.chat-msg__body--md h2 { font-size: var(--fs-md); }
+.chat-msg__body--md > h1:not(:first-child),
+.chat-msg__body--md > h2:not(:first-child),
+.chat-msg__body--md > h3:not(:first-child) { margin-top: 10px; }
+/* `.panel__body ul, .panel__body ol` strips every list in a panel; a reply's
+   lists get their markers and indent back here, at a higher specificity. */
+.panel__body .chat-msg__body--md ul,
+.panel__body .chat-msg__body--md ol { margin: 0; padding-left: 1.6em; }
+.panel__body .chat-msg__body--md > ul,
+.panel__body .chat-msg__body--md > ol { margin-top: 6px; }
+.panel__body .chat-msg__body--md ul { list-style: disc; }
+.panel__body .chat-msg__body--md ul ul { list-style: circle; }
+.panel__body .chat-msg__body--md ol { list-style: decimal; }
+.chat-msg__body--md li > ul,
+.chat-msg__body--md li > ol,
+.chat-msg__body--md li > p { margin: 2px 0 0; }
+.chat-msg__body--md li + li { margin-top: 2px; }
+.chat-msg__body--md code {
+  padding: 0 3px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.chat-msg__body--md pre {
+  padding: 6px 8px;
+  max-height: 20em;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.chat-msg__body--md pre code { padding: 0; border: 0; background: none; white-space: pre; }
+.chat-msg__body--md blockquote {
+  padding-left: 8px;
+  border-left: 3px solid var(--border);
+  color: var(--text-dim);
+}
+.chat-msg__body--md blockquote > * { margin: 0; }
+.chat-msg__body--md blockquote > * + * { margin-top: 6px; }
+.chat-msg__body--md hr { border: 0; border-top: 1px solid var(--border); }
+.chat-msg__body--md a { color: var(--accent); text-decoration: underline; }
+.chat-msg__body--md .md-table { overflow-x: auto; }
+.chat-msg__body--md table { border-collapse: collapse; font-size: var(--fs-xs); }
+.chat-msg__body--md th,
+.chat-msg__body--md td { padding: 2px 6px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.chat-msg__body--md th { background: var(--surface); font-weight: 700; }
+
+.chat__md { font-family: var(--font-mono); font-weight: 700; }
+.chat__md[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+.chat-msg--user { background: var(--accent-soft); }
+.chat-msg--user .chat-msg__role { color: var(--accent); }
+.chat-msg--assistant { background: var(--surface-2); border-color: var(--border); }
+.chat-msg--system { padding: 0 8px; color: var(--text-dim); font-size: var(--fs-xs); }
+.chat-msg--error {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.chat-msg--error .chat-msg__role { color: var(--danger); }
+
+/* A rejected AI update explains itself with a long excerpt. It has to be
+   readable without pushing the conversation off the screen, so it collapses
+   and scrolls inside itself. */
+.chat-block {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.chat-block__summary {
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.chat-block__pre {
+  margin: 0;
+  padding: 8px;
+  max-height: 16em;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.chat-changes[data-retired="true"] { opacity: .65; border-left-color: var(--border); }
+.chat-changes__title { font-size: var(--fs-sm); font-weight: 700; }
+.chat-changes__hint,
+.chat-changes__status,
+.chat-changes__target { font-size: var(--fs-xs); color: var(--text-dim); }
+.chat-changes__list { display: flex; flex-direction: column; gap: var(--s-2); }
+.chat-changes__item { display: flex; flex-direction: column; gap: 2px; }
+.chat-changes__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.chat-changes__box { flex: 0 0 auto; margin-top: 2px; }
+.chat-changes__text { overflow-wrap: anywhere; }
+.chat-changes__target,
+.chat-block--inline { margin-left: 21px; }
+/* What a suggestion does to its node's links (chat.js linkLines). The words
+   carry the meaning ("Adds link" / "Removes link"); the colour only helps. */
+.chat-changes__item .chat-changes__links {
+  /* Two classes: `.panel__body ul` (below) resets every list's margin. */
+  margin: 0 0 0 21px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+.chat-changes__link--add { color: var(--accent); }
+.chat-changes__link--remove,
+.chat-changes__link--problem { color: var(--danger); }
+.chat-changes__link--none { color: var(--text-dim); }
+.chat-changes__foot { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+.chat__busy {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.chat__busy[hidden] { display: none; }
+.chat__spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: chat-spin .8s linear infinite;
+}
+@keyframes chat-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .chat__spinner { animation: none; }
+}
+.chat[data-busy="true"] .chat__log { opacity: .8; }
+
+.chat__actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.chat__action--end { margin-left: auto; }
+
+.chat__composer { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--s-1); }
+.chat__input { width: 100%; min-height: 3.6em; }
+.chat__send { align-self: flex-end; }
+
+/* ---- AI setup dialog (aisettings.js) -------------------------------------
+   The frame (.fta-modal / .fta-modal-overlay) comes from dialogs.js; these
+   rules are only the inside of the dialog.                                   */
+
+.aiset { width: min(34rem, 100%); }
+.aiset-body { gap: var(--s-3); }
+.aiset-form { display: flex; flex-direction: column; gap: var(--s-3); }
+.aiset-form[hidden] { display: none; }
+.aiset-intro,
+.aiset-loading { font-size: var(--fs-sm); color: var(--text-dim); }
+.aiset-block { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+
+/* Provider first: a card each, with the console link in plain sight so the
+   question "where do I get a key?" is answered before it is asked. */
+.aiset-providers { display: flex; flex-direction: column; gap: var(--s-2); }
+.aiset-provider {
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.aiset-provider[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.aiset-provider__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+.aiset-provider__hint,
+.aiset-provider__where {
+  margin-top: 2px;
+  padding-left: 23px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.aiset-provider__link { color: var(--accent); overflow-wrap: anywhere; }
+
+.aiset-key,
+.aiset-model { display: flex; align-items: center; gap: var(--s-2); }
+.aiset-key__input,
+.aiset-model__input { flex: 1 1 auto; min-width: 0; }
+/* input[type=password] is not in the shared control rule above, so it is
+   restated here rather than widening a global selector from this section. */
+.aiset-key__input {
+  min-height: var(--ctl-h);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+}
+.aiset-key__toggle,
+.aiset-model__refresh { flex: 0 0 auto; }
+
+.aiset-note { font-size: var(--fs-xs); color: var(--text-dim); overflow-wrap: anywhere; }
+.aiset-note[hidden] { display: none; }
+.aiset-note[data-kind="warn"] { color: var(--warn); }
+.aiset-note[data-kind="ok"] { color: var(--ok); }
+
+.aiset-advanced { border-top: 1px solid var(--border); padding-top: var(--s-2); }
+.aiset-advanced__summary { cursor: pointer; font-size: var(--fs-sm); color: var(--text-dim); }
+.aiset-advanced .aiset-block { margin-top: var(--s-2); }
+.aiset-endpoint__input { width: 100%; font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+.aiset-status { min-height: 1.2em; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.aiset-status[data-kind="idle"],
+.aiset-status[data-kind="info"],
+.aiset-status[data-kind="busy"] { color: var(--text-dim); }
+.aiset-status[data-kind="ok"] { color: var(--ok); font-weight: 600; }
+.aiset-status[data-kind="error"] { color: var(--danger); font-weight: 600; }
+
+.aiset-foot { align-items: center; }
+.aiset-clear { margin-right: auto; }
+.aiset-clear[hidden] { display: none; }
+.aiset[data-busy="true"] { cursor: progress; }
+
+/* ---- generic tree / details styling the sibling modules inherit ---------- */
+
+.panel__body ul,
+.panel__body ol { list-style: none; margin: 0; padding: 0; }
+
+.tree-node,
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+  cursor: default;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.tree-node:hover,
+.tree-row:hover { background: var(--surface-hover); }
+.tree-node.is-selected,
+.tree-row.is-selected {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tree-node.is-zero,
+/* tree.js emits .fta-tree-row; .tree-row was a P1 placeholder name that the
+   P5 rewrite replaced. Both are matched so neither selector silently stops
+   applying again -- this mismatch meant the "Hide Zero" toggle had no visible
+   effect on the tree panel at all, while still filtering the diagram, which
+   read as the toggle being half-broken rather than mis-selectored. */
+.tree-row.is-zero,
+.fta-tree-row.is-zero { color: var(--text-faint); font-style: italic; }
+.is-dangling { color: var(--warn); }
+
+/* "Hide Zero P_calc" is pure CSS: the shell flips the attribute. tree.js puts
+   .is-zero on the <li> as well as the row, and it is the <li> that is hidden:
+   hiding only the row would leave the children of a zero parent floating
+   headerless while the diagram drops the whole subtree. */
+html[data-hide-zero="1"] .tree-node.is-zero,
+html[data-hide-zero="1"] .tree-row.is-zero,
+html[data-hide-zero="1"] .fta-tree-item.is-zero { display: none; }
+
+/* ---- action bar ---------------------------------------------------------- */
+
+.actionbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  background: var(--chrome-desktop);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.actionbar .sep { height: var(--ctl-h); margin: 0 var(--s-2); }
+
+.statusline {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+.statusline__msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46ch;
+}
+.statusline__msg[data-kind="error"] { color: var(--danger); font-weight: 600; }
+.statusline__msg[data-kind="ok"] { color: var(--ok); }
+/* The file name is what tells two documents apart, so it never shrinks; the
+   folder beside it is the part that gives way. The full path is the tooltip
+   of both. */
+.statusline__file {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 48ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.statusline__path {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 30ch;
+}
+.statusline__path[hidden] { display: none; }
+
+/* ---- toasts -------------------------------------------------------------- */
+
+.toasts {
+  position: fixed;
+  right: var(--s-3);
+  bottom: calc(var(--ctl-h) + var(--s-5));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: min(420px, calc(100vw - var(--s-5)));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-sm);
+  animation: toast-in 160ms ease-out;
+}
+.toast--error { border-left-color: var(--danger); background: var(--danger-soft); }
+.toast--ok { border-left-color: var(--ok); background: var(--ok-soft); }
+.toast--warn { border-left-color: var(--warn); background: var(--warn-soft); }
+
+.toast__body { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.toast__code {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.toast__close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+}
+.toast__close:hover { background: var(--surface-hover); color: var(--text); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- blocking overlay (no session / boot failure) ------------------------ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+}
+.overlay[hidden] { display: none; }
+
+.overlay__card {
+  max-width: 56ch;
+  padding: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-2);
+  text-align: left;
+}
+.overlay__glyph { font-size: 30px; line-height: 1; }
+.overlay__title {
+  margin: var(--s-3) 0 var(--s-2);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+}
+.overlay__body { color: var(--text-dim); font-size: var(--fs-md); }
+.overlay__body p + p { margin-top: var(--s-2); }
+.overlay__cmd {
+  display: block;
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.overlay__rescue {
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--border);
+}
+.overlay__rescue[hidden] { display: none; }
+.overlay__rescue .btn { margin-top: var(--s-2); }
+
+/* ---- the server-stopped banner -------------------------------------------
+   Its own row above the top bar. The rows are placed by name because the
+   banner is display:none most of the time: left to auto-placement the top
+   bar would move into its row and every row after it would shift. */
+body { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.banner { grid-row: 1; }
+.topbar { grid-row: 2; }
+.workspace { grid-row: 3; }
+.actionbar { grid-row: 4; }
+
+.banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--danger-soft);
+  border-bottom: 2px solid var(--danger);
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+.banner[hidden] { display: none; }
+.banner__glyph { color: var(--danger); font-size: var(--fs-lg); line-height: 1; }
+.banner__text { flex: 1 1 28ch; min-width: 0; font-weight: 600; }
+
+/* ---- the first-run hint (tree panel) ------------------------------------- */
+.firstrun {
+  position: relative;
+  flex: 0 0 auto;
+  margin: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.firstrun[hidden] { display: none; }
+/* The offer of a recovery copy: the same box, in the colour of a warning. */
+.firstrun--recovery { border-color: var(--warn, #b26a00); background: var(--warn-soft, var(--accent-soft)); }
+.firstrun--recovery .btn { white-space: normal; text-align: left; }
+/* A file's whole path is in the text, and a path has no spaces to break at. */
+.firstrun--recovery .firstrun__text { overflow-wrap: anywhere; }
+.firstrun__title { margin: 0 var(--s-5) var(--s-1) 0; font-weight: 700; font-size: var(--fs-lg); }
+.firstrun__text { margin: 0; font-size: var(--fs-sm); color: var(--text); }
+.firstrun__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.firstrun__close {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+}
+.firstrun__close:hover { background: var(--surface-hover); color: var(--text); }
+
+/* ---- a .json dragged over the tree panel --------------------------------- */
+#tree-panel { position: relative; }
+.dropzone {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  text-align: center;
+  font-weight: 700;
+  color: var(--accent-hover, var(--accent));
+  background: var(--accent-soft);
+  border: 2px dashed var(--accent);
+  border-radius: var(--r-md);
+  /* The panel under it stays the drop target; the zone is only a sign. */
+  pointer-events: none;
+  opacity: .94;
+}
+.dropzone[hidden] { display: none; }
+
+/* ---- the action bar's export group --------------------------------------- */
+.actionbar__group { display: inline-flex; align-items: center; gap: var(--s-1); }
+.actionbar__label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-right: 2px;
+  cursor: help;
+}
+
+/* ---- the AI panel, folded -------------------------------------------------
+   A strip as wide as its one button. The column is set here, over the width
+   the splitter stored, so unfolding gives back the width the user chose. */
+@media (min-width: 901px) {
+  .workspace[data-ai-collapsed="1"] {
+    grid-template-columns:
+      var(--tree-w, 320px) var(--splitter) minmax(0, 1fr) var(--splitter) calc(var(--ctl-h) + 10px);
+  }
+  .workspace[data-ai-collapsed="1"] #ai-panel > .panel__head {
+    flex-direction: column;
+    flex: 1 1 auto;
+    padding: 5px 0;
+    border-bottom: 0;
+  }
+  .workspace[data-ai-collapsed="1"] #ai-panel-title {
+    display: block;
+    writing-mode: vertical-rl;
+    font-size: var(--fs-sm);
+    color: var(--text-dim);
+  }
+  .workspace[data-ai-collapsed="1"] [data-splitter="ai"] { visibility: hidden; pointer-events: none; }
+}
+.workspace[data-ai-collapsed="1"] #ai-root,
+.workspace[data-ai-collapsed="1"] #ai-panel .panel__spacer,
+.workspace[data-ai-collapsed="1"] #btn-ai-settings { display: none; }
+
+/* ---- narrow viewports ---------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(4, minmax(160px, auto));
+    grid-template-areas: "tree" "diagram" "details" "ai";
+    gap: var(--s-2);
+    overflow: auto;
+  }
+  .splitter { display: none; }
+  .statusline { width: 100%; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+
+/* P2: the diagram panel manages its own toolbar/stage/status rows, so its body
+   is a flush flex column rather than the padded default. */
+.panel__body--flush {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* P3: a button switched off by a missing optional dependency rather than by an
+   unbuilt phase (Excel without openpyxl, Render without a system Graphviz).
+
+   It keeps the dimmed-but-focusable treatment every aria-disabled button has,
+   so it cannot be mistaken for a live control -- and it keeps its badge, which
+   would otherwise be blanked by the `:not([data-phase])` rule above. The badge
+   only draws the eye; the explanation and the remedy are in the button's title
+   and in the message its click raises. Hiding the button instead would read as
+   "this build never had Excel export", which is the misunderstanding spec 6.8
+   exists to prevent. This rule must stay after that `:not([data-phase])` rule:
+   they have equal specificity, so source order decides. */
+.btn[aria-disabled="true"][data-capability]::after {
+  content: "!";
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* The action bar carries eleven buttons at P3 and wraps on a narrow window; the
+   status line then needs its own row rather than a 30ch sliver at the end. */
+@media (max-width: 1100px) {
+  .actionbar .statusline { flex-basis: 100%; margin-left: 0; }
+}
+
+/* =========================================================================
+   1.7 shell: Advanced switch, significant figures, headline, boot gate and
+   the bottom panel's tab strip. Colours are theme tokens only, so every rule
+   here follows light/dark without a dark-mode block of its own.
+   ========================================================================= */
+
+/* ---- Advanced-only content ----------------------------------------------
+   <html data-advanced> is set by the pre-paint script and by main.js. */
+html[data-advanced="0"] [data-advanced-only] { display: none !important; }
+
+/* ---- boot gate ------------------------------------------------------------
+   Until every panel has loaded the action bar takes no pointer input and
+   reads as busy. Separate from aria-disabled, which applyCapabilityGates
+   owns; the keyboard side of the gate is in main.js onKeyDown. */
+html[data-booting] .actionbar {
+  pointer-events: none;
+  opacity: .55;
+  cursor: progress;
+}
+html[data-booting] .tabstrip { pointer-events: none; }
+
+/* ---- significant-figure select -------------------------------------------- */
+/* Room for one digit plus the native dropdown arrow (see #mode-select). */
+#sigfig-select { width: 7.5ch; min-width: 52px; }
+
+/* ---- Advanced switch ------------------------------------------------------ */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.switch__input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.switch__track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
+  transition: background var(--dur), border-color var(--dur);
+}
+.switch__thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur);
+}
+.switch__input:checked + .switch__track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch__input:checked + .switch__track .switch__thumb {
+  transform: translateX(13px);
+  background: var(--text-on-accent);
+}
+.switch__input:checked ~ .switch__label { color: var(--text); font-weight: 600; }
+.switch__input:focus-visible + .switch__track {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ---- headline ------------------------------------------------------------- */
+.headline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--ctl-h);
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.headline__label { color: var(--text-dim); font-weight: 600; }
+.headline__value {
+  color: var(--text);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.headline__badge {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  cursor: help;
+}
+.headline__badge[hidden] { display: none; }
+/* Subtle marker: the headline's cut sets were capped / truncated. */
+.headline__marker {
+  color: var(--text-dim);
+  font-weight: 700;
+  cursor: help;
+}
+.headline__marker[hidden] { display: none; }
+/* CCF groups (F2): what the headline includes, the tree-walk value beside an
+   incomplete one, and the count of groups that are not applied. */
+.headline__ccf, .headline__walk, .headline__note { font-size: var(--fs-xs); }
+.headline__ccf { color: var(--accent-hover); }
+.headline__walk, .headline__note { color: var(--text-dim); }
+.headline__walk-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.headline__sep { color: var(--text-dim); }
+.headline__ccf[hidden], .headline__walk[hidden], .headline__note[hidden], .headline__sep[hidden] { display: none; }
+
+/* ---- bottom panel: tab strip + panels ------------------------------------- */
+.panel__head--tabs {
+  padding: 0 8px 0 4px;
+  gap: var(--s-2);
+  align-items: stretch;
+}
+.panel__head--tabs .panel__meta { align-self: center; margin-left: auto; }
+
+.tabstrip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  /* the focus ring must not be clipped by the scroller */
+  padding: 3px 3px 0;
+}
+.tabstrip__tab {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  min-height: 30px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur), color var(--dur);
+}
+.tabstrip__tab:hover { background: var(--surface-hover); color: var(--text); }
+.tabstrip__tab[aria-selected="true"] {
+  background: var(--panel);
+  color: var(--accent);
+  border-color: var(--border);
+}
+.tabstrip__tab[aria-selected="true"]::after {
+  /* an accent rule along the active tab's top edge */
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--accent);
+}
+.tabstrip__tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.tabstrip__tab[hidden] { display: none; }
+
+.panel--tabs .tabpanels {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tabpanel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.tabpanel[hidden] { display: none !important; }
+.tabpanel--details {
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.tabpanel--details > #details-root { flex: 1 1 auto; }
+.tabpanel .placeholder { min-height: 100px; }
+
+@media (max-width: 900px) {
+  .topbar { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .headline { order: 10; }
+  /* The headline is ordered last here: the version follows it, so it still ends its row. */
+  #app-version { order: 11; }
+  /* The CCF phrases make the headline long: let it wrap instead of clipping. */
+  .headline {
+    height: auto;
+    min-height: var(--ctl-h);
+    white-space: normal;
+    flex-wrap: wrap;
+    border-radius: var(--r-md, 8px);
+    padding: 2px 10px;
+  }
+}
+
+/* ---- 1.7 integration: Validation tab badge, toast action ------------------ */
+.tabstrip__badge {
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid currentColor;
+}
+.tabstrip__badge[data-kind="error"] { color: var(--danger); background: var(--danger-soft); }
+.tabstrip__badge[data-kind="warn"] { color: var(--warn); background: var(--warn-soft); }
+.tabstrip__badge[hidden] { display: none; }
+
+.toast__action {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast__action:hover { background: var(--surface-hover); }
+.toast__action:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* ---- feature-availability chip + panel (capabilities.js) -------------------
+   The markup shipped unstyled: a UA-grey button (4.3:1 in dark mode) whose
+   panel pushed the whole top bar down. A chip like the headline, and a
+   floating panel anchored under it. */
+#capabilities-host { position: relative; }
+.capbar__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--ctl-h);
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.capbar__button:hover { background: var(--surface-hover); }
+.capbar__button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.capbar__button[data-state="ok"] .capbar__glyph { color: var(--ok); }
+/* Nothing missing: the tick alone. "All features available" took a fifth of
+   the top bar to say there was nothing to say; the words stay in the tooltip,
+   in the accessible name and in the panel the chip opens. A limitation still
+   gets its words (the other states). */
+.capbar__button[data-state="ok"] { padding-left: 6px; padding-right: 6px; }
+.capbar__button[data-state="ok"] .capbar__text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.capbar__button[data-state="warn"] { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
+.capbar__button[data-state="invite"] .capbar__glyph { color: var(--accent-hover); }
+.capbar__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-sm);
+  white-space: normal;
+}
+.capbar__panel[hidden] { display: none; }
+.capbar__title { margin: 0 0 8px; font-weight: 600; }
+.capbar__foot { margin: 8px 0 0; color: var(--text-dim); }
+.cap-row { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.cap-row__glyph { flex: 0 0 1.2em; text-align: center; font-weight: 700; }
+.cap-row[data-state="ok"] .cap-row__glyph { color: var(--ok); }
+.cap-row[data-state="warn"] .cap-row__glyph { color: var(--warn); }
+.cap-row[data-state="invite"] .cap-row__glyph { color: var(--accent-hover); }
+.cap-row__main { flex: 1 1 auto; min-width: 0; }
+.cap-row__head { display: flex; justify-content: space-between; gap: 8px; }
+.cap-row__name { font-weight: 600; }
+.cap-row__state { color: var(--text-dim); white-space: nowrap; }
+.cap-row__body, .cap-row__fix { margin: 2px 0 0; color: var(--text-dim); }
+.cap-row__cmd { display: block; margin-top: 4px; padding: 2px 6px; border-radius: var(--r-sm);
+  background: var(--surface-2); font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .capbar__panel { position: fixed; left: 16px; right: 16px; top: 56px; width: auto; }
+}
+
+/* =============================================================================
+   Analysis, diagram and AI (usability batch 3)
+   ========================================================================== */
+
+/* ---- bottom panel: who is selected, and the enlarge button ----------------- */
+.panel__head--tabs .panel__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel__head--tabs .panel__meta[data-count]:not([data-count="0"]):not([data-count="1"]) {
+  color: var(--accent);
+  font-weight: 700;
+}
+#btn-bottom-max { align-self: center; flex: 0 0 auto; }
+#btn-bottom-max[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+/* One column (a narrow window): the panels are stacked and scroll, so there
+   is no height to share out. */
+@media (max-width: 900px) {
+  #btn-bottom-max { display: none; }
+}
+
+/* ---- ETA mode: the four fault-tree analyses are greyed, with the reason in
+        their tooltip. Still focusable and still openable: the panel says the
+        same thing at length. ---------------------------------------------- */
+.tabstrip__tab.is-unavailable {
+  color: var(--text-faint);
+  font-weight: 400;
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+  cursor: help;
+}
+.tabstrip__tab.is-unavailable[aria-selected="true"] { color: var(--text-dim); }
+.tabstrip__tab.is-unavailable[aria-selected="true"]::after { background: var(--border-strong); }
+
+/* ---- analysis tabs ---------------------------------------------------------- */
+.anl-stat__note { color: var(--warn); white-space: normal; }
+
+/* ---- AI panel: the switch is a word now, Stop, links, readable changes ------ */
+.chat__md { font-family: inherit; font-weight: 600; }
+.chat__stop {
+  margin-left: auto;
+  min-height: 0;
+  height: auto;
+  padding: 1px 10px;
+  font-size: var(--fs-xs);
+}
+.chat__stop[hidden] { display: none; }
+.chat-msg[data-failed="true"] { opacity: .7; }
+.chat-msg[data-kind="restored"] { font-style: italic; }
+.chat-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.chat-link:hover { color: var(--accent-hover); }
+.chat-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+.chat-changes[data-retired="true"] .chat-link { color: inherit; }
+.chat-changes__id { font-family: var(--font-mono); }
+.chat-changes__item .chat-changes__fields {
+  /* Two classes: `.panel__body ul` resets every list's margin. */
+  margin: 0 0 0 21px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.chat-changes__old { text-decoration: line-through; color: var(--text-faint); }
+.chat-changes__new { color: var(--text); font-weight: 600; }
+
+/* ---- AI setup: what is sent, said once -------------------------------------- */
+.aiset-disclosure {
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+}

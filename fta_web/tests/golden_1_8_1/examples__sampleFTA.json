@@ -1,0 +1,605 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/sampleFTA.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "root_4_0",
+         "name": "Ev5.1",
+         "q": 1.0
+        }
+       ],
+       "order": 1,
+       "probability": 1.0,
+       "rank": 1,
+       "share": 0.3448275862068966
+      },
+      {
+       "events": [
+        {
+         "id": "root_5",
+         "name": "Ev6",
+         "q": 1.0
+        }
+       ],
+       "order": 1,
+       "probability": 1.0,
+       "rank": 2,
+       "share": 0.3448275862068966
+      },
+      {
+       "events": [
+        {
+         "id": "root_3_0_0",
+         "name": "Ev4.1.1",
+         "q": 0.5
+        }
+       ],
+       "order": 1,
+       "probability": 0.5,
+       "rank": 3,
+       "share": 0.1724137931034483
+      },
+      {
+       "events": [
+        {
+         "id": "root_3_0_1",
+         "name": "Ev4.1.2",
+         "q": 0.2
+        }
+       ],
+       "order": 1,
+       "probability": 0.2,
+       "rank": 4,
+       "share": 0.06896551724137931
+      },
+      {
+       "events": [
+        {
+         "id": "root_0_0_0",
+         "name": "Ev1.1.1",
+         "q": 0.5
+        },
+        {
+         "id": "root_0_0_1",
+         "name": "Ev1.1.2",
+         "q": 0.5
+        },
+        {
+         "id": "root_0_1_0",
+         "name": "Ev1.2.1 with very lone name for testing, super long name blah blah blah hogehoge",
+         "q": 1.0
+        },
+        {
+         "id": "root_0_2",
+         "name": "Ev1.3",
+         "q": 0.8
+        },
+        {
+         "id": "root_0_3",
+         "name": "Ev1.4",
+         "q": 1.0
+        }
+       ],
+       "order": 5,
+       "probability": 0.2,
+       "rank": 5,
+       "share": 0.06896551724137931
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 1.0,
+     "nonCoherent": false,
+     "rareEvent": 2.9,
+     "repeatedEvents": [
+      {
+       "id": "root_1_1",
+       "name": "Ev2.2"
+      },
+      {
+       "id": "root_0_2",
+       "name": "Ev1.3"
+      }
+     ],
+     "total": 5,
+     "treeWalk": 1.0,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "sampleFTA"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/sampleFTA.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_0_0_0",
+       "name": "Ev1.1.1",
+       "q": 0.5,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_0_0_1",
+       "name": "Ev1.1.2",
+       "q": 0.5,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_0_1_0",
+       "name": "Ev1.2.1 with very lone name for testing, super long name blah blah blah hogehoge",
+       "q": 1.0,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_0_2",
+       "name": "Ev1.3",
+       "q": 0.8,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_0_3",
+       "name": "Ev1.4",
+       "q": 1.0,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_3_0_0",
+       "name": "Ev4.1.1",
+       "q": 0.5,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_3_0_1",
+       "name": "Ev4.1.2",
+       "q": 0.2,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_4_0",
+       "name": "Ev5.1",
+       "q": 1.0,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.0,
+       "cutSetCount": 1,
+       "fv": 0.0,
+       "id": "root_5",
+       "name": "Ev6",
+       "q": 1.0,
+       "raw": 1.0,
+       "rrw": 1.0,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "sampleFTA"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/sampleFTA.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "root_0_0_0",
+      "root_1_1",
+      "root_0_2",
+      "root_0_0_1",
+      "root_0_1_0",
+      "root_0_3",
+      "root_1_0_0",
+      "root_1_0_1",
+      "root_2_0",
+      "root_2_1",
+      "root_2_2",
+      "root_3_0_0",
+      "root_3_0_1",
+      "root_4_0",
+      "root_5"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       1.0,
+       1.0
+      ],
+      "logBins": false
+     },
+     "mean": 1.0,
+     "median": 1.0,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 1.0,
+     "p95": 1.0,
+     "pointEstimate": 1.0,
+     "repeatedEvents": [
+      {
+       "id": "root_1_1",
+       "name": "Ev2.2"
+      },
+      {
+       "id": "root_0_2",
+       "name": "Ev1.3"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "sampleFTA"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/sampleFTA.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.4,
+       "id": "root_0_0_0",
+       "model": "fixed",
+       "name": "Ev1.1.1",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.5,
+       "id": "root_0_0_1",
+       "model": "fixed",
+       "name": "Ev1.1.2",
+       "q": 0.5
+      },
+      {
+       "calculated": 1.0,
+       "id": "root_0_1_0",
+       "model": "fixed",
+       "name": "Ev1.2.1 with very lone name for testing, super long name blah blah blah hogehoge",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.8,
+       "id": "root_0_2",
+       "model": "fixed",
+       "name": "Ev1.3",
+       "q": 0.8
+      },
+      {
+       "calculated": 1.0,
+       "id": "root_0_3",
+       "model": "fixed",
+       "name": "Ev1.4",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.0,
+       "id": "root_1_0_0",
+       "model": "fixed",
+       "name": "Ev2.1.1",
+       "q": 0.0
+      },
+      {
+       "calculated": 1.0,
+       "id": "root_1_0_1",
+       "model": "fixed",
+       "name": "Ev2.1.2",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.0,
+       "id": "root_1_1",
+       "model": "fixed",
+       "name": "Ev2.2",
+       "q": 0.0
+      },
+      {
+       "calculated": 1.0,
+       "id": "root_2_0",
+       "model": "fixed",
+       "name": "Ev3.1",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.0,
+       "id": "root_2_1",
+       "model": "fixed",
+       "name": "Ev3.2",
+       "q": 0.0
+      },
+      {
+       "calculated": 1.0,
+       "id": "root_2_2",
+       "model": "fixed",
+       "name": "Ev3.3",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.5,
+       "id": "root_3_0_0",
+       "model": "fixed",
+       "name": "Ev4.1.1",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.2,
+       "id": "root_3_0_1",
+       "model": "fixed",
+       "name": "Ev4.1.2",
+       "q": 0.2
+      },
+      {
+       "calculated": 1.0,
+       "id": "root_4_0",
+       "model": "fixed",
+       "name": "Ev5.1",
+       "q": 1.0
+      },
+      {
+       "calculated": 1.0,
+       "id": "root_5",
+       "model": "fixed",
+       "name": "Ev6",
+       "q": 1.0
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 1.0,
+      "headlineMethod": "mcub",
+      "mcub": 1.0,
+      "nonCoherent": false,
+      "rareEvent": 2.9,
+      "repeatedEvents": [
+       {
+        "id": "root_1_1",
+        "name": "Ev2.2"
+       },
+       {
+        "id": "root_0_2",
+        "name": "Ev1.3"
+       }
+      ],
+      "treeWalk": 1.0,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "sampleFTA"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/examples/sampleFTA.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 14
+     },
+     "issues": [
+      {
+       "code": "PARENT_PROBABILITY_IGNORED",
+       "hintKey": "val.fix.PARENT_PROBABILITY_IGNORED",
+       "message": "Entered probability 0.5 is not used; the value comes from the inputs (0.16).",
+       "nodeId": "root_0",
+       "nodeName": "Ev1 with a very long name for testing",
+       "params": {
+        "calculated": 0.16,
+        "probability": 0.5
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "SINGLE_INPUT_GATE",
+       "hintKey": "val.fix.SINGLE_INPUT_GATE",
+       "message": "OR gate has only one input, so it does nothing.",
+       "nodeId": "root_0_1",
+       "nodeName": "Ev1.2",
+       "params": {
+        "gate": "OR"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "PARENT_PROBABILITY_IGNORED",
+       "hintKey": "val.fix.PARENT_PROBABILITY_IGNORED",
+       "message": "Entered probability 0.8 is not used; the value comes from the inputs (1).",
+       "nodeId": "root_0_1",
+       "nodeName": "Ev1.2",
+       "params": {
+        "calculated": 1.0,
+        "probability": 0.8
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "root_0_1_0",
+       "nodeName": "Ev1.2.1 with very lone name for testing, super long name blah blah blah hogehoge",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "root_0_3",
+       "nodeName": "Ev1.4",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "root_1_0_1",
+       "nodeName": "Ev2.1.2",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "PARENT_PROBABILITY_IGNORED",
+       "hintKey": "val.fix.PARENT_PROBABILITY_IGNORED",
+       "message": "Entered probability 0.7 is not used; the value comes from the inputs (0).",
+       "nodeId": "root_2",
+       "nodeName": "Ev3",
+       "params": {
+        "calculated": 0.0,
+        "probability": 0.7
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "root_2_0",
+       "nodeName": "Ev3.1",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "root_2_2",
+       "nodeName": "Ev3.3",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "SINGLE_INPUT_GATE",
+       "hintKey": "val.fix.SINGLE_INPUT_GATE",
+       "message": "OR gate has only one input, so it does nothing.",
+       "nodeId": "root_3",
+       "nodeName": "Ev4",
+       "params": {
+        "gate": "OR"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "SINGLE_INPUT_GATE",
+       "hintKey": "val.fix.SINGLE_INPUT_GATE",
+       "message": "AND gate has only one input, so it does nothing.",
+       "nodeId": "root_4",
+       "nodeName": "Ev5",
+       "params": {
+        "gate": "AND"
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "PARENT_PROBABILITY_IGNORED",
+       "hintKey": "val.fix.PARENT_PROBABILITY_IGNORED",
+       "message": "Entered probability 0.75 is not used; the value comes from the inputs (1).",
+       "nodeId": "root_4",
+       "nodeName": "Ev5",
+       "params": {
+        "calculated": 1.0,
+        "probability": 0.75
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "root_4_0",
+       "nodeName": "Ev5.1",
+       "params": {},
+       "severity": "warning"
+      },
+      {
+       "code": "DEFAULT_PROBABILITY",
+       "hintKey": "val.fix.DEFAULT_PROBABILITY",
+       "message": "Probability is 1.0 (the default); this event is probably not quantified yet.",
+       "nodeId": "root_5",
+       "nodeName": "Ev6",
+       "params": {},
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "sampleFTA"
+   }
+  }
+ },
+ "file": "fta_web/examples/sampleFTA.json"
+}

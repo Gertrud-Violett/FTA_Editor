@@ -1,0 +1,551 @@
+"""
+Monte Carlo uncertainty propagation (workstream A).
+
+:func:`run` samples each event's *main parameter* from a lognormal given by
+``quant.unc`` and pushes the samples through the model:
+
+==============  ================  ==========================================
+model           main parameter    q from a sample x
+==============  ================  ==========================================
+fixed           q                 x
+rate            λ                 1 - exp(-xT)
+standby         λ                 min(1, xτ/2)
+repairable      λ                 x / (x + μ)
+==============  ================  ==========================================
+
+``unc = {dist: "lognormal", median | mean, ef}``: σ = ln(EF)/1.645 (EF is the
+p95/median ratio); a mean is converted to the median as mean·e^(−σ²/2); with
+neither, the nominal parameter is the median. Every q is clamped to [0, 1].
+
+Two evaluation methods, chosen automatically:
+
+``tree``      the compiled formula graph evaluated with the engine's gate
+              formulas (KOFN DP, XOR parity, PAND Πp/n!, links) -- exact when
+              the tree is coherent and has no repeated events, and it is then
+              the tree walk sample for sample.
+``cutsets``   otherwise: the most probable minimal cut sets covering 99.99 %
+              of the rare-event sum (at most 2000), each compiled to a
+              constant factor (events without uncertainty) and a tuple of
+              sampled events, combined per sample by the min-cut upper bound.
+              The sets are chosen by their point probability, so an uncertain
+              event in none of them (a point value of 0, say) is not sampled:
+              warning ``MC_EVENT_NOT_SAMPLED`` ``{count, eventIds, names}``.
+
+CCF groups (FN-24, DESIGN section 7). The beta factor and the alpha factors are
+not sampled: only the group's main parameter is, ONCE per group per trial, and
+every member and the CCF events follow from that one draw. For a draw ``Q_t`` the
+group's probabilities are ``ccf.event_probabilities(model, params, [Q_t] *
+members)``: for the beta model each member's independent part ``(1 - beta) Q_t``
+(equal for all members) and the CCF event ``beta Q_t``; for the alpha model the
+independent part ``Q_1`` and one event ``Q_k`` per member subset of size k >= 2,
+each ``Q_k = c_k Q_t`` with a constant ``c_k`` (the alphas are fixed; F2A DESIGN
+3.4). The ``ccf_trial_hook`` payload of an alpha group has ``model`` "alpha",
+``beta`` None and ``ccf`` a dict of event columns. Sampling the members independently would undo the common cause, and
+a constant CCF event would freeze the dominant term of the top event; both would
+be wrong (engineering review of the design). The per-event samplers skip the
+events of an applied group (they carry a ``ccf`` marker); the cut-set compile
+step counts a group-sampled event as sampled, not as part of the constant.
+The result then carries ``ccf`` (the block) and ``ccfSampling`` (which groups
+were sampled, and the note "β and α are not sampled in Monte Carlo.").
+
+Pure Python. Samples are processed column-wise in fixed chunks (a list
+comprehension per operator per chunk), which is several times faster than a
+per-sample interpreter loop and keeps the result deterministic for a seed
+whatever the time limit cut off: a chunk is either complete or not counted.
+"""
+from __future__ import annotations
+
+import math
+import random
+import time
+from typing import Any, Dict, List, Optional
+
+try:  # normal package import: ``import fta_web.uncertainty``
+    from . import cutsets as cutsets_mod
+    from . import ccf, ccf_text, engine, logic
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ccf  # type: ignore[no-redef]
+    import ccf_text  # type: ignore[no-redef]
+    import cutsets as cutsets_mod  # type: ignore[no-redef]
+    import engine  # type: ignore[no-redef]
+    import logic  # type: ignore[no-redef]
+
+Z95 = 1.645
+CHUNK = 500
+MAX_CUTSETS = 2000
+COVERAGE = 0.9999
+DEFAULT_N = 10000
+DEFAULT_TIME_LIMIT = 30.0
+#: Largest log of a sampled parameter (exp(700) ~ 1e304, below the float max).
+_MAX_LOG = 700.0
+
+
+# ---- parameters ----------------------------------------------------------------------
+
+
+def lognormal_params(unc: Any, nominal: Optional[float]) -> Optional[Dict[str, float]]:
+    """``{median, sigma}`` for a ``quant.unc`` object, or None when there is
+    no usable lognormal."""
+    if not isinstance(unc, dict) or str(unc.get("dist") or "").lower() != "lognormal":
+        return None
+    ef = unc.get("ef")
+    if isinstance(ef, bool) or not isinstance(ef, (int, float)) or not ef >= 1.0:
+        return None
+    sigma = math.log(float(ef)) / Z95
+    median = unc.get("median")
+    mean = unc.get("mean")
+    if isinstance(median, (int, float)) and not isinstance(median, bool) and median > 0:
+        m = float(median)
+    elif isinstance(mean, (int, float)) and not isinstance(mean, bool) and mean > 0:
+        m = float(mean) * math.exp(-sigma * sigma / 2.0)
+    elif nominal is not None and nominal > 0:
+        m = float(nominal)
+    else:
+        return None
+    return {"median": m, "sigma": sigma}
+
+
+def _q_function(derived: Dict[str, Any]):
+    """(main-parameter nominal value, x -> q) for an event's model."""
+    model = derived.get("model")
+    params = derived.get("params") or {}
+    if model == "rate":
+        t = params.get("T")
+        return params.get("lambda"), (lambda x, t=t: -math.expm1(-x * t))
+    if model == "standby":
+        tau = params.get("tau")
+        return params.get("lambda"), (lambda x, tau=tau: min(1.0, x * tau / 2.0))
+    if model == "repairable":
+        mu = params.get("mu")
+        return params.get("lambda"), (lambda x, mu=mu: x / (x + mu) if (x + mu) > 0 else 0.0)
+    return params.get("q"), (lambda x: x)
+
+
+def _clamp(v: float) -> float:
+    if v != v or v < 0.0:
+        return 0.0
+    return 1.0 if v > 1.0 else v
+
+
+def _sample_column(rng, m: int, med: float, sig: float, fn) -> List[float]:
+    """``m`` samples of an event's (or a group's) probability: the main
+    parameter is lognormal (median ``med``, shape ``sig``), ``fn`` maps it to q."""
+    gauss = rng.gauss
+    if med > 0.0:
+        # In log space, clamped below the float ceiling: an
+        # extreme error factor (EF is only bounded below) must
+        # give a huge sample, not an OverflowError.
+        log_med = math.log(med)
+        exp = math.exp
+        return [
+            _clamp(fn(exp(min(_MAX_LOG, log_med + sig * gauss(0.0, 1.0)))))
+            for _ in range(m)
+        ]
+    # a mean so spread out its median underflowed to 0
+    for _ in range(m):
+        gauss(0.0, 1.0)  # keep the stream aligned for the seed
+    return [_clamp(fn(0.0))] * m
+
+
+class _GroupSampler:
+    """One applied CCF group in a Monte Carlo run (FN-24).
+
+    ``sampler`` is ``(median, sigma, q function)`` of the group's shared main
+    parameter, taken from its first member (the members are identical,
+    FN-33), or None when the members have no lognormal uncertainty: the
+    group's columns are then constants. ``member_index`` / ``event_index`` are
+    the event slots of the independent parts and of the CCF events.
+    """
+
+    def __init__(self, group, sampler, member_index, event_index):
+        self.group = group
+        self.sampler = sampler
+        self.member_index = member_index    # per member: event index or None
+        self.event_index = event_index      # per CCF event of the group: event index or None
+
+    def columns(self, rng, m):
+        """``(qt, independent per member, q per CCF event)`` for ``m`` trials."""
+        group = self.group
+        count = len(group.members)
+        if self.sampler is None:
+            ex = ccf.event_probabilities(group.model, group.params, [group.qts[0]] * count)
+            return ([group.qts[0]] * m,
+                    [[v] * m for v in ex.independent],
+                    [[q] * m for _idx, q in ex.events])
+        med, sig, fn = self.sampler
+        qt_col = _sample_column(rng, m, med, sig, fn)  # ONE draw per trial for the whole group
+        independent: List[List[float]] = [[] for _ in range(count)]
+        events: List[List[float]] = [[] for _ in group.events]
+        for qt in qt_col:
+            ex = ccf.event_probabilities(group.model, group.params, [qt] * count)
+            for k, v in enumerate(ex.independent):
+                independent[k].append(v)
+            for j, (_idx, q) in enumerate(ex.events):
+                events[j].append(q)
+        return qt_col, independent, events
+
+
+# ---- evaluators ----------------------------------------------------------------------
+
+
+def _col_and(cols):
+    result = cols[0]
+    for c in cols[1:]:
+        result = [a * b for a, b in zip(result, c)]
+    return result
+
+
+def _col_or(cols):
+    acc = [1.0 - v for v in cols[0]]
+    for c in cols[1:]:
+        acc = [a * (1.0 - b) for a, b in zip(acc, c)]
+    out = [1.0 - a for a in acc]
+    # engine.or_probability's small-result branch, for the (rare) small samples,
+    # so the tree method still matches the tree walk sample for sample.
+    low = engine.OR_ACCURATE_BELOW
+    for s, value in enumerate(out):
+        if value < low:
+            out[s] = engine.or_probability([c[s] for c in cols])
+    return out
+
+
+def _tree_chunk(structure, plan, event_cols, m):
+    """Evaluate the reachable ops on ``m`` samples; returns the top column."""
+    vals: Dict[int, List[float]] = {}
+    for i, op in plan:
+        kind = op[0]
+        if kind == "var":
+            vals[i] = event_cols[op[1]]
+        elif kind == "const":
+            vals[i] = [1.0 if op[1] else 0.0] * m
+        elif kind == "and":
+            vals[i] = _col_and([vals[r] for r in op[1]]) if op[1] else [1.0] * m
+        elif kind == "or":
+            vals[i] = _col_or([vals[r] for r in op[1]]) if op[1] else [0.0] * m
+        elif kind == "pand":
+            if op[1]:
+                n_in = len(op[1])
+                vals[i] = [engine.pand_divide(v, n_in)
+                           for v in _col_and([vals[r] for r in op[1]])]
+            else:
+                vals[i] = [1.0] * m
+        elif kind == "kofn":
+            cols = [vals[r] for r in op[2]]
+            k = op[1]
+            vals[i] = [engine.kofn_probability(list(ps), k) for ps in zip(*cols)] \
+                if cols else [0.0 if k > 0 else 1.0] * m
+        elif kind == "xor":
+            cols = [vals[r] for r in op[1]]
+            vals[i] = [engine.xor_probability(list(ps)) for ps in zip(*cols)] \
+                if cols else [0.0] * m
+    return vals[structure.top]
+
+
+def _mcub_chunk(compiled, event_cols, m):
+    """cutsets.mcub_of per sample, set by set in the same order."""
+    acc = [0.0] * m
+    ones = [False] * m
+    for const, vars_ in compiled:
+        if vars_:
+            col = [const] * m if const != 1.0 else None
+            for v in vars_:
+                col = list(event_cols[v]) if col is None else [a * b for a, b in zip(col, event_cols[v])]
+        else:
+            col = [const] * m
+        for s, p in enumerate(col):
+            if p >= 1.0:
+                ones[s] = True
+            elif p > 0.0:
+                q = acc[s]
+                acc[s] = q + p * (1.0 - q)
+    return [1.0 if one else min(1.0, a) for a, one in zip(acc, ones)]
+
+
+# ---- statistics ----------------------------------------------------------------------
+
+
+def _quantile(sorted_vals: List[float], p: float) -> float:
+    n = len(sorted_vals)
+    if n == 1:
+        return sorted_vals[0]
+    pos = p * (n - 1)
+    lo = int(math.floor(pos))
+    hi = min(n - 1, lo + 1)
+    frac = pos - lo
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * frac
+
+
+def histogram(values: List[float], bins: int = 40) -> Dict[str, Any]:
+    """``{edges, counts, logBins}``; log-spaced when the (positive) range
+    spans more than two decades."""
+    if not values:
+        return {"edges": [], "counts": [], "logBins": False}
+    lo, hi = min(values), max(values)
+    bins = max(1, int(bins))
+    if hi <= lo:
+        return {"edges": [lo, hi], "counts": [len(values)], "logBins": False}
+    log_bins = lo > 0 and hi / lo > 100.0
+    if log_bins:
+        a, b = math.log10(lo), math.log10(hi)
+        edges = [10 ** (a + (b - a) * k / bins) for k in range(bins + 1)]
+        edges[0], edges[-1] = lo, hi
+        width = (b - a) / bins
+        counts = [0] * bins
+        for v in values:
+            k = int((math.log10(v) - a) / width) if v > lo else 0
+            counts[min(bins - 1, max(0, k))] += 1
+    else:
+        width = (hi - lo) / bins
+        edges = [lo + width * k for k in range(bins + 1)]
+        edges[-1] = hi
+        counts = [0] * bins
+        for v in values:
+            k = int((v - lo) / width)
+            counts[min(bins - 1, max(0, k))] += 1
+    return {"edges": edges, "counts": counts, "logBins": log_bins}
+
+
+# ---- the run ---------------------------------------------------------------------------
+
+
+def run(tree: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
+        n: Optional[int] = None, seed: Optional[int] = None,
+        time_limit: float = DEFAULT_TIME_LIMIT, bins: int = 40,
+        ccf_trial_hook=None) -> Dict[str, Any]:
+    """Monte Carlo on ``tree`` (not modified). See the module docstring.
+
+    ``n`` defaults to ``analysis.mc.n``, ``seed`` to ``analysis.mc.seed``; a
+    None seed is drawn and reported so the run can be repeated.
+
+    ``ccf_trial_hook`` is a test seam (FN-24): when given it is called once per
+    applied CCF group per chunk of up to :data:`CHUNK` trials with
+    ``{"groupId", "model", "beta", "qt": [..], "ccf": [..], "independent":
+    {memberId: [..]}, "events": {ccfEventId: [..]}}``, the columns the sampler
+    used. For a beta group ``ccf`` is the column of its only CCF event, so
+    ``ccf[i] / qt[i]`` is beta for every trial. For an alpha group ``beta`` is
+    None and ``ccf`` is the dict ``{ccfEventId: [..]}`` of all its subset events
+    (alpha is fixed: every column is a constant times ``qt``).
+    """
+    started = time.perf_counter()
+    mc = (analysis or {}).get("mc") if isinstance(analysis, dict) else None
+    mc = mc if isinstance(mc, dict) else {}
+    if n is None:
+        n = mc.get("n") or DEFAULT_N
+    n = max(1, int(n))
+    if seed is None:
+        seed = mc.get("seed")
+    if seed is None:
+        seed = random.SystemRandom().randrange(0, 2 ** 32)
+    seed = int(seed)
+    rng = random.Random(seed)
+
+    s = logic.compile_tree(tree, analysis)
+    reachable = s.reachable_events()
+    method = "tree" if (not s.non_coherent and not s.repeated) else "cutsets"
+    warnings: List[Dict[str, Any]] = list(s.warnings)
+
+    # Per-event samplers (only for events the top depends on).
+    samplers = {}
+    certain: List[str] = []
+    # CCF groups: one sampler per applied, reachable group (document order). The events
+    # of an applied group carry a ``ccf`` marker and get no per-event sampler.
+    group_samplers: List[_GroupSampler] = []
+    reachable_set = set(reachable)
+    for group in (s.ccf.groups if s.ccf is not None else []):
+        member_index = [s.event_index.get(mid) for mid in group.members]
+        event_slots = [s.event_index.get(cid) for cid, _idx, _q in group.events]
+        slots = [i for i in member_index + event_slots if i is not None]
+        if not any(i in reachable_set for i in slots):
+            continue
+        first = s.events[member_index[0]] if member_index and member_index[0] is not None else None
+        sampler = None
+        if first is not None and first["derived"].get("q") is not None:
+            nominal, fn = _q_function(first["derived"])
+            params = lognormal_params((first["quant"] or {}).get("unc"), nominal)
+            if params is not None:
+                sampler = (params["median"], params["sigma"], fn)
+        group_samplers.append(_GroupSampler(group, sampler, member_index, event_slots))
+    group_sampled = {i for g in group_samplers if g.sampler is not None
+                     for i in g.member_index + g.event_index if i is not None}
+
+    for i in reachable:
+        ev = s.events[i]
+        if ev.get("ccf") is not None:
+            # An event of an applied group: its column comes from the group step. A member's
+            # id stands for its group in the lists; the CCF event itself is in neither.
+            if ev["ccf"].get("role") == "independent" and i not in group_sampled:
+                certain.append(ev["id"])
+            continue
+        derived = ev["derived"]
+        nominal, fn = _q_function(derived)
+        params = None
+        if derived.get("q") is not None:
+            params = lognormal_params((ev["quant"] or {}).get("unc"), nominal)
+        if params is None:
+            certain.append(ev["id"])
+        else:
+            samplers[i] = (params["median"], params["sigma"], fn)
+    uncertain = [s.events[i]["id"] for i in reachable
+                 if i in samplers or (i in group_sampled and s.events[i].get("ccf") is not None
+                                      and s.events[i]["ccf"].get("role") == "independent")]
+
+    # Compile the evaluator.
+    base_q = [_clamp(e["q"]) for e in s.events]
+    compiled = None
+    truncated_cutsets = False
+    if method == "tree":
+        plan = [(i, op) for i, op in enumerate(s.ops) if s.reachable[i]]
+        point = _clamp(s.evaluate(base_q)) if s.top is not None else 0.0
+    else:
+        # May raise cutsets.CutsetError (voting gate too large, time budget).
+        result = cutsets_mod.compute(tree, analysis, {"timeBudgetS": max(1.0, time_limit / 2)},
+                                     structure=s)
+        truncated_cutsets = bool(result["truncated"])
+        rows = result["cutSets"]
+        rare = result["rareEvent"]
+        chosen = []
+        running = 0.0
+        dropped = False
+        for row in rows:
+            if len(chosen) >= MAX_CUTSETS or (rare > 0 and running >= COVERAGE * rare):
+                dropped = True
+                break
+            chosen.append(row)
+            running += row["probability"]
+        truncated_cutsets = truncated_cutsets or dropped
+        compiled = []
+        for row in chosen:
+            const = 1.0
+            vars_ = []
+            # In event-index order, the order cutsets multiplies P(C) in, so
+            # without uncertainty each sample is bit for bit the point value.
+            for idx in sorted(s.event_index[ev["id"]] for ev in row["events"]):
+                if idx in samplers or idx in group_sampled:
+                    vars_.append(idx)
+                else:
+                    const *= base_q[idx]
+            compiled.append((const, tuple(vars_)))
+        point = cutsets_mod.mcub_of(r["probability"] for r in chosen)
+        if dropped:
+            warnings.append({"code": "MC_CUTSETS_TRUNCATED", "nodeId": None,
+                             "params": {"used": len(chosen), "total": result["total"],
+                                        "coverage": (running / rare) if rare > 0 else 1.0}})
+        if result["truncated"]:
+            warnings.extend(w for w in result["warnings"] if w["code"] == "CUTSETS_TRUNCATED")
+        # The sets are chosen by their point probability, and a set whose
+        # point value is 0 is not even kept by the expansion: an uncertain
+        # event in none of the chosen sets is never sampled at all.
+        in_chosen = {s.event_index[ev["id"]] for row in chosen for ev in row["events"]}
+        unsampled = [i for i in reachable if i in samplers and i not in in_chosen]
+        for g in group_samplers:
+            # A sampled group counts as sampled when its CCF event or any independent part is
+            # in a chosen cut set (FN-24); otherwise its members are listed.
+            if g.sampler is not None and not any(
+                    i in in_chosen for i in g.member_index + g.event_index if i is not None):
+                unsampled.extend(i for i in g.member_index if i is not None and i in reachable_set)
+        if unsampled:
+            warnings.append({"code": "MC_EVENT_NOT_SAMPLED", "nodeId": None,
+                             "params": {"count": len(unsampled),
+                                        "eventIds": [s.events[i]["id"] for i in unsampled],
+                                        "names": ", ".join(s.events[i]["name"] or s.events[i]["id"]
+                                                           for i in unsampled)}})
+
+    deadline = started + max(0.0, float(time_limit))
+    samples: List[float] = []
+    truncated_by_time = False
+    done = 0
+    while done < n:
+        m = min(CHUNK, n - done)
+        event_cols: Dict[int, List[float]] = {}
+        # CCF groups first: ONE draw of the shared main parameter per group per trial; the
+        # members' independent parts and the CCF event follow from it (FN-24). No group, no
+        # draw here, so the stream of a document without groups is the 1.8.1 one.
+        for g in group_samplers:
+            qt_col, independent, events = g.columns(rng, m)
+            for slot, column in zip(g.member_index, independent):
+                if slot is not None and slot in reachable_set:
+                    event_cols[slot] = column
+            for slot, column in zip(g.event_index, events):
+                if slot is not None and slot in reachable_set:
+                    event_cols[slot] = column
+            if ccf_trial_hook is not None:
+                by_event = {cid: column for (cid, _idx, _q), column in zip(g.group.events, events)}
+                alpha = g.group.model == "alpha"
+                ccf_trial_hook({
+                    "groupId": g.group.id,
+                    "model": g.group.model,
+                    "beta": (float(g.group.params["beta"]) if not alpha
+                             and isinstance(g.group.params.get("beta"), (int, float)) else None),
+                    "qt": qt_col,
+                    "ccf": dict(by_event) if alpha else (events[0] if events else []),
+                    "independent": {mid: column for mid, column in zip(g.group.members, independent)},
+                    "events": by_event,
+                })
+        for i in range(len(s.events)):
+            if s.events[i].get("ccf") is not None:
+                continue  # an event of an applied group: its column is set above, never a constant
+            if i in samplers:
+                med, sig, fn = samplers[i]
+                event_cols[i] = _sample_column(rng, m, med, sig, fn)
+            elif s.reachable[s.events[i]["op"]]:
+                event_cols[i] = [base_q[i]] * m
+        if method == "tree":
+            col = _tree_chunk(s, plan, event_cols, m) if s.top is not None else [0.0] * m
+        else:
+            col = _mcub_chunk(compiled, event_cols, m)
+        samples.extend(_clamp(v) for v in col)
+        done += m
+        if done < n and time.perf_counter() > deadline:
+            truncated_by_time = True
+            break
+
+    completed = len(samples)
+    ordered = sorted(samples)
+    # math.fsum, not sum(): only 3.12+ compensates a float sum(). And pivoted
+    # on the first sample: fsum(samples) / n alone is not always the sample
+    # value when all n samples are equal (about 1 run in 12), so a run
+    # without uncertainty reported a mean one ulp off its point estimate and
+    # a std of ~1e-18. Pivoted, equal samples give exactly their value and 0.
+    if completed:
+        pivot = samples[0]
+        mean = pivot + math.fsum(v - pivot for v in samples) / completed
+    else:
+        mean = None
+    if completed > 1:
+        var = math.fsum((v - mean) ** 2 for v in samples) / (completed - 1)
+        std = math.sqrt(max(0.0, var))
+    else:
+        std = 0.0 if completed else None
+    if not uncertain:
+        warnings.append({"code": "MC_NO_UNCERTAINTY", "nodeId": None, "params": {}})
+    out = {
+        "requested": n,
+        "completed": completed,
+        "seed": seed,
+        "method": method,
+        "mean": mean,
+        "median": _quantile(ordered, 0.5) if completed else None,
+        "p05": _quantile(ordered, 0.05) if completed else None,
+        "p95": _quantile(ordered, 0.95) if completed else None,
+        "std": std,
+        "pointEstimate": point,
+        "histogram": histogram(samples, bins),
+        "truncatedByTime": truncated_by_time,
+        "cutsetsTruncated": truncated_cutsets,
+        "uncertainEvents": uncertain,
+        "certainEvents": certain,
+        "repeatedEvents": s.repeated_events(),
+        "nonCoherent": s.non_coherent,
+        "warnings": warnings,
+        "elapsedMs": round((time.perf_counter() - started) * 1000.0, 1),
+    }
+    if s.ccf is not None:  # a document with CCF groups only (FN-28: no new key otherwise)
+        out["ccf"] = ccf.block(s.ccf.assessments)
+        if s.ccf.groups:
+            out["ccfSampling"] = {
+                "groups": [{"id": g.id, "sampled": any(
+                    gs.group is g and gs.sampler is not None for gs in group_samplers)}
+                    for g in s.ccf.groups],
+                "note": ccf_text.TEXT["en"]["assume.sampling"],
+            }
+    return out

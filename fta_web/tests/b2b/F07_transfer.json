@@ -1,0 +1,128 @@
+{
+  "title": "F07 TRANSFER",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "sub",
+        "name": "Subsystem",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "a",
+            "name": "a",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "xfer",
+        "name": "Transfer to Subsystem",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "gateType": "TRANSFER",
+        "transferTo": "sub"
+      },
+      {
+        "id": "xfer_missing",
+        "name": "xfer_missing",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "gateType": "TRANSFER",
+        "transferTo": "no_such_node"
+      },
+      {
+        "id": "xfer_kids",
+        "name": "xfer_kids",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "ignored",
+            "name": "ignored",
+            "type": "Event",
+            "probability": 0.9,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "TRANSFER",
+        "transferTo": "c"
+      },
+      {
+        "id": "c",
+        "name": "c",
+        "type": "Event",
+        "probability": 0.05,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": []
+      },
+      {
+        "id": "loop1",
+        "name": "loop1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "gateType": "TRANSFER",
+        "transferTo": "loop2"
+      },
+      {
+        "id": "loop2",
+        "name": "loop2",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "gateType": "TRANSFER",
+        "transferTo": "loop1"
+      }
+    ]
+  }
+}

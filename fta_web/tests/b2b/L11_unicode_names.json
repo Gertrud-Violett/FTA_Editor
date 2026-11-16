@@ -1,0 +1,67 @@
+{
+  "title": "L11 Unicode ユニコード <&>",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "トップ事象 <Top> & more",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "u1",
+        "name": "ポンプ故障 <P-101> & \"motor\"",
+        "type": "Event",
+        "probability": 0.01,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "u2",
+        "name": "Ventil ü/ß – ‘quote’ '<b>'",
+        "type": "Event",
+        "probability": 0.02,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "u3",
+        "name": "系統 A&B",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "u4",
+            "name": "冷却水 > 限界",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "u5",
+            "name": "a&b<c>d",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

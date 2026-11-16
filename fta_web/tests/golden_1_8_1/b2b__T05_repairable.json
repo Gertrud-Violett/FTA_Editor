@@ -1,0 +1,185 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T05_repairable.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "R1",
+         "name": "R1",
+         "q": 0.00990099009901
+        },
+        {
+         "id": "R2",
+         "name": "R2",
+         "q": 0.00990099009901
+        }
+       ],
+       "order": 2,
+       "probability": 9.802960494069405e-05,
+       "rank": 1,
+       "share": 1.0
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 9.802960494069405e-05,
+     "nonCoherent": false,
+     "rareEvent": 9.802960494069405e-05,
+     "repeatedEvents": [],
+     "total": 1,
+     "treeWalk": 9.80296049407e-05,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "T05 repairable"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T05_repairable.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.00990099009901,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "R1",
+       "name": "R1",
+       "q": 0.00990099009901,
+       "raw": 100.99999999999899,
+       "rrw": null,
+       "rrwInfinite": true
+      },
+      {
+       "birnbaum": 0.00990099009901,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "R2",
+       "name": "R2",
+       "q": 0.00990099009901,
+       "raw": 100.99999999999899,
+       "rrw": null,
+       "rrwInfinite": true
+      }
+     ]
+    },
+    "title": "T05 repairable"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T05_repairable.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "R1",
+      "R2"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       9.802960494069405e-05,
+       9.802960494069405e-05
+      ],
+      "logBins": false
+     },
+     "mean": 9.802960494069405e-05,
+     "median": 9.802960494069405e-05,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 9.802960494069405e-05,
+     "p95": 9.802960494069405e-05,
+     "pointEstimate": 9.802960494069405e-05,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "T05 repairable"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T05_repairable.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.00990099009901,
+       "id": "R1",
+       "model": "repairable",
+       "name": "R1",
+       "q": 0.00990099009901
+      },
+      {
+       "calculated": 0.00990099009901,
+       "id": "R2",
+       "model": "repairable",
+       "name": "R2",
+       "q": 0.00990099009901
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 9.80296049407e-05,
+      "headlineMethod": "treeWalk",
+      "mcub": 9.802960494069405e-05,
+      "nonCoherent": false,
+      "rareEvent": 9.802960494069405e-05,
+      "repeatedEvents": [],
+      "treeWalk": 9.80296049407e-05,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "T05 repairable"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/T05_repairable.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "T05 repairable"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/T05_repairable.json"
+}

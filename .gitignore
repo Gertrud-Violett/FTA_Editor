@@ -1,0 +1,169 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+# NOTE: /build/ is tracked SOURCE, not output -- it holds fta_editor.spec and
+# README.md. Only PyInstaller's two output trees inside it are ignored (the
+# build command directs them there with --distpath/--workpath), plus the
+# directories setuptools would create there if anyone ran `setup.py build`.
+/build/dist/
+/build/build/
+/build/lib/
+/build/bdist.*/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+# Generated .spec files are throwaway; build/fta_editor.spec is hand-written,
+# reviewed and shipped, so it is the one exception.
+*.spec
+!/build/fta_editor.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application specific
+output/
+*.xlsx
+*.xml
+!desktop/data/examples/*.json
+temp/
+*.png
+*.jpg
+*.gif
+!docs/images/*.png
+*.dot
+debug_test.py
+test_data.json
+test_output.png
+
+# Claude Code agent worktrees and local session scratch (never committed)
+.claude/worktrees/
+
+# Loop-engineering run state (never committed)
+.loop/logs/
+.loop/STOP
+.loop/status.json
+.loop/iteration-result.json
+.loop/artifacts/

@@ -1,0 +1,139 @@
+name: extended
+
+# Why this exists
+# ---------------
+# The slow checks that do not belong in the merge gate (tests.yml):
+#
+#   b2b-full  The whole back-to-back numeric matrix (fta_web/tests/b2b/): the
+#             corpus including the large random trees, through the engine, the
+#             create_app() test client, a real run.py server over HTTP, the CLI,
+#             the vendored and the frozen desktop cores, the release the exe was
+#             built from (git archive), and the browser's number formatter under
+#             Node. The packaged-exe and second-Python rows skip themselves here:
+#             there is no exe on Linux (b2b_lib.exe_path) and no .venv314.
+#   gui       The real-browser GUI suite (fta_web/tests/gui/): Playwright drives
+#             Chromium with real mouse and keyboard input and compares what the
+#             GUI shows with what the API computes, ~700 checks.
+#
+# Both take minutes rather than seconds, so they run weekly, on demand, and on
+# pull requests that change the suites themselves. Their output is uploaded as
+# artifacts either way, including when a job fails.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  pull_request:
+    paths:
+      - "fta_web/tests/gui/**"
+      - "fta_web/tests/b2b/**"
+      - ".github/workflows/extended.yml"
+
+concurrency:
+  group: extended-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  b2b-full:
+    name: b2b full matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # run_b2b.py exports the release the exe was built from
+          # (b2b_lib.RELEASE_COMMIT) with `git archive`, so it needs history,
+          # not the default depth-1 clone.
+          fetch-depth: 0
+
+      # Same reason as in tests.yml: the native `dot` render path.
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # The numfmt:js row runs fta_web/static/js/numfmt.js under Node and
+      # compares it with fta_web/numfmt.py; without node it would only skip.
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: uv sync --locked --extra all --extra test
+
+      - name: Run the full back-to-back matrix
+        env:
+          FTA_B2B_FULL: "1"
+          PYTHONUTF8: "1"
+        run: |
+          set -o pipefail
+          mkdir -p b2b-out
+          uv run python fta_web/tests/b2b/run_b2b.py --json b2b-out/rows.json 2>&1 | tee b2b-out/matrix.txt
+
+      - name: Upload the matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2b-full
+          path: b2b-out/
+          if-no-files-found: warn
+
+  gui:
+    name: gui (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: fta_web/tests/gui
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Not needed by the browser (the diagram renders through Graphviz WASM);
+      # installed so the server matches tests.yml, including PNG export.
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # run.mjs starts the dev server with
+      # `uv run --frozen --extra all --extra test python fta_web/run.py`,
+      # and the files section reads the exports with the same environment.
+      - name: Install dependencies
+        working-directory: .
+        run: uv sync --locked --extra all --extra test
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: fta_web/tests/gui/package-lock.json
+
+      - name: Install Playwright
+        run: npm ci
+
+      - name: Install Chromium and its system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the GUI suite
+        run: node run.mjs
+
+      - name: Upload screenshots, logs and exports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-out
+          path: fta_web/tests/gui/out/
+          if-no-files-found: warn

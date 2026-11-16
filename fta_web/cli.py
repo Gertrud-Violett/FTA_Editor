@@ -1,0 +1,803 @@
+"""
+Command-line batch interface (1.7).
+
+    fta_editor <command> <files...> [options]
+    python fta_web/run.py <command> <files...> [options]
+
+``run.py`` hands any argv whose first word is in :data:`COMMANDS` to
+:func:`main` before it builds the Flask app, so these never start a server or
+open a browser.
+
+Commands
+--------
+``quantify``    top-event probability (tree walk / MCUB / rare event) and the
+                per-event q and calculated probability
+``cutsets``     minimal cut sets, ranked
+``importance``  FV, Birnbaum, RAW, RRW per basic event
+``mc``          Monte Carlo uncertainty (mean, median, 5/95 %, std)
+``validate``    the Validation tab's issues; exit 1 on errors (or on
+                warnings with ``--strict``)
+``report``      the DOCX report, written to ``--out`` (default:
+                ``<input stem>_report.docx`` beside the input)
+
+Exit codes: 0 ok, 1 validation errors / analysis failure, 2 usage error,
+3 unreadable input file. With several inputs the highest code wins.
+
+CCF groups (FN-26): for a file with groups, ``quantify``, ``cutsets``,
+``importance`` and ``mc`` add a ``ccf`` block (``applied``, ``notApplied``, the
+FN-67 note) to ``--json`` and print one line per group not applied plus the
+note. In fault-tree mode they exit 1 when a group is not applied or the
+headline is ``incomplete``; in ETA mode ``quantify`` lists every group as
+``CCF_ETA_MODE`` and exits 0, the other three keep their ETA refusal. A file
+without groups gets no ``ccf`` key (FN-28).
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+import csv
+import glob
+import io
+import json
+import math
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+try:  # normal package import: ``import fta_web.cli``
+    from . import ccf, report_docx
+    from .engine import AnalysisError, WebCore
+    from .excel_events import event_row, iter_nodes, node_kind
+    from .numfmt import clamp_sig_figs, format_prob
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path (run.py, frozen)
+    import ccf  # type: ignore[no-redef]
+    import report_docx  # type: ignore[no-redef]
+    from engine import AnalysisError, WebCore  # type: ignore[no-redef]
+    from excel_events import event_row, iter_nodes, node_kind  # type: ignore[no-redef]
+    from numfmt import clamp_sig_figs, format_prob  # type: ignore[no-redef]
+
+COMMANDS = ("quantify", "cutsets", "importance", "mc", "validate", "report")
+
+EXIT_OK = 0
+EXIT_FAIL = 1
+EXIT_USAGE = 2
+EXIT_UNREADABLE = 3
+
+VERSION = report_docx.TOOL_VERSION
+
+
+class UsageError(Exception):
+    """Bad arguments discovered after parsing (exit 2)."""
+
+
+class AnalysisFailure(Exception):
+    """The analysis for one file could not run (exit 1)."""
+
+
+def _prog() -> str:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).name
+    return "fta_web/run.py"
+
+
+# ---- argument parsing -----------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=_prog(),
+        description="FTA Editor batch analysis. Without a command, the web UI starts.",
+        epilog="Exit codes: 0 ok, 1 validation errors / analysis failure, "
+               "2 usage error, 3 unreadable file.",
+    )
+    parser.add_argument("--version", action="version", version="FTA Editor %s" % VERSION)
+    sub = parser.add_subparsers(dest="command", metavar="<command>")
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("files", nargs="+", metavar="FILE",
+                        help="FTA JSON file(s); wildcards are expanded")
+    fmt = common.add_mutually_exclusive_group()
+    fmt.add_argument("--json", action="store_true", help="JSON output")
+    fmt.add_argument("--csv", action="store_true", help="CSV output (one row per item)")
+    common.add_argument("--out", metavar="PATH",
+                        help="write output to PATH (a directory when several files are given)")
+    common.add_argument("--sig-figs", type=int, default=3, metavar="N",
+                        help="significant figures in tables (1-6, default 3)")
+    common.add_argument("--mission-time", type=float, metavar="H",
+                        help="override the document's mission time (hours)")
+
+    limits = argparse.ArgumentParser(add_help=False)
+    limits.add_argument("--max-order", type=int, metavar="N", help="cut-set order limit")
+    limits.add_argument("--max-count", type=int, metavar="N", help="cut-set count limit")
+    limits.add_argument("--cutoff", type=float, metavar="P", help="cut-set probability cutoff")
+
+    mc = argparse.ArgumentParser(add_help=False)
+    mc.add_argument("--n", type=int, metavar="N", help="Monte Carlo samples")
+    mc.add_argument("--seed", type=int, metavar="S", help="random seed")
+    mc.add_argument("--time-limit", type=float, default=30.0, metavar="SEC",
+                    help="Monte Carlo time cap in seconds (default 30)")
+
+    sub.add_parser("quantify", parents=[common], help="top-event and per-event probabilities")
+    p = sub.add_parser("cutsets", parents=[common, limits], help="minimal cut sets")
+    p.add_argument("--top", type=int, metavar="N", help="show only the N most probable")
+    p = sub.add_parser("importance", parents=[common, limits], help="importance measures")
+    p.add_argument("--top", type=int, metavar="N", help="show only the N most important")
+    sub.add_parser("mc", parents=[common, mc], help="Monte Carlo uncertainty")
+    p = sub.add_parser("validate", parents=[common], help="validation issues")
+    p.add_argument("--strict", action="store_true", help="warnings also fail (exit 1)")
+    p = sub.add_parser("report", parents=[common, limits, mc], help="DOCX report")
+    p.add_argument("--sections", metavar="LIST",
+                   help="comma-separated sections (default: all but uncertainty); "
+                        "known: " + ",".join(report_docx.SECTIONS))
+    p.add_argument("--lang", choices=("en", "ja"), default="en", help="report language")
+    p.add_argument("--uncertainty", action="store_true",
+                   help="run Monte Carlo (n capped at %d) and include it" % report_docx.MAX_REPORT_MC_N)
+    return parser
+
+
+def expand_files(patterns: Sequence[str]) -> List[str]:
+    """Wildcards expanded (cmd.exe does not); a pattern with no match is kept
+    literally so it is reported as unreadable."""
+    out: List[str] = []
+    for pattern in patterns:
+        if any(ch in pattern for ch in "*?[") and not os.path.exists(pattern):
+            matches = sorted(glob.glob(pattern))
+            out.extend(matches or [pattern])
+        else:
+            out.append(pattern)
+    return out
+
+
+# ---- loading ---------------------------------------------------------------------
+
+
+def load_core(path: str, args) -> WebCore:
+    """A WebCore with ``path`` loaded and the CLI overrides applied.
+
+    Raises OSError / ValueError for an unreadable file.
+    """
+    if not os.path.isfile(path):
+        raise OSError("no such file: %s" % path)
+    core = WebCore()
+    ok, error = core.load_from_json(path)
+    if not ok:
+        raise ValueError(error or "unrecognised format")
+    patch: Dict[str, Any] = {}
+    if getattr(args, "mission_time", None) is not None:
+        patch["missionTime"] = args.mission_time
+    cut = {k: v for k, v in (("maxOrder", getattr(args, "max_order", None)),
+                              ("maxCount", getattr(args, "max_count", None)),
+                              ("cutoff", getattr(args, "cutoff", None))) if v is not None}
+    if cut:
+        patch["cutsets"] = cut
+    mc = {k: v for k, v in (("n", getattr(args, "n", None)),
+                             ("seed", getattr(args, "seed", None))) if v is not None}
+    if mc:
+        patch["mc"] = mc
+    if patch:
+        try:
+            core.set_analysis(patch)
+        except AnalysisError as exc:
+            raise UsageError(str(exc))
+        core.recalculate_probabilities()
+    return core
+
+
+def session_issues(core) -> List[Dict[str, Any]]:
+    """Load repairs as Validation issues (the shape state.load_warning_issues builds)."""
+    return [{
+        "severity": "warning",
+        "code": "LOAD_REPAIR",
+        "nodeId": w.get("new_id"),
+        "message": w.get("message", ""),
+        "params": copy.deepcopy(w),
+    } for w in getattr(core, "last_load_warnings", None) or []]
+
+
+def _limits(core) -> Dict[str, Any]:
+    return copy.deepcopy((core.analysis or {}).get("cutsets") or {})
+
+
+def _require_fta(core, command: str) -> None:
+    if (core.mode or "FTA") == "ETA":
+        raise AnalysisFailure("'%s' applies to fault trees only; this file is in ETA mode." % command)
+
+
+def _ccf_fails(block: Optional[Dict[str, Any]], incomplete: bool) -> bool:
+    """FN-26: exit 1 when a group is not applied or the headline is incomplete.
+
+    Called only in FTA mode for the four commands; ETA mode never fails because of
+    groups. ``block`` is the ``ccf`` block (None: the document has no group)."""
+    if block is None:
+        return False
+    return bool(block.get("notApplied")) or incomplete
+
+
+#: Said next to "incomplete" for cutsets, importance and mc: the headline is judged by
+#: engine.summary under its own, smaller limits (2 s, 2000 cut sets), so the command's
+#: own run may well be complete (R4, engineering concern C2). English only, like the CLI.
+SUMMARY_LIMIT_NOTE = ("The headline comes from a quick summary with its own limits "
+                      "(2 s, 2000 cut sets), not from this command's run, which may be complete.")
+
+
+class _Result(dict):
+    """A command's ``results`` that also remembers, outside the data, that the CCF
+    headline is incomplete (for the text output; ``--json`` is the plain dict)."""
+
+    ccf_incomplete = False
+
+
+def _ccf_status(core, results: Dict[str, Any], block: Optional[Dict[str, Any]]
+                ) -> Tuple[Dict[str, Any], int]:
+    """``(results, exit code)`` of ``cutsets``, ``importance`` and ``mc`` for a document
+    with groups.
+
+    The headline is read from ``engine.summary``, computed only when at least one
+    group is applied (a group that is not applied changes no number, so the summary
+    cannot be ``incomplete``). ``--json`` stays the API's numbers plus the ``ccf``
+    block; the incomplete headline is told on stderr and in the text output."""
+    if block is None:
+        return results, EXIT_OK
+    incomplete = False
+    if block.get("applied"):
+        summary = _call("engine", "summary", copy.deepcopy(core.get_data()),
+                        copy.deepcopy(core.analysis))
+        incomplete = summary.get("headlineMethod") == "incomplete"
+    if incomplete:
+        results = _Result(results)
+        results.ccf_incomplete = True
+        print("warning: the cut sets are incomplete, so CCF is not included in the headline. "
+              + SUMMARY_LIMIT_NOTE, file=sys.stderr)
+    return results, (EXIT_FAIL if _ccf_fails(block, incomplete) else EXIT_OK)
+
+
+def _call(module: str, fn: str, *a: Any, **kw: Any) -> Any:
+    result, reason = report_docx.try_call(module, fn, *a, **kw)
+    if result is None:
+        if reason == "unavailable":
+            raise AnalysisFailure("%s.%s is not available in this build." % (module, fn))
+        raise AnalysisFailure("%s.%s %s" % (module, fn, reason))
+    return result
+
+
+# ---- commands --------------------------------------------------------------------
+# Each returns (results, rows, status): results for --json, rows (list of flat
+# dicts) for --csv and the human table, status an exit code.
+
+
+def cmd_quantify(core, args) -> Tuple[Dict[str, Any], List[Dict[str, Any]], int]:
+    tree = copy.deepcopy(core.get_data())
+    events = []
+    for node, parent, depth in iter_nodes(tree):
+        if node_kind(node) != "event":
+            continue
+        row = event_row(node, parent, depth)
+        events.append({"id": row["Id"], "name": row["Name"], "model": row["Model"],
+                       "q": row["Base probability"], "calculated": row["Calculated probability"]})
+    results: Dict[str, Any] = {}
+    status = EXIT_OK
+    if (core.mode or "FTA") == "ETA":
+        summary = {"treeWalk": tree.get("calculatedProbability") if isinstance(tree, dict) else None}
+        summary["headline"] = summary["treeWalk"]
+        summary["headlineMethod"] = "treeWalk"
+        # FN-26: in ETA mode every group is "not applied: ETA mode" and the exit code stays 0.
+        block = ccf.eta_block(tree, core.analysis)
+        if block is not None:
+            results["ccf"] = block
+    else:
+        summary = _call("engine", "summary", tree, copy.deepcopy(core.analysis))
+        if "ccf" in summary:  # only a document with groups has the key (FN-28)
+            results["ccf"] = copy.deepcopy(summary["ccf"])
+            if _ccf_fails(results["ccf"], summary.get("headlineMethod") == "incomplete"):
+                status = EXIT_FAIL
+    return dict({"summary": summary, "events": events}, **results), events, status
+
+
+def cmd_cutsets(core, args):
+    _require_fta(core, "cutsets")
+    result = _call("cutsets", "compute", copy.deepcopy(core.get_data()),
+                   copy.deepcopy(core.analysis), _limits(core))
+    rows = []
+    cut_sets = list(result.get("cutSets") or [])
+    if getattr(args, "top", None):
+        cut_sets = cut_sets[: max(1, args.top)]
+        # --json shows the same N (as importance does); total, mcub and the
+        # truncation flags still describe the whole list.
+        result = dict(result, cutSets=cut_sets)
+    for c in cut_sets:
+        rows.append({
+            "rank": c.get("rank"), "order": c.get("order"),
+            "probability": c.get("probability"), "share": c.get("share"),
+            "events": ";".join(str(e.get("id")) for e in c.get("events") or []),
+            "names": ";".join(str(e.get("name", "")) for e in c.get("events") or []),
+        })
+    result, status = _ccf_status(core, result, result.get("ccf"))
+    return result, rows, status
+
+
+def cmd_importance(core, args):
+    _require_fta(core, "importance")
+    cut = _call("cutsets", "compute", copy.deepcopy(core.get_data()),
+                copy.deepcopy(core.analysis), _limits(core))
+    measures = list(_call("importance", "compute", cut))
+    measures.sort(key=lambda m: -(m.get("fv") or 0.0))
+    if getattr(args, "top", None):
+        measures = measures[: max(1, args.top)]
+    rows = [{k: m.get(k) for k in ("id", "name", "q", "fv", "birnbaum", "raw", "rrw", "cutSetCount")}
+            for m in measures]
+    results: Dict[str, Any] = {"measures": measures}
+    if "ccf" in cut:  # the same block as the API's (FN-26)
+        results["ccf"] = copy.deepcopy(cut["ccf"])
+    results, status = _ccf_status(core, results, cut.get("ccf"))
+    return results, rows, status
+
+
+def cmd_mc(core, args):
+    _require_fta(core, "mc")
+    mc = (core.analysis or {}).get("mc") or {}
+    result = _call("uncertainty", "run", copy.deepcopy(core.get_data()),
+                   copy.deepcopy(core.analysis), n=mc.get("n"), seed=mc.get("seed"),
+                   time_limit=args.time_limit)
+    row = {k: result.get(k) for k in ("pointEstimate", "mean", "median", "p05", "p95", "std",
+                                       "requested", "completed", "seed", "method")}
+    result, status = _ccf_status(core, result, result.get("ccf"))
+    return result, [row], status
+
+
+def cmd_validate(core, args):
+    tree = copy.deepcopy(core.get_data())
+    warnings = session_issues(core)
+    extra = None
+    if (core.mode or "FTA") != "ETA":
+        # Cut-set truncation under the document's limits (lint: CUTSETS_TRUNCATED).
+        signal, _why = report_docx.try_call("cutsets", "truncation_signal", copy.deepcopy(tree),
+                                            copy.deepcopy(core.analysis))
+        if signal:
+            extra = {"cutsets": signal}
+    issues, reason = report_docx.try_call("lint", "run", tree, copy.deepcopy(core.analysis), warnings,
+                                          mode=core.mode or "FTA", extra=extra)
+    note = None
+    if issues is None:
+        if reason != "unavailable":
+            raise AnalysisFailure("lint.run %s" % reason)
+        # Lint has not landed in this build: report what the engine knows.
+        note = "lint.run unavailable; showing load repairs and engine warnings only"
+        issues = warnings + [{"severity": "warning", "code": w.get("code"), "nodeId": w.get("nodeId"),
+                              "message": w.get("code"), "params": w.get("params")}
+                             for w in core.quant_warnings]
+    issues = [dict(i) for i in issues]
+    counts = {"error": 0, "warning": 0, "info": 0}
+    for issue in issues:
+        sev = str(issue.get("severity") or "info")
+        counts[sev] = counts.get(sev, 0) + 1
+    status = EXIT_OK
+    if counts.get("error") or (args.strict and counts.get("warning")):
+        status = EXIT_FAIL
+    rows = [{"severity": i.get("severity"), "code": i.get("code"), "nodeId": i.get("nodeId"),
+             "nodeName": i.get("nodeName"), "message": i.get("message")} for i in issues]
+    results: Dict[str, Any] = {"issues": issues, "counts": counts}
+    if note:
+        results["note"] = note
+    return results, rows, status
+
+
+def cmd_report(core, args, out_path: Path):
+    try:
+        import docx  # noqa: F401
+    except ImportError:
+        raise AnalysisFailure("the DOCX report needs python-docx: uv sync --extra report")
+    sections = None
+    if args.sections:
+        sections = [s.strip() for s in args.sections.split(",") if s.strip()]
+        unknown = [s for s in sections if s not in report_docx.SECTIONS]
+        if unknown:
+            raise UsageError("unknown section(s): %s" % ", ".join(unknown))
+        if args.uncertainty and "uncertainty" not in sections:
+            sections.append("uncertainty")  # "run Monte Carlo and include it"
+    elif args.uncertainty:
+        sections = list(report_docx.DEFAULT_SECTIONS) + ["uncertainty"]
+    options = report_docx.normalize_options({
+        "sections": sections, "sigFigs": args.sig_figs, "lang": args.lang,
+        "runUncertainty": bool(args.uncertainty), "limits": _limits(core),
+        "uncertaintyN": args.n or report_docx.MAX_REPORT_MC_N,
+        "uncertaintyTimeLimit": args.time_limit,
+    })
+    if "diagram" in options["sections"]:
+        options["diagramPng"] = report_docx.render_png(
+            report_docx.diagram_dot_text(core, options["sigFigs"]))
+    data = report_docx.collect_report_data(core, session_issues(core), options)
+    blob = report_docx.build_report(data, options)
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(blob)
+    except OSError as exc:  # this file fails; the batch goes on
+        raise AnalysisFailure("cannot write %s: %s" % (out_path, exc.strerror or exc))
+    results = {"out": str(out_path), "bytes": len(blob),
+               "unavailable": data.get("unavailable") or {},
+               "diagram": bool(options.get("diagramPng"))}
+    return results, [{"out": str(out_path), "bytes": len(blob)}], EXIT_OK
+
+
+HANDLERS = {
+    "quantify": cmd_quantify,
+    "cutsets": cmd_cutsets,
+    "importance": cmd_importance,
+    "mc": cmd_mc,
+    "validate": cmd_validate,
+}
+
+
+# ---- output ----------------------------------------------------------------------
+
+_PROB_KEYS = {"q", "calculated", "probability", "share", "fv", "birnbaum", "raw", "rrw",
+              "pointEstimate", "mean", "median", "p05", "p95", "std", "headline", "treeWalk",
+              "mcub", "rareEvent"}
+
+
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
+
+
+def _printable(value: Any) -> str:
+    """``str(value)`` for the terminal: control characters as ``\\xNN``.
+
+    Names and titles come from the input files; raw, an ESC sequence in a
+    crafted file is run by the terminal (set the title, clear the screen,
+    fake the output). --json and --csv keep the data exactly.
+    """
+    return _CONTROL.sub(lambda m: "\\x%02x" % ord(m.group()), str(value))
+
+
+def _cell(key: str, value: Any, sf: int) -> str:
+    if value is None:
+        return "—"
+    if key in _PROB_KEYS and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return format_prob(value, sf)
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return _printable(value)
+
+
+def human_table(rows: List[Dict[str, Any]], sf: int) -> str:
+    if not rows:
+        return "(none)"
+    headers = list(rows[0].keys())
+    for row in rows[1:]:
+        for key in row:
+            if key not in headers:
+                headers.append(key)
+    cells = [[_cell(h, row.get(h), sf) for h in headers] for row in rows]
+    widths = [max(len(h), *(len(c[i]) for c in cells)) for i, h in enumerate(headers)]
+    numeric = [all(_looks_numeric(c[i]) for c in cells) for i in range(len(headers))]
+
+    def line(values):
+        return "  ".join(v.rjust(w) if num else v.ljust(w)
+                         for v, w, num in zip(values, widths, numeric)).rstrip()
+
+    out = [line(headers), line(["-" * w for w in widths])]
+    out.extend(line(c) for c in cells)
+    return "\n".join(out)
+
+
+def _looks_numeric(text: str) -> bool:
+    try:
+        float(text)
+        return True
+    except ValueError:
+        return text == "—"
+
+
+def _ccf_lines(res: Dict[str, Any], command: str) -> List[str]:
+    """The text lines of a result with a ``ccf`` block (FN-26, FN-67): the state of
+    the headline (``quantify``), one line per group that is not applied, and the
+    note. Nothing for a document without groups."""
+    block = res.get("ccf")
+    if not isinstance(block, dict):
+        return []
+    lines: List[str] = []
+    summary = res.get("summary") if command == "quantify" else None
+    if isinstance(summary, dict):
+        if summary.get("headlineMethod") == "incomplete":
+            lines.append("CCF: incomplete, CCF not included")
+        elif block.get("applied"):
+            n = len(block["applied"])
+            lines.append("CCF: includes CCF (%d group%s)" % (n, "" if n == 1 else "s"))
+    elif getattr(res, "ccf_incomplete", False):  # cutsets, importance, mc (same wording)
+        lines.append("CCF: incomplete, CCF not included")
+        lines.append(SUMMARY_LIMIT_NOTE)
+    sampling = res.get("ccfSampling") if command == "mc" else None
+    if isinstance(sampling, dict) and sampling.get("note"):  # FN-24
+        lines.append(str(sampling["note"]))
+    for group in block.get("notApplied") or []:
+        lines.append("CCF group not applied: %s (%s): %s" % (
+            _printable(group.get("name")), _printable(group.get("id")),
+            _printable(group.get("reason"))))
+    lines.append("Note: %s" % block.get("note"))
+    return lines
+
+
+def human_block(entry: Dict[str, Any], command: str, rows: List[Dict[str, Any]], sf: int) -> str:
+    lines = ["== %s  [%s] %s" % (_printable(entry["file"]), _printable(entry.get("mode") or ""),
+                                 _printable(entry.get("title") or ""))]
+    if "error" in entry:
+        lines.append("error: %s" % _printable(entry["error"]))
+        return "\n".join(lines)
+    res = entry.get("results") or {}
+    if command == "quantify":
+        s = res.get("summary") or {}
+        lines.append("Top event: %s  (%s)" % (format_prob(s.get("headline"), sf),
+                                              s.get("headlineMethod") or "treeWalk"))
+        for key in ("treeWalk", "mcub", "rareEvent"):
+            if s.get(key) is not None:
+                lines.append("  %-10s %s" % (key, format_prob(s.get(key), sf)))
+    elif command == "cutsets":
+        lines.append("Cut sets: %s%s   MCUB %s   rare-event %s" % (
+            res.get("total", len(rows)), " (truncated)" if res.get("truncated") else "",
+            format_prob(res.get("mcub"), sf), format_prob(res.get("rareEvent"), sf)))
+    elif command == "validate":
+        c = res.get("counts") or {}
+        lines.append("errors %d, warnings %d, info %d" % (c.get("error", 0), c.get("warning", 0),
+                                                          c.get("info", 0)))
+        if res.get("note"):
+            lines.append("note: %s" % res["note"])
+    elif command == "report":
+        lines.append("wrote %s (%d bytes)" % (res.get("out"), res.get("bytes", 0)))
+        return "\n".join(lines)
+    lines.extend(_ccf_lines(res, command))
+    lines.append(human_table(rows, sf))
+    return "\n".join(lines)
+
+
+def csv_text(entries: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]) -> str:
+    headers: List[str] = ["file"]
+    for _entry, rows in entries:
+        for row in rows:
+            for key in row:
+                if key not in headers:
+                    headers.append(key)
+    if any("error" in entry for entry, _rows in entries) and "error" not in headers:
+        headers.append("error")
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=headers, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    for entry, rows in entries:
+        if "error" in entry:
+            writer.writerow({"file": entry["file"], "error": entry["error"]})
+        for row in rows:
+            writer.writerow(dict(row, file=entry["file"]))
+    return buf.getvalue()
+
+
+def _json_default(value: Any):
+    if isinstance(value, (set, tuple)):
+        return list(value)
+    if isinstance(value, (bytes, bytearray)):
+        return None
+    return str(value)
+
+
+def _finite(value: Any) -> Any:
+    """``value`` with every NaN/Infinity float replaced by None.
+
+    ``--json`` is strict JSON, like the API's responses (app.py's
+    FiniteJSONProvider): a document can hold ``NaN`` (Python's json reads
+    the bare literal) and the analyses then return it, but JSON.parse, jq
+    and every other strict parser reject the ``NaN`` token.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(item) for item in value]
+    return value
+
+
+def render_output(fmt: str, command: str, entries, sf: int, ascii_only: bool = False) -> str:
+    if fmt == "json":
+        payload = [e for e, _rows in entries]
+        body = payload[0] if len(payload) == 1 else payload
+        return json.dumps(_finite(body), ensure_ascii=ascii_only, indent=2,
+                          default=_json_default, allow_nan=False) + "\n"
+    if fmt == "csv":
+        return csv_text(entries)
+    return "\n\n".join(human_block(e, command, rows, sf) for e, rows in entries) + "\n"
+
+
+# ---- main ----------------------------------------------------------------------------
+
+
+def _force_utf8() -> None:
+    """cp932 / cp1252 consoles must not crash on λ, τ or Japanese names.
+
+    Windows consoles are switched to UTF-8. Elsewhere the encoding is kept
+    (a non-UTF-8 locale, ``PYTHONIOENCODING=ascii``) and what it cannot hold
+    -- a name's 'ü' in cp932, the '—' of an empty cell in ASCII -- is written
+    as a backslash escape, as Python already does on stderr, instead of
+    aborting the run with a traceback and the wrong exit code. ``--json``
+    escapes non-ASCII itself there (:func:`_stdout_unicode`), so it stays
+    valid JSON.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if sys.platform == "win32":
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            else:
+                stream.reconfigure(errors="backslashreplace")
+        except Exception:
+            pass
+
+
+def _stdout_unicode() -> bool:
+    """Whether stdout takes every character (a UTF encoding)."""
+    encoding = str(getattr(sys.stdout, "encoding", None) or "").lower()
+    return encoding.replace("-", "").replace("_", "").startswith("utf")
+
+
+def _same_file(a: Any, b: Any) -> bool:
+    """Whether paths ``a`` and ``b`` name one file (any spelling or link)."""
+    try:
+        if os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b):
+            return True
+    except OSError:
+        pass
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def _report_target(path: str, out: Optional[Path], out_is_dir: bool) -> Path:
+    """Where ``report`` writes ``path``'s document."""
+    name = Path(path).stem + "_report.docx"
+    if out is None:
+        return Path(path).with_name(name)
+    return out / name if out_is_dir else out
+
+
+def _result_target(path: str, out: Path, command: str, ext: str) -> Path:
+    """``<stem>.<command><ext>`` in the --out directory."""
+    return out / ("%s.%s%s" % (Path(path).stem, command, ext))
+
+
+def _planned_outputs(command: str, files: List[str], out: Optional[Path], out_is_dir: bool,
+                     ext: str) -> List[Tuple[Optional[str], Path]]:
+    """``(input, path)`` for every file the run will write; input is None for
+    one combined output."""
+    if command == "report":
+        return [(path, _report_target(path, out, out_is_dir)) for path in files]
+    if out is None:
+        return []
+    if len(files) > 1 and out_is_dir:
+        return [(path, _result_target(path, out, command, ext)) for path in files]
+    return [(None, _result_target(files[0], out, command, ext) if out_is_dir else out)]
+
+
+def _output_problem(planned: List[Tuple[Optional[str], Path]], files: List[str]) -> Optional[str]:
+    """Why these outputs must not be written, or None.
+
+    An output must never replace an input (``quantify plant.json --json --out
+    plant.json`` replaced the analysis with its results), and two inputs
+    must not share one (a/plant.json and b/plant.json with ``--out dir/``
+    both became dir/plant.quantify.json: one result silently lost).
+    """
+    for _source, target in planned:
+        for path in files:
+            if _same_file(target, path):
+                return "writing %s would overwrite the input file %s" % (target, path)
+    writers: Dict[str, str] = {}
+    for source, target in planned:
+        if source is None:
+            continue
+        key = os.path.normcase(os.path.abspath(target))
+        first = writers.setdefault(key, source)
+        if not _same_file(first, source):
+            return ("%s and %s would both be written to %s; run them separately or give the "
+                    "files different names" % (first, source, target))
+    return None
+
+
+def _write(path: Path, text: str) -> bool:
+    """Write ``text`` to ``path``; False (and a message) when that fails --
+    ``--out`` under a regular file, no permission, a full disk."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="")
+    except OSError as exc:
+        print("error: cannot write %s: %s" % (path, exc.strerror or exc), file=sys.stderr)
+        return False
+    return True
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    _force_utf8()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = build_parser()
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:  # --help / --version (0) or a usage error (2)
+        return int(exc.code or 0) if isinstance(exc.code, int) else EXIT_USAGE
+    if not args.command:
+        parser.print_help()
+        return EXIT_USAGE
+    command = args.command
+    fmt = "json" if args.json else ("csv" if args.csv else "text")
+    ext = {"json": ".json", "csv": ".csv", "text": ".txt"}[fmt]
+    sf = clamp_sig_figs(args.sig_figs)
+    files = expand_files(args.files)
+    many = len(files) > 1
+
+    if getattr(args, "top", None) is not None and args.top < 1:
+        print("error: --top must be at least 1", file=sys.stderr)
+        return EXIT_USAGE
+    if getattr(args, "time_limit", None) is not None and not args.time_limit > 0:
+        print("error: --time-limit must be greater than 0", file=sys.stderr)
+        return EXIT_USAGE
+
+    out = Path(args.out) if args.out else None
+    out_is_dir = out is not None and (out.is_dir() or str(args.out).endswith(("/", "\\")))
+    if command == "report" and out is not None and not out_is_dir and out.suffix.lower() != ".docx":
+        # ``report x.json --out reports`` means a folder: without this the
+        # report was written to a file literally named "reports", with no
+        # extension, that Word will not open by double-click.
+        out_is_dir = True
+    if command == "report" and many and out is not None and not out_is_dir:
+        print("error: --out must be a directory when several files are given", file=sys.stderr)
+        return EXIT_USAGE
+    problem = _output_problem(_planned_outputs(command, files, out, out_is_dir, ext), files)
+    if problem:
+        print("error: %s" % problem, file=sys.stderr)
+        return EXIT_USAGE
+
+    entries: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
+    worst = EXIT_OK
+    for path in files:
+        entry: Dict[str, Any] = {"file": path, "title": None, "mode": None}
+        rows: List[Dict[str, Any]] = []
+        try:
+            core = load_core(path, args)
+        except UsageError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return EXIT_USAGE
+        except (OSError, ValueError, UnicodeDecodeError) as exc:
+            entry["error"] = "unreadable: %s" % exc
+            print("error: %s: %s" % (path, exc), file=sys.stderr)
+            worst = max(worst, EXIT_UNREADABLE)
+            entries.append((entry, rows))
+            continue
+        meta = core.get_metadata()
+        entry["title"], entry["mode"] = meta.get("title"), meta.get("mode")
+        try:
+            if command == "report":
+                results, rows, status = cmd_report(core, args,
+                                                   _report_target(path, out, out_is_dir))
+            else:
+                results, rows, status = HANDLERS[command](core, args)
+            entry["results"] = results
+        except UsageError as exc:
+            print("error: %s" % exc, file=sys.stderr)
+            return EXIT_USAGE
+        except AnalysisFailure as exc:
+            entry["error"] = str(exc)
+            print("error: %s: %s" % (path, exc), file=sys.stderr)
+            status = EXIT_FAIL
+        worst = max(worst, status)
+        entries.append((entry, rows))
+
+    if out is not None and command != "report":
+        if many and out_is_dir:
+            for entry, rows in entries:
+                target = _result_target(entry["file"], out, command, ext)
+                if not _write(target, render_output(fmt, command, [(entry, rows)], sf)):
+                    worst = max(worst, EXIT_FAIL)
+        else:
+            target = _result_target(files[0], out, command, ext) if out_is_dir else out
+            if not _write(target, render_output(fmt, command, entries, sf)):
+                worst = max(worst, EXIT_FAIL)
+    else:
+        sys.stdout.write(render_output(fmt, command, entries, sf,
+                                       ascii_only=not _stdout_unicode()))
+    sys.stdout.flush()
+    return worst
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

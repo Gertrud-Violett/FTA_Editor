@@ -1,0 +1,136 @@
+{
+  "title": "F01 quant models",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "fixed",
+        "name": "fixed",
+        "type": "Event",
+        "probability": 0.01,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "fixed"
+        }
+      },
+      {
+        "id": "rate_T",
+        "name": "rate_T",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "rate",
+          "lambda": 1e-05,
+          "T": 1000.0
+        }
+      },
+      {
+        "id": "rate_mission",
+        "name": "rate_mission",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "rate",
+          "lambda": 2e-06
+        }
+      },
+      {
+        "id": "rate_fit",
+        "name": "rate 250 FIT",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "rate",
+          "lambda": 2.5000000000000004e-07
+        }
+      },
+      {
+        "id": "standby",
+        "name": "standby",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "standby",
+          "lambda": 0.0001,
+          "tau": 720.0
+        }
+      },
+      {
+        "id": "standby_big",
+        "name": "standby_big",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "standby",
+          "lambda": 0.001,
+          "tau": 500.0
+        }
+      },
+      {
+        "id": "rep_mttr",
+        "name": "rep_mttr",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "repairable",
+          "lambda": 0.001,
+          "mttr": 10.0
+        }
+      },
+      {
+        "id": "rep_mu",
+        "name": "rep_mu",
+        "type": "Event",
+        "probability": 0.5,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "repairable",
+          "lambda": 0.001,
+          "mu": 0.05,
+          "mttr": 10.0
+        }
+      }
+    ]
+  },
+  "analysis": {
+    "missionTime": 4380.0
+  }
+}

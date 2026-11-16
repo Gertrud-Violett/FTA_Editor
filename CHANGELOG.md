@@ -1,0 +1,2109 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.9.1] - 2026-11-15
+
+### Added
+
+- **The version is shown in the editor.** The version number now appears in
+  the browser tab title (`FTA Editor 1.9.1`) and, small and muted, at the
+  right end of the top bar (`v1.9.1`), in English and Japanese, in basic and
+  advanced mode.
+
+## [1.9.0] - 2026-11-05
+
+FTA Editor 1.9 adds common-cause failure (CCF) groups with a beta factor or an
+alpha factor, a Grid tab that edits every basic event in one table and takes a
+paste from Excel, and a What-if tab.
+
+**Before you upgrade.** A file saved by 1.9 that contains CCF groups opens in
+FTA Editor 1.8.x without the groups. Files with CCF groups lose the groups when
+saved by FTA Editor 1.8.x (it warns 'reset to their defaults: ccfGroups'), and
+lose all analysis settings when saved by the desktop app. Keep a copy of such a
+file, and do not save it with an older program.
+
+**アップグレード前の注意。** 1.9 で保存した CCF グループを含むファイルを FTA Editor 1.8.x で開くと、グループは読み込まれません。
+CCF グループを含むファイルを FTA Editor 1.8.x で保存すると CCF グループが失われます（1.8.x は 'reset to their defaults: ccfGroups' と警告します）。デスクトップ版で保存すると解析設定がすべて失われます。
+そのようなファイルは控えを残し、古いプログラムでは保存しないでください。
+
+### Added
+
+- **A What-if tab: try a factor on an event and watch the top event move.** Pick
+  a basic event and set a factor from 1/100 to 100 with a log-scale slider (or
+  type it in the field). The factor multiplies the event's main parameter, as
+  the Monte Carlo run does: λ for the rate, standby and repairable models, q for
+  the fixed model (T, τ and μ are not scaled); q follows from the model and is
+  set to 1 when it would be higher, with "clamped to 1" shown. The tab shows the
+  nominal and the what-if main parameter, the nominal and the what-if q, the
+  baseline top event, the what-if top event and their ratio. While any factor is
+  not 1 the banner **What-if values, not saved** is shown, with **Reset** per
+  event and **Reset all**. The what-if values are never saved, exported or sent
+  to the assistant: the file, the undo history, the modified flag and every
+  output stay as they were, and the factors go back to 1 on every change of
+  the document (New, Open, Import, an example, a mode switch, Undo, Redo, any
+  edit, in this or another browser window). A factor on a member of an applied
+  CCF group applies to every member of the group, and the tab says so. The top
+  event uses the headline's method (MCUB over the baseline cut sets, or the
+  tree walk); when the cutoff left cut sets out, the tab notes "cut sets from
+  nominal values", and when the headline is incomplete there is no what-if
+  number. The tab is in Advanced mode, after Uncertainty, and is greyed in ETA
+  mode. See the [User Guide](docs/USER_GUIDE.md#the-what-if-tab), including
+  its limits: the warning `RATE_IMPLAUSIBLE` is not raised for what-if values
+  (the tab shows a caution line for `CCF_NOT_APPLIED`, `CCF_HIGH_Q`,
+  `CCF_Q_ONE` and `STANDBY_LARGE_LT`, see the next entry); a CCF group that is
+  not applied at baseline stays out of the what-if, which can then read far
+  below (or slightly above) the same values typed into the document (the tab
+  shows a caution); and a factor on an event outside
+  the cut sets kept (with an MCUB headline: the document's order and count
+  limits, the headline's 2,000-set cap) shows no change, and a
+  limited or capped MCUB is an estimate, not a bound (an order limit or the
+  cutoff only lowers it; a count limit or the cap usually does, but can raise
+  it).
+- **What-if caution line.** The What-if tab shows one line (English and
+  Japanese) when you scale a member of a CCF group that is not applied at
+  baseline, when a member of a CCF group you scaled reaches probability 1 or
+  goes above 0.01, when the λτ of a scaled standby event goes above 0.2, or
+  when the cut sets are limited by max order or max count; a small "Caution"
+  badge in the table head points to it. `POST /api/whatif` gets the field `cautions`.
+- **New endpoint `POST /api/whatif`.** Takes `{revision, documentSerial,
+  factors}` with at most 1,000 factors from 0.01 to 100 and answers the
+  baseline, the what-if top event, their ratio, one row per event and
+  `cautions` (a list, empty when nothing applies; see the What-if caution line
+  entry above). It reads strict JSON and checks every factor (a JSON number
+  from 0.01 to 100 only; a string, `NaN`, `Infinity`, `-0.1` or `101` is
+  refused with `INVALID_JSON` or `INVALID_FIELD`); `409 STALE_REVISION` when
+  the document changed since the revision sent, `409 MODE_UNSUPPORTED` for an event tree, and
+  `422 WHATIF_NOT_EVALUABLE` for an event whose model lacks a parameter. It
+  never changes the document, its revision or its undo history. The first call
+  after an edit builds the baseline (the headline's cut sets); when it is kept,
+  later calls only redo the factors and answer in a fraction of a second (when
+  the headline's time budget ran out nothing is kept and every call takes as
+  long as the headline). See
+  [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
+- **A Grid tab with every basic event in one table.** One row per basic event
+  with the columns ID (read-only), Name, Model, λ, T, τ, μ, q, Source and
+  Tags. The headers name the units: λ in the unit chosen in its header (/h,
+  /y or FIT), T and τ in hours, μ per hour, q without a unit. q is editable
+  only for the model Fixed probability and is shown with the significant-figures
+  setting; on the other models it is computed. Tags are shown and typed
+  separated by `; `. A comma does not separate tags here (unlike the
+  Traceability tab); use `;`. A cell takes the same text as the matching field in the
+  Details and Quantification tabs and means the same number. Values are stored
+  per hour (8,760 h per year, 1 FIT = 1e-9 per hour).
+- **Sort and filter in the Grid.** Click a header to sort by that column; the
+  filter box keeps the rows that contain the text in any visible column. The tab says
+  how many of the events are shown.
+- **Paste from Excel into the Grid.** Select a cell and press Ctrl+V. The block
+  fills from that cell to the right over the visible columns and downwards over
+  the visible rows in the order shown, so it lands on the intended events after
+  any sort or filter. Excel quoting, a trailing line break and empty cells are
+  handled; an empty cell leaves the value as it is. Cells beyond the last
+  visible column and rows beyond the last visible row are refused and listed;
+  no event is created. A clipboard of more than 2,000 rows is refused as a
+  whole.
+- **One undo step per paste.** A 500-row paste is applied at once and one Undo
+  restores all of it. A paste that changes nothing makes no undo step.
+- **A summary of every paste.** Beside the grid the tab gives the number of rows
+  applied and lists each refused row with its clipboard row number, the column
+  and the reason (for example "id does not match this row" or "q is computed
+  from the model"). One invalid cell refuses its whole row; the other rows are
+  applied.
+- **A stale paste is refused as a whole.** If the analysis changed between the
+  moment the grid was drawn and the paste (an edit, an undo or another
+  document), nothing is applied, the grid is redrawn and the tab says "The
+  analysis changed; paste again". The Grid tab is not available for an event
+  tree (ETA mode).
+- **New endpoint `POST /api/grid/paste`.** One undo step; `409 STALE_REVISION` when the
+  document changed; refused rows are listed with clipboard row, column and message.
+- **Common-cause failure (CCF) groups, beta factor.** Redundant basic events
+  can be put in a CCF group with a beta factor β (a fraction from 0 to 1). The
+  editor replaces each member by an independent part, `(1 − β)·Q_t`, and one
+  shared CCF event, `β·Q_t` (NUREG/CR-4780 Vol. 2 Table C-1 p. C-5 and
+  Eq. C.10-C.13 p. C-6; NUREG/CR-5485 Eq. 5.11-5.13 p. 42), so the CCF event
+  appears in the headline, the cut sets, the gate values, importance, Monte
+  Carlo, the DOCX report and the command line. Formulas, sources with pages,
+  assumptions and worked examples are in [docs/CCF.md](docs/CCF.md). Check CCF
+  results with a qualified engineer before use.
+  - **New file format version 2.** Groups are saved under
+    `analysis.ccfGroups`, and a file with at least one group also gets
+    `"fileFormatVersion": 2`. A file without groups is saved exactly as in
+    1.8.1. A file with a `fileFormatVersion` greater than 2 opens with the
+    warning "This file was saved by a newer FTA Editor; saving may lose data".
+  - **A CCF groups tab** (Advanced mode): create a group from the basic
+    events selected in the tree, edit its name, β, source and members, delete
+    it; each action is one undo step. A group that cannot be applied (members
+    that differ, a member that is not a basic event, ETA mode and so on, 12
+    checks in all) is kept in the file and shown as `Not applied: <reason>`
+    in the tab, in the headline note, in the Validation tab and in the
+    report. Members show a `CCF: <group name>` badge in the tree and in the
+    diagram. With a group applied the headline is the min-cut upper bound and
+    reads "MCUB, includes CCF"; when the cut sets cannot be completed it reads
+    "incomplete, CCF not included" and shows no number. A gate above a member
+    shows its MCUB, or `n/a (CCF)`, never its tree-walk value.
+  - **Command line.** `quantify`, `cutsets`, `importance` and `mc` add a `ccf`
+    block (`applied`, `notApplied`, `note`) to `--json` for a file with groups,
+    and exit with 1 when a group is not applied or the headline is
+    incomplete. Files without groups give the same output as 1.8.1.
+  - **API.** New `GET`, `POST`, `PATCH` and `DELETE /api/ccf/groups`; the
+    analysis results gain `ccf`, `ccfIncomplete`, `ccfIncompleteReason`,
+    `ccfGates` and the headline method `incomplete`, and `/api/dot` gains
+    `ccfGates`. See [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
+  - **Deleting a member.** Deleting a node that is a member of a group (one
+    node or several, an AI update, an FMEA re-import that replaces nodes)
+    removes it from its group in the same undo step; one Undo restores both. A
+    group left with fewer than two members is kept and reported, not deleted.
+  - **Monte Carlo.** The run draws one value of `Q_t` per group per trial; the
+    members and the CCF events follow from that one draw, so the members move
+    together. β and α are not sampled, and the result says so.
+  - **Excel export.** A gate above a member of an applied group shows its MCUB,
+    never its tree-walk value: in the `Calc:` text of the FTA sheet as
+    `<value> (MCUB, CCF)` and in the Calculated probability column of the Events
+    sheet as the number. When the cut sets are incomplete, both read
+    `n/a (CCF)`, and the Events cell has a comment that says why. The Analysis
+    sheet gets the rows *CCF groups applied* and *CCF groups not applied*.
+- **Alpha-factor model for CCF groups of 2 to 4 members.** A CCF group can use
+  the alpha-factor model: you enter α1 … αm and choose staggered or
+  non-staggered testing (there is no default; a group without a scheme reads
+  `Not applied: testing scheme missing`). The editor makes one CCF event per
+  member subset of two or more members, id `ccf:<groupId>:<m1>+<m2>…`, with
+  `Q_k = α_k / C(m−1, k−1)·Q_t` (staggered, NUREG/CR-5485 Eq. 5.6 p. 40) or
+  `Q_k = k / C(m−1, k−1)·(α_k / α_t)·Q_t` (non-staggered, Eq. 5.7-5.9 p. 41;
+  NUREG/CR-4780 Vol. 2 Eq. C.23-C.24 pp. C-10/C-11). A sum within 0.001 of 1
+  is accepted and every α is divided by the sum (with a warning when it differs
+  from 1 by more than 1e-9); further off, the group is not applied. New lint
+  codes `CCF_ALPHA_SIZE`, `CCF_ALPHA_SUM`, `CCF_ALPHA_NORMALISED` and
+  `CCF_NO_TESTING`. The alpha values and the scheme show in the report and in
+  the `ccf` block of the command line's `--json` output;
+  `POST` and `PATCH /api/ccf/groups` take `model`, `alpha` and `testing`.
+  Formulas with pages, the source errors not copied and the reference cases
+  are in [docs/CCF.md](docs/CCF.md).
+  - **New refusal.** A group is not applied (`CCF_BAD_PARAMETER`, kind
+    `event_id`) when its group or member ids contain `+` or `:` in a way that
+    would make the same CCF event id twice, in the group or with another group.
+    Ordinary ids are not affected.
+
+### Fixed
+
+- **The selected tab scrolls fully into view when you choose it, and the Grid tab is greyed in ETA mode.**
+  Moving through the tab strip by keyboard or click scrolls the strip so the
+  chosen tab is not cut off. In ETA mode the Grid tab is greyed like the
+  What-if tab, with the same tooltip (the CCF groups tab is greyed too, with its
+  own).
+
+## [1.8.1] - 2026-10-26
+
+The known issues of 1.8.0.
+
+### Added
+
+- **A recovery copy of unsaved work.** While an analysis has unsaved changes
+  the editor keeps a copy of it in `~/.fta_editor/recovery/` (on Windows
+  `C:\Users\<you>\.fta_editor\recovery\`): written 2 seconds after you stop
+  editing and at the latest 30 seconds after a change. The copy is removed
+  on Save, on New and Load, and when the editor is stopped with Ctrl-C. If
+  the editor ends in any other way (a crash, a power cut, its window
+  closed), the next start shows **Unsaved work found** above the tree, with
+  **Restore unsaved work from <date> (<title>)** and **Discard it**.
+  Restore opens the copy as an untitled, modified analysis, so **Save** asks
+  where to put it; the file it had been opened from is never written. At
+  most five copies are kept. New endpoints: `GET /api/recovery`,
+  `POST /api/recovery/restore`, `POST /api/recovery/discard`.
+- **Change folder… in the file dialog.** The folder the editor may read and
+  write could only be set when it was started (`--root`). The file dialog
+  now has **Change folder…**, also under the message that refuses a path
+  outside the folder. The editor itself opens the operating system's folder
+  chooser on your computer, and the folder you pick there becomes the
+  allowed folder for this session. The browser page cannot name a folder:
+  `POST /api/fs/root/choose` takes no input and refuses a request that
+  carries any. An open analysis whose file is outside the new folder becomes
+  untitled and is otherwise unchanged. Where no chooser can be opened (no
+  display, the packaged app on Linux or macOS) the button shows the command
+  to start the editor on another folder, as before.
+
+### Fixed
+
+- **Preferences were lost at every start.** The editor listened on a new
+  port each time, and a browser keeps a page's settings per address. It now
+  listens on port **8765** unless `--port` says otherwise, so Advanced, the
+  language, the theme, significant figures, the Formatted switch and the
+  diagram style are kept. If 8765 is in use, for example by a second copy
+  of the editor, it starts on a free port and prints a `Note` line.
+  `--port 0` asks for any free port.
+- **Load, Open an example and a file from this computer could replace the
+  unsaved work of another tab without asking.** Only New refused on the
+  server. `POST /api/file/open`, `/api/examples/open` and `/api/import/json`
+  now answer `409 UNSAVED_CHANGES` unless the request says `force`, and the
+  page shows the unsaved-changes prompt when that happens. **API change:** a
+  client that opens a file over unsaved changes must send `force: true` (a
+  form field `force=true` for the import).
+- **Moving or deleting several thousand nodes at once held the editor for
+  seconds.** 4,800 nodes of a 4,860-node tree took 9.4 s to move and 4.1 s
+  to delete, with every other request waiting. Both now take well under a
+  second. The answers and the refusals are unchanged.
+- **Stop in the assistant did not free the editor.** It only stopped the
+  page from waiting; a new request was refused as busy until the provider
+  answered, up to two minutes. Stop now tells the editor to abandon the
+  request (`POST /api/ai/cancel`): a new request is accepted at once, and
+  the late answer is dropped. It is not added to the conversation, proposes
+  nothing and is never applied. A request that timed out can be abandoned
+  the same way, which used to need a restart.
+- **`1e-400` was accepted as a probability** and stored as 0 while the box
+  kept the text. A number too small to be represented is now refused, and
+  `-0` is read as `0`.
+- **Save As: a name typed and Enter pressed before the dialog had listed its
+  folder.** While the folder was being listed, Enter did nothing and nothing
+  said so. Pressed even earlier, it saved into the editor's root folder
+  instead of the folder the dialog was about to show. The save now waits
+  for the listing and then goes ahead. Found by running the GUI suite on
+  WebKit, which lists more slowly.
+
+### Changed
+
+- The GUI test suite can drive Firefox and WebKit
+  (`FTA_GUI_BROWSER=firefox|webkit`); see `fta_web/tests/gui/README.md`.
+
+## [1.8.0] - 2026-10-12
+
+### Changed
+
+- **The diagram's settings are behind a button that says so.** **Aa**
+  ("Font & box size") is now **Settings**, the popover is titled **Diagram
+  settings**, and "Box scale" is **Box padding (0-30)**, which is what it
+  is. Style and Layout were there all along, with nothing to say so.
+- **A selected node comes into view.** Selecting a row of the tree or of an
+  analysis table moves a zoomed diagram by the least that shows that node;
+  the zoom is not changed. **1:1** sets 100 % and **◎** centres the selected
+  node at a readable size.
+- **Diagram exports: the document's name, a message, light colours, and the
+  importance colours.** The toolbar's SVG and PNG saved `fta_diagram.*`
+  without a word; they now use the same name as **Render** (the file's or
+  the title's) and the same message. Every export is in the light colours
+  (the dark theme gave a dark PNG with a white strip). With **Colour diagram
+  by FV** on, the file has the colours and a legend under the diagram, and
+  the Report tab has **Colour the diagram by Fussell-Vesely importance**.
+- **The bottom panel is tall enough for a table.** Tabs other than Details
+  have a height of their own (about 45 % of the window by default), and
+  **△** enlarges the panel to all the height there is while a strip of the
+  diagram stays.
+- **ETA mode is called what it is.** The headline reads **Initiating event**;
+  Quantification, Cut Sets, Importance and Uncertainty are greyed with the
+  reason in their tooltip; the diagram draws no gate or event symbols and no
+  `Gate:` text; the assistant says **Analyze ETA**, **Update ETA** and
+  "event tree".
+- **Tree rows show the gate and the probability**, and a gate is no longer
+  bold red for its unused base probability of 1. Only an event that is
+  certain is.
+- **A multi-selection is honoured everywhere.** Delete, a drag and
+  Ctrl+Shift+arrow keys act on every selected node, each as one undo step
+  (deleting three nodes used to take three Ctrl+Z). The bottom panel's
+  header says **N selected**, and otherwise names the selected node instead
+  of giving its id.
+- **The assistant.** **Stop** gives the panel back while the provider is
+  still working. A message that failed to send returns to the box. After a
+  reload the conversation, the pending suggestions and a waiting Update
+  preview are shown again. Suggested changes name their node as a link that
+  selects it and list the changes in words; a card made for another analysis
+  is switched off by New or Load; a rejected suggestion is one line, not
+  raw JSON. A reply that is the provider's error is drawn as an error. "No
+  provider is set up yet" is said once. **MD** is now **Formatted**.
+- **AI setup.** With nothing configured the dialog opens on **Google Gemini**
+  (free tier). One line says that the whole tree and what you type are sent
+  to the chosen provider. Microsoft Copilot says that it needs an Azure
+  OpenAI resource (it showed OpenAI's hint and OpenAI's key page).
+- **Quieter messages.** A title or a date no longer answers "Metadata
+  updated."; a mode switch says which mode and what it means. A notice no
+  longer carries a raw code such as `ROOT_PROTECTED`. Messages appear beside
+  the AI panel, not over its Send button.
+
+- **The diagram opens with the gate symbols.** The Live Diagram Preview's
+  default style is now **Standard symbols** (IEC 61025 / NUREG-0492 gates
+  and events) instead of **Compact boxes**. The packaged app starts on a new
+  port each time, so its browser storage is new as well and it always opened
+  on the boxes: the symbols looked as if they had been removed. A style
+  already saved in a browser is kept, and **Settings** (then **Aa**) on the diagram toolbar
+  switches as before. `GET /api/dot`, `POST /api/render`, the CLI and the
+  Word report keep their own defaults.
+- **Add Node says where the node will go.** The dialog's title named the
+  parent by its id (`Add Node under root_0_0`), which read as "under root".
+  It now gives the parent's name. Add has always put the node under the
+  selected one; with nothing selected (after New, Load or a reload) it goes
+  under the top event, and the dialog now says so instead of doing it
+  silently.
+- **Add keeps the parent selected, and can add several nodes in a row.**
+  After Add the new node was selected, so the next Add nested under it; three
+  siblings took a click back on the parent between each. The parent now stays
+  selected. The new node's row is opened to, scrolled into view and marked
+  for a moment, and the status line names it. The dialog has a second button,
+  **OK and add another** (Ctrl+Enter): it makes the node and clears the
+  dialog for the next one under the same parent, keeping Type and Logic Gate.
+  To add beneath the new node, select it first.
+- **The top event is selected at start-up.** After a launch or a reload
+  nothing was selected: Node Details was empty, and Add, Edit and Delete each
+  had to explain that. New and Open already selected the top event.
+- **A new node's probability has to be typed.** The Add dialog's Probability
+  started at `1.0`, and Enter in the Name box made a certain event of every
+  node. The box now starts empty and is required; Enter in Name moves to it.
+  For an event that will get children of its own, enter 1. The API is
+  unchanged: `POST /api/nodes` without a probability still stores 1.0.
+- **Probabilities can be typed as `5%`, `1/1000`, `0,05` or in full-width
+  characters.** The Add dialog and Node Details read a trailing percent sign,
+  a simple fraction, a decimal comma and full-width digits (`０．０５`,
+  `５％`), and show the value as a plain decimal. `1,000` is refused, because
+  it could be a thousand or one. The browser does the reading and sends a
+  number; the server accepts exactly what it did.
+- **The diagram's numbers are larger and bold, and an event shows its number
+  once.** In a fitted diagram of a real tree the probability row was about
+  4 px high. In the **Standard symbols** style it is now the largest row of
+  the box (14 pt, bold; the name is 12 pt). An event's box said
+  `q=0.01 | Q=0.01`; it now says `q=0.01`, a gate `Q=...` as before, and
+  only an event whose calculated value differs from its own (it has links)
+  shows both. In the **Compact boxes** style the text is unchanged and the
+  meta row is 11 pt instead of 9 pt. This applies to the preview, the SVG and
+  PNG exports, `GET /api/dot`, `POST /api/render`, the CLI and the report.
+- **The mouse wheel zooms the diagram.** A plain wheel over the diagram did
+  nothing; only Ctrl+wheel zoomed. Both now zoom about the pointer. A
+  trackpad zooms in proportion to the movement.
+- **The − and + buttons zoom about the selected node.** They zoomed about the
+  diagram's top-left corner, so a few presses slid the diagram out of view.
+  They now hold the selected node still, or the middle of the diagram when
+  the selected node is not in view. `Ctrl+=` and `Ctrl+-` do the same.
+- **Edit goes to the Name box.** The Edit button (Ctrl+E) showed a toast that
+  said to edit in Node Details. It now opens the Details tab with the caret
+  in Name and the name selected.
+- **Delete asks with a count, and with the focus on Cancel.** The
+  confirmation said "and everything beneath it" for a leaf as well, gave no
+  number, and opened with the focus on Delete. It now says how many nodes
+  go, for one node and for a multi-selection, and Enter cancels.
+- **Enter in the tree's search box goes to the first match.** It moved the
+  focus to the first row, which under a filter is the top event. Enter now
+  selects the first match, Enter again the next, Shift+Enter the one before;
+  the caret stays in the box.
+- **Enter in a Node Details field returns the focus to the tree.** The field
+  was saved and the focus dropped to the page, where the next key did
+  nothing. It now goes to the node's row. A value that is refused keeps the
+  caret.
+- **The status line shows the file name first; the browser tab shows it
+  too.** The status line cut the path off after 30 characters, which was
+  never as far as the file name. It now shows the file name in full, then the
+  folder. The tab title is the file name (`Untitled` before the first save),
+  with a `●` in front while there are unsaved changes.
+- **The "All features available" chip is a tick.** With nothing missing, the
+  chip in the top bar now shows the tick alone; its tooltip and the panel it
+  opens say the rest. A missing feature is still named on the chip.
+- **Update FTA asks first, and shows what it would change before it changes
+  anything.** One click sent the whole tree to the AI provider and replaced
+  it with the answer; the summary came afterwards. The button now asks
+  before sending. The answer arrives as a card in the chat that lists the
+  nodes the rewrite would add, change and remove, by name, with **Apply
+  update** and **Discard**. The tree is untouched until Apply. Apply is
+  refused if the tree was edited since the preview (as the update itself was
+  when the tree changed while the model worked), and it is still one undo
+  step. `POST /api/ai/update` without the new `preview` flag behaves as
+  before.
+- **New and Load offer "Save and continue".** With unsaved changes the
+  question had two answers, Cancel and Discard; keeping the work took
+  Cancel, Save, and the action again. There is now a third button, **Save
+  and continue**, and it has the focus: Enter saves. An analysis that has no
+  file yet goes to Save As. If that dialog is closed, or the save is
+  refused, the analysis stays as it is and New or Load does not go ahead.
+- **Undo and redo say what they did, and select the node.** Ctrl+Z changed
+  the tree without a word, and when the selected node was the one that went,
+  the selection jumped to the top event. A toast now names the step
+  ("Undid: deleting "Seal leak"", "Redid: a change to "Pump A" (name)"). The
+  selection goes to the node concerned, or to the former parent of a node
+  that is gone. A step that touches many nodes at once (an analysis setting)
+  leaves the selection where it is.
+- **A download says it is a copy.** JSON, XML, Excel and Render answered
+  "Downloaded x.json", which beside the Save button read as "saved". The
+  toast now says a copy was downloaded to the folder the browser saves
+  downloads in, and that the open file is unchanged (or, for an analysis
+  with no file, that this did not save it). The four buttons are labelled as
+  a group, **Export:**.
+- **The file dialog starts in the folder used last.** For an analysis with
+  no file of its own (new, an example, an import) Load and Save As opened at
+  the root folder every time. They now open in the folder of the last file
+  opened or saved. It is stored in `~/.fta_editor/ui_prefs.json`, beside the
+  AI credentials, and is checked against the root folder each time it is
+  read. An analysis that has a file still starts in that file's folder.
+- **A path outside the root folder is refused with the command to use.**
+  The refusal said "Relaunch with --root to change it". It now gives the
+  command for this installation, `fta_editor.exe --root "<folder>"` in the
+  packaged app and `uv run python fta_web/run.py --root "<folder>"` from
+  source, and the Load dialog adds that one file from there can be opened
+  with **A file on this computer…**. The root folder itself is unchanged:
+  it is still set only when the editor is started.
+- **The "no session" screen says what happened in plain words.** It spoke
+  of a one-time session key and told every user to run
+  `python3 fta_web/run.py`. It now says the tab is not connected to the
+  editor, why that happens, and what to start: the packaged app's own file
+  name, or the command for a source checkout. The server supplies it.
+- **Cut Sets: a limit that leaves nothing no longer reads "the top event
+  cannot occur".** With **Max order** 1 on a tree whose smallest cut set has
+  two events, the tab said so, under "Min-cut upper bound 0". It now says
+  that there are no cut sets within these limits, names the limit, and
+  hides the bound, the rare-event sum and the count. The tree-walk value
+  stays.
+- **Cut Sets: a typed limit is marked "This run only".** A limit typed into
+  the tab applies to that tab's runs until it is saved as a document
+  default; the headline, Importance and the report keep the document's
+  limits. The tab now says so beside the boxes, and **Reset** goes back to
+  the document's limits and runs again.
+- **Save on an analysis with no file goes straight to Save As.** The page
+  asked the server to save first and was refused (409), which the browser
+  logged as an error on every Ctrl+S of a new analysis.
+
+### Fixed
+
+- **A node that got its first child lost its probability without a word.**
+  In an FTA a node with children is calculated from them and its own
+  probability is no longer used. After Add, a move or a drag that gives such
+  a node its first child, a warning now says so, with the value, and links to
+  the Validation tab. Node Details greys **Probability (base)** of a node
+  with children and says why. A probability of exactly 1, the default, is
+  not warned about.
+- **Double-click in the tree did nothing.** The first click selected the row
+  and redrew the list, so the browser never saw two clicks on one element.
+  A double-click on a name now renames, and elsewhere on a row opens or
+  closes the branch.
+- **Ctrl+Z did nothing after a change in a dropdown.** With the focus still
+  on Logic Gate (or any other dropdown), Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z were
+  ignored. They now undo and redo. Other shortcuts still leave a focused
+  dropdown alone.
+- **A branch collapsed in one file was collapsed in the next.** The tree's
+  open and closed state was one list for every file, and ids such as
+  `root_0` recur. It is now kept per file path (`fta.tree.expanded.v2`); a
+  new, unsaved document starts fully open.
+- **A click in the diagram did not scroll the tree.** The node was selected,
+  but its row could be far outside the visible part of a long tree. A
+  selection made anywhere now scrolls its row into view.
+- **Ctrl+Shift+Up on the first child said "already at the end".** Each end
+  now has its own sentence.
+- **Jumping to a node from a tab pushed a fitted diagram off the stage.** A
+  jump centred the node even when it was already in view, and switched
+  auto-fit off, so the diagram stayed off-centre through later edits. A jump
+  now moves the diagram only when the node is not fully in view.
+- **The top bar wrapped onto a second row on the first edit.** "Unsaved
+  changes" is wider than "Saved". The pill now has one width in both states.
+- **The Open dialog answered a mistyped path with "This dialog saves .json
+  files".** A path that does not exist is now reported as *Folder not found*
+  or *File not found*. A bare name or a relative path typed into the dialog
+  is read against the folder it shows (it was read against the sandbox
+  root), and `~` is the home folder. The sandbox is unchanged: `~` is
+  expanded and then confined like any other path.
+- **A refused entry in Node Details vanished on the next click.** Selecting
+  another node while a field held a value that had been refused dropped it
+  silently. A warning now names the field and the node and shows the text.
+- **Standard symbols: a tree of more than about 60 nodes drew nothing.**
+  That style asks Graphviz for right-angle lines, and the in-browser
+  (WebAssembly) Graphviz cannot route them for a large diagram: it ran out
+  of memory or failed an assertion, and the panel stayed empty. Present
+  since 1.7.0; found by the GUI suite's 300-node tree once the symbols
+  became the default. A diagram of more than about 50 nodes is now drawn
+  with straight-segment lines, and a smaller one whose layout still fails is
+  laid out again that way. Smaller diagrams keep their right-angle lines.
+  Native `dot` (the **Render** button, `POST /api/render`) was not affected.
+- **A second tab showed an old tree and still said "Saved".** Each browser
+  tab holds its own copy of the analysis, and a tab left in the background
+  did not learn that another tab had edited, saved or replaced it. A tab now
+  asks the server when it gets the focus back or becomes visible, and reads
+  the analysis again when it is behind; a toast says why the tree changed.
+  It waits while a dialog is open, an edit is on its way or something typed
+  has not been committed. A save in another tab updates the Saved badge and
+  the file name without a reload.
+- **A file dropped on the page replaced the editor.** The browser opened the
+  dropped file in place of the page, and unsaved changes went with it. A
+  drop outside the tree panel now does nothing.
+
+### Added
+
+- **Copy CSV on the Importance tab**, as on Cut Sets: the table as sorted,
+  the numbers in full.
+- **Uncertainty for every event at once.** **Lognormal EF=3 for all events
+  without one** on the Uncertainty tab, one undo step. With no spread the
+  tab says why and draws no chart.
+- **A note on the rare-event sum** (Cut Sets): it is a sum, not a
+  probability, and is marked when it is above 1.
+- **Type offers Event, Gate and Intermediate** (Details and Add). It is
+  still free text.
+- **API.** `GET /api/ai/conversation`, `POST /api/batch/delete`,
+  `POST /api/batch/move` and `POST /api/batch/uncertainty` are new. All of
+  them need the session token; the first never returns a credential. See
+  `docs/API_REFERENCE.md`.
+- **Tests for the analysis, diagram and AI changes.**
+  `fta_web/tests/test_ux_batch_3.py`, and a new section of the real-browser
+  suite, `fta_web/tests/gui/s_ux3.js` (79 checks). The suite now has 1073
+  checks in 17 sections. No test calls an AI provider.
+  Existing checks changed to the new behaviour: the diagram's settings
+  button is found by its role instead of the text "Aa" (`s_diagram.js`,
+  `s_fixes.js`, `s_i18n.js`); six source checks follow the code they read
+  (`test_frontend_b2b.py`, `test_review_2026_10_ai.py`,
+  `test_review_2026_10_frontend.py`, `test_ai_markdown.py`); and
+  `ai.chat.markdown` left the list of strings that may be the same in both
+  languages (`test_catalog_parity.py`).
+
+- **AI assistant: replies are shown as formatted Markdown, with a switch to
+  the raw text.** A reply's headings, lists, tables, code and bold were shown
+  as the characters the model typed (`## Review`, `**0.0684**`, `| A | B |`).
+  They are now drawn as what they mean. The **MD** button beside Clear Chat
+  switches every reply in the conversation between the formatted view and
+  the raw text; the choice is remembered in the browser (`fta.aiMarkdown`,
+  on by default).
+  - Only the model's replies are formatted. What you typed and what the
+    editor says stay plain.
+  - The renderer is the editor's own (`static/js/markdown.js`, no new
+    dependency). It builds elements and text nodes and never HTML, so HTML
+    in a reply is shown as text. A link is made for http, https and mailto
+    only, and opens in a new tab.
+  - Emphasis never opens inside a Latin word or a number: `root_0_0` and
+    `0.5*0.5*0.28` keep every character. Japanese needs no spaces around
+    `**`.
+  - Tests: `fta_web/tests/test_ai_markdown.py`.
+- **Tests for the editing flow.** `fta_web/tests/test_ux_batch_1.py`, and a
+  new section of the real-browser suite, `fta_web/tests/gui/s_ux1.js`
+  (63 checks). The suite now has 922 checks in 15 sections; 25 of
+  the added ones are existing Details and selection checks that now run in
+  more places, because a node is selected from the start.
+  Three existing checks were changed to the new behaviour: the selection
+  after Add (the suite's `addViaDialog` now finds the new node in the store,
+  not through the selection), the status line (file name and folder instead
+  of the whole path), and `parseProbability`, which accepts `0,5` and `50%`.
+- **A banner and a rescue copy when the editor stops answering.** With the
+  editor closed (its window shut, or the machine asleep and the process
+  gone) the page still showed the tree, and every button answered "could
+  not reach the server": unsaved changes could not be got out. While it is
+  visible the page now asks the editor every five seconds whether it is
+  there. When no answer comes, a banner stays at the top until one does,
+  with **Download a rescue copy (JSON)**. The copy is built in the page from
+  the analysis the tab holds, in the format Save writes, so **Load** opens
+  it. The same download is offered on the "not connected" screen of a tab
+  whose editor was closed and started again. Text still being typed in a
+  field is not in the copy. The request the page asks with
+  (`GET /api/revision`) is left out of the terminal's request log when it is
+  answered, so it does not scroll the start-up lines away.
+- **Open an example.** The examples that come with the editor are listed by
+  **Open an example…** in the Load dialog and in the hint of a new analysis.
+  An example opens as an untitled copy: Save asks where to put it. The
+  examples are in the editor's own folder, which the Load dialog cannot
+  reach unless the root folder happens to include it; and an example opened
+  through the Load dialog keeps its path, so Save writes over the file that
+  ships with the editor. Opened this way it cannot.
+- **A file on this computer.** The Load dialog has **A file on this
+  computer…**, which opens the browser's own file picker, and a `.json`
+  dropped on the tree panel opens the same way (it asks about unsaved
+  changes first). The file opens as an untitled copy, through the existing
+  `POST /api/import/json`. This is the way to open a file outside the root
+  folder without restarting the editor.
+- **A hint in a new analysis.** An analysis with no file, no edits and only
+  the top event shows two buttons in the tree panel: **Name your top event**
+  puts the caret in its Name box, and **Open an example** opens the list.
+  The hint goes with the first edit and can be closed.
+- **The AI panel folds away.** The **»** button in its header folds the
+  panel to a strip at the right edge, and **«** opens it again at the width
+  it had. The choice is stored by the editor (`ui_prefs.json`), not by the
+  browser, so it is kept from one launch to the next.
+- **API.** `GET /api/revision`, `POST /api/prefs`, `GET /api/examples`,
+  `POST /api/examples/open`, `POST /api/ai/update/apply` and
+  `POST /api/ai/update/discard` are new; `POST /api/ai/update` takes
+  `preview`; `/api/state` and every answer that carries the tree have
+  `revision` and `documentSerial`, and `/api/state` has `prefs`. A
+  `PATH_REJECTED` for a path outside the root has `detail.root` and
+  `detail.relaunch`. All of them need the session token. See
+  `docs/API_REFERENCE.md`.
+- **Tests for the changes that protect work.**
+  `fta_web/tests/test_ux_batch_2.py`, and a new section of the real-browser
+  suite, `fta_web/tests/gui/s_ux2.js` (72 checks). The suite now has
+  994 checks in 16 sections. No test calls an AI provider: the provider
+  is mocked in pytest, and the browser suite answers the three update
+  routes itself. Existing checks changed to the new behaviour: the buttons
+  of the unsaved-changes prompt are found by their role (the primary button
+  now saves), in six places; `AppState.to_dict()` has three more keys; and
+  the source check of Load follows its call of the file dialog. The test
+  suite keeps its per-user files (`ui_prefs.json`) in a temporary folder
+  (`conftest.py`). One existing browser check was made independent of
+  chance: "no English UI text left" (`s_i18n.js`) took the folder shown in
+  the status line for English text unless the temporary folder's random
+  name happened to hold a digit that is also a cell of the FMEA test sheet,
+  so it failed for about half the names.
+
+## [1.7.3] - 2026-10-11
+
+Three fixes around trees with repeated events and the AI assistant. Each was
+confirmed in 1.7.2 first and has tests in
+`fta_web/tests/test_release_1_7_3_*.py`. It also carries the file-dialog fix
+made after 1.7.2.
+
+### Fixed
+
+- **Applying an AI suggestion dropped its link changes and still said
+  "applied".** The assistant is invited to suggest links, but a suggested
+  add or edit wrote only the name, type, probability, gate and notes. A
+  suggestion that held a link did not even reach the list intact: its data
+  was cut at the first `}` and arrived empty (vendored core, divergence
+  D29).
+  - An applied add or edit now sets the node's links. The links in a
+    suggestion are the node's complete new list. They are checked like a
+    link edit in Node Details, and a target must also exist and must not be
+    the node itself.
+  - **A suggestion is applied as a whole or not at all.** One with a link
+    that is not valid is not applied, its new name included, and the chat
+    says *Suggestion rejected* with the reason. The rest of the set is still
+    applied, in one undo step.
+  - The suggestion card shows each link a suggestion adds and removes before
+    you approve it.
+  - What a suggestion can never change (the children of an added node, the
+    advanced fields) is named in the chat instead of being passed over.
+  - The assistant is told how to write a link change.
+- **The AI was not told the headline.** It was shown each node's tree-walk
+  value, the root's as the "top-level probability". For a tree with repeated
+  events the headline is the MCUB, so the assistant reported the double
+  counting that the editor already corrects. In FTA mode it now also gets
+  the editor's results: the headline and its method, the tree-walk value,
+  the repeated events, the ten most probable minimal cut sets,
+  approximations and truncation, and the mission time. Chat, Analyze FTA and
+  Update FTA all send it; ETA mode is unchanged.
+- **The diagram's top box disagreed with the top bar** on a tree with
+  repeated events or an XOR gate: the Challenger example showed 0.0349 in
+  the box and 0.0684 in the bar. When the headline is the MCUB, the top
+  event now shows it, marked, with its tree-walk value beside it
+  (`P_calc:0.0684 (MCUB) | tree walk 0.0349`; `Q=0.0684 (MCUB)` in the
+  symbols style). This holds in both styles, layouts and themes, in the SVG
+  and PNG exports, `POST /api/render` and the report's diagram. Node Details
+  shows both for the root, a line above the diagram explains the top box,
+  and the Excel export notes it on the root's cell. Every other node keeps
+  its tree-walk value, and a tree without repeated events is drawn exactly
+  as before (User Guide, "The top box").
+- **File dialog: a path entered while a folder is still being read is not
+  lost.** Enter (or Go) on a path typed into the path box was ignored while
+  the dialog's first listing was on its way: the path stayed in the box and
+  the list showed the start folder. Entered even earlier, before the dialog
+  knew its start folder, the path was listed and then replaced by the start
+  folder. Both only showed when the start folder was slow to read; a script
+  that opened Load and entered a path at once hit them. The path is now kept
+  and acted on as soon as the list is idle; the last one entered wins. Found
+  while checking the packaged 1.7.2. The GUI suite checks it.
+- **Tests: three temp-folder checks no longer fail when two test runs
+  overlap** (tests only). `test_export_leaves_no_temp_files_behind` and two
+  more compared the machine's shared temp folder before and after a request,
+  so a second run on the same machine made them fail. Each now has a temp
+  folder of its own.
+
+### Changed
+
+- `GET /api/dot` adds `rootHeadline`; `POST /api/ai/changes/apply` adds
+  `ignored` to each applied change; `POST /api/ai/chat` and `/analyze` add
+  `linkChanges` to a suggestion that sets links (`docs/API_REFERENCE.md`).
+- The back-to-back suite and the GUI suite compare the root's label with the
+  headline and every other node with its calculated probability (GUI suite:
+  830 checks).
+
+## [1.7.2] - 2026-10-10
+
+Review release. It carries the October 2026 code review, in three parts: the
+backend, CLI, exports and AI; the browser frontend and the analysis tabs; the
+documentation (`docs/CODE_REVIEW_2026-10.md`). A release check on Windows with
+a live AI provider then found that the assistant's suggestions for leaf events
+were dropped and that a suggested move could never be applied; both are fixed.
+Two worked examples are new, in English and in Japanese.
+
+### Added
+
+- **Two worked examples ship with the editor**, each in English and in
+  Japanese, as a starting point for a user's own analysis
+  (`fta_web/examples/`; `fta_editor\_internal\examples\` in the standalone
+  build):
+  - `challenger_fta_en.json`, `challenger_fta_ja.json`: a fault tree of the
+    loss of the Space Shuttle Challenger (STS 51-L, 1986). The cold and the
+    tight squeeze act on both O-rings of the joint, so the tree shows what a
+    common cause does: the top event is 0.0684 by the minimal cut sets and
+    0.0349 by the plain tree walk.
+  - `tmi2_eta_en.json`, `tmi2_eta_ja.json`: an event tree of the accident at
+    Three Mile Island Unit 2 (1979), from the stuck-open relief valve to the
+    containment.
+
+  Each node's notes cite the Rogers Commission or the Kemeny Commission
+  report, with the finding or page; quotations were checked against scans of
+  the printed reports. The probabilities are illustrative and say so in the
+  title. `fta_web/tests/test_examples.py` checks that each file opens and
+  validates clean, that saving it changes nothing, that the two languages are
+  one analysis, and the numbers against values worked out by hand. No change
+  to the interface: the files are opened with Load (README, "Example
+  analyses").
+- **The real-browser GUI suite is part of the repository**
+  (`fta_web/tests/gui/`). The 716 checks the 1.7.1 release was tested with:
+  Playwright drives Chromium, or an installed Google Chrome, with real mouse
+  and keyboard input and compares what the GUI shows with what the API
+  computes. `node run.mjs` starts its own dev server with an isolated home,
+  runs every section and stops the server again; it can also target the
+  packaged exe. The README lists what it checks and what it cannot see.
+  Porting it fixed a harness race that made it flaky on a slow server:
+  `addViaDialog` could return the previous selection, because
+  `page.waitForFunction` with an async predicate does not wait.
+- **Extended CI workflow** (`.github/workflows/extended.yml`): the full
+  back-to-back numeric matrix (`FTA_B2B_FULL=1 run_b2b.py`) and the GUI suite
+  on ubuntu-latest, weekly, on demand and on pull requests that change
+  either suite, with their output uploaded as artifacts. Tests and CI only;
+  the application is unchanged.
+- **Validation: `PROBABILITY_OUT_OF_RANGE`** (error, FTA and ETA). A
+  probability the engine uses that is not a number from 0 to 1 (NaN,
+  negative, above 1, text, a boolean) in a loaded file. Before this a leaf of
+  1.5 gave a headline of 1.25, and a NaN was reported as "Probability is 1.0
+  (the default)".
+- **Monte Carlo warning `MC_EVENT_NOT_SAMPLED`.** An uncertain event that is
+  in none of the cut sets the cut-set method samples (its sets fall below the
+  coverage rule, or its point value is 0) no longer drops out silently.
+- **AI Update FTA says what it changed**: how many nodes it added, and which
+  existing nodes it changed or removed. One Ctrl+Z still undoes it all.
+- **Load notices** for three new repairs: a duplicate link (dropped; it was
+  counted twice), text that can never be saved (an unpaired surrogate,
+  replaced with U+FFFD) and an advanced gate name written into the old
+  AND/OR field (promoted to the gate it names).
+- `fta_web/tests/test_requirements_sync.py` keeps `requirements.txt` and
+  `fta_web/requirements.txt` in step with the `pyproject.toml` extras.
+
+### Fixed
+
+October 2026 review, sprint 1 (Python backend, CLI, exports and AI).
+Every fix has a regression test in `fta_web/tests/test_review_2026_10_*.py`.
+
+- **Security.** Excel export stored any text starting with `=` as a live
+  formula (`=HYPERLINK(...)` became a link); text now stays text. An AI
+  update was installed even when the document had been edited, or replaced
+  by New/Open, while the model was working (it is now refused with 409
+  `AI_DOCUMENT_CHANGED`), and a proposal made for one document could be
+  applied by node id to another. A provider error quoting the API key is
+  scrubbed even if the credentials were cleared mid-call. Terminal escape
+  sequences in names are printed escaped (`\x1b`) in the CLI's text output
+  instead of reaching the terminal; `--json` and `--csv` keep the text.
+- **Numbers.**
+  - A legacy `logicGate` of PAND/XOR/INHIBIT/KOFN without a `gateType` was
+    computed as that gate by the tree walk but as OR by cut sets and
+    validation. It is now promoted to that gate, with a notice, so every
+    path agrees; unknown gate strings are OR, as in 1.6.
+  - A file whose mode is `"eta"` (lower case) was computed as a fault tree,
+    in the app and the CLI.
+  - A rate event with an invalid own T silently used the mission time.
+  - A duplicate link was counted twice.
+  - FMEA import read `"1.200,5"` as 1.2005 and a comma-delimited `"1,200"`
+    as 1.2 (λ 1000× too low).
+  - An AI edit of a probability the engine derives (rate model, house event,
+    transfer) was reported as applied and silently overruled; it is refused
+    with the reason.
+  - The AI could install a NaN probability, non-text notes or invalid 1.7
+    keys.
+- **Crashes and lost work.**
+  - Control characters (PowerPoint's soft line break) and lone surrogates in
+    a node's text made the XLSX, XML and DOCX exports fail or write files no
+    parser accepts, and made Save fail for good. The API refuses them; a
+    loaded file is repaired.
+  - Integers beyond the float range, bodies nested ~10k deep and trees over
+    `MAX_TREE_DEPTH` (200) levels were 500s; a too-deep file replaced the
+    open document before failing.
+  - `POST /api/new {"force": "false"}` discarded the unsaved document.
+  - Node ids containing `/` could not be edited, moved or deleted; ids
+    starting with a digit split into stray diagram nodes.
+  - A symlink loop made a folder unlistable (Python 3.10–3.12); OS write or
+    list refusals were 500s.
+  - FMEA import: UTF-16 and cp1252 files were decoded wrongly; an xlsx with
+    a wrong `<dimension>` lost every row; a chart sheet first broke the
+    preview; ragged `;` CSVs were read as one column; merged item cells lost
+    rows as "duplicates"; an AIAG-VDA "AP" column was taken for RPN; 20,000
+    rows took 81 s under the state lock (now 0.4 s).
+  - FMEA re-import overwrote unmapped fields; rows removed from the sheet
+    are now reported, not left unnoticed.
+- **CLI.** Non-UTF-8 consoles crashed; `--json` could print `NaN`; `--top`
+  was ignored with `--json`; `--out` equal to an input overwrote it, two
+  inputs sharing an output silently overwrote each other, and an
+  unwritable `--out` was a traceback; `--uncertainty` was dropped by
+  `--sections`.
+- **AI providers** (vendored core, divergences D21–D26):
+  - Anthropic failed on every reply from a thinking model (the default
+    Claude models) while "Test & Save" passed. Replies now join every text
+    block, with room to think.
+  - The model list comes from the Models API, and the fallback list is
+    current.
+  - The documented Azure endpoint form always 404'd.
+  - SDK calls had no deadline (up to 30 min, or forever for Gemini); every
+    client now has an explicit 120 s timeout, with one retry for OpenAI,
+    Azure and Anthropic (Gemini makes a single attempt).
+  - An empty reply was kept in the conversation.
+  - OpenAI reasoning models (o-series, gpt-5) refused `max_tokens` and the
+    temperature.
+  - A new provider no longer receives the previous provider's conversation.
+- **Smaller fixes.**
+  - An edit that changes nothing records no undo step.
+  - JSON export no longer rewrites the date.
+  - Errors from a failed XLSX build no longer say openpyxl is missing.
+  - 403s are localised.
+  - Validation sees link loops through a transfer.
+  - The node view shows no FTA gate warnings in ETA mode.
+  - `install.py`'s uv path now installs the `report` extra and runs pytest
+    from its own venv.
+  - The b2b runner's summary counts MCUB rows under their own tag and
+    removes its 15 MB temp folder.
+  - On GitHub Actions, failing tests are named in annotations on the run
+    page (the job log needs a sign-in).
+
+October 2026 review, sprint 2 (browser frontend and analysis tabs).
+
+- **Security.**
+  - The diagram's SVG sanitiser could be bypassed: script could run in the
+    app's origin, a `<base href>` could send API calls (and the session
+    token) to another host, and content could load from off the machine.
+    The escaped DOT the app produces could not trigger this; the sanitiser
+    is defence in depth and now holds on its own.
+  - The tabs' CSV exports (Report → events CSV, Cut Sets and Traceability
+    Copy CSV) prefix text a spreadsheet would run (`=`, `+`, `-`, `@`, tab,
+    carriage return) with an apostrophe. Numbers are never prefixed, and the
+    CLI's `--csv` stays raw.
+- **Lost or wrong work.**
+  - Load skipped the "Discard unsaved changes?" prompt while an edit was
+    still being committed.
+  - Undo/Redo, Ctrl+Shift+Arrow and the title/date sync raced edits in
+    flight. An edit's redo step could be wiped, moves were lost, and a
+    garbled date could be saved.
+  - A slow first file listing re-selected the Save As name while it was
+    being typed, and saved under the wrong name. A listing could also
+    overwrite a path being typed.
+  - Enter/Escape pressed to confirm an IME conversion (Japanese input)
+    submitted, saved, closed or reverted things mid-conversion, in the
+    dialogs, details, tree, file dialog and every analysis tab.
+  - FMEA: after Open, the tab still showed the previous document's
+    occurrence table, and Import saved it into the opened document.
+    "Import under" did not follow the selection that Import used.
+  - A multi-selection survived Open, so Delete offered to remove the new
+    file's nodes.
+  - The Add dialog closed before the node was created, so a refusal lost
+    everything typed.
+- **Stale results.**
+  - A Monte Carlo run, or a Cut Sets / Importance answer, that crossed an
+    edit is now shown as stale.
+  - Old Fussell-Vesely values no longer colour a changed tree.
+  - The first run after New/Open uses the new document's limits.
+  - A selected cut set stays selected after a re-run.
+  - The link picker and the FMEA preview ignore answers that arrive late.
+- **Smaller fixes.**
+  - A refused gate, event-kind, house or transfer change shows the stored
+    value again.
+  - Ctrl+S in a modal no longer opens the browser's "Save page as".
+  - The symbols-style PNG export never falls back to native `dot`, which
+    drew placeholder shapes.
+  - Zoom and pan reset for each document.
+  - Server errors follow the EN/JA switch, not the browser's language, and
+    client-side errors are translated.
+  - `0x1` / `0b1` are no longer read as probabilities.
+  - Ids with a backslash or newline no longer break the tree.
+  - Show 0 no longer says the top event cannot occur.
+  - Truncation limits and missing model parameters are named in words (λ, T,
+    τ, μ).
+  - Seeds the browser cannot hold exactly are refused.
+  - Field bounds are stated correctly.
+  - The tree panel reads "Event Tree" in ETA mode.
+  - The Graphviz capability text says what a native `dot` is used for.
+
+Release check on Windows with a live AI provider (10 October 2026).
+
+- **AI suggestions** (vendored core, divergences D27 and D28). Found with
+  Claude; both defects are as old as the assistant.
+  - A suggestion for a node without a gate was dropped without a word. The
+    assistant is shown `"logicGate": ""` as the way to write a leaf event,
+    and the parser refused exactly that: one reply held 12 suggestions and
+    the panel offered 8. An edit written this way keeps the node's gate.
+  - A suggested move was always refused (`Move requires 'parent_id' in
+    data`), because the assistant was never told how to name the new
+    parent. A restructuring suggestion is a new gate plus the moves that
+    fill it, so applying one added the gate and left it empty, and the top
+    event became 1. The prompt now says how to write a move, and
+    `new_parent_id`, which is what the model guessed, is read as well. With
+    both fixes the same replies apply in full (12 of 12 and 8 of 8).
+- **Japanese event names in a narrow window.** Below about 560 px the
+  Importance table showed an event name two characters a line, and the
+  Quantification table four: Japanese text may break after any character,
+  so the number columns, which never wrap, took the room. The name column
+  now keeps six characters a line and the table scrolls sideways instead.
+  Wider windows are unchanged. The GUI suite checks it (719 checks).
+- **Back-to-back suite on Windows** (test harness only). A request of a
+  server path that got no local TCP port (WinError 10048, on a machine that
+  was short of ports) ended the full run with a traceback. The runner now
+  waits for a port and goes on, and says where to look if none comes.
+
+## [1.7.1] - 2026-09-29
+
+Back-to-back test release. The same inputs were run through every path: the
+GUI in real Google Chrome (716 scripted checks plus a hands-on session), the
+HTTP API, the CLI, the packaged 1.7.0 exe, the legacy desktop engine and a
+truth-table oracle. That is 49 test trees and 1.4 million compared values,
+now kept as `fta_web/tests/b2b/`. Every remaining difference is either fixed
+below or a documented, intended divergence (`fta_web/tests/b2b/README.md`).
+The packaged 1.7.0 exe computed exactly what its source computes.
+
+### Added
+
+- **Validation: `RATE_IMPLAUSIBLE`** (warning). A rate, standby or repairable
+  event with λ above 1e-2 /h (an MTBF under 100 h), or a rate event whose q
+  reaches 0.999, is flagged: almost always FIT or per-year values entered as
+  per hour. Before this, importing an FMEA sheet whose λ column held FIT
+  values (120, 45) with the default `/h` made both events certain (q = 1)
+  and Validation said nothing.
+
+### Changed
+
+- **Diagram, compact style: no gate text on leaf events.** A basic event's
+  meta row reads `P:<q> | P_calc:<Q>` instead of the 1.6
+  `Gate: OR | P:<q> | P_calc:<Q>` (a leaf has no gate; the OR was just the
+  default of an unused field). Gates, transfer gates and the house /
+  undeveloped / conditioning markers are unchanged. The compact parity test
+  against the 1.6 pipeline allows exactly this difference.
+- **FMEA import: λ unit suggestion.** When the λ header does not name a unit,
+  the suggestion now comes from the column's values: a median of 1 or more
+  suggests FIT, 1e-3 up to 1 suggests `/y`. A unit in the header (`FIT`,
+  `/y`, `per year`, `/h`, `per hour`, `年`, `時間`) still wins. The FMEA tab
+  also warns, without blocking, when the mapped λ values look too high for
+  the chosen unit ("Did you mean FIT?").
+- **New analysis is Alt+N.** Chrome and Edge reserve Ctrl+N for a new
+  browser window, so the page never received it. Ctrl+N still works where a
+  browser delivers it. Every Ctrl shortcut the editor handles now calls
+  `preventDefault`. The web-app shortcut table is in `docs/USER_GUIDE.md`.
+- **Numeric fields select their value on click or focus**, so typing replaces
+  a default such as the Add dialog's `1.0`. Before this, typing `1e-3` after a
+  click produced `1.01e-3`.
+- **Confirmations name their consequence:** "Discard and start new" /
+  "Discard and open" instead of a generic OK / 決定.
+- **The headline number explains an MCUB value on hover in basic mode too.**
+  Basic mode hides the MCUB badge, but the headline can still differ from the
+  root's tree-walk value in Node Details.
+- **The diagram's caption says what drew the picture:** the on-screen diagram
+  is always drawn in the browser (Graphviz WASM). Native Graphviz is used only
+  for PNG export.
+
+### Fixed
+
+- **GUI, found in real Chrome:**
+  - A one-node diagram auto-fitted to 675% zoom, with giant title letters.
+    Fit never enlarges beyond 100% now.
+  - A first click on a tree row near the bottom of the panel selected the
+    root. The keyboard hint appeared on mouse focus and covered the row. It
+    now appears only for keyboard focus, as an overlay that never shifts rows.
+  - Validation messages printed some probabilities unformatted ("(1)" next
+    to "(0.160)"). Every probability parameter now follows the sig-figs
+    setting.
+  - Switching language live left the AI panel intro and the action bar's
+    screen-reader label in English.
+  - The diagram's Font & box size popover ignored Escape.
+  - New on a document with unsaved changes logged a console error before
+    asking.
+  - Ctrl+Z / Ctrl+Y with nothing to undo logged a 400 error.
+  - Escape in Title/Date did not discard the typing.
+  - The Validation badge still counted dismissed notices.
+  - Cut Sets / Importance lost an edit made during their first run.
+  - Every tree selection re-ran the whole diagram layout.
+  - The Report tab's "Save again" link broke after another download.
+- **The browser and the server formatted boundary numbers differently.**
+  `numfmt.js` chose plain or exponent form from the raw value, so 0.00099996
+  at 3 s.f. read "1.00e-3" in the GUI but "0.00100" in the DOCX and CLI. Both
+  now decide from the rounded magnitude, and the parity test is strict.
+
+- **OR gates flushed very small probabilities to zero.** The OR formula
+  `1 − Π(1 − p)` cancels for small inputs: OR(1e-17, 1e-17) was exactly 0
+  (so OR(AND(1e-6 ×3), AND(1e-6 ×3)) made a tree-walk headline of 0 while
+  the MCUB said 2e-18), OR(1e-15, 1e-15) was 1.998e-15 and OR(1e-12, 3e-12)
+  4.00002e-12. An OR (gate or OR-links) whose result is below 1e-3 is now
+  accumulated as `r ← r + p(1 − r)` (`engine.or_probability`), in the tree
+  walk and in the Monte Carlo tree evaluator alike. Results at or above
+  1e-3 keep the 1.6 formula, so ordinary legacy trees give bit-identical
+  numbers; the others differ from 1.6 only by the precision 1.6 lost. Found
+  by a back-to-back comparison with a truth-table oracle.
+- **The MCUB headline differed in its last digit between the packaged app
+  and a source install** of the same file. Not hash randomisation (every
+  result is bit-identical under any `PYTHONHASHSEED`, now tested), but
+  `math.log1p`/`expm1`, whose last bit depends on the Python build's libm
+  (the 3.14 exe and a 3.10 venv differ). The MCUB (`cutsets.mcub_of`, and
+  per sample in Monte Carlo) is now accumulated as `Q ← Q + P(1 − Q)` with
+  + − × only, so a fixed-probability tree's headline has the same bits on
+  every build; it still keeps 1e-18 cut sets to ~1e-13 relative.
+- **Monte Carlo without uncertainty:** the reported mean could be one ulp
+  off the point estimate, with a standard deviation of ~1e-18, although
+  every sample equals the point estimate (`fsum(samples) / n` does not
+  always return the sample value; about 1 run in 12). The mean is now
+  pivoted on the first sample, so equal samples give exactly their value
+  and a standard deviation of 0.
+- **`LINKS_REMOVED` survived the undo that restored the link.** Deleting a
+  node that another node linked to, then undoing, brought the node and the
+  link back but kept "Link from … to deleted node … was removed" in
+  `sessionWarnings` and the Validation tab. The notice now belongs to the
+  delete (by hand or by the AI assistant): undo removes it, redo restores
+  it, as for the AI gate-type notices.
+- **Importance measures lost the digits of small contributions.** FV,
+  Birnbaum and RRW took the difference of two separately rounded log sums,
+  which cancels: in OR(A = 0.5, B = 1e-17) the FV of B was 0.0 (exactly
+  1e-17), and on the B2B corpus FV was off by up to 1.8e-8 relative. The
+  exponent difference is now summed directly from the changed terms; every
+  measure agrees with exact rational arithmetic to 1e-12.
+- **DOCX report, validation section:** `CUTSETS_TRUNCATED` did not match the
+  Validation tab. Its `params.count` was always 0 (the whole cut-set result
+  was handed to lint instead of the truncation signal); it followed the
+  report's override limits instead of the document's; and a report without
+  the cut-set section never reported truncation at all. It is now the
+  Validation tab's signal, reusing the report's cut sets when they were
+  expanded with the document's limits.
+- **Number formatting, server side (CLI, DOCX report, diagram labels)** now
+  reads the same as the browser. Found by a back-to-back comparison with
+  `static/js/numfmt.js`: a number with more integer digits than significant
+  figures kept all of them (RAW 9238.78 at 3 s.f. was `9239`, the browser
+  showed `9240`); exponents were written `1.23e+4` (browser `1.23e4`); and
+  exact ties rounded half-to-even (0.25 at 1 s.f. was `0.2`, the browser
+  showed `0.3`).
+- **Diagram, dark mode:** cross-link edges were pure blue on the dark
+  background (about 2:1 contrast) and barely visible. They are now `#6cb6ff`
+  in dark mode (8:1); light mode keeps the 1.6 blue. The transfer-gate fill
+  and the dotted edges to a transfer's ignored children were raised to at
+  least 3:1 against the background in both themes. `test_diagram_dot.py`
+  checks the contrast of every colour the DOT emits.
+- **Diagram, standard-symbols style:** a gate or event symbol could sit off to
+  the side of its own event box (near a neighbour's), making it ambiguous
+  which gate belonged to which event. Each box and its symbol now share a
+  Graphviz `group` and a heavy (`weight=100`) edge, so the symbol hangs
+  straight under (top-down) or beside (left-right) its box. The compact
+  style is unchanged.
+
+## [1.7.0] - 2026-09-28
+
+Analysis release for the web app. Engineers can now enter failure rates, use
+the standard gate types, get minimal cut sets, importance and uncertainty,
+validate a tree, trace nodes to requirements, import an FMEA, run batches from
+the command line, and produce a report. Each feature has its own tab in a new
+bottom panel. An **Advanced** switch keeps the basic UI simple.
+
+**The vendored core is not edited.** `fta_web/core/` and `desktop/` keep their
+pinned hashes, and no divergence was added. All new behaviour lives in
+`fta_web/engine.py` as `WebCore(FTACore)` and in new sibling modules.
+
+### Added
+
+- **Engine (`engine.py`).** `WebCore` subclasses `FTACore` and overrides only
+  three methods: the tree walk, `load_from_json` (to keep the `analysis`
+  block) and `prepare_export_data`. It replaces `FTACore()` at every
+  construction site. On legacy trees it reproduces the core exactly;
+  `test_engine.py` proves this on a few hundred random trees with links and
+  cycles.
+- **New optional node keys** (`node_schema.py`, mirrored in
+  `static/js/schema.js`): `gateType` (AND, OR, KOFN, XOR, INHIBIT, PAND,
+  TRANSFER), `k`, `transferTo`, `eventKind` (basic, house, undeveloped,
+  conditioning), `houseState`, and the objects `quant`, `trace` and `fmea`.
+  `logicGate` stays AND/OR as the projection of `gateType`.
+- **Document `analysis` block**: mission time, display time unit, cut-set
+  limits, Monte Carlo n and seed, and the FMEA occurrence table. It is saved
+  beside `tree`, is part of undo, and invalid values are reset on load with
+  a notice.
+- **Quantification models**: fixed q, rate 1−e^(−λT) with T defaulting to the
+  mission time, standby min(1, λτ/2) (flagged above λτ = 0.2) and repairable
+  λ/(λ+μ). λ is stored per hour; the UI accepts /h, /y and FIT. Each event
+  has a data-source field and a lognormal uncertainty (median or mean, error
+  factor). The derived value is written to `probability`.
+- **Gate semantics**:
+  - k-out-of-n by exact Poisson-binomial computation
+  - XOR a+b−2ab (odd parity for n ≠ 2; flagged non-coherent)
+  - INHIBIT with a conditioning event
+  - PAND Πp/n! (flagged as an approximation)
+  - same-file TRANSFER through the shared memo
+  - house events 1/0
+- **Minimal cut sets** (`logic.py`, `cutsets.py`): bottom-up MOCUS over a
+  compiled Boolean graph, with integer-bitmask sets, repeated events counted
+  once, and truncation by order, count and cutoff that is reported. Also the
+  MCUB and rare-event values. A voting gate is refused above 20,000
+  combinations.
+- **Headline value** in the top bar: the MCUB when the tree has repeated
+  events or XOR, the tree walk otherwise (`engine.summary`,
+  `GET /api/analysis/summary`), with an MCUB badge in advanced mode. It is
+  refreshed 400 ms after every change, and an outdated answer is dropped. ETA
+  mode shows the root value without a badge.
+- **Validation badge** on the Validation tab button: a red error count, or
+  else an amber warning count. It is shown in basic mode too.
+- **"Show in Validation"** button on the warning toasts for load repairs and
+  removed links.
+- **FV bar in the tree**: while the importance overlay is on, each tree row
+  shows a small bar on the diagram's colour scale.
+- **Importance measures** (`importance.py`): Fussell-Vesely, Birnbaum, RAW and
+  RRW on the MCUB, computed in log space through an event-to-cut-set index,
+  with an FV colour overlay on the diagram.
+- **Monte Carlo uncertainty** (`uncertainty.py`): pure Python, seeded and
+  deterministic, time-capped with partial results, and one run at a time. It
+  evaluates the tree exactly when the tree is coherent with no repeated
+  events, and otherwise uses the MCUB over the cut sets covering 99.99 % of
+  the rare-event sum.
+- **Validation** (`lint.py`): 21 codes with fixed severities, localised
+  messages and one-line fixes. Load repairs and removed links are collected
+  as session notices (`AppState.session_warnings`).
+- **Bottom-panel tabs**: Details, Quantification, Cut Sets, Importance,
+  Uncertainty, Validation, Traceability, FMEA and Report. They are
+  lazy-loaded, the last-used tab is remembered, and they refresh when the tree
+  changes. Each has English and Japanese catalogs.
+- **Advanced switch** in the top bar (`fta.advanced`, off by default). Basic
+  mode shows Details and Validation only, and AND/OR only. Advanced content
+  in a file is shown read-only with an "advanced" chip, never hidden or
+  lost. Calculations, files and the API are identical in both modes.
+- **Significant-figures selector** (`fta.sigFigs`, 1–6, default 3). It is
+  used by the UI (`numfmt.js`) and by the report, Excel and CLI
+  (`numfmt.py`).
+- **Traceability**: requirement ID, test reference, owner, status, evidence
+  and tags per node, edited in a grid. Tree search understands `tag:`,
+  `owner:`, `status:`, `req:` and `fmea:`, and highlights nodes from other
+  tabs.
+- **FMEA import** (`fmea_import.py`, `/api/fmea/preview`, `/api/fmea/import`):
+  CSV or XLSX, a suggested column mapping (English and Japanese headers), λ
+  unit conversion, and an editable AIAG occurrence-rank table saved in the
+  document. Re-import updates in place by `fmea.id`, the whole import is one
+  undo step, and bad rows are skipped with reasons.
+- **DOCX report** (`report_docx.py`, `POST /api/report/docx`, new `report`
+  extra = `python-docx`, included in `all` and `dev`). Sections: metadata,
+  headline, assumptions, diagram (the browser PNG, falling back to native
+  `dot`), events, cut sets, importance, uncertainty (optional), validation and
+  traceability. English or Japanese.
+- **Excel export**: new **Events** (flat, numeric, filterable) and
+  **Analysis** sheets beside the unchanged hierarchical sheet
+  (`excel_events.py`).
+- **Diagram**:
+  - a *Standard symbols* style, with IEC 61025 / NUREG-0492 paths in the
+    browser (`fta_symbols.js`) and Graphviz approximations in native renders
+  - a top-down layout
+  - significant figures in labels
+  - `idMap` in `GET /api/dot`, so clicking a gate symbol selects its node
+- **CLI** (`cli.py`): `quantify`, `cutsets`, `importance`, `mc`, `validate`
+  and `report`, with `--json`/`--csv`, `--out`, `--sig-figs`, limit and
+  Monte Carlo options, and exit codes 0/1/2/3. It works as
+  `fta_editor.exe <cmd>` and `python fta_web/run.py <cmd>`, and never starts
+  the server.
+- **API**:
+  - new endpoints: `POST /api/analysis/settings`, `GET /api/analysis/summary`,
+    `POST /api/analysis/{cutsets,importance,uncertainty}`,
+    `GET /api/analysis/validate`, `POST /api/report/docx` and
+    `POST /api/fmea/{preview,import}`
+  - new error codes: `MODE_UNSUPPORTED` (409), `BUSY` (409),
+    `ANALYSIS_TOO_LARGE` (422) and `EXPORT_UNAVAILABLE` for docx (503)
+  - `capabilities.reportExport` and `capabilities.fmeaXlsx`
+  - `analysis` and `sessionWarnings` in `/api/state` and in every mutation
+    payload
+- **Docs**: the User Guide gains "Analysis features (1.7)", a CLI reference
+  and desktop compatibility notes. The API reference gains the 1.7 endpoints
+  and modules. The roadmap and code review are marked with their 1.7.0
+  status.
+
+### Changed
+
+- `PATCH /api/nodes/<id>`:
+  - `quant`, `trace` and `fmea` merge partially, and `null` removes a key or
+    sub-key.
+  - Setting `gateType` rewrites `logicGate` to its projection.
+  - Setting `logicGate` on a node with a `gateType` keeps the two in step.
+- `POST /api/ai/update` restores the 1.7 node keys by node id that a
+  full-tree AI rewrite dropped, and reports `mergedFields`.
+- `GET /api/dot` and `POST /api/render` accept `style`, `rankdir` and
+  `sigFigs`. The compact style's meta line uses significant figures instead
+  of `%.1E`.
+- `GET /api/fs/list` takes an optional `ext` filter, for example
+  `?ext=.csv,.xlsx`. It is limited to `config.LISTABLE_EXTENSIONS`
+  (`.json`, `.csv`, `.xlsx`); anything else is `400 INVALID_FIELD`, and the
+  default is still `.json` only. The FMEA file dialog uses it.
+- Error localisation now covers `BUSY` and `ANALYSIS_TOO_LARGE`, including
+  per-reason texts for `kofn` and `time`. The DOCX-unavailable message gives
+  `uv sync --extra report`, and FMEA `.xlsx` without openpyxl has its own
+  message.
+- The node details panel moved into the Details tab. Its gate selector
+  offers the advanced gates when the Advanced switch is on.
+- The frozen build bundles `python-docx`, with its templates, when it is
+  installed. CLI subcommands work in the exe.
+- **Document analysis defaults can be edited in the UI.** The Cut Sets tab
+  (max order, max count, cutoff) and the Uncertainty tab (samples, seed)
+  start from the document's `analysis` settings and have a **Save as document
+  defaults** button (`POST /api/analysis/settings`: undoable, marks the
+  document modified). The `CUTSETS_TRUNCATED` hint now points there.
+- **The MCUB badge tooltip gives the reason**: repeated events, XOR
+  (non-coherent) gates, or both. It used to say "repeated events" also for
+  XOR trees.
+- **Priority-AND in cut sets is now visible.** Cut sets expand PAND as plain
+  AND (no 1/n!), which is conservative, so an MCUB headline drops the PAND
+  reduction. The Cut Sets tab shows a *PAND treated as AND in cut sets
+  (conservative)* badge and the MCUB tooltip says so.
+- **`INHIBIT_ARITY` from the engine** now uses lint's rule: exactly two
+  inputs, one of them conditioning. Before, the engine accepted three or more
+  inputs while the Validation tab rejected them. Quantification is unchanged.
+- The DOCX report's event table has a **Source** column (`quant.source`).
+- `GET /api/export/xlsx` accepts `?sigFigs=N` (clamped to 1–6) for the number
+  formats; the Excel buttons send the top bar's setting. It was always 3.
+- **`GET /api/analysis/summary` separates its own caps from the document's
+  limits.** It uses `min(maxCount, 2000)` sets; `capped: true` means only the
+  summary's 2000-set / 2 s caps cut the run short, while `truncated` and the
+  new `truncatedBy` mean the document's limits did. In advanced mode a subtle
+  `≈` marker after an MCUB headline shows either case in its tooltip.
+- **`POST /api/report/docx` reads only its documented keys.** `limits` is
+  validated like `analysis.cutsets` (unknown keys, including `timeBudgetS`,
+  are a 400), `uncertaintyN` must be an integer 1–5,000 and
+  `uncertaintyTimeLimit` a number of seconds in (0, 60]; other top-level keys
+  are ignored.
+
+### Fixed
+
+- **Diagram labels spilled past their boxes or sat off-centre.** Graphviz
+  sizes and places label text with its own font metrics, which run 20–25%
+  narrower than the fonts the page draws with. The preview now centres each
+  label in its box and, only if it would still overflow, squeezes it to fit.
+  Browser SVG/PNG exports use the same fitted labels. Server-side padding
+  grows with the row's length and is split evenly around the text, so native
+  Graphviz exports are centred too. Box scale 0 no longer spills.
+- **The top-bar date field was clipped** (`2026-09-2`) by the new 1.7
+  controls; it now always has room for a full date.
+- **The node details showed small probabilities as `0`.**
+  `dialogs.formatProbability` rounded to six decimals, so 1e-7 displayed as
+  `0` even though the stored value was right. It now uses
+  significant-figure formatting.
+- **Boot gate**: the action bar and keyboard shortcuts were live for about a
+  second before the panels finished loading (the last open item of the
+  2026-09 code review). `<html data-booting>` now blocks them until
+  `loadPanels()` settles.
+- **Multi-select delete now reports removed links.** Deleting several nodes
+  from the tree did not report the links that were stripped with them, as a
+  single delete does. It now shows the count in a toast linked to the
+  Validation tab.
+- **`mc --csv` and the `mc` text table had an empty `n` column**: the CLI read
+  a key `uncertainty.run` does not return. They now show `requested` and
+  `completed`.
+- **`CUTSETS_TRUNCATED` never appeared** in the Validation tab or
+  `validate`, because they ran lint without a cut-set result. They now expand
+  the cut sets with the document's limits (2 s budget, outside the lock;
+  skipped silently on failure or timeout) and pass the truncation to lint.
+- **House events and transfer gates showed stale values in the desktop app.**
+  The engine now writes their derived value into `probability` (1/0 for a
+  house event, the target's value for a transfer), which is what the 1.6 app
+  reads.
+- **A gate changed in the desktop app was silently discarded.** The desktop
+  app edits only `logicGate`, and the stale `gateType` won. On load and on an
+  AI update, a `gateType` that does not project to `logicGate` is now dropped
+  (with its `k`/`transferTo`) and reported as `LOAD_REPAIR`
+  (`gate_type_reset`). An AI update also no longer restores a `transferTo`
+  whose transfer gate it dropped.
+- **The report's Monte Carlo section never said when a run was cut short**,
+  and never showed the sample count: it read `completed` as a flag and a
+  key `n` that `uncertainty.run` does not return. It now notes a time-capped
+  run (`truncatedByTime`) and shows *completed / requested* samples.
+- **The report's cut-set section lacked the MCUB and rare-event values** the
+  User Guide lists; they are now shown. An infinite RRW is shown as `∞`
+  rather than `—`.
+- **`report --time-limit` was ignored** (the report always used 30 s). It is
+  now honoured, capped at 60 s.
+- **`report x.json --out reports`** wrote a file literally named `reports`
+  when that folder did not exist yet. For `report`, an `--out` that does not
+  end in `.docx` is now a folder.
+- **`--top 0`** silently showed every row, and `--time-limit 0` was
+  accepted; both are now usage errors (exit 2). A mistyped command
+  (`fta_editor qunatify x.json`) now names the valid commands instead of
+  argparse's "unrecognized arguments".
+- **Excel export**: a NaN or infinite number in a hand-edited file was
+  written as an empty numeric cell (malformed for Excel); it is now left
+  blank. On the Analysis sheet only probabilities use the scientific format
+  (mission time reads `8760`, not `8.76E+03`).
+- **Deleting a node left transfers pointing at its id**, so the next node
+  added there silently became the transfer's target. `DELETE /api/nodes`, an
+  AI `delete` change and a full AI update now strip `transferTo` (and, on the
+  AI paths, links) into removed ids, reported in `removedLinks` /
+  `LINKS_REMOVED` with relation `TRANSFER`.
+- **Applied AI gate edits were overruled by a stale `gateType`**;
+  `POST /api/ai/changes/apply` now reconciles gate types like `/update`. A
+  `gate_type_reset` notice from an AI edit carries `params.cause: "ai"`, says
+  so in the Validation tab (English and Japanese), and is undone and redone
+  with the edit.
+- **NaN/Infinity in a response** (a loaded tree, an error's `detail.value`)
+  made it unparseable for the browser; they are now sent as `null`.
+  `POST /api/fmea/import` with a non-string `lambdaUnit` is a 400, not a 500.
+- **Windows path hardening**: a `:` after the drive (an NTFS alternate data
+  stream such as `notes.txt:x.json`) is refused, and a path on another drive
+  or share (UNC, `\\?\`, a `subst` alias of the root) is refused before it
+  is resolved, so no SMB connection is opened.
+- **Load errors say what is wrong**: *empty*, *not valid JSON (line, column)*
+  or *root must be an object*, instead of the core's encoding error.
+- **Numerics**: a PAND gate with more than 170 inputs no longer overflows
+  (log space); Monte Carlo with an extreme error factor no longer overflows;
+  float sums use `math.fsum`, so Python 3.10/3.11 give the same results as
+  3.12+; an empty cut-set list has MCUB `0.0`, not `-0.0`.
+- **Web UI** (frontend pass):
+  - the diagram keeps fitting while the tree grows until you zoom or pan, and
+    on resize;
+  - analysis tabs drop stale results and inputs after New / Open, and a tab
+    that went stale in the background re-runs when shown;
+  - number fields reject `5,000` (it was read as 5) and hex; cut-set limits
+    are range-checked with localized messages; Escape reverts typing;
+  - the Uncertainty tab no longer lowers a stored `mc.n` above 100,000 on
+    Save;
+  - Quantification labels are tied to their controls; diagram popovers, font
+    options and aria-labels follow the language;
+  - **Render** and PNG export honour the style, layout and significant
+    figures; the symbols style is rasterised in the browser, never by native
+    `dot`;
+  - the capabilities chip and panel are styled (the panel floats instead of
+    pushing the top bar down), and faint text, badges and unit suffixes meet
+    WCAG AA contrast in both themes.
+
+### Compatibility
+
+- **The file format is additive.** Every new key is optional, and a 1.6 file
+  opens and computes exactly as before. A 1.7 file without advanced features
+  is a valid 1.6 file plus an `analysis` block.
+- **The legacy desktop app** reads only `logicGate` and `probability`:
+  - Advanced gates are projected to AND or OR. INHIBIT and PAND become AND;
+    KOFN, XOR and TRANSFER become OR.
+  - Model-derived probabilities, house states (1/0) and transfer values are
+    written into `probability`, so its numbers stay meaningful. A transfer
+    gate that has children is still computed from them there.
+- **Saving from the desktop app** keeps the new node keys but drops the
+  top-level `analysis` block, which then reverts to its defaults.
+- **Desktop gate edits are kept.** When a file comes back from the desktop
+  app with a `logicGate` that its `gateType` no longer projects to,
+  `logicGate` wins and the stale `gateType` is dropped with a load notice. A
+  rate model still recomputes `probability`.
+- See [USER_GUIDE.md → Desktop app compatibility](docs/USER_GUIDE.md#desktop-app-compatibility).
+
+## [1.6.4] - 2026-09-22
+
+Single-defect release for the web app: **click-to-select in the diagram panel
+was dead in every Chromium-based browser** -- Chrome, Edge, Brave and the
+packaged build's default browser -- which is the one interaction spec 6.8 calls
+"the main payoff of choosing SVG over PNG". Nothing else changed; the 1.6.3
+bundle is otherwise byte-for-byte what this one freezes.
+
+### Fixed
+
+- **Clicking a node in the diagram now selects it in the tree and node details
+  again.** The panel took pointer capture on `pointerdown` so it could pan on
+  drag; Chromium-based browsers then retarget the follow-up `click` at the
+  stage container, so `diagram.js` never found the `<g class="node">` that was
+  pressed and the selection never moved (spec 6.8 "click a node in the diagram
+  -> selects it in the tree"). Capture is now taken only once the pointer has
+  moved past a 4 px slop, i.e. when the gesture really is a pan, and the node
+  under `pointerdown` is remembered as the fallback answer to "which node?".
+  A drag that pans still leaves the selection alone.
+  Pinned by `fta_web/tests/test_diagram_click_select.py`.
+
+## [1.6.3] - 2026-09-21
+
+Correctness release for the web app, which is now the primary path. Every
+web-app finding of the September 2026 code review is fixed; the legacy desktop
+app moved to `desktop/` as a frozen fallback. Verified on the packaged Windows
+build (`build/dist/fta_editor/fta_editor.exe`, PyInstaller 6.22.3): page, static
+assets, token enforcement, DOT, Excel export and all three AI providers.
+
+### Documentation
+
+- `docs/CODE_REVIEW_2026-09.md` records the status of every finding, the latest
+  test results (622 passed, 6 skipped; CI green on Linux and Windows) and a
+  condensed list of recommended feature upgrades;
+  `docs/ROADMAP_MECHANICAL_ENGINEERS.md` notes that all its blocking review
+  items are closed.
+- `build/README.md`: Windows build is verified, not "out of scope"; added a
+  warning about building from a cloud-synced `.venv`.
+
+### Fixed
+
+Findings from the September 2026 code review (`docs/CODE_REVIEW_2026-09.md`), web
+app only — the legacy desktop app in `desktop/` is frozen and keeps its defects,
+which `desktop/README.md` lists.
+
+- **Probability engine** (`fta_web/core/FTA_Editor_core.py`, divergences D14–D18):
+  results are no longer rounded to six decimals at every gate, so probabilities
+  below 5e-7 — the normal failure-rate range — are no longer zeroed, flagged as
+  zero and hidden; duplicate node ids in a loaded file are renamed
+  (`<id>_dup2`, …) and reported instead of silently aliasing each other's maths;
+  the top-level node's id is forced to `root` on load with links remapped; a link
+  cycle no longer saturates the tree to 1.0; `set_metadata()` no longer resets the
+  date when called without it.
+- **Diagram** (`fta_web/core/json_viewer.py`, D13, D19; `diagram.js`): node names
+  containing `<`, `>` or `&` no longer break the DOT and blank the whole diagram;
+  the SVG imported from the WASM renderer is sanitised (no scripts, event
+  attributes or non-http links), closing an HTML-injection path via a shared
+  `.json`; DOT ids for non-ASCII or punctuated node ids no longer collide.
+- **API** (`fta_web/routes/`, `tree_ops.py`, `state.py`): deleting a node strips
+  every link into the deleted subtree and reports them as `removedLinks`, and new
+  ids never reuse an id present anywhere in the tree, so a stale link can no
+  longer silently re-target an unrelated new node; `/api/file/open` and
+  `/api/import/json` return `warnings` for ids renamed on load; `/api/ai/update`
+  normalises the AI's JSON before installing it (a string probability no longer
+  500s every diagram request); `/api/ai/changes/apply` no longer records an undo
+  step for an all-rejected batch; API errors are localised on every blueprint
+  (`?lang=ja` works for domain errors); the AI-SDK probe no longer runs under the
+  state lock; root-protection guards use the actual top-level id.
+- **Frontend**: AI "Apply selected" sends the server's pending-change indices
+  rather than card positions, so it can no longer apply a proposal the user
+  never saw, and "Analyze FTA" now shows its proposals; Save / Save As / exports
+  wait for in-flight field commits (`fta:flush`) instead of racing them, and
+  details-panel commits are serialised so out-of-order responses cannot install
+  a stale tree; Hide Zero hides the whole item (children included) and keyboard
+  navigation and range selection skip hidden rows; the Node Details panel, Add
+  Node dialog and links editor are fully localised (48 new catalog keys) and
+  the delete confirmation button reads "Delete"; details errors use the shell's
+  toasts; `beforeunload` also protects typed-but-uncommitted text; Escape in a
+  field no longer dismisses the top toast; focus returns to the tree after a
+  dialog whose trigger row was re-rendered; the bare Delete key only acts from
+  the tree; the diagram's settings popover no longer intercepts clicks while
+  hidden; the first mouse click in the tree after loading no longer selects the
+  root instead of the clicked row (the keyboard hint used to appear above the
+  rows on focus and shift them under the pressed button — it now appears below
+  the list).
+- **Credentials**: `~/.fta_editor/ai_credentials.json` and its directory are now
+  created with owner-only permissions (D20; best-effort on Windows).
+- **Tests**: `test_vendor_integrity` hashes with line endings normalised, so it
+  no longer fails every pin on a Windows `autocrlf` checkout; the six POSIX-only
+  symlink/permission tests are skipped where symlinks or mode bits are
+  unavailable. New suites: `fta_web/tests/test_core_fixes.py`,
+  `fta_web/tests/test_backend_fixes.py`.
+
+### Changed
+
+- **The web app is now the primary path; the desktop app is a fallback.** The
+  legacy Tkinter application and everything that belongs only to it moved from
+  the repo root into `desktop/`: `src/` → `desktop/src/`, `tests/` →
+  `desktop/tests/`, `data/` → `desktop/data/`. Contents are byte-for-byte
+  unchanged and the frozen suite still passes from its new home (the tests
+  resolve `src/` and `data/` relative to their own parent directory, so moving
+  the three together needed no edits to them). `fta_web/core/BASELINE.json`
+  and `fta_web/tests/test_vendor_integrity.py` now pin the new paths — same
+  hashes. `pytest.ini`, `install.py`, `pyproject.toml`, the build spec and all
+  docs point at `desktop/src/FTA_Editor_UI.py`; `desktop/README.md` records
+  the fallback's status and the defects it does not fix.
+
+## [1.6.2] - 2026-09-15
+
+Fixes found by running the packaged build on Windows, and the CI that would
+have caught most of them. Nothing here changes the desktop app (`src/`), which
+remains frozen.
+
+### Fixed
+
+- **Every button in the web UI did nothing on some Windows machines.** Where
+  the `.js` entry in `HKEY_CLASSES_ROOT` had been overridden to `text/plain`
+  by other software, Flask's static handler — which asks the stdlib
+  `mimetypes` module — served `main.js` as plain text. Browsers refuse to
+  execute a `<script type="module">` that does not arrive as a JavaScript MIME
+  type, so no frontend code ran at all and the whole editor looked dead. The
+  server was healthy and its logs were clean, which is what made this hard to
+  recognise. `fta_web/app.py` now pins the `.js` and `.css` types at import,
+  overriding whatever the host claims.
+- **Add Node created nothing.** The dialog collected its fields and never sent
+  them to the server.
+- **Render was unavailable without a native Graphviz**, even though the
+  diagram panel's own PNG button already produced a file via the in-browser
+  WebAssembly renderer in exactly that situation. Render now tries native
+  first and falls back the same way.
+- **Diagram labels could spill outside their node boxes.** Graphviz sized each
+  box from its own estimate of the requested font's metrics, which does not
+  match how the browser — or a different Graphviz build — actually renders
+  that font, most visibly with Japanese text. Boxes are now sized by a trailing
+  run of blank characters measured by the same engine, at the same size, as the
+  visible text, so the box grows by whatever margin those characters genuinely
+  need instead of by a guessed pixel value.
+- **Dark mode did not reach the diagram.** The panel's chrome referenced CSS
+  custom properties that were never defined and silently fell back to
+  light-mode literals, and the rendered graph's background and connectors
+  stayed light. Both now track the theme. Node fills are deliberately left
+  alone — they encode calculated probability, not style — and link edges stay
+  blue, since colour is what distinguishes a link from a tree edge.
+- **The file dialog only accepted clicking through folders.** It now also takes
+  a typed or pasted absolute path, resolving it as a folder to browse into or a
+  file to open/save directly.
+- **The FTA/ETA mode selector was clipped** by its own dropdown arrow.
+- **Every SHA-256 pin failed on a Windows checkout.** Git for Windows defaults
+  to `core.autocrlf=true` and rewrites LF to CRLF, and the pins in
+  `fta_web/core/BASELINE.json` are a contract about *bytes*. A clean clone
+  showed a dozen integrity failures with nothing edited — and, less visibly,
+  the audit the PyInstaller bundle exists to support (hashing the shipped
+  `fta_web/core/` against `BASELINE.json`) could never have passed on Windows.
+  A new `.gitattributes` normalizes to LF and marks the pinned trees `-text`.
+  A clone made before it exists needs `git rm --cached -r . && git reset --hard`
+  once.
+
+### Added
+
+- **Continuous integration** (`.github/workflows/tests.yml`) — the full suite
+  on Linux (Python 3.10 and 3.13, with Graphviz installed so the native render
+  path is exercised) and on Windows. Previously nothing ran the tests unless a
+  person remembered to, which is how a broken vendor pin reached `main`. The
+  Windows job found two real problems on its first two runs.
+- **Regression tests for the static asset MIME types**
+  (`fta_web/tests/test_static_mime.py`). These reproduce the broken host — they
+  poison `mimetypes` to report `text/plain` for `.js` first — because the
+  obvious version of this test passes on Linux whether or not the fix exists,
+  and would have pinned nothing.
+- **A box-sizing control** on the diagram panel (the **Aa** popover): font
+  auto-detection preferring Meiryo, a manual scale (0–30, default 4), and a
+  draggable position.
+
+### Changed
+
+- **`docs/CHANGELOG.md` is now a pointer to this file** instead of a second
+  copy. It had drifted — it stopped at 1.5.1 while this file went on to 1.6.x —
+  and a changelog that is a year behind answers the question confidently and
+  wrongly. Every entry it held is present here.
+- **`docs/CONTRIBUTING.md` documents the frozen tree and the vendored fork.**
+  The rule that `src/`, `tests/` and `data/` must not change, and that any edit
+  to `fta_web/core/` needs a divergence entry plus a re-pin, previously existed
+  only inside the file it governs and in a test's failure message.
+- **`docs/USER_GUIDE.md`** documents dark mode, the box-sizing control, what
+  the node colours mean, and where the AI Assistant's API key is stored.
+- **Divergence D12** recorded in `fta_web/core/DIVERGENCE.md`: the diagram
+  sizing and font/scale/dark parameters described above are a change to the
+  vendored `json_viewer.py`. This is that file's first divergence and the last
+  vendored module to leave byte-identity with its `src/` counterpart.
+
+## [1.6.1] - 2026-09-13
+
+Bug-fix release found by building and exercising the packaged executable from
+[1.6.0](#160---2026-09-09) rather than only running from source.
+
+### Fixed
+
+- **Gemini in a frozen build.** The standalone executable's Google Gemini
+  provider was non-functional (`"Google Generative AI package not installed"`
+  regardless of key validity) while OpenAI and Anthropic worked correctly —
+  caused by `google.generativeai` living under `google`, a PEP 420 namespace
+  package that PyInstaller's plain `hiddenimports` silently fails to collect.
+  Fixed by migrating `fta_web/core/ai_providers.py`'s `GeminiProvider` off the
+  now end-of-life `google.generativeai` SDK onto its replacement,
+  `google.genai` (divergence **D11** in `fta_web/core/DIVERGENCE.md`), and
+  retargeting `build/fta_editor.spec`'s namespace-package `collect_all()`
+  workaround at `google.genai` and `google.auth`. Verified against a rebuilt
+  binary: all three providers now reach their real API with a deliberately
+  invalid key and return the provider's own 4xx error. `pyproject.toml`'s `ai`
+  extra now installs `google-genai`; the `desktop` extra gained
+  `google-generativeai` explicitly, since the frozen `src/ai_providers.py`
+  still needs the old package — the two apps now genuinely require different
+  SDKs for the same provider. Bundle size: 80 MB with all three AI SDKs
+  (down slightly from 1.6.0's 79 MB baseline despite adding a package, because
+  `google.genai` itself needs none of the ~100 MB `google-api-python-client`
+  chain the old SDK required — see `build/README.md`'s "Bundle size" section).
+
+### Investigated, not a defect
+
+- **Button clicks appearing to do nothing.** Reported after a packaged-build
+  test: clicking any action-bar button seemed to not reach the server. Could
+  not be reproduced — real, CDP-dispatched mouse clicks (not synthetic
+  `.click()`) against a freshly built and launched binary correctly fire the
+  expected `POST` request with no console errors, both before and after the
+  Gemini fix above. If this recurs, the details that would narrow it down are
+  the browser and OS used, whether the tab was freshly opened for that launch
+  or reused from an earlier one (a stale per-launch auth token would fail
+  every request), and anything shown in the browser's own developer console.
+
+## [1.6.0] - 2026-09-09
+
+The editor now runs in a browser. Everything in this release is additive: the
+Tkinter desktop app in `src/` is byte-for-byte unchanged and still the way to
+run version 1.5.1.
+
+### Added
+
+- **Web application (`fta_web/`)** — the same editor as a local, single-user
+  web app. `python3 fta_web/run.py` starts a loopback-only server and opens a
+  browser on it.
+  - **Tree editing**: add, edit, delete, reorder and move nodes; 50 levels of
+    undo/redo; live probability recalculation with AND/OR gates; FTA and ETA
+    modes; zero-probability nodes highlighted.
+  - **Diagram rendering with no Graphviz installed.** The browser draws the
+    diagram from `GET /api/dot` using a vendored WebAssembly build of Graphviz
+    (`static/vendor/viz-js/viz.js`). A native `dot` binary, when present, is
+    used only by `POST /api/render` to produce a file to save.
+  - **Honest capability disclosure.** `GET /api/state` returns a
+    `capabilities` object (`nativeDot`, `excelExport`, `aiConfigured`); the UI
+    disables and *explains* a control whose optional dependency is missing
+    instead of offering a button that fails when pressed.
+  - **File I/O and exports**: open/save/save-as with a sandboxed file browser,
+    plus JSON, XML, Excel, SVG and PNG export.
+  - **AI assistant**: chat, "Analyze FTA" and "Update FTA", over OpenAI,
+    Azure/Microsoft Copilot, Anthropic Claude and Google Gemini — the same
+    providers and the same credential file (`~/.fta_editor/ai_credentials.json`)
+    as the desktop app.
+  - **Security model** for a tool that can read and write local files: bound to
+    `127.0.0.1` only and not configurable; a per-launch token minted at startup,
+    never persisted, required in the `X-FTA-Token` header on every `/api/*`
+    call; Host/Origin pinned against DNS rebinding; the filesystem endpoints
+    confined to a sandbox root (`--root`, default `$HOME`) with an extension
+    allowlist; request bodies capped at 10 MB. A cookie session is deliberately
+    *not* used — the browser would attach it to a forged cross-site request,
+    which is the attack the header token prevents.
+  - Refuses to start under gunicorn/uWSGI/mod_wsgi or with `WEB_CONCURRENCY>1`:
+    the whole editor state is one in-process object, so a second worker would
+    not crash, it would silently lose edits.
+
+- **Standalone executable** (`build/fta_editor.spec`) — a PyInstaller *onedir*
+  bundle of the web app that runs with **neither Python nor Graphviz
+  installed**. Build with
+  `uv sync --extra all --extra build && uv run python -m PyInstaller --clean --noconfirm --distpath build/dist --workpath build/build build/fta_editor.spec`;
+  about 20 MB on Linux with no AI providers bundled, up to ~79 MB with all
+  three. Onefile is deliberately not used — it re-extracts the whole bundle to
+  a temp directory on every launch and reliably trips antivirus heuristics.
+  See [`build/README.md`](build/README.md) for the full rationale, per-OS
+  notes and verification steps. Windows and macOS builds must be produced on
+  those platforms; PyInstaller does not cross-compile.
+
+- **`pyproject.toml`** — the source of truth for dependencies, for both apps.
+  `[project.optional-dependencies]` splits them by what actually needs them:
+  `web` (Flask), `desktop` (Pillow), `excel` (openpyxl, shared), `ai` (OpenAI +
+  Anthropic + Gemini SDKs, shared), `test` (pytest) and `build` (PyInstaller);
+  `all` bundles everything a user wants, `dev` adds `test` and `build` for
+  contributors. Recommended install: `uv sync --extra <name>`, which also
+  writes the committed `uv.lock` — exact resolved versions, so a `uv sync` run
+  later reproduces the same environment. `pip install -r requirements.txt
+  [-r fta_web/requirements.txt]` remains a supported fallback for anyone
+  without [uv](https://docs.astral.sh/uv/); `install.py` now detects which
+  tool is available and uses it, defaulting to uv.
+
+  `[tool.uv] package = false`: this project is intentionally not built as an
+  installable package. `src/` and `fta_web/` are flat module directories with
+  no `__init__.py`, and `fta_web/core/` is imported by bare module name via a
+  `sys.path` insertion — the layout that keeps it byte-identical to `src/` for
+  the divergence pin (see `fta_web/core/DIVERGENCE.md`). Turning either tree
+  into a real package would mean restructuring code a hash pin depends on
+  staying untouched, so `pyproject.toml` declares dependencies without a
+  `[build-system]` table, and `pip install .` is not a supported path — use
+  `-r requirements.txt` instead. Both apps still run the ordinary way, e.g.
+  `uv run python fta_web/run.py`.
+
+- **`fta_web/runtime_paths.py`** — single place that resolves bundled data
+  paths, through `sys._MEIPASS` when frozen and relative to `fta_web/` from a
+  checkout.
+
+### Changed
+
+- **Vendored core fork.** `fta_web/core/` holds copies of `AI_agent_handler.py`,
+  `FTA_Editor_core.py`, `ai_providers.py` and `json_viewer.py` taken from `src/`
+  at commit `e5f655f`. `src/`, `tests/` and `data/` are frozen for the 1.6 line
+  and pinned by SHA-256 in `fta_web/core/BASELINE.json`; the fork is the copy
+  1.6 is allowed to patch, and `fta_web/tests/test_vendor_integrity.py` fails
+  the build if either side changes without the manifest and the divergence
+  record being updated together.
+
+  Five defects are fixed in the fork and **not** in `src/`. Full write-ups,
+  including the evidence and the behaviour change for each, are in
+  [`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md):
+
+  - **D1** — `AIAgentHandler._get_client()` was dead code that could only ever
+    raise `AttributeError` (`__init__` never assigned `self._client`). Deleted;
+    the live path, `_get_provider()`, was already correct. No observable change.
+  - **D5** — `logicGate: "NOT"` was accepted by validation but computed as
+    **OR**: the probability engine branches on `AND` and falls through to the OR
+    union formula for everything else, so a NOT gate produced a wrong number
+    with no error and nothing in the UI to show the gate had been ignored. `NOT`
+    is now rejected at all four acceptance sites with a message naming the
+    offending node, and is no longer advertised to the model in the schema or
+    the system prompt. Trees relying on the silent OR fallback now surface an
+    error, which is the point. The probability engine itself is unchanged.
+  - **D7** — the move guard asked its question backwards. It tested whether the
+    node being moved was inside the target's subtree, rather than whether the
+    new parent was a descendant of the node being moved, so it rejected every
+    legal move (promoting a grandchild, reordering under the same parent) and
+    permitted the corrupting ones (a node into its own child or grandchild).
+    Argument order corrected; the function now returns a real `bool` instead of
+    leaking a node dict.
+  - **D8** — minified JSON was mangled and then blamed on the file's encoding.
+    A double-wrap repair ran unconditionally *before* parsing, and its
+    `endswith("}}")` test matches every minified document; stripping the brace
+    turned a valid file into invalid JSON and the resulting error was reported
+    as "Failed to read file with common encodings". The document is now parsed
+    as written first, with the legacy repair as a fallback. Minified files open;
+    nothing that loaded before stops loading.
+  - **D9** — `AnthropicProvider.get_default_models()` still returned the Claude
+    3 family. That list is the *fallback* used when the live model fetch fails,
+    which is exactly when a stale entry does the most damage. Refreshed to the
+    current family, most-capable first. The model field is an editable combo and
+    the live fetch is preferred, so the list ageing again degrades gracefully.
+
+  One reported defect, **D3** (Excel sibling rows overwriting each other), was
+  investigated and **not** reproduced — the report misreads a `nonlocal`
+  high-water mark as a per-level counter. Verified exhaustively against all 626
+  rooted ordered tree shapes of 1–8 nodes. No patch was applied; regression
+  tests pin the layout instead.
+
+- `requirements.txt` and `fta_web/requirements.txt` are unchanged in content —
+  same packages, same versions — and remain the pip-fallback path. They are
+  now secondary to `pyproject.toml`, described above, which is where a new
+  dependency gets added first.
+
+- **`setup.py` removed.** It declared `python_requires=">=3.14"` (the rest of
+  the project has always targeted 3.10+) and packaged `src/` with
+  `find_packages(where="src")`, which finds nothing — `src/` has no
+  `__init__.py`, so `pip install .` against it silently produced an empty
+  distribution. `pyproject.toml` is the replacement, and is explicit that this
+  project is not meant to be built as a package at all (see above) rather than
+  quietly failing to be one.
+
+- `README.md` and `QUICKSTART.md` now lead with the web app, and their install
+  instructions lead with `uv sync`.
+
+### Deprecated
+
+- Nothing yet. The desktop application (`src/FTA_Editor_UI.py`) is **unchanged,
+  supported and retained** in this release. It is expected to be marked
+  deprecated after 1.6 has shipped and the web app has been exercised in
+  practice; it will be kept available after that, not deleted. Until that
+  announcement, both applications are current.
+
+## [1.5.1] - 2025-12-16
+
+### Added
+
+- **Multi-Provider AI Support**: Support for multiple AI platforms
+  - New `ai_providers.py` module with abstraction layer for AI providers
+  - **Google Gemini** support (free tier + pay-per-use)
+  - **Anthropic Claude** support (pay-per-use)
+  - **OpenAI** support (existing, enhanced)
+  - **GitHub Copilot** support (via OpenAI-compatible API)
+  - **Azure OpenAI** support (via OpenAI-compatible API)
+
+- **Provider Implementations**:
+  - `OpenAIProvider`: OpenAI and compatible APIs
+  - `AnthropicProvider`: Anthropic Claude API
+  - `GeminiProvider`: Google Gemini API
+  - `AIProviderFactory`: Factory pattern for provider selection
+
+- **Enhanced AI Settings Dialog**:
+  - Provider selection dropdown (auto-updates endpoint and models)
+  - Dynamic model list based on selected provider
+  - Automatic endpoint population per provider
+
+- **Documentation**:
+  - `docs/QUICK_AI_SETUP.md`: 5-minute quick start guide
+  - `docs/MULTI_PROVIDER_SETUP.md`: Detailed setup and troubleshooting
+  - Updated README/Quick Start with new "Analyze FTA" and "Update FTA" flows
+
+- **Full-JSON Update Flow**:
+  - New "Update FTA" button generates a complete JSON from the AI and replaces the in-memory tree after validation
+  - Validator rejects malformed outputs and reports the exact failing section/node
+  - Detailed error logging for invalid JSON (snippet printed to chat and stderr)
+
+- **UI**:
+  - Arbitrary tree depth coloring; nested additions render correctly
+
+### Changed
+
+- **Credential Storage**: Enhanced to store provider information
+  - Now stores: `api_key`, `api_endpoint`, `model`, `provider`
+  - Backward compatible with previous credential format
+
+- **AIAgentHandler**: Refactored to use provider abstraction
+  - Provider-agnostic message sending
+  - `configure()` accepts provider parameter
+  - Added `generate_full_fta_update()` and `verify_updated_fta_json()`
+
+- **requirements.txt**: Added support for all AI providers
+  - Added: `anthropic>=0.7.0`
+  - Added: `google-generativeai>=0.3.0`
+  - Kept: `openai>=1.0.0`
+
+- **README.md**: Updated AI Assistant documentation with provider setup instructions
+  - Added Quick Actions description (Analyze vs Update)
+
+---
+
+## [1.5.0] - 2025-12-16
+
+### Added
+
+- **AI Assistant Integration**: Integrated chat interface for AI-powered FTA analysis
+  - Chat panel in main UI with message history
+  - Quick action buttons: "Analyze FTA", "Suggest Root Causes", "Clear Chat"
+  - Threaded API calls for responsive UI during AI processing
+  - Color-coded messages (user/AI/system/error)
+
+- **AI Agent Handler** (`src/AI_agent_handler.py`): New module for AI functionality
+  - `AICredentialManager`: Secure local storage of API credentials
+  - `FTAStructureAnalyzer`: Converts FTA data to AI-readable format
+  - `AIProposedChange`: Data class for structured change proposals
+  - `AIAgentHandler`: Main handler for OpenAI API interactions
+  - System prompt optimized for FTA/ETA analysis
+
+- **Change Confirmation Workflow**: User approval required for AI modifications
+  - Confirmation dialog shows all proposed changes
+  - Selectable list of changes to apply
+  - Detailed view of change data (type, target, description)
+  - Warning message before applying changes
+
+- **Secure Credential Storage**: API keys stored outside repository
+  - Credentials saved at `~/.fta_editor/ai_credentials.json`
+  - Never uploaded or committed to version control
+  - Settings dialog with show/hide API key toggle
+  - Connection test before saving credentials
+
+- **AI Settings Dialog**: Configure AI credentials in-app
+  - API Key input with show/hide toggle
+  - Customizable API endpoint (OpenAI, Azure, or compatible)
+  - Model selection dropdown (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo)
+  - Test connection functionality
+  - Clear credentials option
+
+### Changed
+
+- **UI Layout**: Added AI chat panel on right side of main window
+  - Main content area now uses horizontal paned window
+  - Chat panel is resizable and collapsible
+  - Status indicator shows AI configuration state (●/○)
+
+- **Dependencies**: Updated `requirements.txt`
+  - Added `openai>=1.0.0` for AI API integration
+  - Removed web application dependencies (Flask, gunicorn, etc.)
+  - This version focuses on desktop application only
+
+### Removed
+
+- **Web Application**: Removed Flask-based web interface
+  - `web_app/` directory no longer supported in this branch
+  - Removed Flask, Flask-Session, gunicorn, requests dependencies
+  - Docker deployment configurations removed
+  - Render.com deployment no longer supported
+
+### Migration Notes
+
+- Existing FTA JSON files are fully compatible
+- No changes to core FTA/ETA functionality
+- AI features are optional - application works without API configuration
+- Web application users should use v1.4.x branch
+
+## [1.4.2] - 2025-11-25
+
+### Added
+
+- **Japanese Font Support**: Embedded Noto Sans CJK JP font for proper Japanese character rendering
+  - Installed `fonts-noto-cjk` package in Docker containers
+  - Updated Graphviz font settings to use "Noto Sans CJK JP"
+  - Supports Japanese, Chinese, and Korean characters in node names and labels
+
+### Fixed
+
+- **Session State Persistence**: Fixed node replacement and deletion issues on Render.com
+  - Replaced in-memory session dictionary with Flask filesystem session storage
+  - Added `save_core()` function to persist state after every modification
+  - Fixed state consistency across Gunicorn worker processes
+  - Resolved issues where nodes were incorrectly replaced or deleted during editing
+- **Diagram Auto-Refresh**: Fixed automatic diagram updates in web interface
+  - Removed incompatible timestamp query parameter from base64 data URIs
+  - Added proper error logging for diagram loading failures
+  - Made async refresh calls properly awaited in all tree mutation operations
+
+### Changed
+
+- **Docker Configuration**: Updated all Docker files to version 1.4.2
+- **Font System**: Changed from Times New Roman to Noto Sans CJK JP for international character support
+
+## [1.4.1] - 2025-11-21
+
+### Added
+
+- **Web Application**: Flask-based web interface for browser-based FTA/ETA editing
+  - Interactive tree editing with live diagram preview
+  - Zoom and pan functionality for diagram viewing (mouse wheel + click-drag)
+  - Resizable panels (fault tree and node details) with drag handles
+  - Real-time diagram rendering without page refresh
+  - Session-based multi-user support
+  - Export/import functionality (JSON, XML, Excel)
+  - Node CRUD operations via REST API
+  - Responsive UI with Font Awesome icons
+- **Render.com Deployment Support**: Free cloud hosting configuration
+  - `render.yaml` for automatic deployment
+  - Gunicorn production server setup
+  - Environment-based configuration
+  - Auto-deploy from GitHub integration
+- **Deployment Documentation**: Complete guides for cloud hosting
+  - `RENDER_DEPLOYMENT.md`: Quick-start guide for Render.com
+  - Enhanced `DEPLOYMENT.md` with Render.com as Option 1
+  - Cost comparison and scaling information
+
+### Changed
+- **Session Management**: Dedicated session directory to prevent conflicts with system temp files
+  - Fixed OSError warnings from cachelib accessing incompatible temp files
+  - Isolated Flask sessions in dedicated directory
+- **Security**: Environment-based SECRET_KEY for production deployment
+- **Requirements**: Added Flask, Flask-Session, and gunicorn dependencies
+
+### Fixed
+- **Cache File Warnings**: Eliminated OSError warnings from Arduino IDE and other temp files
+- **Production Configuration**: Disabled debug mode and dynamic port binding for cloud deployment
+
+## [1.3.1] - 2025-11-06
+
+### Changed
+- **UI Improvements**: Updated `json_viewer.py` and `FTA_Editor_UI.py` with minor visual enhancements
+  - Probabilities now display side by side (Gate:  |  P_base: X.X | P_calc: X.X) to save space
+  - Added proper cell height to prevent text cutoff in node labels
+  - Applied Times New Roman font consistently across the entire diagram
+  - Improved node name and probability text visibility
+  - Added checkbox to hide nodes with zero probability.
+  - Improved Preview UI resolution.
+  - Added "New Analysis" button to create new FTA.
+  - Fixed graph UI bug. Now the same order is preserved for FTA tree and graph view.
+
+## [1.3.0] - 2025-11-01
+
+### Fixed
+- **CRITICAL: AND Gate Probability Calculation**: Fixed incorrect calculation that was multiplying parent's base probability with children probabilities
+  - **Before**: `parent_base_prob × ∏(child_probabilities)` - incorrectly included parent's base probability
+  - **After**: `∏(child_probabilities)` - correctly calculates as product of children only
+  - **Impact**: AND gates now follow standard Fault Tree Analysis principles
+  - **Note**: Existing FTA diagrams with AND gates may show different (but correct) probabilities if parent nodes had base probabilities ≠ 1.0
+- Updated test suite to reflect correct AND gate behavior (all 13 tests pass)
+- Updated documentation to clarify that parent base probability is ignored when logic gates are applied with children
+
+### Changed
+- `_recalculate_fta_probabilities()` method now correctly ignores parent base probability for AND gates
+- Test expectations updated in `test_probability_calculation.py`
+- Documentation updated in `PROBABILITY_VALIDATION.md`
+
+## [1.2.0] - 2025-10-31
+
+### Added
+- **ETA (Event Tree Analysis) Mode**: Top-down probability calculation for accident sequence analysis
+- **Metadata Support**: Title, date, and mode fields saved with analyses
+- **Top Bar UI**: Mode selector dropdown, title field, and date field
+- **Hierarchical Excel Export**: Tree structure exported with nested columns
+- **Dynamic Tree Labels**: Changes between "Fault Tree" and "Event Tree" based on mode
+- **Comprehensive Documentation**: User guide, API reference, ETA documentation
+- **Docker Support**: Dockerfile and docker-compose.yml for containerization
+- **Test Suite**: Complete test coverage for ETA mode and core functionality
+
+### Changed
+- **JSON Format**: Now includes metadata (backward compatible with legacy format)
+- **Excel Export**: Hierarchical columns instead of flat rows
+- **Calculation Engine**: Supports both FTA (bottom-up) and ETA (top-down) modes
+
+### Fixed
+- Probability calculation edge cases
+- Circular reference handling
+- Zero probability node detection
+
+## [1.1.1] - 2025-10-30
+
+### Added
+- Excel export with hierarchical column structure
+- Color-coding by depth level in Excel
+- Auto-adjusted column widths
+- Wrapped text for better readability
+
+### Changed
+- Excel export format from flat to hierarchical
+
+## [1.1.0] - 2025-10-29
+
+### Added
+- Code refactoring: Split into UI and Core modules
+- `FTA_Editor_core.py`: Core business logic
+- `FTA_Editor_UI.py`: User interface layer
+- Comprehensive test suite (19 tests)
+- API for programmatic usage
+
+### Changed
+- Project structure: Separation of concerns
+- Improved maintainability and testability
+
+### Deprecated
+- None (original FTA_Editor.py preserved for backward compatibility)
+
+## [1.0.0] - 2025-10-01
+
+### Added
+- Initial FTA Editor release
+- Fault tree creation and editing
+- Probability calculations with AND/OR gates
+- Node linking system
+- JSON export/import
+- XML export
+- Graphviz diagram visualization
+- Live preview with zoom/pan
+
+---
+
+## Release Notes
+
+### Version 2.0.0 - Web Application and Cloud Deployment
+
+This major release introduces a browser-based web application alongside the existing desktop GUI, plus free cloud hosting support.
+
+**Key Highlights**:
+- Full-featured web interface accessible from any browser
+- Interactive diagram viewing with zoom/pan controls
+- Resizable UI panels for customized workspace
+- One-click deployment to Render.com (free tier)
+- Multi-user session support
+- REST API for programmatic access
+- No installation required for web version
+
+**Web Application Features**:
+- Interactive tree editing with real-time updates
+- Live diagram preview with mouse wheel zoom and drag-to-pan
+- Resizable fault tree and node details panels
+- Export to JSON, XML, and Excel formats
+- Import existing FTA/ETA analyses
+- Session-based data isolation for multiple users
+
+**Deployment Options**:
+- **Web (Render.com)**: Free cloud hosting with auto-deploy from GitHub
+- **Local Web**: Run Flask app locally at http://localhost:5000
+- **Desktop GUI**: Traditional tkinter application (unchanged)
+- **Docker**: Containerized deployment for both GUI and web app
+
+**Quick Start (Web)**:
+```bash
+pip install -r requirements.txt
+python web_app/app.py
+# Open http://localhost:5000 in browser
+```
+
+**Deploy to Render.com**:
+```bash
+git push origin main
+# Connect repository at render.com
+# Auto-deploys with render.yaml configuration
+```
+
+**Technical Improvements**:
+- Fixed session cache conflicts with system temp files
+- Environment-based configuration for production
+- Gunicorn production server integration
+- Dedicated session directory to prevent cache errors
+
+**Migration Note**:
+- Desktop GUI remains unchanged and fully functional
+- Web application is an additional interface option
+- All existing JSON files work with both interfaces
+- No breaking changes to existing workflows
+
+The cloud hosting guide (RENDER_DEPLOYMENT.md) was removed together with the
+Render deployment; see `fta_web/` for the current, local-only web app.
+
+### Version 1.3.1 - UI Improvements and Bug Fixes
+
+This major release adds Event Tree Analysis (ETA) capability alongside the existing Fault Tree Analysis (FTA), making the tool suitable for both reliability analysis and accident sequence modeling.
+
+**Key Highlights**:
+- Dual-mode analysis (FTA/ETA) with easy switching
+- Complete metadata support for better documentation
+- Improved Excel export with visual hierarchy
+- Production-ready with Docker support
+- Comprehensive documentation for public use
+
+**Migration Guide**:
+- Legacy JSON files load automatically (default to FTA mode)
+- No breaking changes to existing workflows
+- New JSON format is recommended for new projects
+
+**Docker Deployment**:
+```bash
+docker-compose up
+```
+
+**Programmatic Usage**:
+```python
+from src.FTA_Editor_core import FTACore
+core = FTACore()
+core.set_metadata(mode="ETA", title="Analysis")
+```
+
+See [docs/USER_GUIDE.md](docs/USER_GUIDE.md) for complete documentation.

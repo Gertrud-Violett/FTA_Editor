@@ -1,0 +1,244 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F09_undeveloped.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "b1",
+         "name": "b1",
+         "q": 0.03
+        }
+       ],
+       "order": 1,
+       "probability": 0.03,
+       "rank": 1,
+       "share": 0.5
+      },
+      {
+       "events": [
+        {
+         "id": "u2",
+         "name": "u2",
+         "q": 0.02
+        }
+       ],
+       "order": 1,
+       "probability": 0.02,
+       "rank": 2,
+       "share": 0.33333333333333337
+      },
+      {
+       "events": [
+        {
+         "id": "u1",
+         "name": "u1",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 3,
+       "share": 0.16666666666666669
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.058906,
+     "nonCoherent": false,
+     "rareEvent": 0.06,
+     "repeatedEvents": [],
+     "total": 3,
+     "treeWalk": 0.058906,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F09 undeveloped"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F09_undeveloped.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9702,
+       "cutSetCount": 1,
+       "fv": 0.49410925881913553,
+       "id": "b1",
+       "name": "b1",
+       "q": 0.03,
+       "raw": 16.976199368485382,
+       "rrw": 1.976711409395973,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9603,
+       "cutSetCount": 1,
+       "fv": 0.3260448850711303,
+       "id": "u2",
+       "name": "u2",
+       "q": 0.02,
+       "raw": 16.976199368485382,
+       "rrw": 1.483778337531486,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.9506,
+       "cutSetCount": 1,
+       "fv": 0.16137575119682207,
+       "id": "u1",
+       "name": "u1",
+       "q": 0.01,
+       "raw": 16.976199368485382,
+       "rrw": 1.1924291497975708,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F09 undeveloped"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F09_undeveloped.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "u1",
+      "u2",
+      "b1"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.058906000000000125,
+       0.058906000000000125
+      ],
+      "logBins": false
+     },
+     "mean": 0.058906000000000125,
+     "median": 0.058906000000000125,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.058906000000000125,
+     "p95": 0.058906000000000125,
+     "pointEstimate": 0.058906000000000125,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F09 undeveloped"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F09_undeveloped.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.01,
+       "id": "u1",
+       "model": "fixed",
+       "name": "u1",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.02,
+       "id": "u2",
+       "model": "fixed",
+       "name": "u2",
+       "q": 0.02
+      },
+      {
+       "calculated": 0.03,
+       "id": "b1",
+       "model": "fixed",
+       "name": "b1",
+       "q": 0.03
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.058906,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.058906,
+      "nonCoherent": false,
+      "rareEvent": 0.06,
+      "repeatedEvents": [],
+      "treeWalk": 0.058906,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F09 undeveloped"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F09_undeveloped.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 2,
+      "warning": 0
+     },
+     "issues": [
+      {
+       "code": "UNDEVELOPED_EVENT",
+       "hintKey": "val.fix.UNDEVELOPED_EVENT",
+       "message": "Undeveloped event: its causes are not analysed further.",
+       "nodeId": "u1",
+       "nodeName": "u1",
+       "params": {},
+       "severity": "info"
+      },
+      {
+       "code": "UNDEVELOPED_EVENT",
+       "hintKey": "val.fix.UNDEVELOPED_EVENT",
+       "message": "Undeveloped event: its causes are not analysed further.",
+       "nodeId": "u2",
+       "nodeName": "u2",
+       "params": {},
+       "severity": "info"
+      }
+     ]
+    },
+    "title": "F09 undeveloped"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F09_undeveloped.json"
+}

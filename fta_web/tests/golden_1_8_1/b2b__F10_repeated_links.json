@@ -1,0 +1,184 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F10_repeated_links.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "A",
+         "name": "A",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 1,
+       "share": 1.0
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.1,
+     "nonCoherent": false,
+     "rareEvent": 0.1,
+     "repeatedEvents": [
+      {
+       "id": "A",
+       "name": "A"
+      }
+     ],
+     "total": 1,
+     "treeWalk": 0.028,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F10 repeated via link"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F10_repeated_links.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 1.0,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "A",
+       "name": "A",
+       "q": 0.1,
+       "raw": 10.0,
+       "rrw": null,
+       "rrwInfinite": true
+      }
+     ]
+    },
+    "title": "F10 repeated via link"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F10_repeated_links.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "A",
+      "B"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.1,
+       0.1
+      ],
+      "logBins": false
+     },
+     "mean": 0.1,
+     "median": 0.1,
+     "method": "cutsets",
+     "nonCoherent": false,
+     "p05": 0.1,
+     "p95": 0.1,
+     "pointEstimate": 0.1,
+     "repeatedEvents": [
+      {
+       "id": "A",
+       "name": "A"
+      }
+     ],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F10 repeated via link"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F10_repeated_links.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.1,
+       "id": "A",
+       "model": "fixed",
+       "name": "A",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.2,
+       "id": "B",
+       "model": "fixed",
+       "name": "B",
+       "q": 0.2
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.1,
+      "headlineMethod": "mcub",
+      "mcub": 0.1,
+      "nonCoherent": false,
+      "rareEvent": 0.1,
+      "repeatedEvents": [
+       {
+        "id": "A",
+        "name": "A"
+       }
+      ],
+      "treeWalk": 0.028,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F10 repeated via link"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F10_repeated_links.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "F10 repeated via link"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F10_repeated_links.json"
+}

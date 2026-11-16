@@ -1,0 +1,4626 @@
+/**
+ * main.js -- the application shell.
+ *
+ * Owns: boot sequence, the session gate, the metadata bar, the layout grid and
+ * its splitters, theme + language, the button bar, keyboard shortcuts, and the
+ * one place errors become visible (toast + status line).
+ *
+ * Does NOT own the tree, the details form or the dialogs. Those live in
+ * tree.js / details.js / dialogs.js and are loaded here.
+ *
+ * BOOT
+ * ----
+ *   bootstrapToken() -> api.get('/state') -> store.setState() ->
+ *   initTree(#tree-root) / initDetails(#details-root)
+ *
+ * The three sibling modules are pulled in with dynamic import() rather than a
+ * static one. A static import that 404s or throws at parse time takes the whole
+ * page down to a blank screen; this way a missing or broken panel degrades to a
+ * visible message in that panel and the rest of the editor keeps working.
+ *
+ * HOW DIALOGS.JS IS CALLED
+ * ------------------------
+ * Two ways, tried in order, so the module can pick whichever it prefers:
+ *
+ *   1. A cancelable `fta:action` window event:
+ *        detail = {action: 'new'|'add'|'edit'|'delete', nodeId?, parentId?}
+ *      Call ev.preventDefault() to say "I have this" and the shell stands down.
+ *
+ *   2. A named export, first match wins:
+ *        add    -> openAddDialog | openAddNodeDialog | addNode | showAddDialog
+ *        edit   -> openEditDialog | openEditNodeDialog | editNode | showEditDialog
+ *        delete -> openDeleteDialog | confirmDelete | deleteNode
+ *        new    -> openNewDialog | confirmNew | newAnalysis
+ *      Signature: fn(id) -- parentId for add, nodeId for edit/delete, nothing
+ *      for new. A returned promise is awaited. Add also gets {submit}: the
+ *      dialog calls submit(fields) to create the node and stays open until
+ *      it resolves.
+ *
+ * If neither exists the shell falls back to its own minimal implementation and
+ * says so out loud; nothing fails silently. Two of those fallbacks are the
+ * expected steady state rather than a stopgap:
+ *
+ *   * delete/new confirmations go through dialogs.js `confirmDialog(message,
+ *     options) -> Promise<boolean>` when it exists, and window.confirm when it
+ *     does not;
+ *   * "edit" has no dialog because details.js edits in place, so the shell
+ *     focuses the details panel and says where to type.
+ *
+ * FILES AND EXPORTS (P3)
+ * ----------------------
+ * Load / Save / Save As go through filedialog.js, which returns a *server*
+ * path; the server reads and writes it, exactly as the desktop editor does.
+ * Save falls through to Save As on 409 NO_CURRENT_PATH, which is what Ctrl+S
+ * means on a document that has never been saved.
+ *
+ * The three /api/export/* endpoints are GETs that return a file, and they are
+ * inside the token-guarded /api/* prefix. A plain <a href> or window.open
+ * cannot carry the X-FTA-Token header (a navigation carries no custom headers)
+ * and would come back 403, so downloads are fetched with the header and handed
+ * to the browser as a blob URL instead. See downloadExport().
+ *
+ * One button is gated on /api/state's `capabilities` rather than on a phase
+ * flag: Excel (openpyxl). A gated button stays visible and focusable and says
+ * what is missing and how to install it -- disappearing would leave the user
+ * believing the build never had the feature. Render is NOT gated on a native
+ * Graphviz: actionRenderImage() falls back to the diagram panel's in-browser
+ * PNG export when /api/render 503s, so the button works either way.
+ *
+ * THE AI PANEL (P4)
+ * -----------------
+ * chat.js fills #ai-root and aisettings.js owns the setup dialog. The shell
+ * only wires the gear in the panel head, and answers chat.js's cancelable
+ * `fta:ai-settings` event by opening that dialog -- see actionAiSettings().
+ * Both AI modules translate through window.ftaShell.t, so every string they
+ * show is a key in the STRINGS table below.
+ *
+ * THE TREE'S EDITING SURFACE (P5)
+ * -------------------------------
+ * Drag-to-reparent, inline rename, multi-select and the search filter all live
+ * in tree.js. The shell's part is three lines of wiring:
+ *
+ *   * Ctrl+F dispatches a cancelable `fta:find`; tree.js claims it and focuses
+ *     its search box. Unclaimed, the browser's own Find opens as usual.
+ *   * actionDelete() dispatches `fta:action` BEFORE its single-selection
+ *     guards, so a multi-selection can claim the Delete key, Ctrl+D and the
+ *     Delete button without this file knowing anything about that selection.
+ *   * every string tree.js paints is a key in the STRINGS table below.
+ *
+ * OTHER WINDOW EVENTS THE SHELL HANDLES
+ * -------------------------------------
+ *   fta:find (cancelable)         -> dispatched by the shell on Ctrl+F; the
+ *                                    tree panel claims it
+ *   fta:ai-settings (cancelable)  -> open the AI setup dialog
+ *   fta:error  {message, code?}   -> red toast + status line
+ *   fta:toast  {message, kind?}   -> toast ('info' | 'ok' | 'warn' | 'error')
+ *   fta:escape (cancelable)       -> dispatched by the shell on Escape; a modal
+ *                                    should preventDefault() and close itself
+ *   fta:hide-zero {hidden}        -> dispatched by the shell when the checkbox
+ *                                    flips (CSS already hides .is-zero rows)
+ *   fta:language  {language}      -> dispatched when EN/JA is switched
+ *   fta:session-invalid           -> from api.js; raises the blocking screen
+ *   fta:advanced  {advanced}      -> dispatched when the Advanced switch flips
+ *   fta:sigfigs   {sigFigs}       -> from numfmt.setSigFigs; the shell
+ *                                    re-renders the headline and store.touch()es
+ *   fta:document                  -> a different document replaced the current
+ *                                    one (New, Open): tabs drop results and
+ *                                    typed-but-unsaved inputs of the old one
+ *
+ * PROTECTING WORK (usability batch 2)
+ * -----------------------------------
+ *   * The page asks GET /api/revision every few seconds while it is visible.
+ *     When the answer stops coming, a banner stays up and offers the
+ *     document this tab holds as a download (docutil.js builds the file).
+ *   * The same answer tells a tab that another tab changed the document; it
+ *     then reads /api/state again, but only while nothing is being typed and
+ *     no dialog is open (reloadWhenIdle).
+ *   * New, Load, an example and a dropped file ask about unsaved changes
+ *     through leaveDocument(), which offers "Save and continue".
+ *
+ * 1.7 SHELL
+ * ---------
+ *   * The bottom panel is a tab strip (tabs/host.js); see buildTabContext()
+ *     for the ctx each tab module receives.
+ *   * Feature string catalogs live in static/js/i18n/*.js and are merged by
+ *     registerStrings() before the first paint (CATALOGS below).
+ *   * <html data-booting> (set by the pre-paint script) blocks the action bar
+ *     and shortcuts until loadPanels() settles; <html data-advanced="0|1">
+ *     mirrors the Advanced switch and hides [data-advanced-only] in CSS.
+ */
+
+import {
+  api,
+  ApiError,
+  bootstrapToken,
+  clearToken,
+  getToken,
+  hasToken,
+  pendingWrites,
+  SERVER_UNREACHABLE_EVENT,
+  SESSION_INVALID_EVENT,
+  TOKEN_HEADER,
+} from './api.js';
+import { describeStep, rescueFilename, rescueText } from './docutil.js';
+import { store } from './store.js';
+import { ancestorsOfMembers, groupsOf } from './ccf_util.js';
+import { formatProb, getSigFigs, setSigFigs, SIG_FIGS_EVENT } from './numfmt.js';
+
+// ---------------------------------------------------------------------------
+// tiny helpers
+// ---------------------------------------------------------------------------
+
+const $ = (sel) => document.querySelector(sel);
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+function readLocal(key, fallback = null) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? fallback : raw;
+  } catch (_err) {
+    return fallback;
+  }
+}
+
+function writeLocal(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_err) {
+    /* private mode: preferences just do not persist */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// i18n
+//
+// Shell strings only. There is no /api/language endpoint yet, so the choice is
+// client-side and per-browser; state.language keeps reporting the server's
+// default until a later phase adds the route.
+// ---------------------------------------------------------------------------
+
+const STRINGS = {
+  en: {
+    'a11y.skip': 'Skip to the fault tree',
+    'a11y.splitTree': 'Resize the fault tree panel',
+    'a11y.splitAi': 'Resize the AI assistant panel',
+    'a11y.splitDetails': 'Resize the node details panel',
+    'a11y.actionbar': 'Document actions',
+
+    'bar.mode': 'Mode',
+    'bar.modeTitle': 'Switching mode recalculates every probability',
+    'bar.title': 'Title',
+    'bar.titlePlaceholder': 'Untitled Analysis',
+    'bar.date': 'Date',
+    'bar.hideZero': 'Hide Zero',
+    'bar.hideZeroTitle': 'Hide nodes whose calculated probability is zero',
+
+    'action.undo': 'Undo (Ctrl+Z)',
+    'action.redo': 'Redo (Ctrl+Y)',
+    'action.language': 'Switch language',
+    'action.theme': 'Switch theme',
+    'action.aiSettings': 'AI settings',
+
+    'panel.tree': 'Fault Tree',
+    'panel.treeEta': 'Event Tree',
+    'panel.diagram': 'Live Diagram Preview',
+    'panel.details': 'Node Details',
+    'panel.ai': 'AI Assistant',
+    'placeholder.diagram': 'The rendered fault tree will appear here once the diagram phase lands.',
+    'placeholder.ai': 'Chat, "Analyze FTA" and "Update FTA" arrive with the assistant phase.',
+
+    'phase.p2': 'Coming in P2',
+    'phase.p3': 'Coming in P3',
+    'phase.p4': 'Coming in P4',
+
+    'btn.new': 'New',
+    'btn.add': 'Add',
+    'btn.edit': 'Edit',
+    'btn.delete': 'Delete',
+    'btn.load': 'Load',
+    'btn.save': 'Save',
+    'btn.saveAs': 'Save As',
+    'btn.json': 'JSON',
+    'btn.xml': 'XML',
+    'btn.excel': 'Excel',
+    'btn.render': 'Render',
+    'tip.new': 'New analysis (Alt+N)',
+    'tip.add': 'Add a child node (Ctrl+A)',
+    'tip.edit': 'Edit the selected node (Ctrl+E)',
+    'tip.delete': 'Delete the selected node (Ctrl+D)',
+    'tip.load': 'Open a saved analysis from disk',
+    'tip.save': 'Save to the current file (Ctrl+S)',
+    'tip.saveAs': 'Save to another file (Ctrl+Shift+S)',
+    'tip.json': 'Download a copy as JSON',
+    'tip.xml': 'Download a copy as XML',
+    'tip.excel': 'Download a copy as an Excel workbook',
+    'tip.render': 'Download the diagram as a PNG image',
+
+    'status.saved': 'Saved',
+    'status.unsaved': 'Unsaved changes',
+    'status.noFile': 'No file',
+
+    'theme.system': 'Theme: follow the system',
+    'theme.light': 'Theme: light',
+    'theme.dark': 'Theme: dark',
+
+    'meta.node': '1 node',
+    'meta.nodes': '{n} nodes',
+    'meta.selected': 'Selected: {id}',
+    'meta.noSelection': 'No selection',
+    'meta.dotReady': 'Graphviz ready',
+    'meta.dotMissing': 'Graphviz not found',
+
+    'msg.selectFirst': 'Select a node first.',
+    'msg.rootProtected': 'The root node cannot be deleted.',
+    'msg.newCreated': 'Started a new analysis.',
+    'msg.deleted': 'Deleted "{name}".',
+    'msg.removedLinks': 'Removed {n} link(s) that pointed into the deleted nodes.',
+    'msg.metadataSaved': 'Metadata updated.',
+    'msg.editInDetails': 'Edit the selected node in the Node Details panel.',
+    'msg.notAvailable': '"{label}" is not built yet - it arrives in {phase}.',
+    'msg.moduleFailed': 'The {module} panel failed to load: {error}',
+    'msg.noDialog': 'The node dialog module is unavailable, so this action cannot run.',
+    'msg.noFileDialog':
+      'The file browser module is unavailable, so files cannot be opened or saved.',
+    'msg.opened': 'Opened {path}',
+    'msg.openWarnings': '{n} warning(s) while loading: {text}',
+    'msg.savedTo': 'Saved to {path}',
+    'msg.downloading': 'Preparing {name}...',
+    'msg.downloaded': 'Downloaded {name}',
+    'msg.excelUnavailable':
+      'Excel export is off because the openpyxl package is not installed. '
+      + 'Run "pip install openpyxl" and restart the editor to turn it back on.',
+    'msg.renderUnavailable':
+      'PNG export needs a system Graphviz, which was not found. Install Graphviz '
+      + "(graphviz.org) and restart the editor; until then the diagram panel's "
+      + 'PNG button renders in the browser instead.',
+    'api.noSession': 'This browser tab has no editor session, so it cannot reach the server.',
+    'api.network': 'Could not reach the editor server. It may have been stopped in the terminal.',
+    'api.badResponse': 'The server returned an unexpected response (HTTP {status}).',
+    'api.httpFailed': 'Request failed with HTTP {status}.',
+    'api.exportFailed': 'The export failed (HTTP {status}).',
+    'store.panelFailed': 'A panel failed to update: {error}',
+
+    'confirm.discard': 'Discard the unsaved changes and start a new analysis?',
+    'confirm.discardOpen': 'Discard the unsaved changes and open another file?',
+    'confirm.discardNewOk': 'Discard and start new',
+    'confirm.discardOpenOk': 'Discard and open',
+
+    'file.openTitle': 'Open Analysis',
+    'file.saveTitle': 'Save Analysis As',
+    'file.pathLabel': 'Path',
+    'file.pathPlaceholder': 'Paste or type a path, then press Go',
+    'file.pathGo': 'Go',
+    'file.pathGoTitle': 'Go to the typed or pasted path',
+    'file.up': 'Up one level',
+    'file.parent': 'Parent folder',
+    'file.location': 'Files in this folder',
+    'file.name': 'File name',
+    'file.open': 'Open',
+    'file.save': 'Save',
+    'file.cancel': 'Cancel',
+    'file.loading': 'Reading the folder...',
+    'file.filter': 'Showing folders and {ext} files.',
+    'file.empty': 'This folder holds no {ext} files.',
+    'file.emptyAll': 'This folder is empty.',
+    'file.truncated':
+      'This folder holds too many entries to list; some are not shown. '
+      + 'Open a more specific folder to see the rest.',
+    'file.kindFolder': 'folder',
+    'file.kindFile': 'file',
+    'file.errList': 'That folder could not be read.',
+    'file.errPickFile': 'Select a file first.',
+    'file.errNameRequired': 'Type a file name.',
+    'file.errNameSeparator':
+      'A file name cannot contain a folder path. Browse to the folder instead.',
+    'file.errExtension': 'This dialog saves {ext} files. Change the extension, or leave it off.',
+    'file.errIsFolder': '"{name}" is a folder here. Choose another name.',
+    'file.confirmOverwrite': '"{name}" already exists in this folder. Replace it?',
+    'file.overwriteTitle': 'Replace file',
+    'file.overwrite': 'Replace',
+
+    'session.title': 'This tab is not connected to the editor',
+    'session.body':
+      'The editor only works in the tab it opens itself when it starts. This tab ' +
+      'was opened another way (typed in, from a bookmark or the history, or ' +
+      'restored by the browser), or the editor has been closed and started again ' +
+      'since.',
+    'session.hint':
+      'Close this tab. If the editor is still running, use the tab it opened. ' +
+      'If not, start it again:',
+    'boot.title': 'The editor could not start',
+    'boot.body': 'The first request to the local server failed.',
+
+    // --- P2/P3: capability disclosure (capabilities.js) and the diagram panel.
+    // These live in the catalog rather than as inline literals so the deferred
+    // Japanese phase is a data change, not a hunt through the modules.
+    'cap.button': 'Feature availability',
+    'cap.buttonHint': 'click for details',
+    'cap.title': 'Feature availability',
+    'cap.foot': 'Restart the editor after installing anything, so it can be detected.',
+    'cap.unknown': 'Not known yet.',
+    'cap.chip.ok': 'All features available',
+    'cap.chip.graphviz': 'PNG export limited',
+    'cap.chip.excel': 'Excel export unavailable',
+    'cap.chip.several': '{n} features limited',
+    'cap.chip.ai': 'Set up AI',
+    'cap.chip.unknown': 'Checking availability',
+    'cap.state.ok': 'Available',
+    'cap.state.off': 'Unavailable',
+    'cap.state.ready': 'Ready',
+    'cap.state.optional': 'Optional',
+    'cap.state.unknown': 'Unknown',
+    'cap.dot.name': 'High-resolution PNG export',
+    'cap.dot.okState': 'System Graphviz',
+    'cap.dot.badState': 'Browser renderer',
+    'cap.dot.ok': 'The diagram on screen is drawn in the browser by the bundled WebAssembly Graphviz. The Graphviz installed on this machine draws the PNG export of the "Compact boxes" style natively at 300 dpi, with exact font metrics.',
+    'cap.dot.bad': 'The diagram on screen is the same either way: the bundled WebAssembly Graphviz draws it in the browser. Without a system Graphviz, the PNG export of the "Compact boxes" style is rasterised here from that drawing rather than drawn natively at 300 dpi, so label boxes (most visibly Japanese, Chinese and Korean ones) may sit a little loose or tight. "Standard symbols" PNGs always come from the browser.',
+    'cap.dot.fix': 'Install Graphviz from graphviz.org and restart; the editor will use it for PNG export automatically.',
+    'cap.excel.name': 'Excel export',
+    'cap.excel.ok': 'Analyses can be exported as .xlsx.',
+    'cap.excel.bad': 'Excel export is unavailable because the openpyxl package is not installed. JSON and XML export are unaffected.',
+    'cap.excel.fix': 'Install openpyxl, then restart the editor:',
+    'cap.excel.cmd': 'pip install openpyxl',
+    'cap.ai.name': 'AI assistant',
+    'cap.ai.ok': 'A provider is configured. Chat, Analyze and Update are available.',
+    'cap.ai.bad': 'No provider is configured yet, so chat and the AI actions are off. This is optional -- every other feature works without it.',
+    'cap.ai.fix': 'Add a provider and API key in AI settings.',
+    'diagram.zoomIn': 'Zoom in',
+    'diagram.zoomOut': 'Zoom out',
+    'diagram.fit': 'Fit to window',
+    'diagram.exportSvg': 'Export as SVG',
+    'diagram.exportPng': 'Export as PNG',
+    'diagram.rendererNative': 'Rendered by system Graphviz',
+    'diagram.rendererWasm': 'Rendered in-browser (Graphviz WASM)',
+    'diagram.error': 'Could not render the diagram: ',
+    'diagram.nothingToExport': 'Nothing to export yet.',
+    'diagram.pngFailed': 'Could not rasterise the diagram to PNG.',
+    'diagram.nativeFellBack': 'System Graphviz unavailable; exported from the browser renderer instead.',
+    'diagram.fontSettings': 'Diagram settings',
+    'diagram.fontSettingsClose': 'Close',
+    'diagram.fontLabel': 'Font',
+    'diagram.fontAutoUsing': 'Detected: ',
+    'diagram.scaleLabel': 'Box padding (0-30)',
+    'diagram.scaleHint': 'Blank space added around the text of every box. Raise it if text spills out of a box.',
+
+    // --- P4: the AI assistant panel (chat.js) and its setup dialog
+    // (aisettings.js). Every string those two modules show is here, including
+    // the ones inside their markup: a literal in a module is invisible to the
+    // Japanese phase, and a missing key renders as "ai.something" on screen.
+    'ai.settings.title': 'Set up the AI assistant',
+    'ai.settings.intro':
+      'Choose a provider, paste its API key, then press Test & Save. The key is '
+      + 'tried against the provider before anything is stored, and it is kept on '
+      + 'this machine.',
+    'ai.settings.loading': 'Loading the provider list...',
+    'ai.field.provider': 'Provider',
+    'ai.field.key': 'API key',
+    'ai.field.model': 'Model',
+    'ai.field.endpoint': 'API endpoint',
+    'ai.field.advanced': 'Advanced',
+    'ai.provider.openai': 'OpenAI',
+    'ai.provider.anthropic': 'Anthropic Claude',
+    'ai.provider.google': 'Google Gemini',
+    'ai.hint.openai': 'Paid account, billed per request.',
+    'ai.hint.anthropic': 'Paid account, billed per request.',
+    'ai.hint.google': 'Has a free tier, so it is the quickest way to try the assistant.',
+    'ai.key.where': 'Get a key at',
+    'ai.key.placeholder': 'Paste the API key',
+    'ai.key.show': 'Show',
+    'ai.key.hide': 'Hide',
+    'ai.key.saved':
+      'A key is already stored ({preview}). It cannot be read back, so leave this '
+      + 'blank to keep it and only fill it in to replace it.',
+    'ai.key.savedNoPreview':
+      'A key is already stored. It cannot be read back, so leave this blank to keep '
+      + 'it and only fill it in to replace it.',
+    'ai.key.savedOther': 'The stored key belongs to {provider}. Saving here replaces it.',
+    'ai.model.placeholder': 'Model name',
+    'ai.model.hint': 'Pick one of the suggestions, or type any model name.',
+    'ai.model.needKey':
+      'These are the built-in default names. Save a key to load the live list -- '
+      + 'and any model name can be typed here at any time.',
+    'ai.model.live': 'Loaded from the provider.',
+    'ai.model.loading': 'Loading the model list...',
+    'ai.model.fallback': 'Built-in defaults, not the live list: {warning}',
+    'ai.model.fallbackPlain': 'Built-in defaults, not the live list.',
+    'ai.model.failed': 'The model list could not be loaded: {error}',
+    'ai.model.refresh': 'Reload',
+    'ai.model.refreshTitle': 'Ask the provider which models the key can use',
+    'ai.model.unset': 'no model',
+    'ai.btn.testSave': 'Test & Save',
+    'ai.btn.cancel': 'Cancel',
+    'ai.btn.clear': 'Clear',
+    'ai.status.testing': 'Testing the connection to {provider}...',
+    'ai.status.saved': 'Connected. The assistant is ready.',
+    'ai.status.clearing': 'Removing the stored credentials...',
+    'ai.status.cleared': 'The stored AI credentials were removed.',
+    'ai.current': 'Currently set up: {provider}, {model}.',
+    'ai.confirm.clear':
+      'Remove the stored API key and provider settings? Every other feature is unaffected.',
+    'ai.confirm.clearTitle': 'Clear AI credentials',
+    'ai.err.provider': 'Choose a provider first.',
+    'ai.err.key': 'Paste the API key.',
+    'ai.err.keyAgain':
+      'A stored key cannot be read back, so changing these settings means pasting '
+      + 'the key again. Cancel to leave the current setup untouched.',
+    'ai.err.endpoint':
+      'The endpoint is empty. Choose the provider again to restore its default address.',
+    'ai.err.model': 'Choose or type a model name.',
+    'ai.err.providers': 'The provider list could not be loaded: {error}',
+    'ai.err.noProviders': 'The server offered no AI providers, so there is nothing to set up.',
+    'ai.err.noSettings': 'The AI settings dialog could not be loaded, so setup cannot run.',
+    'ai.endpoint.hint':
+      'Filled in from the provider. Change it only for a proxy or a compatible gateway.',
+    'ai.endpoint.azureHint':
+      'Required: your Azure OpenAI resource URL, such as https://my-resource.openai.azure.com, or its full …/openai/deployments/<deployment> address. Replace YOUR-RESOURCE and YOUR-DEPLOYMENT with your own names.',
+
+    'ai.invite.title': 'Set up the AI assistant',
+    'ai.invite.body':
+      'The assistant is optional -- every other feature works without it. Add a '
+      + 'provider and an API key, and you can ask questions about this fault tree, '
+      + 'request an analysis, or have changes proposed for you to review.',
+    'ai.invite.free': 'Google Gemini has a free tier, which is the quickest way to try it.',
+    'ai.invite.button': 'Set up AI',
+
+    'ai.chat.log': 'Conversation with the AI assistant',
+    'ai.chat.input': 'Message to the AI assistant',
+    'ai.chat.placeholder': 'Ask about this fault tree. Enter sends, Shift+Enter adds a line.',
+    'ai.chat.send': 'Send',
+    'ai.chat.sendTitle': 'Send the message (Enter)',
+    'ai.chat.analyze': 'Analyze FTA',
+    'ai.chat.analyzeTitle': 'Ask for a review of this fault tree. Nothing is changed.',
+    'ai.chat.update': 'Update FTA',
+    'ai.chat.updateTitle':
+      'Ask for an updated fault tree. It is verified before it replaces this one.',
+    'ai.chat.clear': 'Clear Chat',
+    'ai.chat.clearTitle': 'Forget this conversation, here and on the server.',
+    'ai.chat.markdown': 'Formatted',
+    'ai.chat.markdownLabel': 'Show replies as formatted Markdown',
+    'ai.chat.markdownOnTitle': 'Replies are shown as formatted Markdown. Click for the raw text.',
+    'ai.chat.markdownOffTitle': 'Replies are shown as raw text. Click for formatted Markdown.',
+
+    'ai.role.user': 'You',
+    'ai.role.assistant': 'Assistant',
+    'ai.role.system': 'Editor',
+    'ai.role.error': 'Error',
+
+    'ai.msg.welcome':
+      'Ask anything about this fault tree. "Analyze FTA" reviews it without '
+      + 'changing anything; "Update FTA" proposes a full replacement, which is '
+      + 'verified before it is applied.',
+    'ai.msg.notConfigured':
+      'No provider is set up yet, so there is nothing to send. "Set up AI" adds one.',
+    'ai.msg.busy': 'The assistant is still working on the previous request.',
+    'ai.msg.empty': 'Type a message first.',
+    'ai.msg.emptyReply': 'The assistant replied with nothing.',
+    'ai.msg.thinking': 'Waiting for the assistant...',
+    'ai.msg.analyzing': 'Analyzing the fault tree...',
+    'ai.msg.analyzePrompt': 'Analyze this FTA and provide suggestions.',
+    'ai.msg.updating': 'Generating an updated fault tree...',
+    'ai.msg.updatePrompt':
+      'Update this FTA with your suggestions, preserving the original JSON structure.',
+    'ai.msg.updated': 'The fault tree was replaced with the verified version.',
+    'ai.update.summary': '{added} added, {changed} changed, {removed} removed — Ctrl+Z undoes it.',
+    'ai.update.summaryRemoved': '{added} added, {changed} changed, {removed} removed ({removedNames}) — Ctrl+Z undoes it.',
+    'ai.update.summaryChanged': '{added} added, {changed} changed ({changedNames}), {removed} removed — Ctrl+Z undoes it.',
+    'ai.update.summaryBoth': '{added} added, {changed} changed ({changedNames}), {removed} removed ({removedNames}) — Ctrl+Z undoes it.',
+    'ai.msg.clearing': 'Clearing the conversation...',
+
+    'ai.changes.title': 'Suggested changes',
+    'ai.changes.hint': 'All of them are ticked. Untick anything you do not want, then apply.',
+    'ai.changes.apply': 'Apply selected',
+    'ai.changes.dismiss': 'Dismiss',
+    'ai.changes.details': 'Change data',
+    'ai.changes.target': 'Target: {id}',
+    'ai.changes.untitled': 'Change {n}',
+    'ai.changes.none': 'Nothing is ticked, so there is nothing to apply.',
+    'ai.changes.applying': 'Applying the selected changes...',
+    'ai.changes.applied': 'Applied {n} of {total} suggested changes.',
+    'ai.changes.dismissed': 'These suggestions were dismissed.',
+    'ai.changes.superseded': 'These suggestions were replaced by a newer set.',
+
+    'ai.diag.excerpt': 'The first 500 characters of the AI output',
+    'ai.diag.raw': 'The raw response',
+    'ai.diag.section': 'The part that failed verification',
+    'ai.diag.keys': 'Top-level keys',
+
+    // --- P5: the tree panel's editing surface (tree.js). Every string it
+    // paints is here, including the ones inside its own chrome -- the search
+    // box, the hint line, each refused move. A literal in that module would be
+    // invisible to the language switch, and a key with no entry here renders
+    // on screen as "tree.something", which is the failure this table exists to
+    // make impossible.
+    'tree.ariaLabel': 'Fault tree',
+    'tree.empty': 'No analysis loaded.',
+    'tree.zeroAria': ', zero probability',
+    'tree.zeroTitle': 'Zero probability',
+    'tree.searchLabel': 'Search the fault tree',
+    'tree.searchPlaceholder': 'Search names or ids (Ctrl+F)',
+    'tree.searchClear': 'Clear the search',
+    'tree.searchMatches': '{n} of {total} match',
+    'tree.searchNone': 'Nothing matches "{q}"',
+    'tree.hint':
+      'F2 or double-click a name renames it. Ctrl+Shift+arrows move the focused '
+      + 'node. Ctrl+click and Shift+click select several.',
+    'tree.renameLabel': 'New name for "{name}"',
+    'tree.renameEmpty': 'A node name cannot be empty, so the change was not saved.',
+    'tree.renamed': 'Renamed to "{name}".',
+    'tree.moved': 'Moved "{name}" under "{parent}".',
+    'tree.reordered': 'Moved "{name}" within "{parent}".',
+    'tree.moveInvalid': 'A node cannot be moved into itself or one of its own children.',
+    'tree.moveRootRefused': 'The root node cannot be moved.',
+    'tree.moveNoIndent': 'There is no sibling above it to move it under.',
+    'tree.moveNoOutdent': 'It already sits directly under the root node.',
+    'tree.selected': '{n} nodes selected',
+    'tree.deletedMany': 'Deleted {n} nodes. One Undo brings them all back.',
+    'tree.deletePartial': 'Deleted {done} of {total} nodes; the rest were left in place.',
+    'tree.rootKept': 'The root node cannot be deleted, so nothing was removed.',
+
+    'ai.changes.unindexed': 'These suggestions cannot be applied: the server did not number them.',
+    'ai.changes.linkAdd': 'Adds link: {relation} → {name}',
+    'ai.changes.linkRemove': 'Removes link: {relation} → {name}',
+    'ai.changes.linkNone': 'Links: no change',
+    'ai.changes.linkProblem': 'This suggestion will be rejected. {reason}',
+    'ai.changes.rejectedOne': 'Suggestion rejected — {title}. {reason}',
+    'ai.changes.ignoredOne': 'Applied — {title}. Not changed by a suggestion: {fields}',
+    'details.calcMcub': '(MCUB) · tree walk {walk}',
+    'details.calcMcubTitle': 'The top event shows the headline: the min-cut upper bound (MCUB), which counts each repeated event once. The tree walk takes every branch as independent.',
+
+    'dialog.title': 'Dialog',
+    'dialog.confirmTitle': 'Confirm',
+    'dialog.ok': 'OK',
+    'dialog.cancel': 'Cancel',
+    'dialog.dismiss': 'Dismiss',
+    'dialog.somethingWrong': 'Something went wrong.',
+    'dialog.addNode': 'Add Node',
+    'dialog.addNodeUnder': 'Add Node under "{name}"',
+    'dialog.addNoSelection':
+      'No node is selected, so the new node goes under the top event. To add it elsewhere, cancel and select a node first.',
+    'dialog.nameRequired': 'Name is required.',
+    'dialog.typeRequired': 'Type must not be empty.',
+    'dialog.probabilityRange': 'Probability must be a number between 0.0 and 1.0.',
+    'dialog.gateNot':
+      'NOT gates are not supported: the probability engine has no NOT '
+      + 'semantics and would score the node as OR. Use AND or OR.',
+    'dialog.gateInvalid': 'Logic gate must be AND or OR.',
+    'dialog.gateUnsupported': '{gate} (unsupported)',
+
+    'details.aria': 'Node details',
+    'details.name': 'Name',
+    'details.type': 'Type',
+    'details.probability': 'Probability',
+    'details.probabilityBase': 'Probability (base)',
+    'details.logicGate': 'Logic Gate',
+    'details.notes': 'Notes',
+    'details.links': 'Links',
+    'details.empty': 'Select a node in the tree to edit it.',
+    'details.nodeId': 'Node ID',
+    'details.calculated': 'Calculated probability',
+    'details.zeroFlag': '✖ zero probability',
+    'details.saveFailed': 'Could not save the change.',
+
+    'links.search': 'Search Events',
+    'links.searchPlaceholder': 'Filter by name or id',
+    'links.matching': 'Matching events',
+    'links.noMatch': 'No matching events',
+    'links.section': '{relation} Links',
+    'links.listAria': '{relation} links',
+    'links.add': 'Add →',
+    'links.addTitle': 'Add the selected events as {relation} links',
+    'links.remove': '← Remove',
+    'links.removeTitle': 'Remove the selected {relation} links',
+    'links.self': 'A node cannot link to itself.',
+    'links.duplicate': 'Already linked with that relation.',
+    'links.selectFirst': 'Select one or more events above first.',
+    'links.added': 'Added {n} {relation} link(s).',
+    'links.skippedSelf': 'Skipped the node itself.',
+    'links.skippedDuplicate': 'Skipped {n} already linked.',
+    'links.selectToRemove': 'Select one or more {relation} links to remove.',
+    'links.removed': 'Removed {n} {relation} link(s).',
+    'links.saveFailed': 'Could not save the links.',
+    'links.loadFailed': 'Could not load the node list.',
+  },
+
+  ja: {
+    'a11y.skip': 'フォルトツリーへ移動',
+    'a11y.splitTree': 'フォルトツリーパネルの幅を変更',
+    'a11y.splitAi': 'AIアシスタントパネルの幅を変更',
+    'a11y.splitDetails': 'ノード詳細パネルの高さを変更',
+    'a11y.actionbar': '文書の操作',
+
+    'bar.mode': 'モード',
+    'bar.modeTitle': 'モードを変更すると確率が再計算されます',
+    'bar.title': 'タイトル',
+    'bar.titlePlaceholder': '無題の解析',
+    'bar.date': '日付',
+    'bar.hideZero': 'ゼロを非表示',
+    'bar.hideZeroTitle': '計算確率がゼロのノードを非表示にします',
+
+    'action.undo': '元に戻す (Ctrl+Z)',
+    'action.redo': 'やり直す (Ctrl+Y)',
+    'action.language': '言語を切り替える',
+    'action.theme': 'テーマを切り替える',
+    'action.aiSettings': 'AI設定',
+
+    'panel.tree': 'フォルトツリー',
+    'panel.treeEta': 'イベントツリー',
+    'panel.diagram': '図プレビュー',
+    'panel.details': 'ノード詳細',
+    'panel.ai': 'AIアシスタント',
+    'placeholder.diagram': '図の描画フェーズが実装されるとここに表示されます。',
+    'placeholder.ai': 'チャットとFTA解析・更新はアシスタントフェーズで追加されます。',
+
+    'phase.p2': 'P2で対応',
+    'phase.p3': 'P3で対応',
+    'phase.p4': 'P4で対応',
+
+    'btn.new': '新規',
+    'btn.add': '追加',
+    'btn.edit': '編集',
+    'btn.delete': '削除',
+    'btn.load': '読込',
+    'btn.save': '保存',
+    'btn.saveAs': '名前を付けて保存',
+    'btn.json': 'JSON',
+    'btn.xml': 'XML',
+    'btn.excel': 'Excel',
+    'btn.render': '画像',
+    'tip.new': '新規解析 (Alt+N)',
+    'tip.add': '子ノードを追加 (Ctrl+A)',
+    'tip.edit': '選択中のノードを編集 (Ctrl+E)',
+    'tip.delete': '選択中のノードを削除 (Ctrl+D)',
+    'tip.load': '保存済みの解析を開く',
+    'tip.save': '現在のファイルに保存 (Ctrl+S)',
+    'tip.saveAs': '別のファイルに保存 (Ctrl+Shift+S)',
+    'tip.json': 'JSON形式でダウンロード',
+    'tip.xml': 'XML形式でダウンロード',
+    'tip.excel': 'Excelブックとしてダウンロード',
+    'tip.render': '図をPNG画像としてダウンロード',
+
+    'status.saved': '保存済み',
+    'status.unsaved': '未保存の変更',
+    'status.noFile': 'ファイルなし',
+
+    'theme.system': 'テーマ: システムに従う',
+    'theme.light': 'テーマ: ライト',
+    'theme.dark': 'テーマ: ダーク',
+
+    'meta.node': '1 ノード',
+    'meta.nodes': '{n} ノード',
+    'meta.selected': '選択中: {id}',
+    'meta.noSelection': '未選択',
+    'meta.dotReady': 'Graphviz 利用可能',
+    'meta.dotMissing': 'Graphviz が見つかりません',
+
+    'msg.selectFirst': '先にノードを選択してください。',
+    'msg.rootProtected': 'ルートノードは削除できません。',
+    'msg.newCreated': '新しい解析を開始しました。',
+    'msg.deleted': '「{name}」を削除しました。',
+    'msg.removedLinks': '削除したノードを指していたリンク {n} 件を削除しました。',
+    'msg.metadataSaved': 'メタデータを更新しました。',
+    'msg.editInDetails': 'ノード詳細パネルで編集してください。',
+    'msg.notAvailable': '「{label}」は未実装です（{phase}）。',
+    'msg.moduleFailed': '{module} パネルの読み込みに失敗しました: {error}',
+    'msg.noDialog': 'ダイアログモジュールが利用できないため実行できません。',
+    'msg.noFileDialog':
+      'ファイルブラウザモジュールが利用できないため、ファイルを開く・保存する操作は実行できません。',
+    'msg.opened': '{path} を開きました',
+    'msg.openWarnings': '読み込み時の警告 {n} 件: {text}',
+    'msg.savedTo': '{path} に保存しました',
+    'msg.downloading': '{name} を準備しています...',
+    'msg.downloaded': '{name} をダウンロードしました',
+    'msg.excelUnavailable':
+      'openpyxl パッケージが見つからないため Excel 出力は無効です。'
+      + '「pip install openpyxl」を実行してエディタを再起動すると有効になります。',
+    'msg.renderUnavailable':
+      'PNG 出力にはシステムの Graphviz が必要ですが、見つかりませんでした。'
+      + 'Graphviz (graphviz.org) をインストールしてエディタを再起動してください。'
+      + 'それまでは図パネルの PNG ボタンがブラウザ内で書き出します。',
+    'api.noSession': 'このブラウザーのタブにはエディターのセッションがないため、サーバーに接続できません。',
+    'api.network': 'エディターのサーバーに接続できませんでした。ターミナルで停止された可能性があります。',
+    'api.badResponse': 'サーバーから予期しない応答が返されました (HTTP {status})。',
+    'api.httpFailed': 'リクエストが失敗しました (HTTP {status})。',
+    'api.exportFailed': 'エクスポートに失敗しました (HTTP {status})。',
+    'store.panelFailed': 'パネルを更新できませんでした: {error}',
+
+    'confirm.discard': '未保存の変更を破棄して新規作成しますか？',
+    'confirm.discardOpen': '未保存の変更を破棄して別のファイルを開きますか？',
+    'confirm.discardNewOk': '破棄して新規作成',
+    'confirm.discardOpenOk': '破棄して開く',
+
+    'file.openTitle': '解析を開く',
+    'file.saveTitle': '名前を付けて保存',
+    'file.pathLabel': 'パス',
+    'file.pathPlaceholder': 'パスを貼り付けまたは入力して「移動」を押してください',
+    'file.pathGo': '移動',
+    'file.pathGoTitle': '入力・貼り付けたパスへ移動',
+    'file.up': '上の階層へ',
+    'file.parent': '親フォルダー',
+    'file.location': 'このフォルダー内のファイル',
+    'file.name': 'ファイル名',
+    'file.open': '開く',
+    'file.save': '保存',
+    'file.cancel': 'キャンセル',
+    'file.loading': 'フォルダーを読み込んでいます...',
+    'file.filter': 'フォルダーと {ext} ファイルを表示しています。',
+    'file.empty': 'このフォルダーに {ext} ファイルはありません。',
+    'file.emptyAll': 'このフォルダーは空です。',
+    'file.truncated':
+      'このフォルダーには項目が多すぎるため、一部は表示されていません。'
+      + 'より下の階層のフォルダーを開いてください。',
+    'file.kindFolder': 'フォルダー',
+    'file.kindFile': 'ファイル',
+    'file.errList': 'そのフォルダーを読み取れませんでした。',
+    'file.errPickFile': '先にファイルを選択してください。',
+    'file.errNameRequired': 'ファイル名を入力してください。',
+    'file.errNameSeparator':
+      'ファイル名にフォルダーのパスは含められません。フォルダーを移動してください。',
+    'file.errExtension': 'このダイアログで保存できるのは {ext} ファイルです。拡張子を変更するか省略してください。',
+    'file.errIsFolder': '「{name}」はこの場所にあるフォルダーです。別の名前を指定してください。',
+    'file.confirmOverwrite': '「{name}」は既にこのフォルダーにあります。置き換えますか？',
+    'file.overwriteTitle': 'ファイルを置き換える',
+    'file.overwrite': '置き換える',
+
+    'session.title': 'このタブはエディターに接続されていません',
+    'session.body':
+      'エディターは、起動時に自分で開いたタブでのみ動作します。このタブは別の方法 ' +
+      '(アドレスの入力、ブックマークや履歴、ブラウザーによる復元) で開かれたか、' +
+      'その後エディターが終了して起動し直されています。',
+    'session.hint':
+      'このタブを閉じてください。エディターが起動中であれば、エディターが開いたタブを' +
+      '使用してください。起動していない場合は、もう一度起動してください:',
+    'boot.title': 'エディタを起動できませんでした',
+    'boot.body': 'ローカルサーバーへの最初の要求が失敗しました。',
+
+    // --- P2/P3: capability disclosure (capabilities.js) and the diagram panel.
+    'cap.button': '機能の利用可否',
+    'cap.buttonHint': 'クリックで詳細',
+    'cap.title': '機能の利用可否',
+    'cap.foot': 'インストール後はエディタを再起動してください。再起動時に検出されます。',
+    'cap.unknown': 'まだ確認できていません。',
+    'cap.chip.ok': 'すべての機能が利用可能',
+    'cap.chip.graphviz': 'PNG出力に制限あり',
+    'cap.chip.excel': 'Excel出力が利用不可',
+    'cap.chip.several': '{n} 件の機能に制限あり',
+    'cap.chip.ai': 'AIを設定',
+    'cap.chip.unknown': '利用可否を確認中',
+    'cap.state.ok': '利用可能',
+    'cap.state.off': '利用不可',
+    'cap.state.ready': '準備完了',
+    'cap.state.optional': '任意',
+    'cap.state.unknown': '不明',
+    'cap.dot.name': '高解像度PNG出力',
+    'cap.dot.okState': 'システムのGraphviz',
+    'cap.dot.badState': 'ブラウザ内描画',
+    'cap.dot.ok': '画面上の図は、同梱のWebAssembly版Graphvizがブラウザ内で描画します。このマシンにインストールされたGraphvizは、「コンパクト（箱）」スタイルのPNGを正確なフォントメトリクスにより300 dpiでネイティブに出力します。',
+    'cap.dot.bad': '画面上の図はどちらの場合も同じで、同梱のWebAssembly版Graphvizがブラウザ内で描画します。システムのGraphvizがない場合、「コンパクト（箱）」スタイルのPNG出力は300 dpiのネイティブ描画ではなく、その図をここでラスタライズしたものになるため、ラベルの外枠（特に日本語・中国語・韓国語）がやや緩く、または詰まって見えることがあります。「標準記号」スタイルのPNGは常にブラウザ内で出力します。',
+    'cap.dot.fix': 'graphviz.org からGraphvizをインストールして再起動してください。PNG出力に自動的に使用されます。',
+    'cap.excel.name': 'Excel出力',
+    'cap.excel.ok': '解析を .xlsx 形式で出力できます。',
+    'cap.excel.bad': 'openpyxl パッケージが未インストールのため、Excel出力は利用できません。JSONとXMLの出力には影響しません。',
+    'cap.excel.fix': 'openpyxl をインストールしてエディタを再起動してください:',
+    'cap.excel.cmd': 'pip install openpyxl',
+    'cap.ai.name': 'AIアシスタント',
+    'cap.ai.ok': 'プロバイダーが設定済みです。チャット・解析・更新を利用できます。',
+    'cap.ai.bad': 'プロバイダーが未設定のため、チャットとAI機能は無効です。これは任意の機能で、他のすべての機能は設定なしで動作します。',
+    'cap.ai.fix': 'AI設定でプロバイダーとAPIキーを追加してください。',
+    'diagram.zoomIn': '拡大',
+    'diagram.zoomOut': '縮小',
+    'diagram.fit': 'ウィンドウに合わせる',
+    'diagram.exportSvg': 'SVGで書き出す',
+    'diagram.exportPng': 'PNGで書き出す',
+    'diagram.rendererNative': 'システムのGraphvizで描画',
+    'diagram.rendererWasm': 'ブラウザ内で描画 (Graphviz WASM)',
+    'diagram.error': '図を描画できませんでした: ',
+    'diagram.nothingToExport': '書き出せる図がまだありません。',
+    'diagram.pngFailed': '図をPNGに変換できませんでした。',
+    'diagram.nativeFellBack': 'システムのGraphvizが利用できないため、ブラウザ内描画で書き出しました。',
+    'diagram.fontSettings': '図の設定',
+    'diagram.fontSettingsClose': '閉じる',
+    'diagram.fontLabel': 'フォント',
+    'diagram.fontAutoUsing': '検出結果: ',
+    'diagram.scaleLabel': '枠の余白 (0〜30)',
+    'diagram.scaleHint': 'すべての枠の文字のまわりに加える余白です。文字が枠からはみ出す場合は大きくしてください。',
+
+    // --- P4: the AI assistant panel (chat.js) and its setup dialog
+    // (aisettings.js).
+    'ai.settings.title': 'AIアシスタントの設定',
+    'ai.settings.intro':
+      'プロバイダーを選び、APIキーを貼り付けて「接続テストして保存」を押してください。'
+      + 'キーは保存前にプロバイダーで検証され、このマシン内にのみ保管されます。',
+    'ai.settings.loading': 'プロバイダー一覧を読み込んでいます...',
+    'ai.field.provider': 'プロバイダー',
+    'ai.field.key': 'APIキー',
+    'ai.field.model': 'モデル',
+    'ai.field.endpoint': 'APIエンドポイント',
+    'ai.field.advanced': '詳細設定',
+    'ai.provider.openai': 'OpenAI',
+    'ai.provider.anthropic': 'Anthropic Claude',
+    'ai.provider.google': 'Google Gemini',
+    'ai.hint.openai': '有料アカウント。リクエストごとに課金されます。',
+    'ai.hint.anthropic': '有料アカウント。リクエストごとに課金されます。',
+    'ai.hint.google': '無料枠があるため、最も手軽に試せます。',
+    'ai.key.where': 'キーの取得先',
+    'ai.key.placeholder': 'APIキーを貼り付け',
+    'ai.key.show': '表示',
+    'ai.key.hide': '非表示',
+    'ai.key.saved':
+      'キーは保存済みです（{preview}）。読み出せないため、そのまま使う場合は空欄のままにし、'
+      + '差し替える場合のみ入力してください。',
+    'ai.key.savedNoPreview':
+      'キーは保存済みです。読み出せないため、そのまま使う場合は空欄のままにし、'
+      + '差し替える場合のみ入力してください。',
+    'ai.key.savedOther': '保存済みのキーは {provider} のものです。ここで保存すると置き換わります。',
+    'ai.model.placeholder': 'モデル名',
+    'ai.model.hint': '候補から選ぶか、任意のモデル名を入力してください。',
+    'ai.model.needKey':
+      'これは組み込みの既定名です。キーを保存すると最新の一覧を取得します。'
+      + '任意のモデル名はいつでも入力できます。',
+    'ai.model.live': 'プロバイダーから取得しました。',
+    'ai.model.loading': 'モデル一覧を読み込んでいます...',
+    'ai.model.fallback': '最新の一覧ではなく組み込みの既定値です: {warning}',
+    'ai.model.fallbackPlain': '最新の一覧ではなく組み込みの既定値です。',
+    'ai.model.failed': 'モデル一覧を読み込めませんでした: {error}',
+    'ai.model.refresh': '再読込',
+    'ai.model.refreshTitle': 'このキーで使えるモデルをプロバイダーに問い合わせます',
+    'ai.model.unset': 'モデル未設定',
+    'ai.btn.testSave': '接続テストして保存',
+    'ai.btn.cancel': 'キャンセル',
+    'ai.btn.clear': '消去',
+    'ai.status.testing': '{provider} への接続をテストしています...',
+    'ai.status.saved': '接続しました。アシスタントを利用できます。',
+    'ai.status.clearing': '保存済みの認証情報を削除しています...',
+    'ai.status.cleared': '保存済みのAI認証情報を削除しました。',
+    'ai.current': '現在の設定: {provider}、{model}。',
+    'ai.confirm.clear':
+      '保存済みのAPIキーとプロバイダー設定を削除しますか？他の機能には影響しません。',
+    'ai.confirm.clearTitle': 'AI認証情報の消去',
+    'ai.err.provider': '先にプロバイダーを選択してください。',
+    'ai.err.key': 'APIキーを貼り付けてください。',
+    'ai.err.keyAgain':
+      '保存済みのキーは読み出せないため、設定を変更するにはキーを再度貼り付ける必要があります。'
+      + '現在の設定を変えない場合はキャンセルしてください。',
+    'ai.err.endpoint':
+      'エンドポイントが空です。プロバイダーを選び直すと既定のアドレスに戻ります。',
+    'ai.err.model': 'モデル名を選択または入力してください。',
+    'ai.err.providers': 'プロバイダー一覧を読み込めませんでした: {error}',
+    'ai.err.noProviders': 'サーバーがAIプロバイダーを提示しなかったため、設定できる項目がありません。',
+    'ai.err.noSettings': 'AI設定ダイアログを読み込めなかったため、設定を実行できません。',
+    'ai.endpoint.hint':
+      'プロバイダーの既定値を入力しています。プロキシや互換ゲートウェイを使う場合のみ変更してください。',
+    'ai.endpoint.azureHint':
+      '必須: Azure OpenAI リソースの URL（例: https://my-resource.openai.azure.com）、または …/openai/deployments/<デプロイ名> の完全なアドレスを入力してください。YOUR-RESOURCE と YOUR-DEPLOYMENT は実際の名前に置き換えてください。',
+
+    'ai.invite.title': 'AIアシスタントの設定',
+    'ai.invite.body':
+      'アシスタントは任意の機能で、設定しなくても他のすべての機能は動作します。'
+      + 'プロバイダーとAPIキーを追加すると、このフォールトツリーについて質問したり、'
+      + '解析を依頼したり、変更案を提示させて確認したりできます。',
+    'ai.invite.free': 'Google Gemini には無料枠があり、最も手軽に試せます。',
+    'ai.invite.button': 'AIを設定',
+
+    'ai.chat.log': 'AIアシスタントとの会話',
+    'ai.chat.input': 'AIアシスタントへのメッセージ',
+    'ai.chat.placeholder': 'このフォールトツリーについて質問してください。Enterで送信、Shift+Enterで改行。',
+    'ai.chat.send': '送信',
+    'ai.chat.sendTitle': 'メッセージを送信 (Enter)',
+    'ai.chat.analyze': 'FTA解析',
+    'ai.chat.analyzeTitle': 'このフォールトツリーのレビューを依頼します。内容は変更されません。',
+    'ai.chat.update': 'FTA更新',
+    'ai.chat.updateTitle':
+      '更新版のフォールトツリーを依頼します。置き換える前に検証されます。',
+    'ai.chat.clear': '会話を消去',
+    'ai.chat.clearTitle': 'この会話を画面とサーバーの両方から消去します。',
+    'ai.chat.markdown': '整形表示',
+    'ai.chat.markdownLabel': '回答をMarkdownで整形して表示',
+    'ai.chat.markdownOnTitle': '回答をMarkdownで整形して表示しています。クリックすると元のテキストを表示します。',
+    'ai.chat.markdownOffTitle': '回答を元のテキストのまま表示しています。クリックするとMarkdownで整形します。',
+
+    'ai.role.user': 'あなた',
+    'ai.role.assistant': 'アシスタント',
+    'ai.role.system': 'エディタ',
+    'ai.role.error': 'エラー',
+
+    'ai.msg.welcome':
+      'このフォールトツリーについて何でも質問してください。「FTA解析」は内容を変更せずに'
+      + 'レビューし、「FTA更新」は全体の置き換え案を提示します。置き換え案は適用前に'
+      + '検証されます。',
+    'ai.msg.notConfigured':
+      'プロバイダーが未設定のため送信できません。「AIを設定」から追加してください。',
+    'ai.msg.busy': 'アシスタントは前の要求をまだ処理中です。',
+    'ai.msg.empty': '先にメッセージを入力してください。',
+    'ai.msg.emptyReply': 'アシスタントの応答が空でした。',
+    'ai.msg.thinking': 'アシスタントの応答を待っています...',
+    'ai.msg.analyzing': 'フォールトツリーを解析しています...',
+    'ai.msg.analyzePrompt': 'このFTAを解析し、改善案を提示してください。',
+    'ai.msg.updating': '更新版のフォールトツリーを生成しています...',
+    'ai.msg.updatePrompt':
+      '元のJSON構造を保ったまま、提案内容でこのFTAを更新してください。',
+    'ai.msg.updated': '検証済みの版でフォールトツリーを置き換えました。',
+    'ai.update.summary': '{added}件追加、{changed}件変更、{removed}件削除しました（Ctrl+Zで元に戻せます）。',
+    'ai.update.summaryRemoved': '{added}件追加、{changed}件変更、{removed}件削除（{removedNames}）しました（Ctrl+Zで元に戻せます）。',
+    'ai.update.summaryChanged': '{added}件追加、{changed}件変更（{changedNames}）、{removed}件削除しました（Ctrl+Zで元に戻せます）。',
+    'ai.update.summaryBoth': '{added}件追加、{changed}件変更（{changedNames}）、{removed}件削除（{removedNames}）しました（Ctrl+Zで元に戻せます）。',
+    'ai.msg.clearing': '会話を消去しています...',
+
+    'ai.changes.title': '変更の提案',
+    'ai.changes.hint': 'すべて選択されています。不要なものはチェックを外してから適用してください。',
+    'ai.changes.apply': '選択分を適用',
+    'ai.changes.dismiss': '破棄',
+    'ai.changes.details': '変更データ',
+    'ai.changes.target': '対象: {id}',
+    'ai.changes.untitled': '変更 {n}',
+    'ai.changes.none': '何も選択されていないため、適用する変更がありません。',
+    'ai.changes.applying': '選択した変更を適用しています...',
+    'ai.changes.applied': '提案 {total} 件のうち {n} 件を適用しました。',
+    'ai.changes.dismissed': 'これらの提案を破棄しました。',
+    'ai.changes.superseded': 'これらの提案は新しい提案に置き換えられました。',
+
+    'ai.diag.excerpt': 'AI出力の先頭500文字',
+    'ai.diag.raw': '応答の生データ',
+    'ai.diag.section': '検証に失敗した箇所',
+    'ai.diag.keys': 'トップレベルのキー',
+
+    // --- P5: the tree panel's editing surface (tree.js).
+    'tree.ariaLabel': 'フォールトツリー',
+    'tree.empty': '解析が読み込まれていません。',
+    'tree.zeroAria': '、確率ゼロ',
+    'tree.zeroTitle': '確率ゼロ',
+    'tree.searchLabel': 'フォールトツリーを検索',
+    'tree.searchPlaceholder': '名前またはIDを検索 (Ctrl+F)',
+    'tree.searchClear': '検索条件を消去',
+    'tree.searchMatches': '{total} 件中 {n} 件が一致',
+    'tree.searchNone': '「{q}」に一致するものはありません',
+    'tree.hint':
+      'F2または名前のダブルクリックで改名します。Ctrl+Shift+矢印キーでフォーカス中の'
+      + 'ノードを移動します。Ctrl+クリックとShift+クリックで複数選択できます。',
+    'tree.renameLabel': '「{name}」の新しい名前',
+    'tree.renameEmpty': 'ノード名は空にできないため、変更は保存されませんでした。',
+    'tree.renamed': '「{name}」に改名しました。',
+    'tree.moved': '「{name}」を「{parent}」の配下に移動しました。',
+    'tree.reordered': '「{name}」を「{parent}」内で移動しました。',
+    'tree.moveInvalid': 'ノードを自分自身または自分の子孫の配下へは移動できません。',
+    'tree.moveRootRefused': 'ルートノードは移動できません。',
+    'tree.moveNoIndent': '配下に移動できる兄弟ノードが上にありません。',
+    'tree.moveNoOutdent': '既にルートノードの直下にあります。',
+    'tree.selected': '{n} 件のノードを選択中',
+    'tree.deletedMany': '{n} 件のノードを削除しました。元に戻す操作 1 回ですべて戻ります。',
+    'tree.deletePartial': '{total} 件中 {done} 件のノードを削除しました。残りはそのままです。',
+    'tree.rootKept': 'ルートノードは削除できないため、何も削除されませんでした。',
+
+    'ai.changes.unindexed': 'この提案は適用できません（サーバーが番号を付けていません）。',
+    'ai.changes.linkAdd': 'リンクを追加: {relation} → {name}',
+    'ai.changes.linkRemove': 'リンクを削除: {relation} → {name}',
+    'ai.changes.linkNone': 'リンク: 変更なし',
+    'ai.changes.linkProblem': 'この提案は適用されません。{reason}',
+    'ai.changes.rejectedOne': '提案は却下されました — {title}。{reason}',
+    'ai.changes.ignoredOne': '適用しました — {title}。提案では変更されない項目: {fields}',
+    'details.calcMcub': '（MCUB）・ツリー計算値 {walk}',
+    'details.calcMcubTitle': '頂上事象には、重複事象を1回だけ数える最小カット上限（MCUB）を表示しています。ツリー計算はすべての枝を独立として扱います。',
+
+    'dialog.title': 'ダイアログ',
+    'dialog.confirmTitle': '確認',
+    'dialog.ok': '決定',
+    'dialog.cancel': 'キャンセル',
+    'dialog.dismiss': '閉じる',
+    'dialog.somethingWrong': '問題が発生しました。',
+    'dialog.addNode': 'ノードを追加',
+    'dialog.addNodeUnder': '「{name}」の配下にノードを追加',
+    'dialog.addNoSelection':
+      'ノードが選択されていないため、頂上事象の配下に追加します。別の場所に追加する場合は、キャンセルしてからノードを選択してください。',
+    'dialog.nameRequired': '名前は必須です。',
+    'dialog.typeRequired': '種別は空にできません。',
+    'dialog.probabilityRange': '確率は 0.0 から 1.0 の間の数値で入力してください。',
+    'dialog.gateNot':
+      'NOTゲートには対応していません。確率計算エンジンにNOTの意味付けがなく、'
+      + 'ORとして計算されてしまいます。ANDまたはORを使用してください。',
+    'dialog.gateInvalid': '論理ゲートは AND または OR を指定してください。',
+    'dialog.gateUnsupported': '{gate}（非対応）',
+
+    'details.aria': 'ノード詳細',
+    'details.name': '名前',
+    'details.type': '種別',
+    'details.probability': '確率',
+    'details.probabilityBase': '確率（基本）',
+    'details.logicGate': '論理ゲート',
+    'details.notes': 'メモ',
+    'details.links': 'リンク',
+    'details.empty': 'ツリーでノードを選択すると編集できます。',
+    'details.nodeId': 'ノードID',
+    'details.calculated': '計算確率',
+    'details.zeroFlag': '✖ 確率ゼロ',
+    'details.saveFailed': '変更を保存できませんでした。',
+
+    'links.search': 'イベントを検索',
+    'links.searchPlaceholder': '名前またはIDで絞り込み',
+    'links.matching': '一致するイベント',
+    'links.noMatch': '一致するイベントはありません',
+    'links.section': '{relation} リンク',
+    'links.listAria': '{relation} リンク',
+    'links.add': '追加 →',
+    'links.addTitle': '選択したイベントを {relation} リンクとして追加',
+    'links.remove': '← 削除',
+    'links.removeTitle': '選択した {relation} リンクを削除',
+    'links.self': 'ノードを自分自身にリンクすることはできません。',
+    'links.duplicate': 'その関係で既にリンクされています。',
+    'links.selectFirst': '先に上の一覧からイベントを1つ以上選択してください。',
+    'links.added': '{relation} リンクを {n} 件追加しました。',
+    'links.skippedSelf': 'ノード自身はスキップしました。',
+    'links.skippedDuplicate': 'リンク済みの {n} 件をスキップしました。',
+    'links.selectToRemove': '削除する {relation} リンクを1つ以上選択してください。',
+    'links.removed': '{relation} リンクを {n} 件削除しました。',
+    'links.saveFailed': 'リンクを保存できませんでした。',
+    'links.loadFailed': 'ノード一覧を読み込めませんでした。',
+  },
+};
+
+let language = readLocal('fta.language') === 'ja' ? 'ja' : 'en';
+
+function t(key, vars) {
+  const table = STRINGS[language] || STRINGS.en;
+  let text = table[key];
+  if (text === undefined) text = STRINGS.en[key];
+  if (text === undefined) return key;
+  if (!vars) return text;
+  return text.replace(/\{(\w+)\}/g, (whole, name) =>
+    Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole
+  );
+}
+
+function applyLanguage() {
+  document.documentElement.lang = language;
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  for (const el of document.querySelectorAll('[data-i18n-title]')) {
+    el.title = t(el.dataset.i18nTitle);
+  }
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) {
+    el.setAttribute('aria-label', t(el.dataset.i18nAria));
+  }
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  }
+  const code = $('#lang-code');
+  if (code) code.textContent = language.toUpperCase();
+  applyThemeLabel();
+  renderHeadline();
+  // applyLanguage rewrote the tab label's textContent, dropping the badge.
+  renderValidationBadge();
+  renderRecoveryOffer(); // its button and text are written with values
+  if (store.state) renderShell(store.state);
+}
+
+function setLanguage(next) {
+  language = next === 'ja' ? 'ja' : 'en';
+  writeLocal('fta.language', language);
+  applyLanguage();
+  window.dispatchEvent(new CustomEvent('fta:language', { detail: { language } }));
+}
+
+/**
+ * Merge a feature catalog `{en: {...}, ja: {...}}` into STRINGS, so t()
+ * resolves its keys like any other. A key that already exists is kept (first
+ * registration wins) and reported: test_catalog_parity.py rejects duplicates
+ * across catalogs, so this only fires during development.
+ */
+function registerStrings(table) {
+  if (!table || typeof table !== 'object') return;
+  for (const lang of ['en', 'ja']) {
+    const entries = table[lang];
+    if (!entries || typeof entries !== 'object') continue;
+    for (const [key, value] of Object.entries(entries)) {
+      if (Object.prototype.hasOwnProperty.call(STRINGS[lang], key)) {
+        if (STRINGS[lang][key] !== value) {
+          // eslint-disable-next-line no-console
+          console.warn('[fta] duplicate i18n key ignored: ' + lang + ':' + key);
+        }
+        continue;
+      }
+      STRINGS[lang][key] = String(value);
+    }
+  }
+}
+
+/**
+ * Feature catalogs under static/js/i18n/, loaded before the first
+ * applyLanguage() so no key ever flashes on screen. Each exports
+ * `default {en: {...}, ja: {...}}`. A workstream adds its file here.
+ */
+const CATALOGS = [
+  './i18n/shell17.js',
+  './i18n/ux1.js',
+  './i18n/ux2.js',
+  './i18n/ux3.js',
+  './i18n/fix181.js',
+  './i18n/val.js',
+  './i18n/gate.js',
+  './i18n/diagram.js',
+  './i18n/trace.js',
+  './i18n/fmea.js',
+  './i18n/quant.js',
+  './i18n/cutsets.js',
+  './i18n/imp.js',
+  './i18n/unc.js',
+  './i18n/report.js',
+  './i18n/grid.js',
+  './i18n/ccf.js',
+  './i18n/whatif.js',
+  './i18n/whatifcaution.js',
+];
+
+async function loadCatalogs() {
+  await Promise.all(
+    CATALOGS.map(async (spec) => {
+      try {
+        const module = await import(spec);
+        registerStrings(module && (module.default || module.strings));
+      } catch (err) {
+        // A broken catalog costs its strings (keys show as themselves), not
+        // the editor.
+        // eslint-disable-next-line no-console
+        console.error('[fta] could not load catalog ' + spec, err);
+      }
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 1.7 display preferences: Advanced switch, significant figures, headline
+// ---------------------------------------------------------------------------
+
+let advanced = readLocal('fta.advanced') === '1';
+
+/** Basic vs advanced UI. Calculations, files and the API are identical. */
+function setAdvanced(on) {
+  const next = Boolean(on);
+  const changed = next !== advanced;
+  advanced = next;
+  document.documentElement.setAttribute('data-advanced', advanced ? '1' : '0');
+  writeLocal('fta.advanced', advanced ? '1' : '0');
+  const toggle = $('#advanced-toggle');
+  if (toggle && toggle.checked !== advanced) toggle.checked = advanced;
+  renderHeadline();
+  if (changed) {
+    window.dispatchEvent(new CustomEvent('fta:advanced', { detail: { advanced } }));
+  }
+  return advanced;
+}
+
+/** Last value handed to setHeadline, re-rendered on sig-fig / language change. */
+let headline = null;
+
+/**
+ * Paint the top-bar headline. `value` is the top-event probability, `method`
+ * 'mcub' | 'treeWalk' (anything else is treated as the tree walk), `alt` the
+ * other method's value, shown in the MCUB badge's tooltip, `reason` why the
+ * MCUB is used ('repeated' | 'nonCoherent' | 'both'), `pand` whether PAND
+ * gates were expanded as plain AND in the cut sets, `capped` that only the
+ * summary's own caps (2000 sets / 2 s) cut its cut sets short, `truncated`
+ * that the document's limits did. null clears it.
+ */
+function setHeadline(next) {
+  headline = next && typeof next === 'object' ? { ...next } : null;
+  renderHeadline();
+  // Node Details shows the headline on the root (see rootHeadline()).
+  window.dispatchEvent(new CustomEvent('fta:headline'));
+}
+
+/**
+ * The MCUB headline the root node shows instead of its own tree-walk value,
+ * as `{value}`, or null: the same rule as the server's `engine.root_headline`
+ * (the diagram's top box) -- the headline is the MCUB and the summary's own
+ * caps did not cut it short. Null also while the headline on screen was
+ * computed for an earlier tree (it is refreshed ~0.4 s after an edit): the
+ * root then shows its tree-walk value, never an MCUB of another document.
+ */
+function rootHeadline() {
+  if (!headline || headline.method !== 'mcub' || headline.capped) return null;
+  // A document with an applied CCF group: the root is covered by ccfGate().
+  if (Number(headline.ccfApplied) > 0) return null;
+  if (typeof headline.value !== 'number' || !Number.isFinite(headline.value)) return null;
+  if (!store.state || headline.tree !== store.state.tree) return null;
+  return { value: headline.value };
+}
+
+function renderHeadline() {
+  const valueEl = $('#headline-value');
+  const badge = $('#headline-badge');
+  if (!valueEl || !badge) return;
+  const value = headline ? headline.value : null;
+  valueEl.textContent =
+    value === null || value === undefined ? '—' : formatProb(value, getSigFigs());
+  const mcub = Boolean(headline) && headline.method === 'mcub';
+  // With an applied CCF group the number is the MCUB including CCF and says so
+  // in #headline-ccf; the unlabelled badge and the value's title (which would
+  // quote a tree-walk value without CCF) give way to that.
+  const ccfApplied = headline ? Number(headline.ccfApplied) || 0 : 0;
+  badge.hidden = !(mcub && advanced) || ccfApplied > 0;
+  if (mcub && ccfApplied > 0) {
+    badge.removeAttribute('title');
+    valueEl.removeAttribute('title');
+  } else if (mcub) {
+    const alt =
+      headline.alt === null || headline.alt === undefined ? '—' : formatProb(headline.alt, getSigFigs());
+    const reasons = ['repeated', 'nonCoherent', 'both'];
+    const reason = t('headline.reason.' + (reasons.includes(headline.reason) ? headline.reason : 'other'));
+    let title = t('headline.mcubTitle', { alt, reason });
+    if (headline.pand) title += '\n' + t('headline.pandNote');
+    badge.title = title;
+    // Basic mode hides the badge, but the number can still differ from the
+    // root's tree-walk value in Node Details; hovering the number explains why.
+    valueEl.title = title;
+  } else {
+    badge.removeAttribute('title');
+    valueEl.removeAttribute('title');
+  }
+  const marker = $('#headline-marker');
+  if (marker) {
+    const lines = [];
+    if (headline && headline.capped) lines.push(t('headline.cappedNote'));
+    if (headline && headline.truncated) lines.push(t('headline.truncatedNote'));
+    marker.hidden = !(lines.length && advanced);
+    if (lines.length) {
+      marker.title = lines.join('\n');
+      marker.setAttribute('aria-label', lines.join(' '));
+    } else {
+      marker.removeAttribute('title');
+      marker.removeAttribute('aria-label');
+    }
+  }
+  renderHeadlineCcf();
+}
+
+// ---------------------------------------------------------------------------
+// CCF groups (F2): headline phrases, group status, gate values
+// ---------------------------------------------------------------------------
+//
+// Three small spans in the headline say what the number includes. They exist
+// in the page but stay hidden for a document without a CCF group, so such a
+// document sees no difference. setHeadline() takes, beside the 1.7 fields:
+//   ccfApplied / ccfNotApplied   how many groups are (not) applied
+//   ccfIncomplete / ccfReason    the cut sets were cut short: 'time' | 'error' | 'summary cap'
+//   walk                         the tree-walk value shown beside an incomplete headline
+//   ccfGates                     {nodeId: {method: 'mcub', value} | {method: 'na'}}
+//   ccf                          {applied: [...], notApplied: [{id, name, reason}]} (the title)
+
+/** The language key of an incomplete reason. */
+const CCF_REASON_KEYS = { time: 'time', error: 'error', 'summary cap': 'cap' };
+
+/** Group status as GET /api/ccf/groups answered it for `tree`: {tree, applied, notApplied} or null. */
+let ccfInfo = null;
+let ccfInfoTimer = null;
+let ccfInfoSeq = 0;
+
+function ccfGroupsStored() {
+  return groupsOf(store.state && store.state.analysis);
+}
+
+/** The reason text of a not-applied group in the current language. */
+function ccfReasonText(group) {
+  const known = ccfInfo ? ccfInfo.notApplied.find((g) => g.id === group.id) : null;
+  const reason = known && known.reason && typeof known.reason === 'object' ? known.reason : group.reason;
+  if (reason && typeof reason === 'object') return String(reason[language] || reason.en || '');
+  return reason === null || reason === undefined ? '' : String(reason);
+}
+
+function renderHeadlineCcf() {
+  const ccfEl = $('#headline-ccf');
+  const walkEl = $('#headline-walk');
+  const noteEl = $('#headline-ccf-note');
+  if (!ccfEl || !walkEl || !noteEl) return;
+  const applied = headline ? Number(headline.ccfApplied) || 0 : 0;
+  const notApplied = headline ? Number(headline.ccfNotApplied) || 0 : 0;
+  const incomplete = Boolean(headline) && Boolean(headline.ccfIncomplete);
+
+  let ccfText = '';
+  if (incomplete) ccfText = t('headline.ccf.incomplete');
+  else if (applied > 0) ccfText = applied === 1 ? t('headline.ccf.includes1') : t('headline.ccf.includes', { n: applied });
+  ccfEl.textContent = ccfText;
+  ccfEl.title = ccfText;
+  ccfEl.hidden = !ccfText;
+
+  walkEl.hidden = !incomplete;
+  if (incomplete) {
+    const key = CCF_REASON_KEYS[headline.ccfReason] || 'error';
+    walkEl.querySelector('.headline__walk-label').textContent = t('headline.ccf.walk', {
+      reason: t('headline.ccf.reason.' + key),
+    });
+    const walk = headline.walk;
+    walkEl.querySelector('.headline__walk-value').textContent =
+      typeof walk === 'number' && Number.isFinite(walk) ? formatProb(walk, getSigFigs()) : '—';
+  }
+
+  let noteText = '';
+  let noteTitle = '';
+  if (notApplied > 0) {
+    noteText = notApplied === 1 ? t('headline.ccf.notApplied1') : t('headline.ccf.notApplied', { n: notApplied });
+    const list = ((headline.ccf && headline.ccf.notApplied) || [])
+      .map((g) => {
+        const reason = ccfReasonText(g);
+        return reason ? g.name + ' (' + reason + ')' : String(g.name);
+      })
+      .join('; ');
+    noteTitle = t('headline.ccf.notAppliedTitle', { list });
+  }
+  noteEl.textContent = noteText;
+  noteEl.title = noteTitle;
+  noteEl.hidden = !noteText;
+
+  // A separator sits before each visible span and is hidden with it.
+  for (const span of [ccfEl, walkEl, noteEl]) {
+    const sep = span.previousElementSibling;
+    if (sep && sep.classList.contains('headline__sep')) sep.hidden = span.hidden;
+  }
+}
+
+/** The CCF fields of a headline for a document in ETA mode: every group is not applied. */
+function ccfEtaFields() {
+  const groups = ccfGroupsStored();
+  if (!groups.length) return {};
+  return {
+    ccfApplied: 0,
+    ccfNotApplied: groups.length,
+    ccf: { applied: [], notApplied: groups.map((g) => ({ id: g.id, name: String(g.name), reason: 'ETA mode' })) },
+  };
+}
+
+function ccfHeadlineFresh() {
+  return Boolean(headline) && Boolean(store.state) && headline.tree === store.state.tree;
+}
+
+/**
+ * The cut-set value of a gate above a CCF member for the tree now on screen:
+ * `{method: 'mcub', value}`, `{method: 'na'}` or null (not such a gate, or the
+ * headline has not caught up with the last edit yet).
+ */
+function ccfGate(id) {
+  if (!ccfHeadlineFresh() || !headline.ccfGates) return null;
+  const gate = headline.ccfGates[String(id)];
+  return gate && typeof gate === 'object' ? gate : null;
+}
+
+/**
+ * True while a gate above a CCF member waits for its value: the document has
+ * groups that may be applied, the headline of the current tree has not
+ * arrived, and the gate has a member below it. The tree and Details then show
+ * a dash, never the tree-walk value (which is far too low for such a gate).
+ */
+function ccfGatePending(id) {
+  const groups = ccfGroupsStored();
+  if (!groups.length || isEtaMode() || ccfHeadlineFresh()) return false;
+  if (ccfInfo && ccfInfo.applied.length === 0) return false;
+  return ancestorsOfMembers(store.state.tree, store.state.analysis).has(String(id));
+}
+
+/** `{tree, applied, notApplied, gates}` for the current document, or null before it is known. */
+function ccfState() {
+  if (!ccfInfo) return null;
+  return {
+    tree: ccfInfo.tree,
+    fresh: Boolean(store.state) && ccfInfo.tree === store.state.tree,
+    applied: ccfInfo.applied.slice(),
+    notApplied: ccfInfo.notApplied.slice(),
+    gates: ccfHeadlineFresh() && headline.ccfGates ? { ...headline.ccfGates } : null,
+  };
+}
+
+function announceCcf() {
+  window.dispatchEvent(new CustomEvent('fta:ccf'));
+}
+
+function scheduleCcfInfo() {
+  if (!ccfInfo && !ccfGroupsStored().length) return;
+  if (ccfInfoTimer) window.clearTimeout(ccfInfoTimer);
+  ccfInfoTimer = window.setTimeout(refreshCcfInfo, 80);
+}
+
+/** Ask which groups are applied (a quick request: no cut sets), for the badges and Details. */
+async function refreshCcfInfo() {
+  ccfInfoTimer = null;
+  const seq = ++ccfInfoSeq;
+  if (sessionLost || !store.state) return;
+  if (!ccfGroupsStored().length) {
+    if (ccfInfo) {
+      ccfInfo = null;
+      announceCcf();
+    }
+    return;
+  }
+  const forTree = store.state.tree;
+  try {
+    const res = await api.get('/ccf/groups');
+    if (seq !== ccfInfoSeq) return;
+    const next = { tree: forTree, applied: [], notApplied: [] };
+    for (const g of Array.isArray(res.groups) ? res.groups : []) {
+      const status = g.status || {};
+      if (status.applied) {
+        next.applied.push({ id: g.id, name: String(g.name), beta: g.beta, members: g.members, alphaParts: g.alphaParts || null, warnings: status.warnings || [] });
+      } else {
+        next.notApplied.push({ id: g.id, name: String(g.name), code: status.code, reason: status.reason || {} });
+      }
+    }
+    ccfInfo = next;
+    announceCcf();
+    renderHeadlineCcf();
+  } catch (_err) {
+    /* the badges keep their last state; the tab shows the failure itself */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// live headline + Validation badge (1.7 integration)
+// ---------------------------------------------------------------------------
+//
+// Both are refreshed from the server a short while after the document changed
+// (any new `tree`, `analysis` or mode -- which covers edits, open, import,
+// undo and redo, all of which land in the store). Debounced so rapid edits
+// cost one request, sequence-numbered so a slow stale answer never overwrites
+// a newer one.
+
+const HEADLINE_DEBOUNCE_MS = 400;
+const VALIDATION_DEBOUNCE_MS = 600;
+
+let liveSeen = { tree: undefined, analysis: undefined, mode: undefined, warnings: undefined };
+let headlineTimer = null;
+let headlineSeq = 0;
+let validationTimer = null;
+let validationSeq = 0;
+/** Last {errors, warnings} from /analysis/validate, or null before the first. */
+let validationCounts = null;
+/** Last issue list from /analysis/validate (null when the server gave none). */
+let validationIssues = null;
+/** Issues the Validation tab dismissed (session notices), by signature. */
+let validationDismissed = new Set();
+
+/** Same identity as tabs/validation.js signature(). */
+function validationSignature(issue) {
+  return [issue.code, issue.nodeId, issue.message].join('\u0001');
+}
+
+/**
+ * {errors, warnings} as the Validation list shows them: dismissed session
+ * notices do not count. Without an issue list, the server's counts.
+ */
+function visibleValidationCounts(res) {
+  if (Array.isArray(validationIssues)) {
+    const out = { errors: 0, warnings: 0 };
+    for (const issue of validationIssues) {
+      if (validationDismissed.has(validationSignature(issue))) continue;
+      if (issue.severity === 'error') out.errors += 1;
+      else if (issue.severity === 'warning') out.warnings += 1;
+    }
+    return out;
+  }
+  const counts = (res && res.counts) || {};
+  return { errors: Number(counts.error) || 0, warnings: Number(counts.warning) || 0 };
+}
+
+function rootCalculated() {
+  const tree = store.state && store.state.tree;
+  if (!tree || typeof tree !== 'object') return null;
+  const value = tree.calculatedProbability;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function isEtaMode() {
+  const meta = store.state && store.state.metadata;
+  return Boolean(meta) && meta.mode === 'ETA';
+}
+
+/** Store subscriber: schedule refreshes when the document itself changed. */
+function onDocumentMaybeChanged(state) {
+  if (!state) return;
+  const next = {
+    tree: state.tree,
+    analysis: state.analysis,
+    mode: state.metadata ? state.metadata.mode : undefined,
+    warnings: state.sessionWarnings,
+  };
+  const docChanged =
+    next.tree !== liveSeen.tree || next.analysis !== liveSeen.analysis || next.mode !== liveSeen.mode;
+  const warnChanged = next.warnings !== liveSeen.warnings;
+  liveSeen = next;
+  if (docChanged) {
+    scheduleCcfInfo();
+    scheduleHeadline();
+  }
+  if (docChanged || warnChanged) scheduleValidationBadge();
+}
+
+function scheduleHeadline() {
+  if (headlineTimer) window.clearTimeout(headlineTimer);
+  // Before the first server answer (and in ETA mode) show the tree-walk value
+  // at once; afterwards the previous figure stays until the new one arrives.
+  if (!headline || isEtaMode()) setHeadline({ value: rootCalculated(), method: 'treeWalk', ...(isEtaMode() ? ccfEtaFields() : {}) });
+  headlineTimer = window.setTimeout(refreshHeadline, HEADLINE_DEBOUNCE_MS);
+}
+
+async function refreshHeadline() {
+  headlineTimer = null;
+  const seq = ++headlineSeq;
+  if (sessionLost || !store.state) return;
+  if (isEtaMode()) {
+    // An event tree has no cut sets: show the root's calculated value, no badge.
+    setHeadline({ value: rootCalculated(), method: 'treeWalk', ...ccfEtaFields() });
+    return;
+  }
+  try {
+    // The tree this summary is for: the answer describes the document as it
+    // was when the request left (no edit can land in between without making
+    // this request stale).
+    const forTree = store.state.tree;
+    const res = await api.get('/analysis/summary');
+    if (seq !== headlineSeq) return; // a newer request superseded this one
+    // CCF (F2): with an applied group whose cut sets are incomplete there is no
+    // headline number; the tree-walk value is shown beside it, labelled.
+    const ccfIncomplete = res.ccfIncomplete === true || res.headlineMethod === 'incomplete';
+    const value = typeof res.headline === 'number' ? res.headline : ccfIncomplete ? null : rootCalculated();
+    const method = res.headlineMethod === 'mcub' ? 'mcub' : ccfIncomplete ? 'incomplete' : 'treeWalk';
+    const repeated = Array.isArray(res.repeatedEvents) && res.repeatedEvents.length > 0;
+    const nonCoherent = Boolean(res.nonCoherent);
+    // capped: only the summary's own caps (2000 sets / 2 s) cut the cut sets
+    // short; truncated: the document's limits did (truncatedBy 'time' /
+    // 'error' mean the cut sets did not finish at all, not a document limit).
+    // Either matters only when the headline comes from the cut sets (MCUB) or
+    // the cut sets failed.
+    const by = Array.isArray(res.truncatedBy) ? res.truncatedBy : null;
+    const failed = Boolean(by) && (by.includes('time') || by.includes('error'));
+    const fromCutSets = method === 'mcub' || failed;
+    const docTruncated = by ? by.some((b) => b !== 'time' && b !== 'error') : Boolean(res.truncated);
+    setHeadline({
+      value,
+      method,
+      alt: method === 'mcub' ? res.treeWalk : null,
+      reason: repeated && nonCoherent ? 'both' : nonCoherent ? 'nonCoherent' : repeated ? 'repeated' : null,
+      pand: (res.approximations || []).some((a) => a && a.code === 'PAND_APPROX'),
+      capped: fromCutSets && Boolean(res.capped),
+      truncated: fromCutSets && docTruncated,
+      tree: forTree,
+      ...(res.ccf ? ccfHeadlineFields(res, ccfIncomplete) : {}),
+    });
+  } catch (_err) {
+    if (seq !== headlineSeq) return;
+    // Silent fallback: the headline is a convenience, not worth a toast.
+    setHeadline({ value: rootCalculated(), method: 'treeWalk' });
+  }
+}
+
+/** The CCF fields of a headline from a fault-tree summary that has a `ccf` block. */
+function ccfHeadlineFields(res, incomplete) {
+  const applied = Array.isArray(res.ccf.applied) ? res.ccf.applied : [];
+  const notApplied = Array.isArray(res.ccf.notApplied) ? res.ccf.notApplied : [];
+  return {
+    ccfApplied: applied.length,
+    ccfNotApplied: notApplied.length,
+    ccfIncomplete: incomplete,
+    ccfReason: res.ccfIncompleteReason || null,
+    walk: incomplete && typeof res.treeWalk === 'number' ? res.treeWalk : null,
+    ccfGates: res.ccfGates && typeof res.ccfGates === 'object' ? res.ccfGates : {},
+    ccf: res.ccf,
+  };
+}
+
+function scheduleValidationBadge() {
+  if (validationTimer) window.clearTimeout(validationTimer);
+  validationTimer = window.setTimeout(refreshValidationBadge, VALIDATION_DEBOUNCE_MS);
+}
+
+async function refreshValidationBadge() {
+  validationTimer = null;
+  const seq = ++validationSeq;
+  if (sessionLost || !store.state) return;
+  try {
+    const res = await api.get('/analysis/validate');
+    if (seq !== validationSeq) return;
+    validationIssues = res && Array.isArray(res.issues) ? res.issues : null;
+    validationCounts = visibleValidationCounts(res);
+  } catch (_err) {
+    if (seq !== validationSeq) return;
+    validationIssues = null;
+    validationCounts = null;
+  }
+  renderValidationBadge();
+}
+
+/** The count badge on the Validation tab (errors red; else warnings amber). */
+function renderValidationBadge() {
+  const button = $('#tab-validation');
+  if (!button) return;
+  let badge = button.querySelector('.tabstrip__badge');
+  const counts = validationCounts;
+  const kind = counts && counts.errors ? 'error' : counts && counts.warnings ? 'warn' : null;
+  if (!kind) {
+    if (badge) badge.hidden = true;
+    button.removeAttribute('aria-label');
+    return;
+  }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'tabstrip__badge';
+    badge.setAttribute('aria-hidden', 'true');
+    button.appendChild(badge);
+  }
+  const n = kind === 'error' ? counts.errors : counts.warnings;
+  badge.hidden = false;
+  badge.dataset.kind = kind;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  const text = t(kind === 'error' ? 'tab.badgeErrors' : 'tab.badgeWarnings', {
+    tab: t('tab.validation'),
+    n,
+  });
+  button.setAttribute('aria-label', text);
+  badge.title = text;
+}
+
+// ---------------------------------------------------------------------------
+// theme: system -> light -> dark -> system
+// ---------------------------------------------------------------------------
+
+const THEME_ORDER = ['system', 'light', 'dark'];
+const THEME_GLYPH = { system: '◐', light: '☀', dark: '☾' };
+let theme = ['light', 'dark'].includes(readLocal('fta.theme')) ? readLocal('fta.theme') : 'system';
+
+function applyTheme() {
+  if (theme === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', theme);
+  writeLocal('fta.theme', theme);
+  applyThemeLabel();
+  // diagram.js matches the rendered diagram's background/connectors to the
+  // theme; it cannot see `theme` (module-private to this file), so it needs
+  // telling explicitly rather than polling document.documentElement itself.
+  window.dispatchEvent(new CustomEvent('fta:theme', { detail: { theme } }));
+}
+
+function applyThemeLabel() {
+  const glyph = $('#theme-glyph');
+  const button = $('#btn-theme');
+  if (glyph) glyph.textContent = THEME_GLYPH[theme];
+  if (button) {
+    const label = t('theme.' + theme);
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  }
+}
+
+function cycleTheme() {
+  theme = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
+  applyTheme();
+}
+
+// ---------------------------------------------------------------------------
+// layout: grid sizes persisted per browser
+// ---------------------------------------------------------------------------
+
+const LAYOUT_KEY = 'fta.layout';
+const PANES = {
+  tree: { cssVar: '--tree-w', def: 320, min: 200, max: 760, axis: 'x' },
+  ai: { cssVar: '--ai-w', def: 340, min: 240, max: 760, axis: 'x' },
+  details: { cssVar: '--details-h', def: 260, min: 140, max: 720, axis: 'y' },
+};
+
+// `analysis` is the bottom panel's height while a tab other than Details is
+// shown; null until the user drags it, and then it is ANALYSIS_SHARE of the
+// workspace. A table of cut sets or an importance ranking in the 260 px that
+// suit the Details form showed five rows.
+let layout = { tree: PANES.tree.def, ai: PANES.ai.def, details: PANES.details.def, analysis: null };
+
+/**
+ * The diagram panel (and the tree beside it) keeps at least this much height
+ * above the bottom panel: its head, toolbar and caption take some 90 px, so
+ * this leaves about 150 px of diagram.
+ */
+const MIN_DIAGRAM_PX = 240;
+const ANALYSIS_SHARE = 0.45;
+/** The bottom tab on screen, from tabs/host.js (`fta:tab`). */
+let bottomTab = 'details';
+/** The bottom panel enlarged to all the height there is (this session only). */
+let bottomMax = false;
+
+function loadLayout() {
+  const raw = readLocal(LAYOUT_KEY);
+  if (!raw) return;
+  try {
+    const saved = JSON.parse(raw);
+    for (const key of Object.keys(PANES)) {
+      const value = Number(saved && saved[key]);
+      if (Number.isFinite(value)) {
+        layout[key] = clamp(Math.round(value), PANES[key].min, PANES[key].max);
+      }
+    }
+    const analysis = Number(saved && saved.analysis);
+    if (saved && saved.analysis !== null && Number.isFinite(analysis)) {
+      layout.analysis = Math.max(PANES.details.min, Math.round(analysis));
+    }
+  } catch (_err) {
+    /* corrupt entry: keep the defaults */
+  }
+}
+
+/** The most the bottom panel may take: what leaves MIN_DIAGRAM_PX above it. */
+function bottomCap() {
+  const workspace = $('#workspace');
+  const splitter = document.querySelector('[data-splitter="details"]');
+  if (!workspace || !workspace.clientHeight) return PANES.details.max;
+  const style = window.getComputedStyle(workspace);
+  const inner = workspace.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
+  const room = inner - (splitter ? splitter.offsetHeight : 0) - MIN_DIAGRAM_PX;
+  return Math.max(PANES.details.min, Math.floor(room));
+}
+
+/** The bottom panel's height now: by the kind of tab, never crowding out the diagram. */
+function bottomHeight() {
+  const cap = bottomCap();
+  let want = layout.details;
+  if (bottomMax) want = cap;
+  else if (bottomTab !== 'details') {
+    want = layout.analysis === null ? Math.round((cap + MIN_DIAGRAM_PX) * ANALYSIS_SHARE) : layout.analysis;
+  }
+  return clamp(Math.round(want), PANES.details.min, cap);
+}
+
+function applyLayout() {
+  const workspace = $('#workspace');
+  if (!workspace) return;
+  const sizes = { tree: layout.tree, ai: layout.ai, details: bottomHeight() };
+  for (const [key, pane] of Object.entries(PANES)) {
+    workspace.style.setProperty(pane.cssVar, sizes[key] + 'px');
+  }
+  for (const el of document.querySelectorAll('[data-splitter]')) {
+    const pane = PANES[el.dataset.splitter];
+    if (!pane) continue;
+    el.setAttribute('aria-valuenow', String(sizes[el.dataset.splitter]));
+    el.setAttribute('aria-valuemin', String(pane.min));
+    el.setAttribute('aria-valuemax', String(el.dataset.splitter === 'details' ? bottomCap() : pane.max));
+  }
+  const max = $('#btn-bottom-max');
+  if (max) {
+    const key = bottomMax ? 'bottom.restore' : 'bottom.maximise';
+    max.dataset.i18nTitle = key;
+    max.dataset.i18nAria = key;
+    max.title = t(key);
+    max.setAttribute('aria-label', t(key));
+    max.setAttribute('aria-pressed', bottomMax ? 'true' : 'false');
+    const glyph = $('#bottom-max-glyph');
+    if (glyph) glyph.textContent = bottomMax ? '\u25bd' : '\u25b3';
+  }
+}
+
+function setPane(key, px) {
+  const pane = PANES[key];
+  if (!pane || !Number.isFinite(px)) return;
+  if (key === 'details') {
+    // A drag sets the height of the kind of tab on screen, and ends "enlarged".
+    bottomMax = false;
+    const value = clamp(Math.round(px), pane.min, bottomCap());
+    if (bottomTab === 'details') layout.details = clamp(value, pane.min, pane.max);
+    else layout.analysis = value;
+  } else {
+    layout[key] = clamp(Math.round(px), pane.min, pane.max);
+  }
+  applyLayout();
+  writeLocal(LAYOUT_KEY, JSON.stringify(layout));
+}
+
+function setBottomMax(on) {
+  bottomMax = Boolean(on);
+  applyLayout();
+}
+
+/** tabs/host.js says which tab is shown; the panel takes that tab's height. */
+function onBottomTab(event) {
+  const id = event && event.detail && event.detail.id;
+  if (!id || id === bottomTab) return;
+  bottomTab = String(id);
+  applyLayout();
+}
+
+function measurePane(key, event) {
+  if (key === 'tree') {
+    const rect = $('#tree-panel').getBoundingClientRect();
+    return event.clientX - rect.left;
+  }
+  if (key === 'ai') {
+    const rect = $('#ai-panel').getBoundingClientRect();
+    return rect.right - event.clientX;
+  }
+  const rect = $('#details-panel').getBoundingClientRect();
+  return rect.bottom - event.clientY;
+}
+
+function initSplitters() {
+  for (const el of document.querySelectorAll('[data-splitter]')) {
+    const key = el.dataset.splitter;
+    const pane = PANES[key];
+    if (!pane) continue;
+
+    el.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const axisClass = pane.axis === 'x' ? 'is-resizing--v' : 'is-resizing--h';
+      el.classList.add('is-dragging');
+      document.body.classList.add('is-resizing', axisClass);
+      try {
+        el.setPointerCapture(event.pointerId);
+      } catch (_err) {
+        /* capture is an optimisation, not a requirement */
+      }
+
+      const onMove = (ev) => setPane(key, measurePane(key, ev));
+      const onStop = () => {
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onStop);
+        el.removeEventListener('pointercancel', onStop);
+        el.classList.remove('is-dragging');
+        document.body.classList.remove('is-resizing', axisClass);
+      };
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onStop);
+      el.addEventListener('pointercancel', onStop);
+    });
+
+    // Keyboard resizing: a splitter you can only drag is not usable without a
+    // mouse, and role="separator" promises arrow-key behaviour.
+    el.addEventListener('keydown', (event) => {
+      const step = event.shiftKey ? 48 : 16;
+      let delta = 0;
+      if (pane.axis === 'x') {
+        if (event.key === 'ArrowLeft') delta = key === 'ai' ? step : -step;
+        else if (event.key === 'ArrowRight') delta = key === 'ai' ? -step : step;
+      } else {
+        if (event.key === 'ArrowUp') delta = step;
+        else if (event.key === 'ArrowDown') delta = -step;
+      }
+      if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        setPane(key, event.key === 'Home' ? pane.min : key === 'details' ? bottomCap() : pane.max);
+        return;
+      }
+      if (!delta) return;
+      event.preventDefault();
+      setPane(key, (key === 'details' ? bottomHeight() : layout[key]) + delta);
+    });
+
+    el.addEventListener('dblclick', () => {
+      if (key === 'details' && bottomTab !== 'details') {
+        // Back to the share an analysis tab gets by default.
+        bottomMax = false;
+        layout.analysis = null;
+        applyLayout();
+        writeLocal(LAYOUT_KEY, JSON.stringify(layout));
+        return;
+      }
+      setPane(key, pane.def);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// visible feedback: toasts + status line
+// ---------------------------------------------------------------------------
+
+const TOAST_MS = { info: 5000, ok: 4000, warn: 8000, error: 10000 };
+
+function setStatus(message, kind = 'info') {
+  const el = $('#statusline-msg');
+  if (!el) return;
+  el.textContent = message || '';
+  el.dataset.kind = kind;
+}
+
+/**
+ * toast(message, kind?, code?, options?) -- `options.action = {label, onClick}`
+ * adds a button that dismisses the toast and runs onClick.
+ */
+function toast(message, kind = 'info', code = null, options = null) {
+  setStatus(message, kind);
+  const host = $('#toasts');
+  if (!host) return;
+
+  const node = document.createElement('div');
+  node.className = 'toast toast--' + kind;
+
+  const body = document.createElement('div');
+  body.className = 'toast__body';
+  body.textContent = message;
+  // A code helps when something failed and is reported to someone else. On a
+  // plain notice ("The top event cannot be deleted") the line ROOT_PROTECTED
+  // under it was noise; it stays on the element for a script to read.
+  if (code) node.dataset.code = String(code);
+  if (code && kind === 'error') {
+    const tag = document.createElement('span');
+    tag.className = 'toast__code';
+    tag.textContent = code;
+    body.appendChild(document.createElement('br'));
+    body.appendChild(tag);
+  }
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'toast__close';
+  close.setAttribute('aria-label', t('toast.dismiss'));
+  close.textContent = '×';
+  close.addEventListener('click', () => node.remove());
+
+  const action = options && options.action;
+  if (action && action.label && typeof action.onClick === 'function') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast__action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      node.remove();
+      try {
+        action.onClick();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[fta] toast action failed', err);
+      }
+    });
+    body.appendChild(document.createElement('br'));
+    body.appendChild(btn);
+  }
+
+  node.append(body, close);
+  placeToasts(host);
+  host.appendChild(node);
+
+  const timer = window.setTimeout(() => node.remove(), TOAST_MS[kind] || 6000);
+  node.addEventListener('mouseenter', () => window.clearTimeout(timer));
+  while (host.children.length > 4) host.firstElementChild.remove();
+}
+
+/**
+ * Keep the toasts off the AI panel. They sat in the lower right corner of
+ * the window, which is where that panel has its message box and Send: a
+ * toast covered the button for as long as it stayed. With the panel beside
+ * the workspace they go to the left of it; in a narrow window, where the
+ * panels are stacked, they stay where they were.
+ */
+function placeToasts(host) {
+  const panel = $('#ai-panel');
+  const rect = panel ? panel.getBoundingClientRect() : null;
+  const beside = rect && rect.width > 0 && rect.left > 460 && rect.right >= window.innerWidth - 40;
+  host.style.right = beside ? Math.round(window.innerWidth - rect.left + 12) + 'px' : '';
+}
+
+/**
+ * The single funnel for anything that went wrong. Every catch block in this
+ * file ends here; nothing is logged and left invisible.
+ */
+/** Toast options for a warning whose details live in the Validation tab. */
+function showInValidation() {
+  return { action: { label: t('toast.showValidation'), onClick: () => openTab('validation') } };
+}
+
+function showError(err) {
+  // eslint-disable-next-line no-console
+  console.error('[fta]', err);
+  if (err instanceof ApiError) {
+    toast(err.message, 'error', err.code);
+    return;
+  }
+  toast(err && err.message ? err.message : String(err), 'error');
+}
+
+function dismissTopToast() {
+  const host = $('#toasts');
+  const last = host && host.lastElementChild;
+  if (last) last.remove();
+}
+
+// ---------------------------------------------------------------------------
+// the blocking screen (bootstrap problem #2)
+// ---------------------------------------------------------------------------
+
+let sessionLost = false;
+
+function showBlockingScreen(title, body, hint) {
+  const overlay = $('#blocking-overlay');
+  if (!overlay) return;
+  if (title) $('#overlay-title').textContent = title;
+  if (body) {
+    const el = overlay.querySelector('#overlay-body p');
+    if (el) el.textContent = body;
+  }
+  if (hint) {
+    const paras = overlay.querySelectorAll('#overlay-body p');
+    if (paras[1]) paras[1].textContent = hint;
+  }
+  overlay.hidden = false;
+  const card = overlay.querySelector('.overlay__card');
+  if (card) {
+    card.tabIndex = -1;
+    card.focus();
+  }
+}
+
+/**
+ * The hint under the "not connected" text names what to start. The packaged
+ * app is a file to double-click; a source checkout is a command. The server
+ * says which (index.html, data-packaged) and supplies the command itself.
+ */
+function sessionHintKey() {
+  const overlay = $('#blocking-overlay');
+  return overlay && overlay.dataset.packaged === '1' ? 'session.hintExe' : 'session.hint';
+}
+
+/**
+ * A tab with no token, or a 403 from a token the server no longer accepts.
+ * One screen, once -- not a wall of failed requests.
+ *
+ * The second case happens to a tab that was working: the editor was closed
+ * and started again, and this tab's key belongs to the old run. The screen
+ * covers the page, so it offers the document the tab still holds as a
+ * download; without that the tree was on screen behind it and out of reach.
+ */
+function onSessionInvalid() {
+  if (sessionLost) return;
+  sessionLost = true;
+  stopPing();
+  showBlockingScreen(t('session.title'), t('session.body'), t(sessionHintKey()));
+  const rescue = $('#overlay-rescue');
+  if (rescue) rescue.hidden = !rescueText(store.state);
+}
+
+// ---------------------------------------------------------------------------
+// the rescue copy, and the banner that offers it
+// ---------------------------------------------------------------------------
+
+/**
+ * Hand the document this tab holds to the browser as a file Load can open.
+ * No server is involved: this is for when it is not there.
+ * @returns {string|null} the file name, or null when there is no document.
+ */
+function downloadRescueCopy() {
+  const text = rescueText(store.state);
+  if (!text) {
+    toast(t('rescue.nothing'), 'warn');
+    return null;
+  }
+  const name = rescueFilename(store.state, new Date());
+  saveBlob(new Blob([text], { type: 'application/json' }), name);
+  const message = t('rescue.downloaded', { name });
+  toast(message, 'ok');
+  // The blocking screen covers the toasts, so it says so itself as well.
+  const done = $('#overlay-rescue-done');
+  if (done) done.textContent = message;
+  return name;
+}
+
+/** How often a visible tab asks whether the server is still there. */
+const PING_MS = 5000;
+
+let serverDown = false;
+let pingTimer = null;
+let pinging = false;
+/** A focus or a "Try again" arrived while a check was on the wire. */
+let askAgain = false;
+
+function renderServerBanner() {
+  const text = $('#server-banner-text');
+  if (!text) return;
+  const key = store.state && store.state.dirty ? 'rescue.bannerDirty' : 'rescue.banner';
+  // The key goes on data-i18n too, so a language switch keeps the right one.
+  text.dataset.i18n = key;
+  text.textContent = t(key);
+}
+
+function setServerDown(down) {
+  if (down === serverDown) return;
+  serverDown = down;
+  const banner = $('#server-banner');
+  if (banner) banner.hidden = !down;
+  renderServerBanner();
+  if (!down) toast(t('rescue.back'), 'ok');
+}
+
+/**
+ * One GET /api/revision. It answers two questions: is the server there, and
+ * (with `act`) has another tab changed the document since this one read it.
+ *
+ * Only a request that never reached the server turns the banner on. A 403
+ * means the server is there but was restarted (api.js raises the blocking
+ * screen for it); any other refusal is not "the editor was closed".
+ */
+async function checkServer(act) {
+  if (sessionLost || !store.state) return;
+  if (pinging) {
+    // The answer on its way was asked for earlier, and may describe the
+    // document as it was before the change this question is about. Ask
+    // again once it is in.
+    if (act) askAgain = true;
+    return;
+  }
+  pinging = true;
+  try {
+    const info = await api.get('/revision');
+    setServerDown(false);
+    if (act) noteServerRevision(info);
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'NETWORK_ERROR') setServerDown(true);
+  } finally {
+    pinging = false;
+    if (askAgain) {
+      askAgain = false;
+      checkServer(true);
+    }
+  }
+}
+
+function stopPing() {
+  if (pingTimer) window.clearTimeout(pingTimer);
+  pingTimer = null;
+}
+
+/** Ask again in a while. Not while the tab is hidden: nobody is looking. */
+function schedulePing() {
+  stopPing();
+  if (sessionLost || document.hidden) return;
+  pingTimer = window.setTimeout(async () => {
+    await checkServer(false);
+    schedulePing();
+  }, PING_MS);
+}
+
+// ---------------------------------------------------------------------------
+// a tab that fell behind another tab
+// ---------------------------------------------------------------------------
+
+/** How long a busy tab waits before it looks again whether it may reload. */
+const STALE_RETRY_MS = 700;
+
+let staleTimer = null;
+
+/**
+ * Whether the document may be replaced under the user right now. Not while
+ * a dialog is open (it was opened for the tree as it was), not while an edit
+ * is on its way to the server (its answer carries the newer tree anyway),
+ * and not while something typed has not been committed.
+ */
+function tabIsIdle() {
+  if (isBooting() || sessionLost || serverDown) return false;
+  if (modalOpen() || pendingWrites() > 0) return false;
+  if (document.querySelector('#details-root [data-dirty="true"]')) return false;
+  if (document.querySelector('#tree-root .fta-tree-rename')) return false;
+  return !metadataChanged();
+}
+
+/**
+ * The server's answer to GET /api/revision, compared with what this tab
+ * holds. Behind: read the document again, as soon as the tab is idle. Level:
+ * the other tab may still have saved it, which changes only the "Saved"
+ * badge and the file name.
+ */
+function noteServerRevision(info) {
+  const state = store.state;
+  if (!state || !info || typeof info !== 'object') return;
+  if (info.revision !== state.revision || info.documentSerial !== state.documentSerial) {
+    reloadWhenIdle();
+    return;
+  }
+  if (pendingWrites() > 0) return; // this tab's own save is about to say so
+  const path = info.currentPath || null;
+  if (Boolean(info.dirty) !== Boolean(state.dirty) || path !== (state.currentPath || null)) {
+    store.applyMutation({ dirty: Boolean(info.dirty), currentPath: path });
+  }
+}
+
+function reloadWhenIdle() {
+  if (staleTimer) window.clearTimeout(staleTimer);
+  staleTimer = null;
+  if (sessionLost) return;
+  if (!tabIsIdle()) {
+    staleTimer = window.setTimeout(reloadWhenIdle, STALE_RETRY_MS);
+    return;
+  }
+  reloadFromServer();
+}
+
+async function reloadFromServer() {
+  const held = store.state;
+  let next;
+  try {
+    next = await api.get('/state');
+  } catch (_err) {
+    return; // the server went away meanwhile: the banner says so
+  }
+  if (!tabIsIdle()) {
+    // Something was typed or opened while the answer was on its way.
+    staleTimer = window.setTimeout(reloadWhenIdle, STALE_RETRY_MS);
+    return;
+  }
+  const now = store.state || {};
+  // Not newer than what this tab holds: an answer taken before this tab's own
+  // later edit must not put the older tree back.
+  if (next.documentSerial === now.documentSerial && !(next.revision > now.revision)) return;
+  const replaced = next.documentSerial !== (held && held.documentSerial);
+  store.setState(next);
+  if (replaced) {
+    // Another document: the tabs drop the old one's results, as after Open.
+    announceDocument();
+    store.select(rootId());
+  }
+  syncMetadataInputs(true);
+  toast(t(replaced ? 'stale.replaced' : 'stale.reloaded'), 'info');
+}
+
+// ---------------------------------------------------------------------------
+// sibling modules
+// ---------------------------------------------------------------------------
+
+const modules = {
+  tree: null,
+  details: null,
+  dialogs: null,
+  filedialog: null,
+  aisettings: null,
+  tabs: null,
+};
+
+/** The bottom panel's tab host (tabs/host.js), once loaded. */
+let tabHost = null;
+
+function renderModuleFallback(host, name, err) {
+  if (!host) return;
+  host.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'placeholder';
+  const glyph = document.createElement('span');
+  glyph.className = 'placeholder__glyph';
+  glyph.setAttribute('aria-hidden', 'true');
+  glyph.textContent = '⚠';
+  const title = document.createElement('p');
+  title.className = 'placeholder__title';
+  title.textContent = name;
+  const note = document.createElement('p');
+  note.className = 'placeholder__note';
+  note.textContent = t('msg.moduleFailed', {
+    module: name,
+    error: err && err.message ? err.message : String(err),
+  });
+  box.append(glyph, title, note);
+  host.appendChild(box);
+}
+
+async function loadPanels() {
+  const specs = [
+    ['tree', './tree.js'],
+    ['details', './details.js'],
+    ['dialogs', './dialogs.js'],
+    ['filedialog', './filedialog.js'],
+    ['diagram', './diagram.js'],
+    ['capabilities', './capabilities.js'],
+    ['chat', './chat.js'],
+    ['aisettings', './aisettings.js'],
+    ['tabs', './tabs/host.js'],
+  ];
+  await Promise.all(
+    specs.map(async ([name, spec]) => {
+      try {
+        modules[name] = await import(spec);
+      } catch (err) {
+        modules[name] = null;
+        // dialogs.js and filedialog.js have no panel of their own; their
+        // absence shows up when an action needs them, so do not shout here.
+        if (name === 'tree') renderModuleFallback($('#tree-root'), t('panel.tree'), err);
+        if (name === 'details') renderModuleFallback($('#details-root'), t('panel.details'), err);
+        if (name === 'diagram') renderModuleFallback($('#diagram-root'), t('panel.diagram'), err);
+        if (name === 'chat') renderModuleFallback($('#ai-root'), t('panel.ai'), err);
+        // eslint-disable-next-line no-console
+        console.error('[fta] could not load ' + spec, err);
+      }
+    })
+  );
+
+  callInit(modules.tree, ['initTree', 'init', 'default'], $('#tree-root'), t('panel.tree'));
+  callInit(modules.details, ['initDetails', 'init', 'default'], $('#details-root'), t('panel.details'));
+  diagramPanel = callInit(
+    modules.diagram,
+    ['initDiagram', 'init', 'default'],
+    $('#diagram-root'),
+    t('panel.diagram')
+  );
+  callInit(modules.capabilities, ['initCapabilities', 'init', 'default'], $('#capabilities-host'), 'capabilities', true);
+  callInit(modules.chat, ['initChat', 'init', 'default'], $('#ai-root'), t('panel.ai'));
+  // aisettings.js has no panel of its own; like dialogs.js and filedialog.js
+  // its absence shows up when the gear is pressed, so nothing is said here.
+  if (modules.dialogs) {
+    callInit(modules.dialogs, ['initDialogs', 'init'], document.body, 'dialogs', true);
+  }
+  // Numeric fields select their whole value on a click, so typing replaces
+  // a default such as the Add dialog's 1.0 instead of appending to it.
+  if (modules.dialogs && typeof modules.dialogs.installSelectOnFocus === 'function') {
+    modules.dialogs.installSelectOnFocus(document);
+  }
+
+  // The tab strip last: the Details tab wraps #details-root, which must
+  // already be initialised above. Without the host the Details tab still
+  // shows (it is the static default); only the other tabs are lost.
+  if (modules.tabs && typeof modules.tabs.initTabHost === 'function') {
+    try {
+      tabHost = modules.tabs.initTabHost({ strip: $('#bottom-tabs'), ctx: buildTabContext() });
+    } catch (err) {
+      tabHost = null;
+      showError(err);
+    }
+  }
+}
+
+/**
+ * The context every tab module's mount(panel, ctx) receives. Frozen in
+ * Phase 0; see tabs/host.js for the full contract.
+ */
+function buildTabContext() {
+  const listen = (name, pick) => (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const handler = (event) => {
+      try {
+        cb(pick(event));
+      } catch (err) {
+        showError(err);
+      }
+    };
+    window.addEventListener(name, handler);
+    return () => window.removeEventListener(name, handler);
+  };
+  return Object.freeze({
+    store,
+    api,
+    t,
+    toast,
+    showError,
+    fmt: Object.freeze({
+      prob: (value) => formatProb(value, getSigFigs()),
+      sigFigs: () => getSigFigs(),
+    }),
+    onSigFigs: listen(SIG_FIGS_EVENT, () => getSigFigs()),
+    advanced: () => advanced,
+    onAdvanced: listen('fta:advanced', () => advanced),
+    highlight: (ids, source) => store.setHighlight({ ids, source }),
+    clearHighlight: (source) => store.clearHighlight(source),
+    setOverlay: (overlay) => store.setOverlay(overlay),
+    jumpTo: (nodeId) => store.jumpTo(nodeId),
+    capabilities: () => {
+      const caps = store.state && store.state.capabilities;
+      return caps && typeof caps === 'object' ? { ...caps } : {};
+    },
+    pickPath: (opts) => pickPath(opts),
+    diagramPng: (opts) => diagramPng(opts),
+    openTab: (id, detail) => openTab(id, detail),
+    takeTabRequest: (id) => takeTabRequest(id),
+    selection: () => selectedIds.slice(),
+  });
+}
+
+/**
+ * The diagram preview as a PNG Blob (browser canvas), or null when the
+ * diagram panel is missing or has nothing rendered. Never downloads.
+ */
+async function diagramPng(options) {
+  if (!diagramPanel || typeof diagramPanel.toPngBlob !== 'function') return null;
+  try {
+    // options.overlay: {kind, values} colours the picture, null leaves it
+    // plain; without it the picture is as the diagram is on screen.
+    return (await diagramPanel.toPngBlob(options)) || null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[fta] diagram PNG failed', err);
+    return null;
+  }
+}
+
+/**
+ * Show a bottom-panel tab. @returns {boolean} false when it is not available.
+ * `detail` (optional) is left for the tab to take (takeTabRequest) and announced
+ * as `fta:tab-request` {id, detail}: the Validation tab uses it to open a CCF group.
+ */
+function openTab(id, detail) {
+  const wanted = String(id);
+  if (!tabHost) return wanted === 'details';
+  if (detail !== undefined && detail !== null) tabRequests.set(wanted, detail);
+  const shown = tabHost.select(wanted);
+  if (shown !== wanted) {
+    tabRequests.delete(wanted);
+    return false;
+  }
+  if (detail !== undefined && detail !== null) {
+    window.dispatchEvent(new CustomEvent('fta:tab-request', { detail: { id: wanted, detail } }));
+  }
+  return true;
+}
+
+/** Requests made with openTab(id, detail) that the tab has not taken yet. */
+const tabRequests = new Map();
+
+/** The pending request for a tab (once), or null. */
+function takeTabRequest(id) {
+  const key = String(id);
+  const detail = tabRequests.has(key) ? tabRequests.get(key) : null;
+  tabRequests.delete(key);
+  return detail;
+}
+
+/** Ids of the rows selected in the tree (the last `fta:selection`). */
+let selectedIds = [];
+
+function callInit(module, names, host, label, optional = false) {
+  if (!module) return null;
+  for (const name of names) {
+    if (typeof module[name] === 'function') {
+      try {
+        return module[name](host);
+      } catch (err) {
+        if (optional) showError(err);
+        else renderModuleFallback(host, label, err);
+      }
+      return null;
+    }
+  }
+  if (!optional) {
+    renderModuleFallback(host, label, new Error('no init export found'));
+  }
+  return null;
+}
+
+/** The diagram panel's own controls (exportPng/exportSvg/refresh), once loaded. */
+let diagramPanel = null;
+
+const DIALOG_ENTRY_POINTS = {
+  add: ['openAddDialog', 'openAddNodeDialog', 'addNode', 'showAddDialog'],
+  edit: ['openEditDialog', 'openEditNodeDialog', 'editNode', 'showEditDialog'],
+  delete: ['openDeleteDialog', 'confirmDelete', 'deleteNode'],
+  new: ['openNewDialog', 'confirmNew', 'newAnalysis'],
+};
+
+function dialogFn(kind) {
+  const module = modules.dialogs;
+  if (!module) return null;
+  for (const name of DIALOG_ENTRY_POINTS[kind] || []) {
+    if (typeof module[name] === 'function') return module[name];
+  }
+  return null;
+}
+
+/** @returns {boolean} true when another module claimed the action. */
+function dispatchAction(action, detail = {}) {
+  const event = new CustomEvent('fta:action', {
+    detail: { action, ...detail },
+    cancelable: true,
+  });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+// ---------------------------------------------------------------------------
+// metadata bar
+// ---------------------------------------------------------------------------
+
+function metadataFromInputs() {
+  return {
+    title: $('#title-input').value,
+    date: $('#date-input').value.trim(),
+    mode: $('#mode-select').value,
+  };
+}
+
+function syncMetadataInputs(force = false) {
+  const meta = store.metadata();
+  const fields = [
+    ['#title-input', meta.title == null ? '' : String(meta.title)],
+    ['#date-input', meta.date == null ? '' : String(meta.date)],
+    ['#mode-select', meta.mode === 'ETA' ? 'ETA' : 'FTA'],
+  ];
+  for (const [sel, value] of fields) {
+    const el = $(sel);
+    if (!el) continue;
+    // Never yank a field out from under someone who is typing in it.
+    if (!force && el === document.activeElement) continue;
+    if (el.value !== value) el.value = value;
+  }
+}
+
+function metadataChanged() {
+  const meta = store.metadata();
+  const now = metadataFromInputs();
+  return (
+    String(meta.title == null ? '' : meta.title) !== now.title ||
+    String(meta.date == null ? '' : meta.date) !== now.date ||
+    String(meta.mode || 'FTA') !== now.mode
+  );
+}
+
+/**
+ * All three fields go on every call, always.
+ *
+ * The server only touches the fields it is handed (D18), so this is not needed
+ * for correctness any more; it is kept because one full snapshot per change is
+ * simpler to reason about than three partial ones, and it costs nothing.
+ */
+async function commitMetadata() {
+  if (!store.state || sessionLost) return;
+  if (!metadataChanged()) return;
+  try {
+    const modeBefore = store.metadata().mode === 'ETA' ? 'ETA' : 'FTA';
+    const result = await api.post('/metadata', metadataFromInputs());
+    store.applyMutation(result);
+    // The server sanitizes the title; show the truth -- but not in a field
+    // typed in since: after Title, Tab, Date the answer can arrive mid-typing,
+    // and forcing it spliced the old date into the new one, which was saved.
+    syncMetadataInputs();
+    // A title or a date is on screen where it was typed: "Metadata updated."
+    // after each one told nobody anything. A mode switch recalculates every
+    // probability, and that is worth saying, in words that name the mode.
+    const modeNow = store.metadata().mode === 'ETA' ? 'ETA' : 'FTA';
+    if (modeNow !== modeBefore) toast(t(modeNow === 'ETA' ? 'msg.modeEta' : 'msg.modeFta'), 'ok');
+  } catch (err) {
+    showError(err);
+    syncMetadataInputs(true); // roll the inputs back to the server's version
+  }
+}
+
+/**
+ * The metadata POST currently in flight, so a save can wait for it.
+ * commitMetadata() handles its own errors and never rejects, so nothing here
+ * needs a catch.
+ */
+let metadataPending = null;
+
+function queueMetadata() {
+  metadataPending = commitMetadata();
+  return metadataPending;
+}
+
+/**
+ * Push whatever the user is typing to the server before writing a file.
+ *
+ * Ctrl+S with the caret still in the Title box must save the title that is on
+ * screen. Blurring fires the field's own `change` handler -- commitMetadata
+ * here, details.js's PATCH for a node field, tree.js's rename -- and those
+ * round trips race the save for the server lock. So after the blur the panels
+ * are asked, through `fta:flush`, for whatever they still have on the wire,
+ * and the save waits for all of it.
+ */
+async function flushPendingEdits() {
+  const active = document.activeElement;
+  if (active && isTextEntry(active) && typeof active.blur === 'function') {
+    active.blur();
+  }
+  const flush = new CustomEvent('fta:flush', { detail: { promises: [] } });
+  window.dispatchEvent(flush);
+  if (metadataPending) flush.detail.promises.push(metadataPending);
+  await Promise.allSettled(flush.detail.promises);
+}
+
+// ---------------------------------------------------------------------------
+// actions
+// ---------------------------------------------------------------------------
+
+function rootId() {
+  const root = store.tree();
+  return root ? String(root.id) : 'root';
+}
+
+/**
+ * Yes/no, through dialogs.js when it offers `confirmDialog(message, options)`
+ * (documented there as resolving true/false) and through window.confirm when
+ * it does not.
+ */
+async function askConfirm(message, options) {
+  const dialogs = modules.dialogs;
+  if (dialogs && typeof dialogs.confirmDialog === 'function') {
+    try {
+      return Boolean(await dialogs.confirmDialog(message, options));
+    } catch (err) {
+      showError(err);
+      return false;
+    }
+  }
+  return window.confirm(message);
+}
+
+/**
+ * What to do with unsaved changes before another document replaces this
+ * one: 'save', 'discard' or 'cancel'. `kind` is 'new' or 'open' and picks
+ * the wording.
+ *
+ * Three buttons. There used to be two, Cancel and Discard, so keeping the
+ * work took Cancel, Save, and the action once more. "Save and continue" has
+ * the focus: a stray Enter saves, it does not throw anything away.
+ */
+async function askUnsaved(kind) {
+  const fresh = kind === 'new';
+  const dialogs = modules.dialogs;
+  if (fresh) {
+    // A dialogs.js that brings its own New confirmation keeps it.
+    const fn = dialogFn('new');
+    if (fn) return (await fn()) ? 'discard' : 'cancel';
+  }
+  if (dialogs && typeof dialogs.choiceDialog === 'function') {
+    try {
+      const choice = await dialogs.choiceDialog(t(fresh ? 'confirm.unsavedNew' : 'confirm.unsavedOpen'), {
+        title: t(fresh ? 'btn.new' : 'btn.load'),
+        cancelValue: 'cancel',
+        buttons: [
+          // The button names the consequence, like Delete's does -- not a bare OK.
+          { value: 'discard', label: t(fresh ? 'confirm.discardNewOk' : 'confirm.discardOpenOk'), danger: true },
+          { value: 'save', label: t('confirm.saveAndContinue'), primary: true, focus: true },
+        ],
+      });
+      return choice === 'save' || choice === 'discard' ? choice : 'cancel';
+    } catch (err) {
+      showError(err);
+      return 'cancel';
+    }
+  }
+  // Without that dialog: the two-button question there was before.
+  const proceed = fresh
+    ? await askConfirm(t('confirm.discard'), {
+      title: t('btn.new'),
+      confirmLabel: t('confirm.discardNewOk'),
+      danger: true,
+    })
+    : await askConfirm(t('confirm.discardOpen'), {
+      title: t('btn.load'),
+      confirmLabel: t('confirm.discardOpenOk'),
+      danger: true,
+    });
+  return proceed ? 'discard' : 'cancel';
+}
+
+/**
+ * Before New, Load, an example or a dropped file: may this document go?
+ *
+ * True when it has no unsaved changes, when the user chose to discard them,
+ * or when "Save and continue" saved them. A save that was cancelled (the
+ * Save As dialog closed) or refused leaves the document as it is and answers
+ * false: the action that asked does not go ahead.
+ */
+async function leaveDocument(kind) {
+  if (!(store.state && store.state.dirty)) return true;
+  const choice = await askUnsaved(kind);
+  if (choice === 'discard') return true;
+  if (choice !== 'save') return false;
+  const saved = await actionSave();
+  if (saved && !(store.state && store.state.dirty)) return true;
+  // A refused save has said why in its own toast; this adds the consequence.
+  toast(t('confirm.notSaved'), 'info');
+  return false;
+}
+
+/**
+ * Send a request that replaces the document (open, an example, an import),
+ * after leaveDocument() said it may go.
+ *
+ * The server refuses to replace unsaved work (409 UNSAVED_CHANGES) unless
+ * the request says `force`. This tab sends it only when the user chose
+ * Discard here: the document is still marked modified then. After "Save and
+ * continue", and for a document this tab knows as saved, nothing is forced,
+ * so the server's refusal catches what this tab cannot see: changes made in
+ * another tab. The question is then asked after all, and the request sent
+ * once more with the answer.
+ *
+ * @param {(force: boolean) => Promise<object>} send
+ * @returns {Promise<object|null>} the payload, or null when the user kept
+ *   the document. Any other failure is thrown.
+ */
+async function replaceDocument(send) {
+  let force = Boolean(store.state && store.state.dirty);
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await send(force);
+    } catch (err) {
+      if (force || attempt > 0 || !(err instanceof ApiError) || err.code !== 'UNSAVED_CHANGES') throw err;
+      // The server knew of changes this tab did not. Read the document
+      // again, so that what the question is about (the other tab's work) is
+      // on screen behind it; mark it unsaved in any case, and ask.
+      await reloadFromServer();
+      if (!(store.state && store.state.dirty)) store.applyMutation({ dirty: true });
+      if (!(await leaveDocument('open'))) return null;
+      force = Boolean(store.state && store.state.dirty);
+    }
+  }
+}
+
+async function actionNew() {
+  if (dispatchAction('new')) return;
+  // A field still being typed in is part of "unsaved changes": commit it
+  // first so the question below is asked when it should be.
+  await flushPendingEdits();
+  // Ask BEFORE the request when the document is known to be dirty, so the
+  // common case is one clean POST with force instead of a refused 409 (which
+  // Chrome logs as a console error) followed by the retry.
+  if (!(await leaveDocument('new'))) return;
+  // Still dirty here means "discard" was chosen; saved means there is
+  // nothing left to force.
+  let force = Boolean(store.state && store.state.dirty);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const result = await api.post('/new', force ? { force: true } : {});
+      store.applyMutation(result);
+      announceDocument();
+      store.select(rootId());
+      toast(t('msg.newCreated'), 'ok');
+      return;
+    } catch (err) {
+      if (!force && attempt === 0 && err instanceof ApiError && err.code === 'UNSAVED_CHANGES') {
+        // The server knew of changes the client did not (409): ask after all.
+        store.applyMutation({ dirty: true });
+        if (!(await leaveDocument('new'))) return;
+        force = Boolean(store.state && store.state.dirty);
+        continue;
+      }
+      showError(err);
+      return;
+    }
+  }
+}
+
+/**
+ * A node that has no children is about to get its first (Add here; a move or
+ * a drag in tree.js, through ftaShell.firstChildWarning). In FTA mode a node
+ * with children is calculated from them and its own probability is no longer
+ * used. A value somebody typed must not go quiet without a word; exactly 1 is
+ * the untouched default and is not worth a warning.
+ *
+ * Call it BEFORE the change, with the parent as it still is. The answer is
+ * the warning to show once the change went through, or null.
+ *
+ * @returns {(() => void)|null}
+ */
+function firstChildWarning(parentId) {
+  if (isEtaMode()) return null; // an event tree uses every node's probability
+  const parent = store.findNode(parentId);
+  if (!parent || (Array.isArray(parent.children) && parent.children.length)) return null;
+  const own = Number(parent.probability);
+  if (!Number.isFinite(own) || own === 1) return null;
+  const message = t('msg.firstChild', {
+    name: parent.name ? String(parent.name) : String(parentId),
+    p: formatProb(own, getSigFigs()),
+  });
+  return () => toast(message, 'warn', null, showInValidation());
+}
+
+/** Show a node just made: tree.js opens the way to its row and tints it. */
+function revealNode(id) {
+  if (id === null || id === undefined || id === '') return;
+  window.dispatchEvent(new CustomEvent('fta:reveal', { detail: { id: String(id) } }));
+}
+
+async function actionAdd() {
+  // The new node goes under the selected one. With nothing selected (rare,
+  // now that the top event is selected at start-up) it goes under the top
+  // event, and the dialog says so.
+  const noSelection = !store.selectedId;
+  const parentId = store.selectedId || rootId();
+  const parentNode = store.findNode(parentId);
+  const parentName = parentNode && parentNode.name ? String(parentNode.name) : '';
+  if (dispatchAction('add', { parentId })) return;
+  const fn = dialogFn('add');
+  if (fn) {
+    try {
+      // The dialog posts through `submit` and stays open, everything typed
+      // intact, until the server has made the node (closing first lost all
+      // of it on a refusal). It resolves null when cancelled; a dialog
+      // without the hook hands the fields back to be posted here. The store
+      // is updated only once the dialog is gone, so its focus restore still
+      // lands on the row that opened it.
+      //
+      // The PARENT stays selected. Selecting the new node made the next Add
+      // nest under it, so three siblings took a click back on the parent
+      // between each one. The new child is shown instead: its row is opened
+      // to and tinted (fta:reveal), and the status line names it.
+      let posting = null;
+      const adopt = (result, name, quiet) => {
+        const warn = firstChildWarning(parentId);
+        store.applyMutation(result);
+        if (!store.selectedId) store.select(parentId);
+        revealNode(result.nodeId);
+        const message = t('msg.added', { name, parent: parentName || parentId });
+        // With the dialog still open it says "Added" itself; a toast per node
+        // would pile up beside it.
+        if (quiet) setStatus(message, 'ok');
+        else toast(message, 'ok');
+        if (warn) warn();
+      };
+      // "OK and add another" leaves the dialog open, so that node is adopted
+      // at once: the next one has to find it in the tree and the links list.
+      const submit = (values, how) => {
+        const request = api.post('/nodes', { parentId, ...values });
+        const mine = { request, name: values.name };
+        posting = mine;
+        if (!how || !how.another) return request;
+        return request.then((result) => {
+          if (posting === mine) posting = null;
+          adopt(result, values.name, true);
+          return result;
+        });
+      };
+      const fields = await fn(parentId, { submit, parentName, noSelection });
+      if (posting) {
+        // Closed by OK, or cancelled with the POST on the wire: the node may
+        // still have been made. An add-another request adopts its own answer
+        // and clears `posting`, so it is never adopted twice.
+        const last = posting;
+        const result = await last.request.catch(() => null);
+        if (result && posting === last) adopt(result, last.name, false);
+      } else if (fields) {
+        // A dialog without the submit hook hands the fields back instead.
+        const result = await api.post('/nodes', { parentId, ...fields });
+        if (result) adopt(result, fields.name, false);
+      }
+    } catch (err) {
+      showError(err);
+    }
+    return;
+  }
+  toast(t('msg.noDialog'), 'error', 'NO_DIALOG');
+}
+
+async function actionEdit() {
+  const nodeId = store.selectedId;
+  if (!nodeId) {
+    toast(t('msg.selectFirst'), 'warn');
+    return;
+  }
+  if (dispatchAction('edit', { nodeId })) return;
+  const fn = dialogFn('edit');
+  if (fn) {
+    try {
+      await fn(nodeId);
+    } catch (err) {
+      showError(err);
+    }
+    return;
+  }
+  // details.js edits in place: Edit opens that form with the caret in the
+  // Name box and the name selected, ready to be typed over. It used to show
+  // a toast that said where to click.
+  openTab('details');
+  const host = $('#details-root');
+  const name = host && host.querySelector('.fta-details-form input[type="text"]');
+  if (name && !name.disabled && name.offsetParent !== null) {
+    name.focus();
+    name.select();
+    name.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (host) {
+    host.focus();
+    host.scrollIntoView({ block: 'nearest' });
+  }
+  toast(t('msg.editInDetails'), 'info');
+}
+
+async function actionDelete() {
+  const nodeId = store.selectedId;
+  // Dispatched before the single-selection guards below, not after them: a
+  // panel with its own selection model (tree.js multi-select) has to get first
+  // refusal, and a multi-selection whose lead happens to be the root is still
+  // a legal delete of everything else in it. tree.js filters the root out.
+  if (dispatchAction('delete', { nodeId })) return;
+  if (!nodeId) {
+    toast(t('msg.selectFirst'), 'warn');
+    return;
+  }
+  if (nodeId === rootId()) {
+    toast(t('msg.rootProtected'), 'warn', 'ROOT_PROTECTED');
+    return;
+  }
+
+  const fn = dialogFn('delete');
+  if (fn) {
+    try {
+      await fn(nodeId);
+    } catch (err) {
+      showError(err);
+    }
+    return;
+  }
+
+  const node = store.findNode(nodeId);
+  const name = (node && node.name) || nodeId;
+  // How much goes with it: the node and everything beneath it. Cancel has the
+  // focus, so a stray Enter keeps the subtree.
+  let total = 0;
+  const count = (n) => {
+    total += 1;
+    for (const child of (n && Array.isArray(n.children) ? n.children : [])) count(child);
+  };
+  count(node);
+  const question = total > 1 ? t('confirm.deleteTree', { name, n: total }) : t('confirm.deleteLeaf', { name });
+  const proceed = await askConfirm(question, {
+    title: t('btn.delete'),
+    okLabel: t('btn.delete'),
+    danger: true,
+    focusCancel: true,
+  });
+  if (!proceed) return;
+
+  const parentId = store.parentIdOf(nodeId) || rootId();
+  try {
+    const result = await api.del('/nodes/' + encodeURIComponent(nodeId));
+    store.applyMutation(result);
+    store.select(parentId);
+    toast(t('msg.deleted', { name }), 'ok');
+    // Links from surviving nodes into the deleted subtree go with it; say so,
+    // since those nodes were never selected.
+    const removedLinks = Array.isArray(result.removedLinks) ? result.removedLinks : [];
+    if (removedLinks.length) {
+      toast(t('msg.removedLinks', { n: removedLinks.length }), 'warn', null, showInValidation());
+    }
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function actionHistory(kind) {
+  // A click on Undo/Redo blurs the field being typed in, which starts its
+  // commit. Wait for it, so the step lands first and Undo reverts it, instead
+  // of racing it on the server: when /undo won, the typing was applied on top
+  // and wiped the redo step of the edit Undo had just reverted.
+  await flushPendingEdits();
+  // The store knows whether there is anything to undo/redo (the toolbar
+  // buttons are disabled on it). Asking the server anyway got a refused 400,
+  // which Chrome logs as a console error, for every Ctrl+Z on a fresh document.
+  const able = kind === 'undo' ? 'canUndo' : 'canRedo';
+  if (store.state && store.state[able] === false) {
+    const code = kind === 'undo' ? 'NOTHING_TO_UNDO' : 'NOTHING_TO_REDO';
+    toast(t(kind === 'undo' ? 'msg.nothingToUndo' : 'msg.nothingToRedo'), 'info', code);
+    return;
+  }
+  try {
+    const before = store.state;
+    const result = await api.post('/' + kind, {});
+    store.applyMutation(result);
+    syncMetadataInputs(true); // undo/redo can move the title, date and mode
+    announceStep(kind, before, store.state);
+  } catch (err) {
+    // "nothing to undo" is a fact about the document, not a malfunction.
+    if (err instanceof ApiError && (err.code === 'NOTHING_TO_UNDO' || err.code === 'NOTHING_TO_REDO')) {
+      toast(err.message, 'info', err.code);
+      return;
+    }
+    showError(err);
+  }
+}
+
+/** "name, gate" for a list of changed field keys, in the editor's language. */
+function fieldNames(fields) {
+  return fields
+    .map((key) => {
+      const label = t('history.field.' + key);
+      return label === 'history.field.' + key ? key : label;
+    })
+    .join(', ');
+}
+
+/**
+ * What an undo or a redo just did, in a toast, and where to look.
+ *
+ * Undo used to change the tree without a word and leave the selection on
+ * the top event whenever the selected node was the one that went. The step
+ * is worked out by comparing the tree before and after (docutil.js). The
+ * toast names the action that was undone or redone, and the selection goes
+ * to the node concerned, or to the former parent of a node that is gone.
+ */
+function announceStep(kind, before, after) {
+  const step = describeStep(before, after);
+  const undo = kind === 'undo';
+  const one = step.names.length === 1 && step.count === 1;
+  let what;
+  // An undo that leaves a node gone has undone an Add, and the other way round.
+  const made = (step.kind === 'added') !== undo;
+  switch (step.kind) {
+    case 'added':
+    case 'removed':
+      if (made) what = one ? t('history.add1', { name: step.names[0] }) : t('history.addN', { n: step.count });
+      else what = one ? t('history.delete1', { name: step.names[0] }) : t('history.deleteN', { n: step.count });
+      break;
+    case 'replaced':
+      what = t('history.rewrite', undo
+        ? { added: step.removed, removed: step.added }
+        : { added: step.added, removed: step.removed });
+      break;
+    case 'moved':
+      what = t('history.move', { name: step.names[0] });
+      break;
+    case 'changed':
+      what = one
+        ? t('history.change1', { name: step.names[0], fields: fieldNames(step.fields) })
+        : t('history.changeN', { n: step.count });
+      break;
+    case 'metadata':
+      what = t('history.metadata', { fields: fieldNames(step.fields) });
+      break;
+    case 'settings':
+      what = t('history.settings');
+      break;
+    case 'ccf':
+      what = t('history.ccf');
+      break;
+    default:
+      what = t('history.step');
+  }
+  toast(t(undo ? 'history.undid' : 'history.redid', { what }), 'info');
+
+  // One node changed, came back, moved or went: show it. A step that touched
+  // many nodes at once (a setting that recalculates them) says nothing about
+  // which one to look at, so the selection stays where it is.
+  const target = step.kind === 'changed' && !one ? null : step.selectId;
+  if (target && store.findNode(target)) store.jumpTo(target);
+}
+
+// ---------------------------------------------------------------------------
+// files and exports
+//
+// Paths here are always SERVER paths: filedialog.js browses /api/fs/* and hands
+// back an absolute path, and the server does the reading and writing. Nothing
+// in this section touches the user's disk from the browser.
+// ---------------------------------------------------------------------------
+
+/**
+ * Path helpers, deliberately duplicated from filedialog.js rather than
+ * imported: a static import of that module would take the whole shell down with
+ * it if it ever failed to parse, which is the exact failure the dynamic import
+ * in loadPanels() exists to contain.
+ */
+function pathBaseName(path) {
+  const parts = String(path == null ? '' : path).split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+function pathDirName(path) {
+  const text = String(path == null ? '' : path).replace(/[\\/]+$/, '');
+  const cut = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+  if (cut < 0) return null;
+  return cut === 0 ? text.slice(0, 1) : text.slice(0, cut);
+}
+
+/**
+ * A file-name stem for a download: the open file's name when there is one, the
+ * document title otherwise. Characters Windows forbids in a name are replaced
+ * rather than dropped, so two distinct titles cannot collapse into one name.
+ */
+function documentStem() {
+  const current = store.state && store.state.currentPath;
+  if (current) {
+    const name = pathBaseName(current);
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? name.slice(0, dot) : name;
+  }
+  const title = String(store.metadata().title || '').trim();
+  const stem = title
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stem || 'fta_analysis';
+}
+
+function exportFilename(extension) {
+  return documentStem() + '.' + extension;
+}
+
+/**
+ * Ask filedialog.js for a path. Resolves null when cancelled or unavailable.
+ *
+ * `request` is either a mode string ('open' | 'save', the JSON document
+ * picker) or an options object `{mode, extensions, filename, startDir,
+ * title}` for other files (FMEA .xlsx, report .docx...). Omitted options
+ * default to the document picker's behaviour.
+ */
+async function pickPath(request) {
+  const opts = request && typeof request === 'object' ? request : { mode: request };
+  const mode = opts.mode === 'save' ? 'save' : 'open';
+  const module = modules.filedialog;
+  const open = module && (module.openFileDialog || module.default);
+  if (typeof open !== 'function') {
+    toast(t('msg.noFileDialog'), 'error', 'NO_FILE_DIALOG');
+    return null;
+  }
+  const current = (store.state && store.state.currentPath) || '';
+  const extensions =
+    Array.isArray(opts.extensions) && opts.extensions.length ? opts.extensions : ['.json'];
+  let filename = null;
+  if (opts.filename !== undefined) filename = opts.filename;
+  else if (mode === 'save') filename = current ? pathBaseName(current) : exportFilename('json');
+  try {
+    const options = {
+      mode,
+      startDir:
+        opts.startDir !== undefined ? opts.startDir : current ? pathDirName(current) : null,
+      filename,
+      extensions,
+    };
+    if (opts.title !== undefined) options.title = opts.title;
+    if (Array.isArray(opts.sources)) options.sources = opts.sources;
+    const chosen = await open(options);
+    return chosen || null;
+  } catch (err) {
+    showError(err);
+    return null;
+  }
+}
+
+/**
+ * Install the payload from POST /api/file/open (or a later /api/import/json).
+ *
+ * That payload is the *document* view -- tree, metadata, zeroNodes,
+ * currentPath, dirty, canUndo, canRedo (routes/files.py::_document_payload) --
+ * and deliberately not the per-launch session facts /api/state also carries
+ * (capabilities, language, nativeDot, aiConfigured). Those cannot change by
+ * opening a file, so it is merged over the state already held rather than
+ * replacing it: a plain setState would blank `capabilities` and take the Excel
+ * button's explanation with it.
+ *
+ * If a document key is missing the merge would keep the *previous* document's
+ * value for it -- a stale dirty badge, or an undo button that lies -- so that
+ * case takes one extra /api/state read instead of guessing.
+ */
+const DOCUMENT_KEYS = ['tree', 'metadata', 'zeroNodes', 'currentPath', 'dirty', 'canUndo', 'canRedo', 'analysis'];
+
+/** Tell the tabs a different document is now loaded (see fta:document). */
+function announceDocument() {
+  window.dispatchEvent(new CustomEvent('fta:document'));
+}
+
+async function adoptDocument(payload) {
+  const complete =
+    Boolean(payload) &&
+    DOCUMENT_KEYS.every((key) => Object.prototype.hasOwnProperty.call(payload, key));
+
+  store.setState({ ...(store.state || {}), ...(payload || {}) });
+  announceDocument();
+  store.select(rootId());
+  syncMetadataInputs(true);
+  if (complete) return;
+
+  try {
+    store.setState(await api.get('/state'));
+    store.select(rootId());
+    syncMetadataInputs(true);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+/**
+ * Ids the loader had to rename (duplicates) -- the file still has the old
+ * ones until the next save. Said after every way a document comes in.
+ */
+function showLoadWarnings(payload) {
+  const warnings = Array.isArray(payload && payload.warnings) ? payload.warnings : [];
+  if (!warnings.length) return;
+  const text = warnings.map((w) => String((w && w.message) || '')).filter(Boolean).join(' ');
+  toast(t('msg.openWarnings', { n: warnings.length, text }), 'warn', null, showInValidation());
+}
+
+/**
+ * The other places the Load dialog can open from, as buttons in its footer:
+ * the examples that ship with the app, and a file anywhere on this computer
+ * (the browser's own picker). The dialog itself only sees the sandbox root.
+ */
+function documentSources() {
+  return [
+    { id: 'example', label: t('examples.open'), title: t('examples.openTitle') },
+    { id: 'import', label: t('import.pick'), title: t('import.pickTitle') },
+  ];
+}
+
+async function actionLoad() {
+  // As in actionNew: a field still being typed in is part of "unsaved
+  // changes". The click on Load blurred it and its commit is on the wire;
+  // checking `dirty` before it lands skipped the question below and the
+  // typing was lost to the file being opened.
+  await flushPendingEdits();
+  // Ask before the picker, not after, so a user who meant to save first has
+  // not already picked a file. (The server asks too, for the changes this
+  // tab cannot know about: see replaceDocument.)
+  if (store.state && store.state.dirty && !(await leaveDocument('open'))) return;
+
+  const chosen = await pickPath({ mode: 'open', sources: documentSources() });
+  if (!chosen) return;
+  if (typeof chosen === 'object') {
+    // The question about unsaved changes has been answered above.
+    if (chosen.source === 'example') await actionOpenExample(true);
+    else if (chosen.source === 'import') pickImportFile();
+    return;
+  }
+  const path = chosen;
+
+  try {
+    const payload = await replaceDocument(
+      (force) => api.post('/file/open', force ? { path, force: true } : { path })
+    );
+    if (!payload) return;
+    await adoptDocument(payload);
+    toast(t('msg.opened', { path: (store.state && store.state.currentPath) || path }), 'ok');
+    showLoadWarnings(payload);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+/**
+ * Open one of the analyses that ship with the app, as an untitled copy.
+ *
+ * The examples live in the app's own folder, which the file dialog cannot
+ * reach unless the sandbox root happens to include it; and when it did, the
+ * example kept its path and the next Save wrote over the bundled file. The
+ * server lists them (GET /api/examples) and installs the chosen one with no
+ * path, so Save goes to Save As.
+ *
+ * `asked` is true when the caller has already asked about unsaved changes.
+ */
+async function actionOpenExample(asked) {
+  if (!asked) {
+    await flushPendingEdits();
+    if (!(await leaveDocument('open'))) return;
+  }
+  const dialogs = modules.dialogs;
+  if (!dialogs || typeof dialogs.choiceList !== 'function') {
+    toast(t('msg.noDialog'), 'error', 'NO_DIALOG');
+    return;
+  }
+  let examples;
+  try {
+    const listed = await api.get('/examples');
+    examples = Array.isArray(listed.examples) ? listed.examples : [];
+  } catch (err) {
+    showError(err);
+    return;
+  }
+  const name = await dialogs.choiceList({
+    title: t('examples.title'),
+    message: t('examples.message'),
+    empty: t('examples.empty'),
+    items: examples.map((example) => ({
+      value: example.name,
+      label: example.title || example.name,
+      note: t(example.mode === 'ETA' ? 'examples.noteEta' : 'examples.noteFta', { file: example.name }),
+    })),
+  });
+  if (!name) return;
+  try {
+    const payload = await replaceDocument(
+      (force) => api.post('/examples/open', force ? { name, force: true } : { name })
+    );
+    if (!payload) return;
+    await adoptDocument(payload);
+    const chosen = examples.find((example) => example.name === name);
+    toast(t('examples.opened', { name: (chosen && chosen.title) || name }), 'ok');
+    showLoadWarnings(payload);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+/** Open the browser's own file picker; its answer goes to importFile(). */
+function pickImportFile() {
+  const input = $('#import-file');
+  if (!input) return;
+  input.value = ''; // so choosing the same file twice fires `change` twice
+  input.click();
+}
+
+/**
+ * Open a .json from this computer (the picker, or a file dropped on the tree
+ * panel) as an untitled copy, through POST /api/import/json.
+ *
+ * The browser hands over the file's bytes and name, never its path, so the
+ * server cannot write back to it: the document has no path and Save goes to
+ * Save As. `asked` is true when the caller has already asked about unsaved
+ * changes; a dropped file has not, so it asks here like Load does.
+ */
+async function importFile(file, asked) {
+  if (!file) return;
+  const name = String(file.name || '');
+  if (!/\.json$/i.test(name)) {
+    toast(t('import.notJson', { name }), 'warn');
+    return;
+  }
+  if (!asked) {
+    await flushPendingEdits();
+    if (!(await leaveDocument('open'))) return;
+  }
+  try {
+    const payload = await replaceDocument(
+      (force) => api.upload('/import/json', file, 'file', force ? { force: 'true' } : null)
+    );
+    if (!payload) return;
+    await adoptDocument(payload);
+    toast(t('import.opened', { name }), 'ok');
+    showLoadWarnings(payload);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+/**
+ * A .json dropped on the tree panel opens like "A file on this computer".
+ *
+ * Anywhere else a dropped file does nothing, on purpose. Left to the
+ * browser, a file dropped on the page replaces the editor with that file's
+ * text, and the unsaved work in the tab is gone.
+ */
+function wireFileDrop() {
+  const panel = $('#tree-panel');
+  const zone = $('#tree-dropzone');
+  const input = $('#import-file');
+  if (input) {
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (file) importFile(file, true);
+    });
+  }
+  if (!panel) return;
+  const carriesFiles = (event) => {
+    const types = event.dataTransfer && event.dataTransfer.types;
+    return Boolean(types) && Array.from(types).includes('Files');
+  };
+  const open = () => !isBooting() && !sessionLost && !modalOpen();
+  let depth = 0; // dragenter and dragleave fire for every child of the panel
+  const show = (on) => {
+    if (zone) zone.hidden = !on;
+  };
+  panel.addEventListener('dragenter', (event) => {
+    if (!carriesFiles(event) || !open()) return;
+    depth += 1;
+    show(true);
+  });
+  panel.addEventListener('dragleave', (event) => {
+    if (!carriesFiles(event)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) show(false);
+  });
+  window.addEventListener('dragover', (event) => {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    const here = open() && event.target instanceof Node && panel.contains(event.target);
+    if (event.dataTransfer) event.dataTransfer.dropEffect = here ? 'copy' : 'none';
+  });
+  window.addEventListener('drop', (event) => {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    depth = 0;
+    show(false);
+    if (!open() || !(event.target instanceof Node) || !panel.contains(event.target)) return;
+    const file = event.dataTransfer.files && event.dataTransfer.files[0];
+    if (file) importFile(file, false);
+  });
+}
+
+/** @returns {Promise<boolean>} true when the document is now saved. */
+async function actionSave() {
+  await flushPendingEdits();
+  // A document that has never been saved: straight to Save As. Asking the
+  // server first got the refused 409 below, which Chrome logs as a console
+  // error, on every Ctrl+S of a new analysis and on "Save and continue".
+  if (store.state && !store.state.currentPath) return actionSaveAs();
+  try {
+    const result = await api.post('/file/save', {});
+    store.applyMutation(result);
+    const path = result.currentPath || (store.state && store.state.currentPath) || '';
+    toast(t('msg.savedTo', { path }), 'ok');
+    return true;
+  } catch (err) {
+    // 409 NO_CURRENT_PATH is not a failure: this document has never been
+    // written, so Save means Save As. That is the desktop's Ctrl+S.
+    if (err instanceof ApiError && err.code === 'NO_CURRENT_PATH') {
+      return actionSaveAs();
+    }
+    showError(err);
+    return false;
+  }
+}
+
+/** @returns {Promise<boolean>} true when the document was saved; false when
+ *  the dialog was cancelled or the server refused the path. */
+async function actionSaveAs() {
+  await flushPendingEdits();
+  const path = await pickPath('save');
+  if (!path) return false;
+  try {
+    const result = await api.post('/file/save-as', { path });
+    store.applyMutation(result);
+    toast(t('msg.savedTo', { path: result.currentPath || path }), 'ok');
+    return true;
+  } catch (err) {
+    showError(err);
+    return false;
+  }
+}
+
+// ---- downloads ------------------------------------------------------------
+
+const EXPORTS = {
+  json: { url: '/api/export/json', extension: 'json' },
+  xml: { url: '/api/export/xml', extension: 'xml' },
+  xlsx: { url: '/api/export/xlsx', extension: 'xlsx' },
+};
+
+/** The name the server suggested, if any. Never a path -- see the strip below. */
+function filenameFromDisposition(header) {
+  if (!header) return null;
+  const encoded = /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      return pathBaseName(decodeURIComponent(encoded[1].trim().replace(/^"|"$/g, '')));
+    } catch (_err) {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(header);
+  // pathBaseName strips any directory the header tried to smuggle in: the
+  // download name must never be able to steer where the browser writes.
+  return plain ? pathBaseName(plain[1].trim()) : null;
+}
+
+/**
+ * GET an /api/* URL that answers with a file rather than JSON.
+ *
+ * api.js cannot be used: it parses every response as JSON, which would corrupt
+ * an .xlsx. And a plain <a href> / window.open cannot be used either, because a
+ * navigation carries no custom headers and the export endpoints sit behind the
+ * X-FTA-Token guard -- the link would 403 and the browser would save the error
+ * page. So the request is a fetch with the header, and the bytes are handed to
+ * the browser as a blob.
+ */
+async function fetchDownload(url) {
+  const token = getToken();
+  if (!token) {
+    onSessionInvalid();
+    throw new ApiError('NO_SESSION', t('session.title'), { reason: 'no_token' });
+  }
+
+  const headers = {};
+  headers[TOKEN_HEADER] = token;
+  // As api.js does: the server words its errors in the editor's language.
+  headers['Accept-Language'] = language;
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+      credentials: 'same-origin',
+      redirect: 'follow',
+    });
+  } catch (cause) {
+    window.dispatchEvent(new CustomEvent(SERVER_UNREACHABLE_EVENT, { detail: { path: url } }));
+    throw new ApiError(
+      'NETWORK_ERROR',
+      t('api.network'),
+      { url, cause: String((cause && cause.message) || cause) }
+    );
+  }
+
+  const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+  const isJson = contentType.indexOf('json') !== -1;
+
+  // A failure comes back as the standard envelope; so, in principle, could a
+  // 200 carrying {"ok": false}. Both are checked, because writing an error
+  // envelope to disk under the name "analysis.xlsx" is the worst outcome here.
+  if (!response.ok || isJson) {
+    const text = await response.text().catch(() => '');
+    let payload = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch (_err) {
+        payload = null;
+      }
+    }
+    const failed =
+      !response.ok || (payload && typeof payload === 'object' && payload.ok === false);
+    if (failed) {
+      const envelope =
+        payload && payload.error && typeof payload.error === 'object' ? payload.error : {};
+      if (response.status === 403) {
+        clearToken();
+        window.dispatchEvent(
+          new CustomEvent(SESSION_INVALID_EVENT, {
+            detail: { reason: (envelope.detail && envelope.detail.reason) || 'forbidden' },
+          })
+        );
+      }
+      throw new ApiError(
+        envelope.code || 'HTTP_' + response.status,
+        envelope.message || t('api.exportFailed', { status: response.status }),
+        envelope.detail || null,
+        response.status
+      );
+    }
+    // A successful JSON body is the JSON export itself. Rebuild the blob from
+    // the text already read rather than re-reading a consumed body.
+    return {
+      blob: new Blob([text], { type: contentType || 'application/json' }),
+      filename: filenameFromDisposition(response.headers.get('Content-Disposition')),
+    };
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get('Content-Disposition')),
+  };
+}
+
+/** Hand a blob to the browser as a download. */
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoked late: Firefox cancels an in-flight download when the object URL
+  // goes away in the same tick as the click.
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/**
+ * Say what a download was: a copy, in the browser's download folder, and not
+ * a save. "Downloaded x.json" beside a Save button read as "saved", and did
+ * not say where the file went (the page is not told the folder; the browser
+ * decides it).
+ */
+function toastDownloaded(name) {
+  const file = store.state && store.state.currentPath ? pathBaseName(store.state.currentPath) : '';
+  toast(file ? t('msg.exportedCopy', { name, file }) : t('msg.exportedCopyUntitled', { name }), 'ok');
+}
+
+async function actionExport(kind) {
+  const spec = EXPORTS[kind];
+  if (!spec) return;
+  // Export what is on screen: a title still sitting uncommitted in its input
+  // would otherwise be missing from the file.
+  await flushPendingEdits();
+
+  const fallbackName = exportFilename(spec.extension);
+  setStatus(t('msg.downloading', { name: fallbackName }), 'info');
+  try {
+    // The Excel number formats follow the significant-figures setting.
+    const url = kind === 'xlsx' ? spec.url + '?sigFigs=' + encodeURIComponent(getSigFigs()) : spec.url;
+    const result = await fetchDownload(url);
+    const name = result.filename || fallbackName;
+    saveBlob(result.blob, name);
+    toastDownloaded(name);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+/** base64 -> bytes, for the image POST /api/render answers with. */
+function base64ToBytes(data) {
+  const binary = atob(String(data || ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * Render the diagram to a PNG file, the desktop editor's "Render" button.
+ *
+ * Prefers the native-Graphviz path (300 dpi, exact font metrics). If that
+ * 503s -- no system `dot`, or it vanished since startup -- this falls back to
+ * exactly what the diagram panel's own PNG toolbar button does: rasterise the
+ * in-browser (WASM) renderer's SVG via canvas. Both buttons must behave the
+ * same way here; a user should never be told to install Graphviz for a PNG
+ * export that the other button already produces without it.
+ */
+async function actionRenderImage() {
+  // Same rule as actionExport: the picture must include the edit still in a field.
+  await flushPendingEdits();
+  const name = exportFilename('png');
+  setStatus(t('msg.downloading', { name }), 'info');
+  // Same font/box-scale the diagram panel is previewing, so a native export
+  // matches what is on screen instead of reverting to server-side defaults.
+  // In the light colours whatever the theme: see diagram.js exportBoxSettings().
+  const box = diagramPanel && typeof diagramPanel.getExportSettings === 'function'
+    ? diagramPanel.getExportSettings()
+    : null;
+  // The standard symbols are drawn in the browser; native `dot` only has the
+  // placeholder polygons, so that style is rasterised from the preview. So is
+  // a diagram coloured by an overlay (importance), which the server never sees.
+  const coloured = diagramPanel && typeof diagramPanel.hasOverlay === 'function' && diagramPanel.hasOverlay();
+  if (box && (box.style === 'symbols' || coloured) && diagramPanel && typeof diagramPanel.toPngBlob === 'function') {
+    const blob = await diagramPanel.toPngBlob();
+    if (blob) {
+      saveBlob(blob, name);
+      toastDownloaded(name);
+      return;
+    }
+    // No server fallback for this style: native `dot` would draw the
+    // placeholder shapes instead of the symbols. Say why nothing was saved.
+    const drawn = typeof diagramPanel.hasDiagram === 'function' && diagramPanel.hasDiagram();
+    toast(t(drawn ? 'diagram.pngFailed' : 'diagram.nothingToExport'), 'warn');
+    return;
+  }
+  try {
+    const result = await api.post('/render', {
+      format: 'png',
+      hideZero: document.documentElement.dataset.hideZero === '1',
+      highQuality: true,
+      // Everything the preview uses, so the file matches what is on screen
+      // (style, layout direction and significant figures included).
+      ...(box ? {
+        font: box.font,
+        scale: box.scale,
+        dark: box.dark,
+        style: box.style,
+        rankdir: box.rankdir,
+        sigFigs: box.sigFigs,
+      } : {}),
+    });
+    saveBlob(
+      new Blob([base64ToBytes(result.data)], { type: result.contentType || 'image/png' }),
+      name
+    );
+    toastDownloaded(name);
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'RENDERER_UNAVAILABLE') {
+      if (diagramPanel && typeof diagramPanel.exportPng === 'function') {
+        toast(t('diagram.nativeFellBack'), 'warn', err.code);
+        await diagramPanel.exportPng();
+        return;
+      }
+      toast(t('msg.renderUnavailable'), 'warn', err.code);
+      return;
+    }
+    showError(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// the AI assistant
+//
+// The gear in the AI panel head and the "Set up AI" button inside chat.js open
+// the same dialog. chat.js asks for it with a cancelable `fta:ai-settings`
+// event rather than importing aisettings.js, so a broken settings module costs
+// one visible message instead of taking the whole chat panel down with it --
+// the same reason the panels themselves are loaded with dynamic import().
+//
+// Nothing is done with the result here: saving or clearing re-reads /api/state
+// from inside the dialog, and the store notifies the panel, the status dot and
+// the capability chip together.
+// ---------------------------------------------------------------------------
+
+async function actionAiSettings() {
+  const module = modules.aisettings;
+  const open = module && (module.openAiSettings || module.default);
+  if (typeof open !== 'function') {
+    toast(t('ai.err.noSettings'), 'error', 'NO_AI_SETTINGS');
+    return;
+  }
+  try {
+    await open();
+  } catch (err) {
+    showError(err);
+  }
+}
+
+/**
+ * The AI panel folded to a strip, or open. Kept on the server (`prefs` in
+ * /api/state, POST /api/prefs) and not in localStorage: the browser's storage
+ * is per port, and up to 1.8.0 the app started on a new port each time.
+ */
+let aiCollapsed = false;
+
+function applyAiCollapsed() {
+  const workspace = $('#workspace');
+  if (workspace) workspace.dataset.aiCollapsed = aiCollapsed ? '1' : '0';
+  const button = $('#btn-ai-collapse');
+  if (!button) return;
+  const key = aiCollapsed ? 'ai.panel.expand' : 'ai.panel.collapse';
+  // On the data attributes as well, so a language switch re-reads the right one.
+  button.dataset.i18nTitle = key;
+  button.dataset.i18nAria = key;
+  button.title = t(key);
+  button.setAttribute('aria-label', t(key));
+  button.setAttribute('aria-expanded', aiCollapsed ? 'false' : 'true');
+  const glyph = $('#ai-collapse-glyph');
+  if (glyph) glyph.textContent = aiCollapsed ? '\u00ab' : '\u00bb';
+}
+
+function setAiCollapsed(on) {
+  aiCollapsed = Boolean(on);
+  applyAiCollapsed();
+  // Best effort: a preference that could not be stored is not worth a toast.
+  api.post('/prefs', { aiPanelCollapsed: aiCollapsed })
+    .then((res) => {
+      if (res && res.prefs) store.applyMutation({ prefs: res.prefs });
+    })
+    .catch(() => {});
+}
+
+/**
+ * A new analysis nobody has touched: no file, no edits, only the top event.
+ * That is what the first launch shows, and it gave no hint of what to do
+ * next. The hint goes with the first edit and comes back with New.
+ */
+let firstRunDismissed = false;
+
+function isUntouchedDocument(state) {
+  if (!state || state.dirty || state.currentPath || state.canUndo || state.canRedo) return false;
+  const tree = state.tree;
+  return Boolean(tree) && !(Array.isArray(tree.children) && tree.children.length);
+}
+
+/**
+ * The recovery copy an earlier run left behind (GET /api/recovery), offered
+ * above the tree until it is restored or discarded. The server keeps a copy
+ * of the document while it has unsaved changes and removes it on Save, on
+ * New / Load and on a clean exit; what it lists here is the work of an
+ * editor that ended without any of those. Newest first; one is shown at a
+ * time.
+ */
+let recoveryCopy = null;
+
+function recoveryWhen(copy) {
+  const stamp = copy && copy.savedAt ? new Date(copy.savedAt) : null;
+  if (!stamp || Number.isNaN(stamp.getTime())) return (copy && copy.savedAt) || '';
+  try {
+    return stamp.toLocaleString(language === 'ja' ? 'ja-JP' : 'en-GB', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  } catch (_err) {
+    return copy.savedAt;
+  }
+}
+
+function renderRecoveryOffer() {
+  const box = $('#recovery-offer');
+  if (!box) return;
+  box.hidden = !recoveryCopy;
+  if (!recoveryCopy) return;
+  const vars = {
+    date: recoveryWhen(recoveryCopy),
+    title: recoveryCopy.title || t('recovery.untitled'),
+  };
+  const restore = $('#recovery-restore');
+  if (restore) restore.textContent = t('recovery.restore', vars);
+  const text = $('#recovery-text');
+  if (text) {
+    text.textContent = recoveryCopy.originalPath
+      ? t('recovery.offerFile', { path: recoveryCopy.originalPath })
+      : t('recovery.offer');
+  }
+}
+
+async function refreshRecoveryOffer() {
+  try {
+    const listed = await api.get('/recovery');
+    const copies = Array.isArray(listed.copies) ? listed.copies : [];
+    recoveryCopy = copies.length ? copies[0] : null;
+  } catch (_err) {
+    // An editor older than this page, or one that is not answering: no offer.
+    recoveryCopy = null;
+  }
+  renderRecoveryOffer();
+}
+
+/**
+ * Open the recovery copy. It replaces the document like Load does, so the
+ * same question is asked first when this document has unsaved changes. It
+ * opens untitled and modified: Save goes to Save As, and the file the work
+ * was opened from is not written.
+ */
+async function actionRestoreRecovery() {
+  if (isBooting() || !recoveryCopy) return;
+  const copy = recoveryCopy;
+  const id = copy.id;
+  await flushPendingEdits();
+  if (!(await leaveDocument('open'))) return;
+  try {
+    const payload = await replaceDocument(
+      (force) => api.post('/recovery/restore', force ? { id, force: true } : { id })
+    );
+    if (!payload) return;
+    await adoptDocument(payload);
+    toast(t('recovery.restored', { title: copy.title || t('recovery.untitled') }), 'ok');
+    showLoadWarnings(payload);
+  } catch (err) {
+    showError(err);
+  }
+  await refreshRecoveryOffer();
+}
+
+async function actionDiscardRecovery() {
+  if (isBooting() || !recoveryCopy) return;
+  const copy = recoveryCopy;
+  const id = copy.id;
+  const sure = await askConfirm(
+    t('recovery.discardConfirm', { date: recoveryWhen(copy), title: copy.title || t('recovery.untitled') }),
+    { title: t('recovery.title'), confirmLabel: t('recovery.discardOk'), danger: true }
+  );
+  if (!sure) return;
+  try {
+    await api.post('/recovery/discard', { id });
+    toast(t('recovery.discarded'), 'info');
+  } catch (err) {
+    showError(err);
+  }
+  await refreshRecoveryOffer();
+}
+
+function wireRecoveryOffer() {
+  const restore = $('#recovery-restore');
+  if (restore) restore.addEventListener('click', () => actionRestoreRecovery());
+  const discard = $('#recovery-discard');
+  if (discard) discard.addEventListener('click', () => actionDiscardRecovery());
+}
+
+function wireFirstRun() {
+  const name = $('#first-run-name');
+  if (name) {
+    name.addEventListener('click', () => {
+      if (isBooting()) return;
+      // The top event's Name box, with the name selected: actionEdit().
+      store.select(rootId());
+      actionEdit();
+    });
+  }
+  const example = $('#first-run-example');
+  if (example) {
+    example.addEventListener('click', () => {
+      if (!isBooting()) actionOpenExample(false);
+    });
+  }
+  const dismiss = $('#first-run-dismiss');
+  if (dismiss) {
+    dismiss.addEventListener('click', () => {
+      firstRunDismissed = true;
+      const hint = $('#first-run');
+      if (hint) hint.hidden = true;
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// capability gating (spec 6.8)
+// ---------------------------------------------------------------------------
+
+/**
+ * true / false / null, where null means "the server did not say". Mirrors
+ * capabilities.js: an unreported capability is never folded into false, because
+ * accusing a build of a limitation nobody measured is its own kind of lie.
+ */
+function capability(name) {
+  const state = store.state;
+  const caps =
+    state && state.capabilities && typeof state.capabilities === 'object'
+      ? state.capabilities
+      : null;
+  if (caps && typeof caps[name] === 'boolean') return caps[name];
+  if (state && typeof state[name] === 'boolean') return state[name];
+  return null;
+}
+
+/**
+ * Buttons whose availability depends on an optional dependency.
+ *
+ * 'render' is deliberately not gated on nativeDot: actionRenderImage() falls
+ * back to the same in-browser PNG export the diagram panel's own PNG button
+ * uses, so the button works either way -- gating it off would tell the user
+ * to install Graphviz for a limitation that no longer exists.
+ */
+const CAPABILITY_GATES = [
+  { action: 'excel', capability: 'excelExport', message: 'msg.excelUnavailable' },
+];
+
+/**
+ * Disable-with-an-explanation, never hide. A vanished button reads as "this
+ * build never had the feature"; a dimmed one that says openpyxl is missing and
+ * how to install it is a bug report the user can fix themselves.
+ */
+function applyCapabilityGates() {
+  for (const gate of CAPABILITY_GATES) {
+    const button = $('[data-action="' + gate.action + '"]');
+    if (!button) continue;
+    const off = capability(gate.capability) === false;
+    button.setAttribute('aria-disabled', off ? 'true' : 'false');
+    if (off) {
+      button.dataset.capability = gate.capability;
+      button.title = t(gate.message);
+    } else {
+      delete button.dataset.capability;
+      if (button.dataset.i18nTitle) button.title = t(button.dataset.i18nTitle);
+    }
+  }
+}
+
+function explainUnbuilt(button) {
+  const phase = button.dataset.phase || 'a later phase';
+  const label = button.getAttribute('aria-label') || button.textContent.trim();
+  toast(t('msg.notAvailable', { label, phase }), 'info');
+}
+
+/** Why this button did nothing: a missing dependency, or an unbuilt phase. */
+function explainDisabled(button) {
+  const gate = CAPABILITY_GATES.find((entry) => entry.capability === button.dataset.capability);
+  if (gate) {
+    toast(t(gate.message), 'warn', 'CAPABILITY_UNAVAILABLE');
+    return;
+  }
+  explainUnbuilt(button);
+}
+
+const ACTIONS = {
+  new: actionNew,
+  add: actionAdd,
+  edit: actionEdit,
+  delete: actionDelete,
+  load: actionLoad,
+  save: actionSave,
+  'save-as': actionSaveAs,
+  json: () => actionExport('json'),
+  xml: () => actionExport('xml'),
+  excel: () => actionExport('xlsx'),
+  render: actionRenderImage,
+};
+
+function wireActionBar() {
+  for (const button of document.querySelectorAll('[data-action]')) {
+    button.addEventListener('click', () => {
+      // Boot gate: CSS already blocks pointer input; this catches Enter/Space
+      // on a button that had focus before the panels finished loading.
+      if (isBooting()) return;
+      if (button.getAttribute('aria-disabled') === 'true') {
+        explainDisabled(button);
+        return;
+      }
+      const handler = ACTIONS[button.dataset.action];
+      if (handler) handler();
+    });
+  }
+  $('#btn-ai-settings').addEventListener('click', (event) => {
+    event.preventDefault();
+    actionAiSettings();
+  });
+  const collapse = $('#btn-ai-collapse');
+  if (collapse) collapse.addEventListener('click', () => setAiCollapsed(!aiCollapsed));
+  for (const sel of ['#server-banner-rescue', '#overlay-rescue-btn']) {
+    const button = $(sel);
+    if (button) button.addEventListener('click', () => downloadRescueCopy());
+  }
+  const retry = $('#server-banner-retry');
+  if (retry) retry.addEventListener('click', () => checkServer(true));
+  $('#btn-undo').addEventListener('click', () => {
+    if (!isBooting()) actionHistory('undo');
+  });
+  $('#btn-redo').addEventListener('click', () => {
+    if (!isBooting()) actionHistory('redo');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// top bar wiring
+// ---------------------------------------------------------------------------
+
+function setHideZero(on) {
+  document.documentElement.dataset.hideZero = on ? '1' : '0';
+  writeLocal('fta.hideZero', on ? '1' : '0');
+  window.dispatchEvent(new CustomEvent('fta:hide-zero', { detail: { hidden: on } }));
+}
+
+function wireTopbar() {
+  $('#mode-select').addEventListener('change', queueMetadata);
+  for (const sel of ['#title-input', '#date-input']) {
+    const el = $(sel);
+    el.addEventListener('change', queueMetadata);
+    el.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // the IME's Enter/Escape
+      if (event.key === 'Enter') el.blur();
+      else if (event.key === 'Escape') {
+        // Escape discards the typing, as in the Details and analysis forms,
+        // instead of reaching the shell (which would only dismiss a toast and
+        // leave the edit to be committed on the next blur).
+        const meta = store.metadata();
+        const stored = String((sel === '#title-input' ? meta.title : meta.date) || '');
+        if (el.value !== stored) {
+          event.preventDefault();
+          event.stopPropagation();
+          el.value = stored;
+        }
+      }
+    });
+  }
+
+  const hideZero = $('#hide-zero');
+  hideZero.checked = readLocal('fta.hideZero') === '1';
+  setHideZero(hideZero.checked);
+  hideZero.addEventListener('change', () => setHideZero(hideZero.checked));
+
+  $('#btn-theme').addEventListener('click', cycleTheme);
+  $('#btn-lang').addEventListener('click', () => setLanguage(language === 'en' ? 'ja' : 'en'));
+
+  const advancedToggle = $('#advanced-toggle');
+  if (advancedToggle) {
+    advancedToggle.checked = advanced;
+    setAdvanced(advanced);
+    advancedToggle.addEventListener('change', () => setAdvanced(advancedToggle.checked));
+  }
+
+  const sigFigs = $('#sigfig-select');
+  if (sigFigs) {
+    sigFigs.value = String(getSigFigs());
+    sigFigs.addEventListener('change', () => setSigFigs(Number(sigFigs.value)));
+  }
+  // Every probability on screen is formatted at render time, so a new
+  // precision is a re-render: the headline here, details.js (and every other
+  // store subscriber) through store.touch(), tabs through ctx.onSigFigs.
+  window.addEventListener(SIG_FIGS_EVENT, () => {
+    const select = $('#sigfig-select');
+    const value = String(getSigFigs());
+    if (select && select.value !== value) select.value = value;
+    renderHeadline();
+    if (store.state) store.touch();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// boot gate: <html data-booting> is set by the pre-paint script
+// ---------------------------------------------------------------------------
+
+function isBooting() {
+  return document.documentElement.hasAttribute('data-booting');
+}
+
+function endBoot() {
+  document.documentElement.removeAttribute('data-booting');
+  const bar = document.querySelector('.actionbar');
+  if (bar) bar.removeAttribute('aria-busy');
+}
+
+// ---------------------------------------------------------------------------
+// shell rendering (everything outside tree.js / details.js)
+// ---------------------------------------------------------------------------
+
+/**
+ * The tree panel is titled for the mode, as on the desktop: "Fault Tree" in
+ * FTA, "Event Tree" in ETA. The key goes on data-i18n too, so a language
+ * switch (applyLanguage) translates the right one.
+ */
+function syncTreeTitle(state) {
+  const title = $('#tree-panel-title');
+  if (!title) return;
+  const key = state.metadata && state.metadata.mode === 'ETA' ? 'panel.treeEta' : 'panel.tree';
+  title.dataset.i18n = key;
+  title.textContent = t(key);
+}
+
+/**
+ * The headline is the top event's probability in FTA. An event tree has no
+ * top event: its root is the initiating event, and the label says so.
+ */
+function syncHeadlineLabel(state) {
+  const eta = Boolean(state.metadata) && state.metadata.mode === 'ETA';
+  const label = document.querySelector('#headline .headline__label [data-i18n]');
+  if (label) {
+    const key = eta ? 'headline.labelEta' : 'headline.label';
+    if (label.dataset.i18n !== key) {
+      label.dataset.i18n = key;
+      label.textContent = t(key);
+    }
+  }
+  const box = $('#headline');
+  if (box) {
+    const key = eta ? 'headline.titleEta' : 'headline.title';
+    if (box.dataset.i18nTitle !== key) {
+      box.dataset.i18nTitle = key;
+      box.title = t(key);
+    }
+  }
+}
+
+/** How many rows the tree panel has selected (its own wider selection). */
+let selectionCount = 0;
+
+/**
+ * The line at the right of the bottom tabs: the selected node by NAME (its
+ * id is in the tooltip and in the Details form), or how many are selected.
+ */
+function renderSelectionMeta() {
+  const meta = $('#details-meta');
+  if (!meta) return;
+  const id = store.selectedId;
+  if (selectionCount > 1) {
+    meta.textContent = t('meta.selectedMany', { n: selectionCount });
+    meta.title = t('meta.selectedManyTitle');
+    meta.dataset.count = String(selectionCount);
+    return;
+  }
+  meta.dataset.count = id ? '1' : '0';
+  if (!id) {
+    meta.textContent = t('meta.noSelection');
+    meta.removeAttribute('title');
+    return;
+  }
+  const node = store.findNode(id);
+  const name = node && node.name !== undefined && node.name !== null && String(node.name).trim() !== ''
+    ? String(node.name)
+    : String(id);
+  meta.textContent = t('meta.selectedName', { name });
+  meta.title = t('meta.selectedId', { id });
+}
+
+function renderShell(state) {
+  if (!state) return;
+
+  syncMetadataInputs();
+  syncTreeTitle(state);
+  syncHeadlineLabel(state);
+
+  const dirty = Boolean(state.dirty);
+  const badge = $('#dirty');
+  badge.dataset.dirty = String(dirty);
+  $('#dirty-text').textContent = dirty ? t('status.unsaved') : t('status.saved');
+  // Both wordings, for the two invisible sizers in app.css: the pill is as
+  // wide as the longer one in either state, so the first edit ("Saved" ->
+  // "Unsaved changes") no longer pushed the top bar onto a second row.
+  badge.dataset.saved = t('status.saved');
+  badge.dataset.unsaved = t('status.unsaved');
+
+  $('#btn-undo').disabled = !state.canUndo;
+  $('#btn-redo').disabled = !state.canRedo;
+
+  const nodeCount = store.flat().length;
+  $('#tree-count').textContent =
+    nodeCount === 1 ? t('meta.node') : t('meta.nodes', { n: nodeCount });
+  renderSelectionMeta();
+  // diagram.js owns this line once it is up (it states what drew the picture);
+  // writing it here too made it flip between two texts on every click.
+  if (!diagramPanel) {
+    $('#diagram-meta').textContent = state.nativeDot ? t('meta.dotReady') : t('meta.dotMissing');
+  }
+
+  const aiDot = $('#ai-status');
+  aiDot.dataset.on = String(Boolean(state.aiConfigured));
+
+  // The file NAME, then its folder. The whole path in 30 characters showed
+  // "C:\Work\Projects\Line3\FTA_Ed…" for every file in the project; the
+  // name is what tells two of them apart, so it is never the part cut off.
+  const fileName = state.currentPath ? pathBaseName(state.currentPath) : '';
+  const fileDir = state.currentPath ? pathDirName(state.currentPath) || '' : '';
+  $('#statusline-file').textContent = fileName || t('status.noFile');
+  const path = $('#statusline-path');
+  path.textContent = fileDir;
+  path.hidden = !fileDir;
+  const pathTitle = state.currentPath || '';
+  path.title = pathTitle;
+  $('#statusline-file').title = pathTitle;
+
+  // The browser tab: which file, and whether it has unsaved changes, readable
+  // from the tab strip and the task bar with the window in the background.
+  const docName = fileName || t('status.untitled');
+  const tabTitle = (dirty ? '● ' : '') + docName + ' - ' + APP_NAME;
+  if (document.title !== tabTitle) document.title = tabTitle;
+
+  const firstRun = $('#first-run');
+  if (firstRun) firstRun.hidden = firstRunDismissed || !isUntouchedDocument(state);
+  // "There are unsaved changes" in the banner follows the document.
+  if (serverDown) renderServerBanner();
+
+  // Runs on every state change, so a capability that only arrives with the
+  // first /api/state is applied the moment it does.
+  applyCapabilityGates();
+}
+
+// ---------------------------------------------------------------------------
+// keyboard shortcuts
+// ---------------------------------------------------------------------------
+
+/** The product name and version, as index.html's <title> has them. Not translated. The version
+ *  is the server's (the #app-version text without its leading "v"); no copy of it lives in JS. */
+let APP_NAME = 'FTA Editor';
+{
+  const versionEl = document.getElementById('app-version');
+  const version = versionEl ? versionEl.textContent.replace(/^v/, '').trim() : '';
+  if (version) APP_NAME = 'FTA Editor ' + version;
+
+  // Hide the version in full when the layout leaves its box narrower than its text (CSS cannot: a clipped
+  // box would still count as shown). Stateless: always measure shown, so there is no hysteresis; hidden is
+  // display:none. No width is written down: the box the layout gave the span against its own text width.
+  const bar = document.querySelector('header.topbar');
+  if (versionEl && bar && typeof ResizeObserver === 'function') {
+    const fit = () => {
+      versionEl.hidden = false;
+      const range = document.createRange();
+      range.selectNodeContents(versionEl);
+      const natural = range.getBoundingClientRect().width
+        + (parseFloat(getComputedStyle(versionEl).textIndent) || 0);
+      versionEl.hidden = versionEl.getBoundingClientRect().width + 0.5 < natural;
+    };
+    // The bar and every other child: window resize, language labels, Basic/Advanced, FTA/ETA.
+    const ro = new ResizeObserver(fit);
+    ro.observe(bar);
+    for (const child of bar.children) if (child !== versionEl) ro.observe(child);
+    fit();
+  }
+}
+
+const NON_TEXT_INPUTS = new Set([
+  'checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'range', 'color', 'image',
+]);
+
+function isTextEntry(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (tag === 'INPUT') return !NON_TEXT_INPUTS.has((el.type || 'text').toLowerCase());
+  return false;
+}
+
+/**
+ * Where a shortcut must stand aside for the control's own keys. A text field
+ * has its own Ctrl+A and Ctrl+Z. A <select> has neither: after a gate was
+ * changed in the Details dropdown the focus is still on it, and Ctrl+Z did
+ * nothing at all. So the document's Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z work from
+ * a <select>; every other shortcut still leaves it alone (a letter there is
+ * type-ahead, Delete is not ours).
+ */
+function blocksShortcut(el, event) {
+  if (!isTextEntry(el)) return false;
+  if (el.tagName !== 'SELECT') return true;
+  const key = (event.key || '').toLowerCase();
+  const history = (event.ctrlKey || event.metaKey) && !event.altKey && (key === 'z' || key === 'y');
+  return !history;
+}
+
+function modalOpen() {
+  // The first two are the documented convention; .fta-modal-overlay is what
+  // dialogs.js actually puts on its backdrop, so a modal there suppresses the
+  // shell's shortcuts without that module having to opt in.
+  return Boolean(
+    document.querySelector('[data-fta-modal="open"], dialog[open], .fta-modal-overlay')
+  );
+}
+
+function onKeyDown(event) {
+  // A key the IME is using (confirming or cancelling a conversion) is not ours.
+  if (event.isComposing || event.keyCode === 229) return;
+  // Escape first: it has to work from inside a modal's own text fields.
+  if (event.key === 'Escape') {
+    const escape = new CustomEvent('fta:escape', { cancelable: true });
+    window.dispatchEvent(escape);
+    if (!escape.defaultPrevented) dismissTopToast();
+    return;
+  }
+
+  if (sessionLost) return;
+  // Boot gate: no shortcut may act before every panel has loaded. Escape
+  // (above) stays live so a toast can still be dismissed.
+  if (isBooting()) return;
+
+  const ctrl = event.ctrlKey || event.metaKey;
+  const key = (event.key || '').toLowerCase();
+
+  if (modalOpen()) {
+    // A dialog has the keyboard and no shortcut acts behind it -- but Ctrl+S
+    // and Ctrl+Shift+S must not fall through to the browser's "Save page as".
+    if (ctrl && !event.altKey && key === 's') event.preventDefault();
+    return;
+  }
+
+  // Ctrl+S is checked before the text-entry guard below: saving has to work
+  // with the caret still in the Title box, and actionSave flushes that field
+  // before it writes. Ctrl+Shift+S is Save As, as on the desktop.
+  if (ctrl && !event.altKey && key === 's') {
+    event.preventDefault();
+    if (event.shiftKey) actionSaveAs();
+    else actionSave();
+    return;
+  }
+
+  // Ctrl+F focuses the tree's search box, which lives in tree.js. It is asked
+  // rather than told: preventDefault is applied only if that panel answers, so
+  // if the tree module failed to load the browser's own Find still opens
+  // instead of the key doing nothing at all. Also checked before the text-entry
+  // guard, so it works with the caret in the Title box.
+  if (ctrl && !event.altKey && !event.shiftKey && key === 'f') {
+    const find = new CustomEvent('fta:find', { cancelable: true });
+    window.dispatchEvent(find);
+    if (find.defaultPrevented) event.preventDefault();
+    return;
+  }
+
+  // Typing must never trigger an action, and Ctrl+A/Ctrl+Z inside a field must
+  // keep meaning select-all and undo-my-typing.
+  if (blocksShortcut(event.target, event)) return;
+
+  // Alt+N is New. Chrome and Edge keep Ctrl+N for themselves (a new browser
+  // window; the page never sees the key), so the documented shortcut is the
+  // one a browser lets through. event.code, not key: with Option held macOS
+  // reports a dead key instead of 'n'. Ctrl+N stays below for the
+  // environments that do deliver it (an embedded webview, some kiosks).
+  if (event.altKey && !ctrl && !event.shiftKey && (key === 'n' || event.code === 'KeyN')) {
+    event.preventDefault();
+    actionNew();
+    return;
+  }
+
+  if (!ctrl) {
+    if (event.key === 'Delete' || event.key === 'Del') {
+      // Bare Delete belongs to the tree. From the diagram stage or a top-bar
+      // chip it would remove the selected node with no visible connection.
+      const target = event.target;
+      const inTree = target instanceof Element && Boolean(target.closest('#tree-root'));
+      const idle = !target || target === document.body || target === document.documentElement;
+      if (!inTree && !idle) return;
+      event.preventDefault();
+      actionDelete();
+    }
+    return;
+  }
+  if (event.altKey) return;
+
+  // preventDefault on every one of these: Ctrl+A selects the page, Ctrl+D
+  // bookmarks it, Ctrl+E focuses a search bar. (Ctrl+N is reserved by Chrome
+  // and Edge and never arrives there -- Alt+N above is the browser-safe New.)
+  switch (key) {
+    case 'n':
+      event.preventDefault();
+      actionNew();
+      break;
+    case 'a':
+      event.preventDefault();
+      actionAdd();
+      break;
+    case 'e':
+      event.preventDefault();
+      actionEdit();
+      break;
+    case 'd':
+      event.preventDefault();
+      actionDelete();
+      break;
+    case 'z':
+      event.preventDefault();
+      actionHistory(event.shiftKey ? 'redo' : 'undo');
+      break;
+    case 'y':
+      event.preventDefault();
+      actionHistory('redo');
+      break;
+    default:
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// boot
+// ---------------------------------------------------------------------------
+
+async function boot() {
+  // Feature catalogs first, so applyLanguage() never paints a raw key.
+  await loadCatalogs();
+  loadLayout();
+  applyLayout();
+  applyTheme();
+  // Before applyLanguage(), which reads the key from the element.
+  const sessionHint = document.querySelector('#overlay-body [data-i18n="session.hint"]');
+  if (sessionHint) sessionHint.dataset.i18n = sessionHintKey();
+  applyLanguage();
+  initSplitters();
+  wireTopbar();
+  wireActionBar();
+  wireFirstRun();
+  wireRecoveryOffer();
+  wireFileDrop();
+
+  // The bottom panel: its height follows the tab, and can be enlarged.
+  window.addEventListener('fta:tab', onBottomTab);
+  window.addEventListener('resize', applyLayout);
+  const bottomMaxButton = $('#btn-bottom-max');
+  if (bottomMaxButton) bottomMaxButton.addEventListener('click', () => setBottomMax(!bottomMax));
+  // tree.js keeps a selection wider than the store's one lead node.
+  window.addEventListener('fta:selection', (event) => {
+    const ids = event && event.detail && Array.isArray(event.detail.ids) ? event.detail.ids : [];
+    selectionCount = ids.length;
+    selectedIds = ids.map(String);
+    renderSelectionMeta();
+  });
+
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener(SESSION_INVALID_EVENT, onSessionInvalid);
+  window.addEventListener('fta:error', (event) => {
+    const detail = (event && event.detail) || {};
+    toast(detail.message || t('dialog.somethingWrong'), 'error', detail.code || null);
+  });
+  window.addEventListener('fta:toast', (event) => {
+    const detail = (event && event.detail) || {};
+    // detail.showValidation: the details are in the Validation tab (FMEA
+    // import repairs and the like) -- offer a link there.
+    toast(detail.message || '', detail.kind || 'info', detail.code || null,
+      detail.showValidation ? showInValidation() : null);
+  });
+  window.addEventListener('fta:validation-dismissed', (event) => {
+    const sigs = event && event.detail && Array.isArray(event.detail.signatures) ? event.detail.signatures : [];
+    validationDismissed = new Set(sigs);
+    if (validationCounts) {
+      validationCounts = visibleValidationCounts(null);
+      renderValidationBadge();
+    }
+  });
+  // The allowed folder was changed from the file dialog (filedialog.js).
+  // A document whose file is outside the new folder has become untitled on
+  // the server; the top bar must not go on showing a place Save cannot
+  // write to.
+  window.addEventListener('fta:root-changed', (event) => {
+    const detail = (event && event.detail) || {};
+    if (!detail.changed) return;
+    store.applyMutation({ currentPath: detail.currentPath || null, dirty: Boolean(detail.dirty) });
+    if (detail.documentUntitled) toast(t('file.changeRootUntitled', { root: detail.root || '' }), 'warn');
+  });
+  window.addEventListener('fta:ai-settings', (event) => {
+    // preventDefault is how the asker (chat.js) learns the shell has this; an
+    // unclaimed event means the dialog module never loaded.
+    if (event.cancelable) event.preventDefault();
+    actionAiSettings();
+  });
+  window.addEventListener('beforeunload', (event) => {
+    // Typed-but-not-committed text is not in store.state.dirty yet: details.js
+    // marks such a field data-dirty, an open inline rename is one too, and so
+    // is a Title or Date box that differs from the stored metadata.
+    const unsavedField =
+      document.querySelector('#details-root [data-dirty="true"]') ||
+      document.querySelector('#tree-root .fta-tree-rename') ||
+      (store.state && metadataChanged());
+    if ((store.state && store.state.dirty) || unsavedField) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  });
+
+  // Bootstrap problem #1: take the token out of the URL before anything else
+  // can read or record it.
+  bootstrapToken();
+
+  // Bootstrap problem #2: no token in this tab means every call would 403.
+  // Say so once, clearly, instead of firing requests that cannot succeed.
+  if (!hasToken()) {
+    onSessionInvalid();
+    return;
+  }
+
+  let state;
+  try {
+    state = await api.get('/state');
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 403 || err.code === 'NO_SESSION')) {
+      onSessionInvalid(); // api.js already dispatched the event; idempotent
+      return;
+    }
+    showError(err);
+    showBlockingScreen(
+      t('boot.title'),
+      t('boot.body') + ' ' + (err && err.message ? err.message : ''),
+      t(sessionHintKey())
+    );
+    return;
+  }
+
+  store.setState(state);
+  aiCollapsed = Boolean(state.prefs && state.prefs.aiPanelCollapsed);
+  applyAiCollapsed();
+  // Start with the top event selected, as New and Open do. With nothing
+  // selected the Details panel was empty and Add, Edit and Delete each had to
+  // explain that there was nothing to act on.
+  if (!store.selectedId) store.select(rootId());
+
+  // Subscribing after setState is safe: store.subscribe fires immediately with
+  // the current state, so the shell paints once here and on every change after.
+  // Done before the panels load so the top bar is correct while they arrive.
+  store.subscribe(renderShell);
+  store.subscribe(onDocumentMaybeChanged);
+
+  // Boot gate: the action bar and shortcuts come alive only once every panel
+  // (and dialogs.js, which several actions need) has loaded -- or failed to,
+  // in which case each panel shows its own fallback and the bar still works.
+  try {
+    await loadPanels();
+  } finally {
+    endBoot();
+  }
+  // Unsaved work an earlier run left behind, if there is any. Not awaited:
+  // the editor is usable while this is asked.
+  refreshRecoveryOffer();
+
+  // From here on the page watches the server. A request that could not reach
+  // it is confirmed by one more before the banner goes up: a single aborted
+  // request is not "the editor was closed".
+  window.addEventListener(SERVER_UNREACHABLE_EVENT, () => {
+    // Not for the check's own request, and not once the banner is up: each
+    // failed check would start the next one at once, for as long as the
+    // server is away. The timer goes on asking every PING_MS.
+    if (pinging || serverDown) return;
+    window.setTimeout(() => checkServer(false), 0);
+  });
+  // Back in front: is the server there, and did another tab change the
+  // document meanwhile? Asked when the tab gets the focus or becomes
+  // visible, not on a timer.
+  window.addEventListener('focus', () => checkServer(true));
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopPing();
+      return;
+    }
+    checkServer(true);
+    schedulePing();
+  });
+  schedulePing();
+}
+
+/**
+ * A small, documented surface for the sibling modules -- toasts, translation
+ * and a state refresh -- so they never have to import main.js (which would be
+ * a cycle) or reach into the DOM for the status line.
+ */
+window.ftaShell = {
+  t,
+  toast,
+  showError,
+  setStatus,
+  get language() {
+    return language;
+  },
+  get hideZero() {
+    return document.documentElement.dataset.hideZero === '1';
+  },
+  async refresh() {
+    const state = await api.get('/state');
+    store.setState(state);
+    return state;
+  },
+
+  // ---- 1.7 ---------------------------------------------------------------
+  /** Merge a `{en, ja}` catalog into the string table (see registerStrings). */
+  registerStrings,
+  /** @returns {boolean} true when the Advanced switch is on. */
+  advanced() {
+    return advanced;
+  },
+  /** Turn advanced mode on/off; dispatches `fta:advanced` {advanced}. */
+  setAdvanced,
+  /** @returns {number} significant figures for displayed probabilities (1..6). */
+  sigFigs() {
+    return getSigFigs();
+  },
+  /** Change the significant-figure preference; dispatches `fta:sigfigs`. */
+  setSigFigs,
+  /** Server-side path picker: pickPath('open'|'save') or pickPath({mode, extensions, filename, startDir, title}). */
+  pickPath,
+  /** @returns {Promise<Blob|null>} the diagram preview as a PNG, without downloading. */
+  diagramPng,
+  /** Top-bar headline: setHeadline({value, method: 'mcub'|'treeWalk', alt, reason, pand}) or null. */
+  setHeadline,
+  /** @returns {{value: number}|null} the MCUB headline the root node shows (see rootHeadline). */
+  rootHeadline,
+  /** Show a bottom-panel tab by id (optional second argument: a request for the tab). @returns {boolean} false if hidden/unknown. */
+  openTab,
+  /** CCF groups (F2): {tree, fresh, applied, notApplied, gates} for the open document, or null. */
+  ccfState,
+  /** CCF groups (F2): {method: 'mcub', value} | {method: 'na'} | null for a gate above a member. */
+  ccfGate,
+  /** CCF groups (F2): true while that gate's value has not arrived (show a dash, never the tree walk). */
+  ccfGatePending,
+  /** Before a node gets its first child: the warning to show after, or null (see firstChildWarning). */
+  firstChildWarning,
+  /** Download the document this tab holds as a .json Load can open; no server needed. */
+  downloadRescueCopy,
+  /** The name a download of the open document gets: its file's or its title's stem + '.' + extension. */
+  exportFilename,
+  /** The toast that says what a download was and where the browser put it. */
+  toastDownloaded,
+  /** Ask the server whether this tab is behind another one, and reload when it is idle. */
+  checkServer: () => checkServer(true),
+};
+
+boot().catch((err) => {
+  showError(err);
+  showBlockingScreen(t('boot.title'), String(err && err.message ? err.message : err), null);
+});

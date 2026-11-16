@@ -1,0 +1,249 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L11_unicode_names.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "u5",
+         "name": "a&b<c>d",
+         "q": 0.5
+        },
+        {
+         "id": "u4",
+         "name": "冷却水 > 限界",
+         "q": 0.5
+        }
+       ],
+       "order": 2,
+       "probability": 0.25,
+       "rank": 1,
+       "share": 0.8928571428571428
+      },
+      {
+       "events": [
+        {
+         "id": "u2",
+         "name": "Ventil ü/ß – ‘quote’ '<b>'",
+         "q": 0.02
+        }
+       ],
+       "order": 1,
+       "probability": 0.02,
+       "rank": 2,
+       "share": 0.07142857142857142
+      },
+      {
+       "events": [
+        {
+         "id": "u1",
+         "name": "ポンプ故障 <P-101> & \"motor\"",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 3,
+       "share": 0.03571428571428571
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.27235000000000004,
+     "nonCoherent": false,
+     "rareEvent": 0.28,
+     "repeatedEvents": [],
+     "total": 3,
+     "treeWalk": 0.27235,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "L11 Unicode ユニコード <&>"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L11_unicode_names.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.4851,
+       "cutSetCount": 1,
+       "fv": 0.8905819717275565,
+       "id": "u5",
+       "name": "a&b<c>d",
+       "q": 0.5,
+       "raw": 1.8905819717275563,
+       "rrw": 9.139261744966442,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.4851,
+       "cutSetCount": 1,
+       "fv": 0.8905819717275565,
+       "id": "u4",
+       "name": "冷却水 > 限界",
+       "q": 0.5,
+       "raw": 1.8905819717275563,
+       "rrw": 9.139261744966442,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.7425,
+       "cutSetCount": 1,
+       "fv": 0.05452542684046265,
+       "id": "u2",
+       "name": "Ventil ü/ß – ‘quote’ '<b>'",
+       "q": 0.02,
+       "raw": 3.6717459151826697,
+       "rrw": 1.0576699029126213,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.735,
+       "cutSetCount": 1,
+       "fv": 0.026987332476592622,
+       "id": "u1",
+       "name": "ポンプ故障 <P-101> & \"motor\"",
+       "q": 0.01,
+       "raw": 3.6717459151826697,
+       "rrw": 1.0277358490566038,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "L11 Unicode ユニコード <&>"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L11_unicode_names.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "u1",
+      "u2",
+      "u4",
+      "u5"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.2723500000000001,
+       0.2723500000000001
+      ],
+      "logBins": false
+     },
+     "mean": 0.2723500000000001,
+     "median": 0.2723500000000001,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.2723500000000001,
+     "p95": 0.2723500000000001,
+     "pointEstimate": 0.2723500000000001,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "L11 Unicode ユニコード <&>"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L11_unicode_names.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.01,
+       "id": "u1",
+       "model": "fixed",
+       "name": "ポンプ故障 <P-101> & \"motor\"",
+       "q": 0.01
+      },
+      {
+       "calculated": 0.02,
+       "id": "u2",
+       "model": "fixed",
+       "name": "Ventil ü/ß – ‘quote’ '<b>'",
+       "q": 0.02
+      },
+      {
+       "calculated": 0.5,
+       "id": "u4",
+       "model": "fixed",
+       "name": "冷却水 > 限界",
+       "q": 0.5
+      },
+      {
+       "calculated": 0.5,
+       "id": "u5",
+       "model": "fixed",
+       "name": "a&b<c>d",
+       "q": 0.5
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.27235,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.27235000000000004,
+      "nonCoherent": false,
+      "rareEvent": 0.28,
+      "repeatedEvents": [],
+      "treeWalk": 0.27235,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "L11 Unicode ユニコード <&>"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/L11_unicode_names.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "L11 Unicode ユニコード <&>"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/L11_unicode_names.json"
+}

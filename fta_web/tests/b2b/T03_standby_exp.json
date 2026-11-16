@@ -1,0 +1,46 @@
+{
+  "title": "T03 standby + exponential",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "SB",
+        "name": "SB",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "standby",
+          "lambda": 0.0001,
+          "tau": 720.0
+        }
+      },
+      {
+        "id": "EXP",
+        "name": "EXP",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "rate",
+          "lambda": 1e-05,
+          "T": 1000.0
+        }
+      }
+    ]
+  }
+}

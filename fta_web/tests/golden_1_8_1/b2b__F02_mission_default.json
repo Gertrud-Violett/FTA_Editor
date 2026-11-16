@@ -1,0 +1,185 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F02_mission_default.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "r1",
+         "name": "r1",
+         "q": 0.58355463398
+        },
+        {
+         "id": "r2",
+         "name": "r2",
+         "q": 0.354674217143
+        }
+       ],
+       "order": 2,
+       "probability": 0.2069717829670264,
+       "rank": 1,
+       "share": 1.0
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.2069717829670264,
+     "nonCoherent": false,
+     "rareEvent": 0.2069717829670264,
+     "repeatedEvents": [],
+     "total": 1,
+     "treeWalk": 0.206971782967,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F02 default mission time"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F02_mission_default.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.354674217143,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "r1",
+       "name": "r1",
+       "q": 0.58355463398,
+       "raw": 1.71363560799737,
+       "rrw": null,
+       "rrwInfinite": true
+      },
+      {
+       "birnbaum": 0.58355463398,
+       "cutSetCount": 1,
+       "fv": 1.0,
+       "id": "r2",
+       "name": "r2",
+       "q": 0.354674217143,
+       "raw": 2.8194888482599034,
+       "rrw": null,
+       "rrwInfinite": true
+      }
+     ]
+    },
+    "title": "F02 default mission time"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F02_mission_default.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "r1",
+      "r2"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.2069717829670264,
+       0.2069717829670264
+      ],
+      "logBins": false
+     },
+     "mean": 0.2069717829670264,
+     "median": 0.2069717829670264,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.2069717829670264,
+     "p95": 0.2069717829670264,
+     "pointEstimate": 0.2069717829670264,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F02 default mission time"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F02_mission_default.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 0.58355463398,
+       "id": "r1",
+       "model": "rate",
+       "name": "r1",
+       "q": 0.58355463398
+      },
+      {
+       "calculated": 0.354674217143,
+       "id": "r2",
+       "model": "rate",
+       "name": "r2",
+       "q": 0.354674217143
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.206971782967,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.2069717829670264,
+      "nonCoherent": false,
+      "rareEvent": 0.2069717829670264,
+      "repeatedEvents": [],
+      "treeWalk": 0.206971782967,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F02 default mission time"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F02_mission_default.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 0
+     },
+     "issues": []
+    },
+    "title": "F02 default mission time"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F02_mission_default.json"
+}

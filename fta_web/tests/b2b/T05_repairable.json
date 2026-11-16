@@ -1,0 +1,46 @@
+{
+  "title": "T05 repairable",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "AND",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "R1",
+        "name": "R1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "repairable",
+          "lambda": 0.001,
+          "mttr": 10.0
+        }
+      },
+      {
+        "id": "R2",
+        "name": "R2",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [],
+        "quant": {
+          "model": "repairable",
+          "lambda": 0.001,
+          "mu": 0.1
+        }
+      }
+    ]
+  }
+}

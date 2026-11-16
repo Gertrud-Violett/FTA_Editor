@@ -1,0 +1,10 @@
+{
+  "package": "@viz-js/viz",
+  "version": "3.30.0",
+  "file": "dist/viz.js",
+  "license": "MIT",
+  "sha256": "fef725087058053ea3fe002159d456b49c92a1d38f16bc6bbae4874fc9f3c33f",
+  "vendored_at": "2026-09-08",
+  "why": "Graphviz compiled to WebAssembly, self-contained in one ESM file with no external .wasm fetch. Replaces @hpcc-js/wasm, which the spec named but which does not publish the .wasm binary its dist requires (verified: absent from the npm tarball for both @hpcc-js/wasm-graphviz@1.29.0 and @hpcc-js/wasm@2.22.4, and 404 on unpkg and jsdelivr).",
+  "upgrade": "npm pack @viz-js/viz && cp package/dist/viz.js here, then update sha256"
+}

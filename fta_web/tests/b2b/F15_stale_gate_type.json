@@ -1,0 +1,59 @@
+{
+  "title": "F15 stale gateType",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "stale",
+        "name": "stale",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "a",
+            "name": "a",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "KOFN",
+        "k": 2
+      },
+      {
+        "id": "c",
+        "name": "c",
+        "type": "Event",
+        "probability": 0.05,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": []
+      }
+    ]
+  }
+}

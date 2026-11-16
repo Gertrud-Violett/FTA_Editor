@@ -1,0 +1,91 @@
+{
+  "title": "F05 INHIBIT",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "inh",
+        "name": "inh",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "inp",
+            "name": "inp",
+            "type": "Event",
+            "probability": 0.01,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "cond",
+            "name": "cond",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "eventKind": "conditioning"
+          }
+        ],
+        "gateType": "INHIBIT"
+      },
+      {
+        "id": "inh_bad",
+        "name": "inh_bad",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "i1",
+            "name": "i1",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "i2",
+            "name": "i2",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "i3",
+            "name": "i3",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "INHIBIT"
+      }
+    ]
+  }
+}

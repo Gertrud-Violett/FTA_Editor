@@ -1,0 +1,119 @@
+{
+  "title": "L08 1e-12..1",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Span",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "tiny_and",
+        "name": "tiny_and",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "t1",
+            "name": "t1",
+            "type": "Event",
+            "probability": 0.001,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "t2",
+            "name": "t2",
+            "type": "Event",
+            "probability": 0.0001,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "tiny_or",
+        "name": "tiny_or",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "children": [
+          {
+            "id": "t3",
+            "name": "t3",
+            "type": "Event",
+            "probability": 3e-07,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "t4",
+            "name": "t4",
+            "type": "Event",
+            "probability": 4e-07,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "mixed",
+        "name": "mixed",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "m1",
+            "name": "m1",
+            "type": "Event",
+            "probability": 1e-12,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "m2",
+            "name": "m2",
+            "type": "Event",
+            "probability": 0.999999,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [],
+        "notes": ""
+      },
+      {
+        "id": "big",
+        "name": "big",
+        "type": "Event",
+        "probability": 1e-09,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

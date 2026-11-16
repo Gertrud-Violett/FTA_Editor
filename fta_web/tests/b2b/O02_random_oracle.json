@@ -1,0 +1,190 @@
+{
+  "title": "O02 random (oracle)",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Random top",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "AND",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "o2_g4",
+        "name": "o2_g4",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "o2_g2",
+            "name": "o2_g2",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [
+              {
+                "id": "o2_e3",
+                "name": "Event 3",
+                "type": "Event",
+                "probability": 0.01181,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "quant": {
+                  "model": "rate",
+                  "lambda": 4.28e-06
+                }
+              },
+              {
+                "id": "o2_g0",
+                "name": "o2_g0",
+                "type": "Event",
+                "probability": 1.0,
+                "logicGate": "AND",
+                "notes": "",
+                "links": [
+                  {
+                    "target_id": "o2_e1",
+                    "relation": "OR"
+                  }
+                ],
+                "children": [
+                  {
+                    "id": "o2_e9",
+                    "name": "Event 9",
+                    "type": "Event",
+                    "probability": 0.07379,
+                    "logicGate": "OR",
+                    "notes": "",
+                    "links": [],
+                    "children": []
+                  },
+                  {
+                    "id": "o2_e4",
+                    "name": "Event 4",
+                    "type": "Event",
+                    "probability": 0.1034,
+                    "logicGate": "OR",
+                    "notes": "",
+                    "links": [],
+                    "children": []
+                  },
+                  {
+                    "id": "o2_e1",
+                    "name": "Event 1",
+                    "type": "Event",
+                    "probability": 0.02145,
+                    "logicGate": "OR",
+                    "notes": "",
+                    "links": [],
+                    "children": [],
+                    "quant": {
+                      "model": "standby",
+                      "lambda": 1.55e-05,
+                      "tau": 2190.0
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "o2_e8",
+                "name": "Event 8",
+                "type": "Event",
+                "probability": 0.1876,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              },
+              {
+                "id": "o2_e0",
+                "name": "Event 0",
+                "type": "Event",
+                "probability": 0.06045,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "o2_g1",
+            "name": "o2_g1",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "AND",
+            "notes": "",
+            "links": [
+              {
+                "target_id": "o2_e1",
+                "relation": "OR"
+              }
+            ],
+            "children": [
+              {
+                "id": "o2_e2",
+                "name": "Event 2",
+                "type": "Event",
+                "probability": 0.1151,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              },
+              {
+                "id": "o2_e6",
+                "name": "Event 6",
+                "type": "Event",
+                "probability": 0.09528,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "o2_g3",
+        "name": "o2_g3",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "o2_e7",
+            "name": "Event 7",
+            "type": "Event",
+            "probability": 0.02639,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "o2_e5",
+            "name": "Event 5",
+            "type": "Event",
+            "probability": 0.01753,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

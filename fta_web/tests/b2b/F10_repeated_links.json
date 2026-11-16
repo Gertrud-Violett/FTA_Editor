@@ -1,0 +1,52 @@
+{
+  "title": "F10 repeated via link",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Top event",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "AND",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "A",
+        "name": "A",
+        "type": "Event",
+        "probability": 0.1,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": []
+      },
+      {
+        "id": "G",
+        "name": "G",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [
+          {
+            "target_id": "A",
+            "relation": "OR"
+          }
+        ],
+        "children": [
+          {
+            "id": "B",
+            "name": "B",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

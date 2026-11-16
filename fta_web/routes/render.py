@@ -1,0 +1,302 @@
+"""
+Diagram endpoints -- ``GET /api/dot`` and ``POST /api/render``.
+
+Two renderers, and the user is told which one they got
+------------------------------------------------------
+``GET /api/dot`` hands the browser DOT source to draw with its bundled
+WebAssembly Graphviz. It always works, needs nothing installed, and is what
+the live preview uses.
+
+``POST /api/render`` produces a file to save, and needs a native ``dot``. When
+there is none it fails **loudly** with 503 ``RENDERER_UNAVAILABLE`` and a
+message naming Graphviz and how to install it. It never falls back to
+returning the DOT source, or a lower-quality image, or a placeholder: a silent
+downgrade is how a user ends up mailing a screenshot-quality PNG to a
+regulator believing it came from Graphviz.
+
+Both responses carry ``renderer``, probed at request time rather than read
+from the startup capability flags in ``/api/state``. Those flags are a
+snapshot: Graphviz can be installed -- or a PATH entry unmounted -- while the
+editor sits open, and the field is only worth anything if it describes the
+run that just happened.
+
+Why the image comes back base64 in a JSON envelope
+--------------------------------------------------
+Returning ``image/png`` bytes directly would be leaner, but then ``renderer``
+and the error envelope would have to live in headers, and the frontend would
+need two response shapes for one endpoint -- differing exactly on the failure
+path, where it matters most. One envelope, ``data`` always base64, and the
+client builds ``data:<contentType>;base64,<data>`` for both formats.
+
+Error codes
+-----------
+``errors.py`` owns the vocabulary and has one rendering code,
+``RENDERER_UNAVAILABLE``. It covers both "no binary" and "the binary ran and
+failed", which are the same thing from the client's point of view -- native
+rendering cannot serve this request, use the browser renderer -- and
+``detail.reason`` (``not_installed`` / ``render_failed`` / ``timeout``)
+separates them for the message the user sees.
+"""
+from __future__ import annotations
+
+import base64
+from typing import Any, Dict
+
+from flask import Blueprint, request
+
+try:  # normal package import: ``import fta_web.routes.render``
+    from ..errors import (
+        INVALID_FIELD,
+        INVALID_JSON,
+        RENDERER_UNAVAILABLE,
+        ApiError,
+        api_error_response,
+        ok_response,
+    )
+    from ..rendering import (
+        RenderError,
+        build_dot_text,
+        clamp_scale,
+        content_type_for,
+        describe_renderer,
+        render_native,
+        sanitize_font_name,
+    )
+    from ..diagram_dot import RANKDIRS, STYLES, build_dot_text2, document_dot_ccf
+    from ..numfmt import clamp_sig_figs
+    from ..state import get_state
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    from errors import (  # type: ignore[no-redef]
+        INVALID_FIELD,
+        INVALID_JSON,
+        RENDERER_UNAVAILABLE,
+        ApiError,
+        api_error_response,
+        ok_response,
+    )
+    from rendering import (  # type: ignore[no-redef]
+        RenderError,
+        build_dot_text,
+        clamp_scale,
+        content_type_for,
+        describe_renderer,
+        render_native,
+        sanitize_font_name,
+    )
+    from diagram_dot import (  # type: ignore[no-redef]
+        RANKDIRS, STYLES, build_dot_text2, document_dot_ccf,
+    )
+    from numfmt import clamp_sig_figs  # type: ignore[no-redef]
+    from state import get_state  # type: ignore[no-redef]
+
+render_bp = Blueprint("render", __name__, url_prefix="/api")
+
+VALID_FORMATS = ("svg", "png")
+
+# Accepted spellings for a boolean query parameter. Anything else is a 400
+# rather than a silent False: ``?hideZero=treu`` quietly rendering the zero
+# nodes back in is precisely the kind of unannounced downgrade this blueprint
+# exists to avoid.
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
+_FALSE_STRINGS = frozenset({"0", "false", "no", "off", ""})
+
+
+@render_bp.errorhandler(ApiError)
+def _handle_api_error(exc: ApiError):
+    # Registered on the blueprint as well as the app (see routes/tree.py) so
+    # the blueprint returns the documented envelope wherever it is mounted.
+    return api_error_response(exc)
+
+
+# ---- request helpers -----------------------------------------------------
+
+
+def _body() -> Dict[str, Any]:
+    """The request's JSON object. An absent body is an empty object."""
+    data = request.get_json(silent=True)
+    if data is None:
+        if not request.get_data():
+            return {}
+        raise ApiError(INVALID_JSON, "Request body must be a JSON object.", 400)
+    if not isinstance(data, dict):
+        raise ApiError(INVALID_JSON, "Request body must be a JSON object.", 400)
+    return data
+
+
+def _as_bool(value: Any, field: str, default: bool = False) -> bool:
+    """A real boolean, or one of the accepted string spellings."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in _TRUE_STRINGS:
+            return True
+        if text in _FALSE_STRINGS:
+            return False
+    raise ApiError(
+        INVALID_FIELD,
+        "'%s' must be a boolean (true/false)." % field,
+        400,
+        {"field": field, "value": value},
+    )
+
+
+def _validate_format(value: Any) -> str:
+    """``svg`` or ``png``. Never interpolated into a command line unchecked."""
+    if value is None:
+        return "svg"
+    if not isinstance(value, str):
+        raise ApiError(
+            INVALID_FIELD,
+            "'format' must be 'svg' or 'png'.",
+            400,
+            {"field": "format", "value": value},
+        )
+    fmt = value.strip().lower()
+    if fmt not in VALID_FORMATS:
+        raise ApiError(
+            INVALID_FIELD,
+            "'format' must be 'svg' or 'png'.",
+            400,
+            {"field": "format", "value": value},
+        )
+    return fmt
+
+
+def _validate_choice(value: Any, field: str, choices, default: str,
+                     upper: bool = False) -> str:
+    """One of ``choices`` (case-insensitive); absent means ``default``."""
+    if value is None or value == "":
+        return default
+    if isinstance(value, str):
+        text = value.strip().upper() if upper else value.strip().lower()
+        if text in choices:
+            return text
+    raise ApiError(
+        INVALID_FIELD,
+        "'%s' must be one of %s." % (field, ", ".join(choices)),
+        400,
+        {"field": field, "value": value},
+    )
+
+
+def _diagram_options(source) -> Dict[str, Any]:
+    """``style``/``rankdir``/``sigFigs`` from query args or a JSON body."""
+    return {
+        "style": _validate_choice(source.get("style"), "style", STYLES, "compact"),
+        "rankdir": _validate_choice(source.get("rankdir"), "rankdir", RANKDIRS, "LR", upper=True),
+        "sig_figs": clamp_sig_figs(source.get("sigFigs")),
+    }
+
+
+def _dot_source(hide_zero: bool, font_name: str, scale: int, dark: bool,
+                style: str = "compact", rankdir: str = "LR", sig_figs: int = 3):
+    """The current document as ``(dot, id_map, root_headline, ccf_gates)``,
+    read once under the state lock. ``ccf_gates`` is None for a document
+    without CCF groups, else whether the diagram shows CCF gate values.
+
+    The lock is held for the whole walk, not just for a ``get_data()`` call:
+    ``gather_nodes`` traverses the live tree, so a concurrent mutation
+    mid-traversal could produce a diagram that never existed. A tree whose
+    headline may be the MCUB (links, transfers, XOR) is instead copied under
+    the lock and drawn from the copy, with the headline computed from that
+    same copy outside the lock (``diagram_dot.document_dot``); the root's
+    box then shows the headline and ``root_headline`` says so.
+    """
+    state = get_state()
+    return document_dot_ccf(
+        state.core, state.lock, hide_zero=hide_zero, font_name=font_name, scale=scale,
+        dark=dark, style=style, rankdir=rankdir, sig_figs=sig_figs,
+    )
+
+
+# ---- endpoints -----------------------------------------------------------
+
+
+@render_bp.get("/dot")
+def get_dot():
+    """DOT source for the in-browser renderer.
+
+    ``renderer`` names the best renderer available *right now* -- ``native``
+    when a system ``dot`` exists (so ``POST /api/render`` will work), ``wasm``
+    otherwise. The DOT returned here is identical either way; the field lets
+    the page enable or disable its "export image" affordance without a second
+    round trip, and keeps it honest as Graphviz comes and goes.
+
+    ``font`` and ``scale`` are the client's box-sizing controls
+    (diagram.js auto-detects an installed font and offers a manual scale
+    slider next to it): both are sanitized/clamped here rather than trusted,
+    since ``font`` lands in a DOT ``fontname="..."`` attribute. ``dark``
+    matches the diagram's colours to the client's current theme.
+    """
+    hide_zero = _as_bool(request.args.get("hideZero"), "hideZero")
+    font_name = sanitize_font_name(request.args.get("font"))
+    scale = clamp_scale(request.args.get("scale"))
+    dark = _as_bool(request.args.get("dark"), "dark")
+    options = _diagram_options(request.args)
+    dot_text, id_map, root_headline, ccf_gates = _dot_source(
+        hide_zero, font_name, scale, dark, **options)
+    renderer, _path = describe_renderer()
+    extra: Dict[str, Any] = {}
+    if ccf_gates is not None:
+        # Only for a document with CCF groups: True when gates above a member
+        # show the cut-set MCUB or "n/a (CCF)" instead of the tree walk (FN-66).
+        extra["ccfGates"] = ccf_gates
+    return ok_response(
+        dot=dot_text, renderer=renderer, hideZero=hide_zero, font=font_name, scale=scale, dark=dark,
+        style=options["style"], rankdir=options["rankdir"], sigFigs=options["sig_figs"],
+        idMap=id_map,
+        # {"method": "mcub", "value", "treeWalk"} when the root's box shows
+        # the MCUB headline instead of its tree-walk value, else null.
+        rootHeadline=root_headline,
+        **extra,
+    )
+
+
+@render_bp.post("/render")
+def post_render():
+    """Render the current document natively and return the image bytes.
+
+    Body: ``{"format": "svg"|"png", "hideZero": bool, "highQuality": bool,
+    "font": str, "scale": number, "dark": bool, "style": "compact"|"symbols",
+    "rankdir": "LR"|"TB", "sigFigs": 1..6}``. All are optional;
+    ``font``/``scale``/``dark`` default the same way ``GET /api/dot`` does, so
+    a native export matches what the client was just previewing.
+    """
+    payload = _body()
+    fmt = _validate_format(payload.get("format"))
+    hide_zero = _as_bool(payload.get("hideZero"), "hideZero")
+    high_quality = _as_bool(payload.get("highQuality"), "highQuality")
+    font_name = sanitize_font_name(payload.get("font"))
+    scale = clamp_scale(payload.get("scale"))
+    dark = _as_bool(payload.get("dark"), "dark")
+    options = _diagram_options(payload)
+
+    dot_text, _id_map, _headline, _ccf = _dot_source(hide_zero, font_name, scale, dark, **options)
+
+    try:
+        image = render_native(dot_text, fmt, high_quality=high_quality)
+    except RenderError as exc:
+        # Covers a missing binary, a non-zero exit, and a timeout. 503 rather
+        # than 500: the request is fine, this server just cannot serve it, and
+        # the client has a working alternative in the browser renderer.
+        detail: Dict[str, Any] = {"reason": exc.reason, "format": fmt, "renderer": "wasm"}
+        if exc.stderr:
+            # Graphviz' own diagnostic, truncated: it names the offending DOT
+            # line, which is the only thing that makes a layout failure
+            # actionable.
+            detail["stderr"] = exc.stderr[:2000]
+        raise ApiError(RENDERER_UNAVAILABLE, str(exc), 503, detail)
+
+    return ok_response(
+        format=fmt,
+        renderer="native",
+        contentType=content_type_for(fmt),
+        encoding="base64",
+        bytes=len(image),
+        hideZero=hide_zero,
+        highQuality=high_quality,
+        data=base64.b64encode(image).decode("ascii"),
+    )

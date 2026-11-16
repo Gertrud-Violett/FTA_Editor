@@ -1,0 +1,446 @@
+# Building the FTA Editor web app as a standalone executable
+
+`fta_editor.spec` freezes the web app (`fta_web/`) into a self-contained folder
+that runs on a machine with **no Python and no Graphviz installed**. The user
+double-clicks one executable; a local server starts and a browser opens on it.
+
+This directory is source, not output. `dist/` and `build/` are produced here and
+are git-ignored; `fta_editor.spec` and this file are tracked.
+
+---
+
+## Prerequisites
+
+On the machine doing the build — and it must be the **same OS and CPU
+architecture as the target**, see [Per-OS notes](#per-os-notes). Dependencies
+are declared once, in the repo-root `pyproject.toml`; the `build` extra adds
+PyInstaller itself, `all` adds every optional feature the two apps have
+(Excel export, the DOCX report, all three AI SDKs, the desktop preview):
+
+**With [uv](https://docs.astral.sh/uv/) (recommended):**
+
+```
+uv sync --extra all --extra build
+```
+
+`uv sync` creates `.venv/` and installs the exact versions pinned in
+`uv.lock`, so a build repeated later reproduces the same bundle. Run the build
+itself with `uv run` (see [Build](#build) below) so it uses this venv.
+
+**With plain pip, if `uv` is not available:**
+
+```
+python3 -m pip install -r requirements.txt -r fta_web/requirements.txt
+python3 -m pip install pyinstaller
+```
+
+This installs the same packages, just unpinned to exact versions and without
+a lockfile. `pyproject.toml` has no `[build-system]` table — see its closing
+comment for why — so `pip install .` does not work here; `-r requirements.txt`
+is the pip path, not `pip install`.
+
+Verified with PyInstaller 6.22.2 on CPython 3.10 (Linux) and PyInstaller 6.22.3
+on CPython 3.14 (Windows 11).
+
+The first command matters more than it looks. **The build machine's installed
+packages decide the built app's feature set**, because the optional ones are
+optional at runtime by design:
+
+| Package | Feature | Absent from the build ⇒ |
+|---|---|---|
+| `openpyxl` | `.xlsx` export (incl. the 1.7 Events/Analysis sheets) and `.xlsx` FMEA import | `capabilities.excelExport` / `fmeaXlsx: false`; the export offers JSON/XML/SVG/PNG only, FMEA import takes `.csv` only |
+| `python-docx` (`docx`) | the 1.7 DOCX report (`report` extra, also in `all`) | `capabilities.reportExport: false`; the Report tab and `fta_editor report` explain what to install |
+| `openai` | OpenAI + Azure/Copilot providers | provider present in the list, "package not installed" on connect |
+| `anthropic` | Anthropic Claude provider | as above |
+| `google-genai` | Google Gemini provider (`google-generativeai` pre-D11) | as above |
+
+The spec prints which of these it bundled and which it skipped. Read that line;
+it is the only warning you get that you have built a crippled release:
+
+```
+fta_editor.spec: optional packages bundled: openpyxl
+fta_editor.spec: optional packages NOT installed, so NOT bundled: openai, anthropic, google.genai
+```
+
+**python-docx needs its data files, not only its code.** python-docx opens
+every new document from its bundled default template
+(`docx/templates/default.docx` and related files). Those are package data,
+which a hidden import does not bring along. When `docx` is present, the spec
+therefore also runs `collect_data_files("docx")` and prints:
+
+```
+fta_editor.spec: collected python-docx templates
+```
+
+If that line says `WARNING: could not collect python-docx data`, the build
+still succeeds, but the DOCX report will fail in it. `uv sync --extra all`
+(or `--extra report`) installs python-docx on the build machine.
+
+Graphviz is **not** a build prerequisite and not a runtime one — see
+[No native prerequisite](#no-native-prerequisite).
+
+## Build
+
+From the **repo root** (not from this directory — the spec resolves everything
+relative to itself, but PyInstaller resolves `--distpath`/`--workpath` relative
+to the working directory):
+
+```
+uv run python -m PyInstaller --clean --noconfirm \
+    --distpath build/dist --workpath build/build \
+    build/fta_editor.spec
+```
+
+(Without uv: drop the `uv run` prefix — `python3 -m PyInstaller ...` — as long
+as you `pip install`ed into the interpreter you're invoking with.)
+
+Output: `build/dist/fta_editor/` — around **20 MB, 97 files** on Linux, of which
+the executable itself is ~3.2 MB and the rest is `_internal/`.
+
+Ship the whole `fta_editor/` folder. The executable will not run without its
+`_internal/` sibling.
+
+## What ships
+
+Compiled into the archive:
+
+- the `fta_web` Python modules, including the 1.7 modules: `engine`,
+  `node_schema`, `numfmt`, `logic`, `cutsets`, `importance`, `uncertainty`,
+  `lint`, `diagram_dot`, `fmea_import`, `excel_events`, `report_docx`, `cli`
+  and their `routes.*` blueprints, all listed as hidden imports
+- the four vendored core modules
+- Flask, Werkzeug, Jinja, click, itsdangerous and MarkupSafe
+- `openpyxl` and `python-docx` (with its templates) when present
+- a private CPython runtime
+
+Unpacked as data, under the root the app knows as
+[`runtime_paths.resource_root()`](../fta_web/runtime_paths.py):
+
+| In the bundle | From | Why |
+|---|---|---|
+| `templates/` | `fta_web/templates/` | `index.html`, rendered by Flask |
+| `static/` | `fta_web/static/` | the whole frontend: JS, CSS, and `vendor/viz-js/viz.js` (~1.1 MB) |
+| `core/` | `fta_web/core/` | the vendored core **as source**, so it can be hashed against `core/BASELINE.json` |
+| `examples/` | `fta_web/examples/` | the worked examples (`challenger_fta_en.json`, `challenger_fta_ja.json`, `tmi2_eta_en.json`, `tmi2_eta_ja.json`) and `sampleFTA.json`; users open them from `fta_editor\_internal\examples\` |
+
+`core/` is shipped twice on purpose: the compiled copy in the archive is what
+actually imports, the source copy is the audit trail. `__pycache__` and `.pyc`
+files are filtered out so the shipped directory is a faithful mirror of the
+checkout — a build machine's stale bytecode must not end up in a hash an
+auditor is checking.
+
+Deliberately **not** bundled:
+
+- **Tcl/Tk** — the legacy desktop app (`desktop/src/`) is a Tk program; this
+  bundle is the web app and contains none of it.
+- **Pillow** — reached only through `openpyxl.drawing.image`, behind a
+  `try: from PIL import Image / except ImportError`, for embedding pictures in a
+  workbook. The Excel export writes cells, fonts, fills and alignment, and no
+  images. (Pillow *is* a real dependency of the desktop app, which is why it
+  stays in `requirements.txt`.)
+- **cryptography / bcrypt** — reached only through
+  `werkzeug.serving.generate_adhoc_ssl_pair`, i.e. the dev server's
+  `ssl_context="adhoc"`. This app serves plain HTTP on loopback and never
+  passes `ssl_context`.
+
+Together those three are ~31 MB: the bundle is 51 MB without the exclusions and
+20 MB with them. Each was checked at its import site before being excluded. If
+you add one back, say why in the spec.
+
+## Why onedir, and not onefile
+
+**Do not "optimise" this into `--onefile`.** It is a single artifact and it
+looks tidier, and both of the reasons against it are worse than that is good:
+
+1. **It re-extracts the entire bundle to a temp directory on every launch.**
+   Onefile is a self-extracting archive: each start unpacks ~20 MB — including
+   the 1.1 MB `viz.js` and the whole CPython runtime — writes it under `%TEMP%`
+   or `/tmp`, runs from there, and deletes it on exit. That is seconds of
+   startup for a tool people open and close all day, repeated in full every
+   time, and it leaves the extracted tree behind whenever the process is killed
+   rather than exited.
+2. **It reliably trips antivirus heuristics.** "Executable writes an executable
+   and a batch of DLLs to a temp directory, then runs them" is a textbook
+   dropper signature. Onefile PyInstaller builds are a standing entry in
+   false-positive trackers for most major engines. Onedir keeps the libraries
+   on disk where a scanner can look at them once, at install time, which is
+   what scanners are built to expect.
+
+The cost of onedir is that users must keep the folder together and launch the
+executable inside it. That is a one-line instruction. The cost of onefile is
+paid on every single launch, by every user, forever.
+
+Related, in the spec and for the same reason: `upx=False`. UPX compression is
+itself a strong antivirus heuristic and saves nothing worth having for a tool
+that is copied once.
+
+## No native prerequisite
+
+The built app renders diagrams with **no Graphviz installed**. The browser draws
+them from `GET /api/dot` using the vendored WebAssembly Graphviz in
+`static/vendor/viz-js/viz.js`, which is why that file is a hard requirement of
+the bundle and must never be pruned for size.
+
+A native `dot` binary, when present, is used only to produce files:
+`POST /api/render` (the compact-style PNG export, at 300 dpi) and the report
+diagram when no browser image is sent. When it is absent the app says so
+rather than pretending: `/api/state` reports `capabilities.nativeDot: false`,
+the PNG export is rasterised in the browser instead, and `/api/render` returns
+`503 RENDERER_UNAVAILABLE` with install instructions. Verified on the frozen
+build on a machine with no `dot` on `PATH` — see the verification steps below.
+
+## Per-OS notes
+
+PyInstaller does **not cross-compile.** There is no flag, no toolchain and no
+supported trick: a Windows `.exe` is produced by running PyInstaller on Windows,
+a macOS bundle on macOS. Three build machines (or three CI runners) are needed
+for three platforms. The spec itself is platform-neutral and takes no changes.
+
+### Linux
+
+The command above. The bundle links against the glibc of the build machine, so
+build on the **oldest** distribution you intend to support — a bundle built on
+a current Ubuntu will not start on an older one (`GLIBC_2.xx not found`).
+
+Verified for 1.6.4 on Ubuntu (glibc 2.39, kernel 6.18) with PyInstaller 6.22.3
+and CPython 3.11: the bundle is about **65 MB, 540 files** with all three AI
+SDKs and `openpyxl`, and every check in
+[How to verify a build](#how-to-verify-a-build) passes against
+`build/dist/fta_editor/fta_editor` — including the `.xlsx` export and the four
+`core/` files matching the checkout byte for byte. Because of the glibc note
+above, a bundle built on a distribution this current is **not** a general-purpose
+Linux release; treat it as a build verification unless you built it on the
+oldest glibc you support.
+
+### Windows
+
+Verified for 1.7.0 on Windows 11 with PyInstaller 6.22.3 and CPython 3.14: the
+bundle is about **72 MB, 594 files** with all three AI SDKs, `openpyxl` and
+`python-docx` (1.6.3 was 62 MB, 528 files; python-docx and its `lxml` account
+for most of the difference), and every check in
+[How to verify a build](#how-to-verify-a-build) passes against
+`build\dist\fta_editor\fta_editor.exe`, as do the CLI subcommands and a DOCX
+report generated both over HTTP and by `fta_editor.exe report`. The command is
+the same as on Linux:
+
+```
+uv sync --extra all --extra build
+uv run python -m PyInstaller --clean --noconfirm --distpath build/dist --workpath build/build build/fta_editor.spec
+```
+
+(Without uv: `py -m PyInstaller ...` with the same arguments.)
+
+> **Do not build from a `.venv` that a sync client is touching.** If the repo
+> lives in Dropbox/OneDrive, the client can lock files while `uv sync` replaces
+> them (`os error 32`), leaving packages half-installed. The build then
+> *succeeds* and the exe crashes at startup — seen for real as
+> `AttributeError: module 'colorama' has no attribute 'AnsiToWin32'`, because a
+> gutted `colorama/` still imports as an empty namespace package. Pause the sync
+> client or exclude `.venv`, and repair with
+> `uv sync --extra all --extra build --reinstall`. Always launch the exe once
+> before shipping it.
+>
+> The verification commands below are written for a POSIX shell. In Git Bash,
+> arguments beginning with `/static/...` are rewritten into Windows paths; use
+> PowerShell's `Invoke-WebRequest` or set `MSYS_NO_PATHCONV=1`.
+
+Known differences from the Linux build:
+
+- **Unsigned executables get SmartScreen.** A fresh download shows "Windows
+  protected your PC" until enough people run it. An Authenticode certificate and
+  `signtool sign` on `dist\fta_editor\fta_editor.exe` is the only real fix; the
+  spec has a commented-out `icon=` line, and an icon plus a signature is what
+  makes a download look like software rather than like a payload.
+- **`console=True` is required, not a default we forgot to change.** `run.py`
+  prints the URL *including the per-launch session token*, and that console line
+  is the only copy the user can reach if the browser does not open. Setting
+  `console=False` also makes every `print()` raise on a process with no stdout.
+  The visible console window is the price of the token being recoverable.
+- **Users will copy the `.exe` on its own** — it is the only file in the folder
+  that looks like the program — and it will fail. Ship a zip of the whole
+  `fta_editor\` folder, or wrap it in an installer.
+- **`%TEMP%` still matters** even under onedir: `POST /api/render` writes its
+  `.dot` and output files there via `tempfile`. They are cleaned up on every
+  exit path.
+- The `.gitignore` at the repo root ignores `*.png`, `*.xlsx` and `*.xml`; that
+  is irrelevant to the build but bites anyone trying to commit a test artifact.
+
+### macOS
+
+Same command as Linux. Additionally: builds are per-architecture unless
+`target_arch="universal2"` is set in the spec *and* every bundled wheel is
+universal, and Gatekeeper will quarantine an unsigned, unnotarized bundle
+downloaded from the internet. Codesigning hooks are present but unset
+(`codesign_identity`, `entitlements_file`).
+
+## How to verify a build
+
+The bundle can fail in ways that still look like a working app — the page
+renders from the fallback HTML in `app.py`, or every `/static/` URL 404s, or the
+API blueprints are quietly absent because `importlib.import_module("routes.…")`
+found nothing. Check all four.
+
+Without `--port` the executable listens on **8765**, the same port at every
+start. That is what lets the browser keep the page's display settings
+(Advanced, language, theme, significant figures, the Formatted switch, the
+diagram style): a browser stores them per origin, and the port is part of the
+origin. When 8765 is taken (a second copy, another program) it starts on a
+free port instead and prints one `Note` line saying that the settings will
+not carry over. `--port <n>` fixes another port and `--port 0` asks for any
+free port, as every start did up to 1.8.0.
+
+To verify a build, start it on a spare port without opening a browser:
+
+```
+./build/dist/fta_editor/fta_editor --port 8791 --no-browser
+```
+
+It prints the URL with the session token. Copy the token out of it, then, in
+another terminal:
+
+```
+TOKEN=<the value after ?t=>
+
+# 1. The real page, not the "frontend has not been installed" fallback.
+curl -s http://127.0.0.1:8791/ | grep -c 'frontend has not been installed'   # 0
+curl -s http://127.0.0.1:8791/ | grep -o '/static/js/main.js'                # found
+
+# 2. Static assets, including the WASM Graphviz.
+for u in /static/js/main.js /static/css/app.css /static/vendor/viz-js/viz.js; do
+  curl -s -o /dev/null -w "$u %{http_code}\n" "http://127.0.0.1:8791$u"      # 200 x3
+done
+
+# 3. The API is mounted, and the token is enforced.
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8791/api/state                        # 403
+curl -s -H "X-FTA-Token: $TOKEN" http://127.0.0.1:8791/api/state | head -c 200                  # 200 + JSON
+
+# 4. DOT generation, i.e. the vendored core imported under its bare name.
+curl -s -H "X-FTA-Token: $TOKEN" http://127.0.0.1:8791/api/dot | head -c 80   # {"ok":true,"dot":"digraph G {...
+```
+
+A 404 on `/api/state` rather than a 403 means the blueprints did not make it
+into the bundle: check the `routes.*` hidden imports.
+
+**The command-line subcommands (1.7)** run in the same executable. A first
+argument that names a command goes to `cli.py` before any server, token or
+browser exists. The spec builds a console application (`console=True`), so
+output and exit codes reach the shell:
+
+```
+./build/dist/fta_editor/fta_editor --version                                  # FTA Editor 1.9.1
+./build/dist/fta_editor/fta_editor validate fta_web/examples/sampleFTA.json   # exit 0 (warnings only)
+./build/dist/fta_editor/fta_editor quantify fta_web/examples/sampleFTA.json --json | head -c 200
+./build/dist/fta_editor/fta_editor report fta_web/examples/sampleFTA.json --out /tmp/r.docx   # needs python-docx
+
+# the worked examples, as the bundle ships them
+./build/dist/fta_editor/fta_editor validate build/dist/fta_editor/_internal/examples/challenger_fta_*.json \
+    build/dist/fta_editor/_internal/examples/tmi2_eta_*.json                  # exit 0; "errors 0, warnings 0, info 0" x4
+./build/dist/fta_editor/fta_editor quantify build/dist/fta_editor/_internal/examples/challenger_fta_en.json
+#   Top event: 0.0684  (mcub)
+#     treeWalk   0.0349
+```
+
+On Windows these are `fta_editor.exe validate x.json` and so on. `cmd.exe`
+does not expand `*.json`, so the CLI expands wildcards itself. Exit codes:
+0 ok, 1 validation errors / analysis failure, 2 usage, 3 unreadable file.
+
+Worth also checking, because they exercise the parts a naive freeze breaks:
+
+```
+# capabilities disclosure, on a machine with no Graphviz
+curl -s -H "X-FTA-Token: $TOKEN" http://127.0.0.1:8791/api/state | python3 -m json.tool | grep -A3 capabilities
+#   "nativeDot": false, "excelExport": true, "aiConfigured": false
+
+# openpyxl inside the bundle
+curl -s -o /tmp/t.xlsx -w "%{http_code}\n" -H "X-FTA-Token: $TOKEN" \
+     http://127.0.0.1:8791/api/export/xlsx && file /tmp/t.xlsx   # Microsoft Excel 2007+
+
+# the vendored ai_providers module, reached as a bare-name import
+curl -s -H "X-FTA-Token: $TOKEN" http://127.0.0.1:8791/api/ai/providers | head -c 120
+```
+
+And confirm the shipped core still matches the checkout it was built from:
+
+```
+for f in AI_agent_handler.py FTA_Editor_core.py ai_providers.py json_viewer.py; do
+  diff -q "fta_web/core/$f" "build/dist/fta_editor/_internal/core/$f"
+done
+```
+
+Finally, prove the "no prerequisites" claim on a scrubbed environment rather
+than trusting it:
+
+```
+env -i HOME=/tmp/fakehome PATH=/nonexistent \
+  ./build/dist/fta_editor/fta_editor --port 8792 --no-browser
+```
+
+It should start and serve normally with no Python and nothing else on `PATH`.
+
+## Resolved: Gemini in a frozen build (divergence D11)
+
+**Previously** (before D11): with a deliberately invalid key, OpenAI and Anthropic both
+reached their APIs and returned `401`, proving their client libraries loaded, while
+Gemini returned *"Google Generative AI package not installed"* — the provider's
+`except ImportError` branch, even though the build log printed it as bundled. The cause
+was that `google.generativeai` lives under `google`, a **PEP 420 namespace package**: a
+plain `hiddenimports` entry for it is accepted without complaint and collects nothing,
+so the failure only appeared at runtime.
+
+**Fix:** `fta_web/core/ai_providers.py`'s `GeminiProvider` was migrated from the
+end-of-life `google.generativeai` to its replacement, `google.genai` (see
+`fta_web/core/DIVERGENCE.md`, D11 — Google's own migration notice reads "All support for
+the `google.generativeai` package has ended... switch to the `google.genai` package").
+`google.genai` lives under the same `google` namespace-package structure, so the spec's
+`collect_all()` workaround was retargeted at it (and at `google.auth`, a real transitive
+dependency found by inspecting `sys.modules`, not assumed).
+
+**Verified against the rebuilt binary: all three providers now work.** With a
+deliberately invalid key, all three reach their real API and return the provider's own
+4xx error — OpenAI and Anthropic `401`, Gemini `400 INVALID_ARGUMENT` /
+*"API key not valid"* from `generativelanguage.googleapis.com` — proving every client
+library loaded and made a genuine network call, not an `ImportError` masquerading as one.
+`capabilities.aiProviders` in `/api/state` also reports all three as `true` in the frozen
+build now, where Gemini previously reported `false`.
+
+**This remains disclosed, not silently trusted.** `state._probe_provider_sdks` still
+really imports each SDK rather than calling `find_spec`, on the same reasoning that
+caught the original bug: a probe that can be fooled is worse than no probe. If a future
+SDK swap reintroduces a namespace-package collection gap, the capability indicator will
+say so rather than let the AI settings dialog offer a provider that cannot connect.
+
+## Bundle size
+
+Measured on Linux, all optional packages installed:
+
+| Configuration | Size |
+|---|---|
+| No AI SDKs | 20 MB |
+| All three AI SDKs, naive (pre-D11, `google.generativeai`) | 194 MB |
+| After exclusions and the discovery-document filter (pre-D11) | 79 MB |
+| Post-D11 (`google.genai` + `google.auth`, its own test suite filtered out) | **80 MB** |
+
+Post-D11, the ~100 MB `googleapiclient`/grpc chain is gone from a build that installs
+only `google-genai` — `google.genai` doesn't depend on it at all, so the discovery-document
+filter below now drops 0 documents on a `web`+`ai` install. It still runs, and still
+matters, on a build machine that also has the *desktop* app's dependencies installed
+(`google-generativeai`, kept because `desktop/src/ai_providers.py` is frozen — see the `desktop`
+extra in `pyproject.toml`), where that chain still arrives transitively. `google.genai`
+also ships its own ~2 MB test suite (`google/genai/tests/`, ~200 modules) inside the
+installed distribution; the spec filters it out of `collect_all()`'s results the same way
+it excludes `pytest`/`hypothesis` elsewhere — test code has no business in a shipped
+bundle regardless of which package it came from.
+
+Two things account for the pre-D11 gap between "naive" and filtered, kept here for the
+historical record:
+
+- **`googleapiclient/discovery_cache/documents`** — ~600 JSON descriptors, one per
+  Google API (BigQuery, Compute, YouTube…), **102 MB**. They are *data*, not modules, so
+  an `excludes` entry does not touch them; the spec filters them off `a.datas` after
+  Analysis. Neither Gemini provider implementation has ever called `discovery.build()`,
+  the only thing that reads them. If a future provider does, it will raise
+  `UnknownApiNameOrVersion` at that call — loudly — and the filter is where to look.
+- **`hypothesis` (2 MB) and `uvloop` (13 MB)** were being bundled: a property-based
+  testing library and an unused async event loop, both pulled in transitively from the
+  dev environment. Neither has a caller in this app.
+

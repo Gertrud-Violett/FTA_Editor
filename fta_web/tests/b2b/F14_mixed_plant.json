@@ -1,0 +1,285 @@
+{
+  "title": "F14 mixed plant",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Plant damage",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "notes": "",
+    "links": [],
+    "children": [
+      {
+        "id": "loss_cooling",
+        "name": "Loss of cooling",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "pumps",
+            "name": "2oo3 pumps",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [
+              {
+                "id": "P1",
+                "name": "P1",
+                "type": "Event",
+                "probability": 1.0,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "quant": {
+                  "model": "repairable",
+                  "lambda": 2e-05,
+                  "mttr": 24.0,
+                  "unc": {
+                    "dist": "lognormal",
+                    "ef": 3.0
+                  }
+                }
+              },
+              {
+                "id": "P2",
+                "name": "P2",
+                "type": "Event",
+                "probability": 1.0,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "quant": {
+                  "model": "repairable",
+                  "lambda": 2e-05,
+                  "mttr": 24.0,
+                  "unc": {
+                    "dist": "lognormal",
+                    "ef": 3.0
+                  }
+                }
+              },
+              {
+                "id": "P3",
+                "name": "P3",
+                "type": "Event",
+                "probability": 1.0,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": [],
+                "quant": {
+                  "model": "standby",
+                  "lambda": 1e-05,
+                  "tau": 730.0
+                }
+              }
+            ],
+            "gateType": "KOFN",
+            "k": 2
+          },
+          {
+            "id": "power",
+            "name": "power",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [
+              {
+                "id": "grid",
+                "name": "grid",
+                "type": "Event",
+                "probability": 0.01,
+                "logicGate": "OR",
+                "notes": "",
+                "links": [],
+                "children": []
+              },
+              {
+                "id": "diesel",
+                "name": "diesel",
+                "type": "Event",
+                "probability": 1.0,
+                "logicGate": "AND",
+                "notes": "",
+                "links": [],
+                "children": [
+                  {
+                    "id": "dg_fail",
+                    "name": "dg_fail",
+                    "type": "Event",
+                    "probability": 0.05,
+                    "logicGate": "OR",
+                    "notes": "",
+                    "links": [],
+                    "children": [],
+                    "quant": {
+                      "model": "fixed",
+                      "unc": {
+                        "dist": "lognormal",
+                        "ef": 5.0
+                      }
+                    }
+                  },
+                  {
+                    "id": "dg_demand",
+                    "name": "dg_demand",
+                    "type": "Event",
+                    "probability": 0.3,
+                    "logicGate": "OR",
+                    "notes": "",
+                    "links": [],
+                    "children": [],
+                    "eventKind": "conditioning"
+                  }
+                ],
+                "gateType": "INHIBIT"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "valve_seq",
+        "name": "Valves in order",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "V1",
+            "name": "V1",
+            "type": "Event",
+            "probability": 0.001,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          },
+          {
+            "id": "V2",
+            "name": "V2",
+            "type": "Event",
+            "probability": 0.002,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "PAND"
+      },
+      {
+        "id": "sensors",
+        "name": "sensors",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [],
+        "children": [
+          {
+            "id": "S1",
+            "name": "S1",
+            "type": "Event",
+            "probability": 0.001,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "quant": {
+              "model": "rate",
+              "lambda": 1e-07
+            }
+          },
+          {
+            "id": "S2",
+            "name": "S2",
+            "type": "Event",
+            "probability": 0.002,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": []
+          }
+        ],
+        "gateType": "XOR"
+      },
+      {
+        "id": "maint",
+        "name": "maint",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "notes": "",
+        "links": [
+          {
+            "target_id": "V1",
+            "relation": "AND"
+          }
+        ],
+        "children": [
+          {
+            "id": "in_maint",
+            "name": "in_maint",
+            "type": "Event",
+            "probability": 0.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "eventKind": "house",
+            "houseState": true
+          },
+          {
+            "id": "to_power",
+            "name": "to_power",
+            "type": "Event",
+            "probability": 1.0,
+            "logicGate": "OR",
+            "notes": "",
+            "links": [],
+            "children": [],
+            "gateType": "TRANSFER",
+            "transferTo": "power"
+          }
+        ]
+      },
+      {
+        "id": "operator",
+        "name": "operator",
+        "type": "Event",
+        "probability": 0.001,
+        "logicGate": "OR",
+        "notes": "",
+        "links": [
+          {
+            "target_id": "grid",
+            "relation": "OR"
+          }
+        ],
+        "children": [],
+        "eventKind": "undeveloped"
+      }
+    ]
+  },
+  "analysis": {
+    "missionTime": 720.0,
+    "mc": {
+      "n": 5000,
+      "seed": 7
+    }
+  }
+}

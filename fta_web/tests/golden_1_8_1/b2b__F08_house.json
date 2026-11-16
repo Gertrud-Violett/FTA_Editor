@@ -1,0 +1,277 @@
+{
+ "commands": {
+  "cutsets": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F08_house.json",
+    "mode": "FTA",
+    "results": {
+     "approximations": [],
+     "cutSets": [
+      {
+       "events": [
+        {
+         "id": "a",
+         "name": "a",
+         "q": 0.1
+        }
+       ],
+       "order": 1,
+       "probability": 0.1,
+       "rank": 1,
+       "share": 0.625
+      },
+      {
+       "events": [
+        {
+         "id": "c",
+         "name": "c",
+         "q": 0.05
+        }
+       ],
+       "order": 1,
+       "probability": 0.05,
+       "rank": 2,
+       "share": 0.3125
+      },
+      {
+       "events": [
+        {
+         "id": "k1",
+         "name": "k1",
+         "q": 0.01
+        }
+       ],
+       "order": 1,
+       "probability": 0.01,
+       "rank": 3,
+       "share": 0.0625
+      }
+     ],
+     "limits": {
+      "cutoff": 1e-15,
+      "maxCount": 5000,
+      "maxOrder": 6
+     },
+     "mcub": 0.15355000000000002,
+     "nonCoherent": false,
+     "rareEvent": 0.16,
+     "repeatedEvents": [],
+     "total": 3,
+     "treeWalk": 0.15355,
+     "truncated": false,
+     "truncatedBy": [],
+     "warnings": []
+    },
+    "title": "F08 house events"
+   }
+  },
+  "importance": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F08_house.json",
+    "mode": "FTA",
+    "results": {
+     "measures": [
+      {
+       "birnbaum": 0.9405,
+       "cutSetCount": 1,
+       "fv": 0.6125040703353957,
+       "id": "a",
+       "name": "a",
+       "q": 0.1,
+       "raw": 6.51253663301856,
+       "rrw": 2.580672268907563,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.891,
+       "cutSetCount": 1,
+       "fv": 0.2901335070009769,
+       "id": "c",
+       "name": "c",
+       "q": 0.05,
+       "raw": 6.51253663301856,
+       "rrw": 1.4087155963302753,
+       "rrwInfinite": false
+      },
+      {
+       "birnbaum": 0.855,
+       "cutSetCount": 1,
+       "fv": 0.05568218821230869,
+       "id": "k1",
+       "name": "k1",
+       "q": 0.01,
+       "raw": 6.51253663301856,
+       "rrw": 1.0589655172413792,
+       "rrwInfinite": false
+      }
+     ]
+    },
+    "title": "F08 house events"
+   }
+  },
+  "mc": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F08_house.json",
+    "mode": "FTA",
+    "results": {
+     "certainEvents": [
+      "a",
+      "b",
+      "c",
+      "k1"
+     ],
+     "completed": 2000,
+     "cutsetsTruncated": false,
+     "histogram": {
+      "counts": [
+       2000
+      ],
+      "edges": [
+       0.15355000000000008,
+       0.15355000000000008
+      ],
+      "logBins": false
+     },
+     "mean": 0.15355000000000008,
+     "median": 0.15355000000000008,
+     "method": "tree",
+     "nonCoherent": false,
+     "p05": 0.15355000000000008,
+     "p95": 0.15355000000000008,
+     "pointEstimate": 0.15355000000000008,
+     "repeatedEvents": [],
+     "requested": 2000,
+     "seed": 1,
+     "std": 0.0,
+     "truncatedByTime": false,
+     "uncertainEvents": [],
+     "warnings": [
+      {
+       "code": "MC_NO_UNCERTAINTY",
+       "nodeId": null,
+       "params": {}
+      }
+     ]
+    },
+    "title": "F08 house events"
+   }
+  },
+  "quantify": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F08_house.json",
+    "mode": "FTA",
+    "results": {
+     "events": [
+      {
+       "calculated": 1.0,
+       "id": "hon",
+       "model": "fixed",
+       "name": "hon",
+       "q": 1.0
+      },
+      {
+       "calculated": 0.1,
+       "id": "a",
+       "model": "fixed",
+       "name": "a",
+       "q": 0.1
+      },
+      {
+       "calculated": 0.0,
+       "id": "hoff",
+       "model": "fixed",
+       "name": "hoff",
+       "q": 0.0
+      },
+      {
+       "calculated": 0.2,
+       "id": "b",
+       "model": "fixed",
+       "name": "b",
+       "q": 0.2
+      },
+      {
+       "calculated": 0.0,
+       "id": "hoff2",
+       "model": "fixed",
+       "name": "hoff2",
+       "q": 0.0
+      },
+      {
+       "calculated": 0.05,
+       "id": "c",
+       "model": "fixed",
+       "name": "c",
+       "q": 0.05
+      },
+      {
+       "calculated": 0.01,
+       "id": "k1",
+       "model": "fixed",
+       "name": "k1",
+       "q": 0.01
+      }
+     ],
+     "summary": {
+      "approximations": [],
+      "capped": false,
+      "headline": 0.15355,
+      "headlineMethod": "treeWalk",
+      "mcub": 0.15355000000000002,
+      "nonCoherent": false,
+      "rareEvent": 0.16,
+      "repeatedEvents": [],
+      "treeWalk": 0.15355,
+      "truncated": false,
+      "truncatedBy": []
+     }
+    },
+    "title": "F08 house events"
+   }
+  },
+  "validate": {
+   "exitCode": 0,
+   "stdout": {
+    "file": "fta_web/tests/b2b/F08_house.json",
+    "mode": "FTA",
+    "results": {
+     "counts": {
+      "error": 0,
+      "info": 0,
+      "warning": 2
+     },
+     "issues": [
+      {
+       "code": "HOUSE_HAS_CHILDREN",
+       "hintKey": "val.fix.HOUSE_HAS_CHILDREN",
+       "message": "House event has 1 children; its on/off state is ignored.",
+       "nodeId": "h_kids",
+       "nodeName": "h_kids",
+       "params": {
+        "n": 1
+       },
+       "severity": "warning"
+      },
+      {
+       "code": "SINGLE_INPUT_GATE",
+       "hintKey": "val.fix.SINGLE_INPUT_GATE",
+       "message": "OR gate has only one input, so it does nothing.",
+       "nodeId": "h_kids",
+       "nodeName": "h_kids",
+       "params": {
+        "gate": "OR"
+       },
+       "severity": "warning"
+      }
+     ]
+    },
+    "title": "F08 house events"
+   }
+  }
+ },
+ "file": "fta_web/tests/b2b/F08_house.json"
+}

@@ -1,0 +1,2690 @@
+/**
+ * tree.js -- the fault tree panel.
+ *
+ * Reproduces the desktop Treeview's visual language
+ * (src/FTA_Editor_UI.py:165-196 and :1555-1587):
+ *
+ *   * eight cycling per-depth background colours, applied with the **uncapped**
+ *     depth. The desktop defines 20 tag levels but then selects them with
+ *     `min(depth, 3)` in two of its four code paths, so most of the palette was
+ *     unreachable; here `depth % 8` is used everywhere.
+ *   * a `✖` marker column for every node id in `state.zeroNodes`,
+ *   * blue text for those zero-probability nodes,
+ *   * bold red text for nodes whose *base* `probability` is exactly 1.0, which
+ *     wins over the blue when a node is both (the desktop's if/elif order).
+ *
+ * P5 adds the editing surface on top of that: drag to re-parent, inline rename,
+ * multi-select, and a search filter.
+ *
+ * WHAT CHANGED IN P5, AND WHY
+ * ===========================
+ * P1 said "the panel is a pure view over the store: it never calls the API".
+ * That is no longer true and could not stay true: a rename, a re-parent and a
+ * multi-node delete are edits, and routing them through another module would
+ * mean inventing a second command bus for no gain. So this file now imports
+ * api.js -- and every one of those calls goes through a normal mutating
+ * endpoint, which means every one of them lands in the server's undo stack and
+ * Ctrl+Z steps back through them like any other edit.
+ *
+ * DRAG, AND ITS KEYBOARD EQUIVALENT
+ * ---------------------------------
+ * Dragging a row onto another row re-parents it; dragging onto the top or
+ * bottom quarter of a row drops it *between* siblings instead. The indicator
+ * is live: an illegal drop (onto the dragged node itself, into its own
+ * subtree, or beside the root, which has no parent to be a sibling in) paints
+ * red and refuses the drop, during the drag rather than as an error afterwards.
+ * The same cycle check the server runs (tree_ops.would_create_cycle) is
+ * mirrored here so the refusal is instant and local; the server still runs it,
+ * and its CYCLE_REJECTED is still surfaced if the two ever disagree.
+ *
+ * A drag-only re-parent would be unusable without a mouse, so the same four
+ * moves are bound to Ctrl+Shift+arrows on the focused row -- the outline-editor
+ * convention:
+ *
+ *   Ctrl+Shift+Up / Down    re-order among siblings
+ *   Ctrl+Shift+Right        indent: become the last child of the sibling above
+ *   Ctrl+Shift+Left         outdent: become the next sibling of the parent
+ *
+ * Each refusal says why (no sibling above, already directly under the root)
+ * rather than doing nothing.
+ *
+ * SELECTION
+ * ---------
+ * The store holds one id -- the *lead* selection every other panel follows.
+ * This panel holds the wider set, because nothing else needs it. Ctrl/Cmd-click
+ * toggles, Shift-click takes the range over the *visible* order (the order rows
+ * are painted in, which is what the user is pointing at), Ctrl+Space toggles
+ * from the keyboard and Shift+Arrow extends. When another module moves the
+ * store's selection -- details.js, an undo, a freshly added node -- the set
+ * collapses back to that single node, because a multi-selection nobody else
+ * knows about must not silently outlive the click that made it. Such a
+ * selection (a click in the diagram, a jump from a tab) also scrolls its row
+ * into view, so the tree never shows a different part than the one chosen.
+ *
+ * EXPANSION, PER DOCUMENT
+ * -----------------------
+ * Which branches are open is remembered per file path (EXPANDED_KEY), because
+ * ids such as root_0 recur in every tree: with one list for all files, a
+ * branch collapsed in one document was collapsed in the next. A document that
+ * has no path yet has one slot of its own, emptied by New.
+ *
+ * SEARCH
+ * ------
+ * Typing filters to matching rows *plus their ancestors*, so a match is never
+ * orphaned from its path; everything else is hidden. The expansion state in
+ * force when the search started is snapshotted and restored when the box is
+ * cleared, so filtering never costs the user the shape of the tree they had
+ * arranged. The snapshot is deliberately not persisted while filtering, so a
+ * reload mid-search comes back to the pre-search shape rather than to the
+ * filter's scaffolding.
+ *
+ * 1.7: plain text also matches the traceability and FMEA fields
+ * (trace.requirementId/owner/status/tags, fmea.id/item), case-insensitively,
+ * and `tag:x`, `owner:x`, `status:x`, `req:x`, `fmea:x` narrow to one field.
+ * Terms combine with AND; the free text left over is one phrase, so names
+ * with spaces still work. A prefix with an empty value (`tag:`) matches any
+ * node that has that field at all. See parseQuery().
+ *
+ * HIGHLIGHT AND JUMP (1.7)
+ * ------------------------
+ * `store.onHighlight` ({ids, source}, from the cut-set, FMEA and other tabs)
+ * marks those rows `is-highlighted` and opens their ancestors so they are on
+ * screen. `fta:jump` {id} (store.jumpTo) opens the ancestors, scrolls the row
+ * into view and focuses it; a search that hides the row is cleared first.
+ *
+ * EVERY STRING GOES THROUGH THE SHELL CATALOG
+ * -------------------------------------------
+ * `t()` below reaches window.ftaShell.t, i.e. main.js's STRINGS table. Nothing
+ * in this file is written in English: Japanese lands next phase and has to be a
+ * data change in that one table, not a hunt through the modules.
+ */
+import { store } from './store.js';
+import { api } from './api.js';
+import {
+  DEPTH_LEVELS,
+  clear,
+  confirmDialog,
+  el,
+  ensureBaseStyles,
+  injectStyles,
+  isImeKey,
+  sanitizeName,
+  showError as dialogShowError,
+  uid,
+} from './dialogs.js';
+import traceStrings from './i18n/trace.js';
+import { formatProb, getSigFigs } from './numfmt.js';
+import { scaleColor, overlayMax } from './overlay_scale.js';
+import { memberMap } from './ccf_util.js';
+
+/**
+ * {"<file path>": [open branch ids], ...}, newest last, in localStorage. The
+ * document that has no file yet is the key '' and lives in sessionStorage
+ * instead: it survives a reload of the tab, but a later launch, with another
+ * unsaved tree, does not inherit it. (v1 was one list for every file; it is
+ * left alone and no longer read.)
+ */
+const EXPANDED_KEY = 'fta.tree.expanded.v2';
+/** Files remembered. The oldest drops out; its tree then opens fully expanded. */
+const EXPANDED_FILES_MAX = 40;
+const MARK = '✖';
+
+/** How long a row just added stays tinted (fta:reveal). */
+const REVEAL_MS = 2500;
+
+/** How long a drag has to hover a collapsed branch before it springs open. */
+const HOVER_EXPAND_MS = 650;
+
+/** Keystrokes are cheap; a filter pass over the whole tree is not. */
+const SEARCH_DEBOUNCE_MS = 120;
+
+/** Fraction of a row's height that counts as "between siblings" at each edge. */
+const EDGE_ZONE = 0.28;
+
+const TREE_CSS = `
+/* The search highlight is the one colour this file owns rather than borrows.
+   Declared at specificity 0 in all three theme states, exactly like the token
+   sheet in dialogs.js, so theme.css can still override it. */
+:where(:root) {
+  --fta-tree-hit-bg: rgba(255, 214, 0, 0.55);
+  --fta-tree-hl-bg: rgba(0, 120, 255, 0.16);
+  --fta-tree-hl-edge: #0a64d8;
+}
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme="light"]):not(.theme-light):not(.light)) {
+    --fta-tree-hit-bg: rgba(255, 214, 0, 0.30);
+    --fta-tree-hl-bg: rgba(90, 170, 255, 0.24);
+    --fta-tree-hl-edge: #6cb4ff;
+  }
+}
+:where([data-theme="dark"], .theme-dark, html.dark, body.dark) {
+  --fta-tree-hit-bg: rgba(255, 214, 0, 0.30);
+  --fta-tree-hl-bg: rgba(90, 170, 255, 0.24);
+  --fta-tree-hl-edge: #6cb4ff;
+}
+
+/* #tree-root is itself a flex column (.panel__body--flush in app.css), so the
+   panel claims the free space as a flex item; height:100% is the fallback for
+   any container that is not one. */
+.fta-tree-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+.fta-tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--fta-border);
+  background: var(--fta-surface);
+}
+.fta-tree-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
+  color: var(--fta-fg);
+  background: var(--fta-surface);
+  border: 1px solid var(--fta-border);
+  border-radius: var(--fta-radius);
+}
+.fta-tree-search:focus-visible {
+  outline: 2px solid var(--fta-focus-ring);
+  outline-offset: -1px;
+}
+.fta-tree-search-clear {
+  flex: 0 0 auto;
+  font: inherit;
+  line-height: 1;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  color: var(--fta-muted-fg);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--fta-radius);
+}
+.fta-tree-search-clear:hover { color: var(--fta-fg); border-color: var(--fta-border); }
+.fta-tree-status {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: var(--fta-muted-fg);
+  white-space: nowrap;
+}
+/* The keyboard hint NEVER takes part in the layout. In 1.7.0 it was a flex item
+   shown on :focus-within; focus arrives on mousedown, so the list shrank
+   between mousedown and mouseup, a click on a row near the bottom of the panel
+   landed on the hint, and the browser retargeted it away from the row (the
+   root got selected). Now it is an overlay that clicks pass through, shown
+   only for keyboard focus (.is-kbd, see trackModality), and the list keeps
+   its size whatever the hint does. --fta-tree-hint-h (measured when the hint
+   first shows, never shrinking) pads the end of the list and the scroll
+   snapping so the focused / last row can always be brought clear of it.
+   aria-describedby points at it either way, so a screen reader hears it on
+   the tree regardless of display. */
+.fta-tree-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--fta-muted-fg);
+  background: var(--fta-surface);
+  border-top: 1px solid var(--fta-border);
+  pointer-events: none;
+  display: none;
+}
+.fta-tree-panel.is-kbd:focus-within .fta-tree-hint { display: block; }
+
+.fta-tree {
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  color: var(--fta-tree-fg);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  scroll-padding-bottom: var(--fta-tree-hint-h, 0px);
+}
+.fta-tree::after { content: ''; display: block; height: var(--fta-tree-hint-h, 0px); }
+.fta-tree ul { list-style: none; margin: 0; padding: 0; }
+.fta-tree-empty {
+  margin: 0;
+  padding: 0.75rem;
+  color: var(--fta-muted-fg);
+  font-size: 0.875rem;
+}
+.fta-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-block: 0.15rem;
+  padding-right: 0.35rem;
+  padding-left: calc(0.35rem + var(--fta-level, 0) * var(--fta-tree-indent));
+  background: var(--fta-tree-empty-bg);
+  color: var(--fta-tree-fg);
+  cursor: default;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.fta-tree-item[data-depth="0"] > .fta-tree-row { background: var(--fta-depth-0); }
+.fta-tree-item[data-depth="1"] > .fta-tree-row { background: var(--fta-depth-1); }
+.fta-tree-item[data-depth="2"] > .fta-tree-row { background: var(--fta-depth-2); }
+.fta-tree-item[data-depth="3"] > .fta-tree-row { background: var(--fta-depth-3); }
+.fta-tree-item[data-depth="4"] > .fta-tree-row { background: var(--fta-depth-4); }
+.fta-tree-item[data-depth="5"] > .fta-tree-row { background: var(--fta-depth-5); }
+.fta-tree-item[data-depth="6"] > .fta-tree-row { background: var(--fta-depth-6); }
+.fta-tree-item[data-depth="7"] > .fta-tree-row { background: var(--fta-depth-7); }
+
+/* Blue for zero probability, bold red for an EVENT whose base probability is
+   exactly 1.0 (certain to occur: nearly always a value left at its default).
+   A gate is never red for it: its base probability is not used, and every
+   gate of a tree built in the editor carried one of 1.0, so the whole upper
+   half of the tree shouted. Red is listed last on purpose: a node that is
+   both is red, matching the desktop's "if is_full_prob ... elif is_zero". */
+.fta-tree-row.is-zero { color: var(--fta-tree-zero-fg); }
+.fta-tree-row.is-full {
+  color: var(--fta-tree-full-fg);
+  font-weight: var(--fta-tree-full-weight);
+}
+/* What the row is and what it is worth, at the right of the name: the gate
+   of a node with inputs, and the probability (calculated for a gate, its own
+   for an event). Quiet on purpose: the name is what is read first. */
+.fta-tree-gate {
+  flex: 0 0 auto;
+  padding: 0 0.35em;
+  border: 1px solid var(--fta-border, #d7dde5);
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--fta-muted-fg, #5d6a78);
+  background: var(--fta-surface, #fff);
+}
+/* A member of a CCF group (F2): a small pill after the gate chip. A group that
+   is not applied is dashed and dim, so it never looks like it changes a number. */
+.fta-tree-ccf {
+  /* The name keeps its width (.fta-tree-label.has-ccf does not shrink): the
+     badge gives up space, down to a few characters. The full text is in the title. */
+  flex: 0 1 auto;
+  min-width: 4.5ch;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 0.4em;
+  border: 1px solid var(--accent, #2b6cb0);
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--accent-hover, #1e4e8c);
+  background: var(--accent-soft, #e6effa);
+}
+/* The badge is cut in its middle: "CCF: " and the not-applied marker stay whole, the
+   group name takes the ellipsis, so "(off)" is never the part that is hidden. */
+.fta-tree-ccf.has-parts { display: inline-flex; }
+.fta-tree-ccf.has-parts.is-off { min-width: 12ch; max-width: 18ch; } /* room for the Japanese marker too */
+.fta-tree-ccf-pre, .fta-tree-ccf-post { flex: 0 0 auto; white-space: pre; }
+.fta-tree-ccf-name {
+  flex: 0 1 auto;
+  min-width: 1.5ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The state of the group is not known yet (GET /api/ccf/groups has not answered):
+   neither the applied look nor the off look. */
+.fta-tree-ccf.is-pending {
+  border-color: var(--fta-border, #d7dde5);
+  color: var(--fta-muted-fg, #5d6a78);
+  background: transparent;
+}
+.fta-tree-ccf.is-off {
+  border-style: dashed;
+  border-color: var(--fta-border, #d7dde5);
+  color: var(--fta-muted-fg, #5d6a78);
+  background: transparent;
+}
+.fta-tree-prob {
+  flex: 0 0 auto;
+  min-width: 4.2em;
+  text-align: right;
+  font-size: 0.8em;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--fta-muted-fg, #5d6a78);
+}
+.fta-tree-row.is-full .fta-tree-prob { color: inherit; font-weight: inherit; }
+.fta-tree-row.is-zero .fta-tree-prob { color: inherit; }
+
+.fta-tree-twisty {
+  flex: 0 0 1em;
+  text-align: center;
+  color: var(--fta-tree-twisty-fg);
+  cursor: pointer;
+  font-size: 0.8em;
+}
+.fta-tree-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+/* A row with a CCF badge (F2): the name does not shrink with the badge; only a
+   name too long for the row is cut, leaving room for the badge and the number. */
+.fta-tree-label.has-ccf { flex: 1 0 auto; max-width: calc(100% - 17ch); }
+.fta-tree-fv {
+  /* Overlay (e.g. FV importance) bar, same colour scale as the diagram. */
+  flex: 0 0 34px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fta-tree-fv-track, rgba(127, 127, 127, 0.18));
+  overflow: hidden;
+}
+.fta-tree-fv > span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+}
+.fta-tree-mark {
+  flex: 0 0 var(--fta-tree-mark-width);
+  text-align: center;
+  color: var(--fta-tree-mark-fg);
+}
+/* The matched run inside a label. Colour is left to the row so a zero-probability
+   or full-probability row keeps its own foreground; only the ground changes. */
+.fta-tree-hit {
+  color: inherit;
+  background: var(--fta-tree-hit-bg, rgba(255, 214, 0, 0.55));
+  border-radius: 2px;
+}
+.fta-tree-rename {
+  flex: 1 1 auto;
+  min-width: 4rem;
+  font: inherit;
+  color: var(--fta-fg);
+  background: var(--fta-surface);
+  border: 1px solid var(--fta-focus-ring);
+  border-radius: 3px;
+  padding: 0 0.2rem;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.fta-tree-row:hover { box-shadow: inset 0 0 0 100vmax var(--fta-tree-hover-tint); }
+.fta-tree-item[aria-selected="true"] > .fta-tree-row {
+  box-shadow:
+    inset 0 0 0 100vmax var(--fta-tree-selected-tint),
+    inset 3px 0 0 0 var(--fta-tree-selected-outline);
+  outline: 2px solid var(--fta-tree-selected-outline);
+  outline-offset: -2px;
+}
+/* The lead row -- the one the store points at and the one Shift-click ranges
+   from -- keeps a solid outline; the rest of a multi-selection is tinted only,
+   so "which one is the anchor" stays readable. */
+.fta-tree-item[aria-selected="true"]:not([data-lead="1"]) > .fta-tree-row {
+  outline-style: dashed;
+}
+/* Highlight bus (cut sets, FMEA import...): a tinted ground plus a thick
+   left edge, layered with the selection tint when a row is both. */
+.fta-tree-row.is-highlighted {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
+/* A node just added (fta:reveal): the same mark, for a couple of seconds. The
+   parent keeps the selection, so this is what shows where the child went. */
+.fta-tree-row.is-new {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
+.fta-tree-row.is-highlighted:hover {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-hover-tint),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
+.fta-tree-item[aria-selected="true"] > .fta-tree-row.is-highlighted {
+  box-shadow:
+    inset 5px 0 0 0 var(--fta-tree-hl-edge),
+    inset 0 0 0 100vmax var(--fta-tree-selected-tint),
+    inset 0 0 0 100vmax var(--fta-tree-hl-bg);
+}
+.fta-tree-item:focus { outline: none; }
+.fta-tree-item:focus > .fta-tree-row {
+  outline: 2px dashed var(--fta-focus-ring);
+  outline-offset: -2px;
+}
+
+/* ---- drag and drop -----------------------------------------------------
+   Declared after the selection rules and qualified with .is-dragging so the
+   indicator always wins over a selected row's box-shadow while a drag is in
+   flight, without reaching for !important. */
+.fta-tree-item.is-drag-source > .fta-tree-row { opacity: 0.45; }
+.fta-tree.is-dragging .fta-tree-item > .fta-tree-row.is-drop-into {
+  outline: 2px solid var(--fta-accent);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 100vmax var(--fta-tree-selected-tint);
+}
+.fta-tree.is-dragging .fta-tree-item > .fta-tree-row.is-drop-before {
+  box-shadow: inset 0 3px 0 0 var(--fta-accent);
+}
+.fta-tree.is-dragging .fta-tree-item > .fta-tree-row.is-drop-after {
+  box-shadow: inset 0 -3px 0 0 var(--fta-accent);
+}
+.fta-tree.is-dragging .fta-tree-item > .fta-tree-row.is-drop-bad.is-drop-into {
+  outline-color: var(--fta-danger-fg);
+  box-shadow: inset 0 0 0 100vmax var(--fta-danger-bg);
+}
+.fta-tree.is-dragging .fta-tree-item > .fta-tree-row.is-drop-bad.is-drop-before {
+  box-shadow: inset 0 3px 0 0 var(--fta-danger-fg);
+}
+.fta-tree.is-dragging .fta-tree-item > .fta-tree-row.is-drop-bad.is-drop-after {
+  box-shadow: inset 0 -3px 0 0 var(--fta-danger-fg);
+}
+`;
+
+/* ------------------------------------------------------------ shell glue -- */
+
+/**
+ * Translate through main.js's STRINGS table. Never hardcode English here: a
+ * literal in this file is invisible to the language switch, and a key with no
+ * entry renders as "tree.something" on screen -- which is the failure this
+ * indirection exists to make obvious rather than silent.
+ */
+function t(key, vars) {
+  const shell = window.ftaShell;
+  if (shell && typeof shell.t === 'function') {
+    try {
+      return shell.t(key, vars);
+    } catch (_err) {
+      /* fall through to the key, which is at least identifiable */
+    }
+  }
+  return key;
+}
+
+/** Register the 1.7 search strings (i18n/trace.js) with the shell, once. */
+let traceStringsRegistered = false;
+function registerTraceStrings() {
+  if (traceStringsRegistered) return;
+  const shell = window.ftaShell;
+  if (shell && typeof shell.registerStrings === 'function') {
+    shell.registerStrings(traceStrings);
+    traceStringsRegistered = true;
+  }
+}
+
+/** t(), falling back to another key while the preferred one is unregistered. */
+function tOr(key, fallbackKey, vars) {
+  const text = t(key, vars);
+  return text === key ? t(fallbackKey, vars) : text;
+}
+
+/* ------------------------------------------------------------------ search -- */
+
+/** Field prefixes the search box understands (see the SEARCH note above). */
+const SEARCH_PREFIXES = Object.freeze(['tag', 'owner', 'status', 'req', 'fmea']);
+const PREFIX_RE = new RegExp(
+  '(^|\\s)(' + SEARCH_PREFIXES.join('|') + '):(?:"([^"]*)"|(\\S*))',
+  'gi'
+);
+
+/**
+ * Split a query into `{text, terms: [{field, value}]}`, all lower-cased.
+ * `tag:"two words"` quotes a value with spaces.
+ */
+export function parseQuery(raw) {
+  const source = String(raw === null || raw === undefined ? '' : raw);
+  const terms = [];
+  const text = source
+    .replace(PREFIX_RE, (_m, lead, field, quoted, bare) => {
+      terms.push({
+        field: field.toLowerCase(),
+        value: String(quoted !== undefined ? quoted : bare || '').toLowerCase(),
+      });
+      return lead;
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return { text: text, terms: terms };
+}
+
+function lowerText(value) {
+  return value === null || value === undefined ? '' : String(value).toLowerCase();
+}
+
+/** The searchable values of one field of a node, lower-cased. */
+function fieldValues(node, field) {
+  const trace = node && node.trace && typeof node.trace === 'object' ? node.trace : {};
+  const fmea = node && node.fmea && typeof node.fmea === 'object' ? node.fmea : {};
+  switch (field) {
+    case 'tag':
+      return Array.isArray(trace.tags) ? trace.tags.map(lowerText) : [];
+    case 'owner':
+      return trace.owner ? [lowerText(trace.owner)] : [];
+    case 'status':
+      return trace.status ? [lowerText(trace.status)] : [];
+    case 'req':
+      return trace.requirementId ? [lowerText(trace.requirementId)] : [];
+    case 'fmea':
+      return [fmea.id, fmea.item, fmea.mode].filter((v) => v !== undefined && v !== null && v !== '').map(lowerText);
+    default:
+      return [];
+  }
+}
+
+/** Does `node` satisfy a parsed query? (Exported for tests.) */
+export function nodeMatches(node, parsed) {
+  if (!node) return false;
+  for (const term of parsed.terms) {
+    const values = fieldValues(node, term.field);
+    if (!values.length) return false;
+    if (term.value && !values.some((v) => v.indexOf(term.value) !== -1)) return false;
+  }
+  const needle = parsed.text;
+  if (!needle) return parsed.terms.length > 0;
+  if (lowerText(node.name).indexOf(needle) !== -1) return true;
+  // Ids are how the details panel and every error message name a node, so a
+  // search that cannot find "root_0_2" would be missing the obvious case.
+  if (lowerText(node.id).indexOf(needle) !== -1) return true;
+  const trace = node.trace && typeof node.trace === 'object' ? node.trace : {};
+  const fmea = node.fmea && typeof node.fmea === 'object' ? node.fmea : {};
+  const extra = [trace.requirementId, trace.owner, trace.status, fmea.id, fmea.item];
+  if (Array.isArray(trace.tags)) extra.push(...trace.tags);
+  return extra.some((v) => v !== undefined && v !== null && lowerText(v).indexOf(needle) !== -1);
+}
+
+/** A short confirmation or refusal. Goes to the shell's toast + status line. */
+function say(message, kind) {
+  const shell = window.ftaShell;
+  if (shell && typeof shell.toast === 'function') {
+    shell.toast(message, kind || 'info');
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent('fta:toast', { detail: { message: message, kind: kind || 'info' } })
+  );
+}
+
+/** A warning toast with a "Show in Validation" action (1.7). */
+function sayShowValidation(message) {
+  const shell = window.ftaShell;
+  if (shell && typeof shell.toast === 'function' && typeof shell.openTab === 'function') {
+    shell.toast(message, 'warn', null, {
+      action: { label: t('toast.showValidation'), onClick: () => shell.openTab('validation') },
+    });
+    return;
+  }
+  say(message, 'warn');
+}
+
+/**
+ * Surface a failure. ApiError.message is the server's own explanation and is
+ * the only account the user gets, so it is never swallowed.
+ */
+function fail(err) {
+  const shell = window.ftaShell;
+  if (shell && typeof shell.showError === 'function') {
+    shell.showError(err);
+    return;
+  }
+  dialogShowError(err);
+}
+
+/* --------------------------------------------------------------- store I/O -- */
+
+/**
+ * The root node. `store.state` mirrors the API payload, whose tree lives under
+ * `tree`; a store that exposes the tree directly is tolerated too.
+ */
+function treeRoot() {
+  const state = store.state;
+  if (!state || typeof state !== 'object') return null;
+  const tree = state.tree;
+  if (tree && typeof tree === 'object' && tree.id !== undefined) return tree;
+  if (state.id !== undefined) return state;
+  return null;
+}
+
+/** The root's id, or null when nothing is loaded. */
+function rootId() {
+  const root = treeRoot();
+  return root ? String(root.id) : null;
+}
+
+/** Ids the engine reports as zero-probability, as a Set of strings. */
+function zeroNodeSet() {
+  const state = store.state;
+  const raw = state && state.zeroNodes;
+  return new Set(Array.isArray(raw) ? raw.map(String) : []);
+}
+
+/** id -> depth, from `store.flat()`. Falls back to the recursion depth. */
+function depthMap() {
+  const map = new Map();
+  let flat = [];
+  try {
+    flat = store.flat() || [];
+  } catch (err) {
+    flat = [];
+  }
+  for (const entry of flat) {
+    if (!entry || entry.id === undefined || entry.id === null) continue;
+    if (typeof entry.depth === 'number') map.set(String(entry.id), entry.depth);
+  }
+  return map;
+}
+
+/** Parent ids from the node up to (and including) the root. */
+function ancestorsOf(nodeId) {
+  const chain = [];
+  let current = String(nodeId);
+  for (let guard = 0; guard < 1000; guard += 1) {
+    let parent = null;
+    try {
+      parent = store.parentOf(current);
+    } catch (err) {
+      parent = null;
+    }
+    if (parent === null || parent === undefined) break;
+    const parentId =
+      typeof parent === 'object'
+        ? parent.id === undefined || parent.id === null
+          ? null
+          : String(parent.id)
+        : String(parent);
+    if (!parentId || chain.indexOf(parentId) !== -1) break;
+    chain.push(parentId);
+    current = parentId;
+  }
+  return chain;
+}
+
+/** The parent's id, or null for the root / an unknown node. */
+function parentIdOf(nodeId) {
+  try {
+    return store.parentIdOf(String(nodeId));
+  } catch (_err) {
+    return null;
+  }
+}
+
+/** The ids of a node's direct children, in order. */
+function childIdsOf(nodeId) {
+  if (nodeId === null || nodeId === undefined) return [];
+  let kids = [];
+  try {
+    kids = store.childrenOf(String(nodeId)) || [];
+  } catch (_err) {
+    kids = [];
+  }
+  return kids.filter(Boolean).map((child) => String(child.id));
+}
+
+/** The node's display name, or its id when it has none. */
+function nameOf(nodeId) {
+  const node = store.findNode(String(nodeId));
+  const name = node && node.name ? sanitizeName(node.name) : '';
+  return name || String(nodeId);
+}
+
+/** Every id inside `nodeId`'s subtree, including `nodeId` itself. */
+function subtreeIds(nodeId) {
+  const out = new Set();
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return;
+    out.add(String(node.id));
+    const kids = Array.isArray(node.children) ? node.children : [];
+    for (const child of kids) walk(child);
+  };
+  walk(store.findNode(String(nodeId)));
+  return out;
+}
+
+/* ------------------------------------------------------ expansion, persisted -- */
+
+/** The slot of the loaded document: its file path, '' while it has none. */
+function documentKey() {
+  const state = store.state;
+  const path = state && typeof state === 'object' ? state.currentPath : null;
+  return typeof path === 'string' ? path : '';
+}
+
+function expandedStorage(key) {
+  return key === '' ? window.sessionStorage : window.localStorage;
+}
+
+function readExpandedTable(key) {
+  try {
+    const parsed = JSON.parse(expandedStorage(key).getItem(EXPANDED_KEY) || 'null');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch (err) {
+    /* private mode, quota, corrupt value: fall back to the default */
+  }
+  return {};
+}
+
+function writeExpandedTable(key, table) {
+  try {
+    expandedStorage(key).setItem(EXPANDED_KEY, JSON.stringify(table));
+  } catch (err) {
+    /* persistence is a convenience, never a correctness requirement */
+  }
+}
+
+/** The open branches remembered for `key`, or null when it has none yet. */
+function readExpanded(key) {
+  const table = readExpandedTable(key);
+  const ids = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : null;
+  return Array.isArray(ids) ? new Set(ids.map(String)) : null;
+}
+
+/** Remember `expanded` for `key`; null forgets it. */
+function writeExpanded(key, expanded) {
+  const table = readExpandedTable(key);
+  delete table[key]; // re-inserted below, so the newest file is the last key
+  if (expanded) table[key] = Array.from(expanded);
+  const keys = Object.keys(table);
+  for (const old of keys.slice(0, Math.max(0, keys.length - EXPANDED_FILES_MAX))) delete table[old];
+  writeExpandedTable(key, table);
+}
+
+/** Every id that currently has at least one child. */
+function branchIds(node, into) {
+  const children = Array.isArray(node.children) ? node.children : [];
+  if (children.length) into.add(String(node.id));
+  for (const child of children) if (child) branchIds(child, into);
+  return into;
+}
+
+/* ------------------------------------------------------------------ panel --- */
+
+/**
+ * Mount the tree panel inside `container`.
+ *
+ * Non-destructive: an existing heading in the container is left alone and the
+ * panel is appended (or reused, if this is a re-init).
+ */
+/*
+ * Input modality, for the keyboard hint under the list. The hint must never
+ * appear because of a mouse press (see the .is-kbd rule in TREE_CSS): that
+ * changes the layout between mousedown and mouseup. Module-level so the two
+ * document listeners exist once however often initTree runs.
+ */
+let lastModality = 'pointer';
+let modalityWired = false;
+
+function wireModality() {
+  if (modalityWired) return;
+  modalityWired = true;
+  document.addEventListener('keydown', () => { lastModality = 'keyboard'; }, true);
+  document.addEventListener('pointerdown', () => { lastModality = 'pointer'; }, true);
+}
+
+/**
+ * Toggle `.is-kbd` on the panel: keyboard focus shows the hint overlay, a
+ * pointer never does. Neither changes the layout (the hint is absolutely
+ * positioned and click-through), so nothing moves under a pressed button.
+ */
+function trackModality(panel, list, hint) {
+  wireModality();
+  let reserved = 0;
+  // The overlay covers the bottom of the list: reserve that much room at the
+  // list's end and in its scroll snapping (grow-only, so a later, shorter
+  // hint never pulls a scrolled-to-the-end list down), then keep the focused
+  // row clear of it.
+  const reveal = () => {
+    const height = hint ? hint.offsetHeight : 0;
+    if (height > reserved) {
+      reserved = height;
+      panel.style.setProperty('--fta-tree-hint-h', reserved + 'px');
+    }
+    const focused = document.activeElement;
+    if (!focused || !list.contains(focused)) return;
+    const row = focused.querySelector(':scope > .fta-tree-row') || focused;
+    if (typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  };
+  const show = (on) => {
+    const was = panel.classList.contains('is-kbd');
+    panel.classList.toggle('is-kbd', on);
+    if (on && !was) reveal();
+  };
+  panel.addEventListener('pointerdown', () => show(false), true);
+  panel.addEventListener('keydown', () => show(true), true);
+  panel.addEventListener('focusin', () => show(lastModality === 'keyboard'));
+}
+
+export function initTree(container) {
+  if (!container) throw new Error('initTree(container): container is required');
+  ensureBaseStyles();
+  injectStyles('fta-tree-css', TREE_CSS);
+  registerTraceStrings();
+
+  /* ---- chrome ---- */
+
+  let panel = container.querySelector(':scope > .fta-tree-panel');
+  if (panel) clear(panel);
+  else {
+    panel = el('div', { class: 'fta-tree-panel' });
+    container.appendChild(panel);
+  }
+
+  const hintId = uid('fta-tree-hint');
+  const search = el('input', {
+    type: 'search',
+    class: 'fta-tree-search',
+    autocomplete: 'off',
+    spellcheck: 'false',
+  });
+  const clearSearch = el('button', {
+    type: 'button',
+    class: 'fta-tree-search-clear',
+    text: '×',
+    hidden: true,
+  });
+  const status = el('span', { class: 'fta-tree-status', role: 'status', 'aria-live': 'polite' });
+  const toolbar = el('div', { class: 'fta-tree-toolbar' }, [search, clearSearch, status]);
+  const hint = el('p', { class: 'fta-tree-hint', id: hintId });
+  const host = el('div', {
+    class: 'fta-tree',
+    role: 'tree',
+    'aria-multiselectable': 'true',
+    'aria-describedby': hintId,
+  });
+  // The hint goes BELOW the rows, and it is shown only for keyboard focus.
+  // Focus arrives on mousedown: a hint that appeared then -- above the list or
+  // below it -- changed the layout under a pressed mouse button, mouseup
+  // landed somewhere else than mousedown (on the hint itself for a row near
+  // the bottom) and the browser retargeted the click away from the row.
+  panel.append(toolbar, host, hint);
+  trackModality(panel, host, hint);
+
+  /** Re-read every string in the chrome. Called on boot and on a language flip. */
+  function applyStrings() {
+    host.setAttribute('aria-label', t('tree.ariaLabel'));
+    search.setAttribute('aria-label', t('tree.searchLabel'));
+    search.placeholder = tOr('treesearch.placeholder', 'tree.searchPlaceholder');
+    const help = t('treesearch.help');
+    if (help !== 'treesearch.help') search.title = help;
+    clearSearch.setAttribute('aria-label', t('tree.searchClear'));
+    clearSearch.title = t('tree.searchClear');
+    hint.textContent = t('tree.hint');
+  }
+  applyStrings();
+
+  /* ---- panel state ---- */
+
+  // The document the expansion state below belongs to (documentKey()). It
+  // trails the store for one tick when a file is opened: see the subscriber.
+  let docKey = documentKey();
+  let expanded = readExpanded(docKey);
+  let seeded = expanded !== null;
+  let lastSelected = null;
+  /** Persist the expansion state, under the document it was made in. */
+  const saveExpanded = () => writeExpanded(docKey, expanded);
+  // True between the store showing another file path and knowing whether
+  // that was Open (another tree: load its own state) or Save As (this tree
+  // under a new name: carry the state over). Nothing is written meanwhile.
+  let keyInDoubt = false;
+
+  /** The id of a row just added, tinted until the timer runs out. */
+  let revealedId = null;
+  let revealTimer = 0;
+  /** True until Enter has stepped to a match of the current search. */
+  let searchFresh = true;
+  // Ids that had children at the previous render. A node that becomes a branch
+  // after the panel is up -- a child was just added to a leaf -- opens itself,
+  // so the new node is visible without hunting for a twisty. Seeded silently on
+  // the first render so a page reload never overrides a persisted collapse.
+  let knownBranches = null;
+
+  /** The wider selection. Always contains the store's lead id when there is one. */
+  let selection = new Set();
+  /** Where a Shift-click or Shift+Arrow range starts from. */
+  let anchorId = null;
+
+  /** {id, value, selStart, selEnd} while a row is being renamed, else null. */
+  let editing = null;
+
+  /**
+   * The newest rename/move round trip. Save and export blur the editor and
+   * then wait on `fta:flush`, so the PATCH fired by that blur must be reachable
+   * from here or the save can overtake it on the server lock.
+   */
+  let pending = null;
+
+  /**
+   * Set when the shell announces an add/delete while a row holds the focus.
+   * The dialog's own focus restore lands on a row that the mutation has since
+   * re-rendered, so focus would fall to <body>; the next render puts it back.
+   */
+  let refocusAfterMutation = false;
+
+  /** The active filter, '' when off, plus the expansion snapshot it displaced. */
+  let query = '';
+  let snapshot = null;
+
+  /** {id, blocked:Set} while a row is being dragged, else null. */
+  let dragging = null;
+  /** {id, mode, valid} -- what the indicator is currently painting. */
+  let dropAt = null;
+  let hoverTimer = 0;
+  let hoverId = null;
+
+  let searchTimer = 0;
+  let destroyed = false;
+
+  /** Ids the highlight bus currently marks (store.onHighlight). */
+  let highlighted = new Set();
+  /** Current overlay ({kind, values}) and its max, for the per-row bar. */
+  let overlayState = null;
+  let overlayPeak = 0;
+
+  function isExpanded(id) {
+    return expanded ? expanded.has(String(id)) : true;
+  }
+
+  function setExpanded(id, open) {
+    if (!expanded) expanded = new Set();
+    if (open) expanded.add(String(id));
+    else expanded.delete(String(id));
+    // While a filter is on, the expansion set is scaffolding for the filter and
+    // is thrown away when the box is cleared; persisting it would leak the
+    // filter's shape into the next page load.
+    if (!query) saveExpanded();
+    render();
+  }
+
+  function toggle(id) {
+    setExpanded(id, !isExpanded(id));
+  }
+
+  function select(id) {
+    if (id === null || id === undefined) return;
+    try {
+      store.select(String(id));
+    } catch (err) {
+      /* a store that rejects the id simply leaves the selection alone */
+    }
+  }
+
+  /* ---- selection ---------------------------------------------------------
+     store.selectedId is the lead every other panel follows; `selection` is the
+     wider set only this panel knows about. Both are set together so they can
+     never disagree. */
+
+  function setSelection(ids, lead) {
+    const next = new Set();
+    for (const id of ids) if (id !== null && id !== undefined) next.add(String(id));
+    const leadId = lead === null || lead === undefined ? null : String(lead);
+    if (leadId) next.add(leadId);
+    selection = next;
+    if (leadId) anchorId = leadId;
+
+    const before =
+      store.selectedId === null || store.selectedId === undefined
+        ? null
+        : String(store.selectedId);
+    if (leadId && leadId !== before) {
+      // store.select notifies, which renders with the set already in place.
+      select(leadId);
+    } else {
+      render();
+    }
+  }
+
+  /** Ids between two rows in *visible* order -- what a Shift-click points at. */
+  function rangeIds(fromId, toId) {
+    const ids = itemNodes().map((item) => item.dataset.id);
+    const a = ids.indexOf(String(fromId));
+    const b = ids.indexOf(String(toId));
+    if (a === -1 || b === -1) return [String(toId)];
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    return ids.slice(lo, hi + 1);
+  }
+
+  function toggleSelected(id) {
+    const key = String(id);
+    const next = new Set(selection);
+    if (next.has(key) && next.size > 1) {
+      next.delete(key);
+      // The lead has to stay inside the set, so hand it to a survivor.
+      const survivor = key === String(store.selectedId) ? Array.from(next)[0] : store.selectedId;
+      setSelection(next, survivor);
+      anchorId = String(survivor);
+      return;
+    }
+    next.add(key);
+    setSelection(next, key);
+  }
+
+  /* ---- search ------------------------------------------------------------ */
+
+  let parsedFor = null;
+  let parsedValue = null;
+  /** parseQuery(query), cached per query string (labelContent runs per row). */
+  function parsedQuery() {
+    if (parsedFor !== query) {
+      parsedFor = query;
+      parsedValue = parseQuery(query);
+    }
+    return parsedValue;
+  }
+
+  /** `parsed` is parseQuery(query): free text plus field-prefix terms. */
+  function matchesQuery(node, parsed) {
+    return nodeMatches(node, parsed);
+  }
+
+  /**
+   * Which rows survive the filter: every match, plus every ancestor of a match
+   * so no hit is ever orphaned from its path back to the root.
+   */
+  function computeFilter(root) {
+    if (!query || !root) return null;
+    const needle = parsedQuery();
+    const matches = new Set();
+    const visible = new Set();
+
+    const walk = (node, trail) => {
+      if (!node || typeof node !== 'object') return;
+      const id = String(node.id);
+      const here = trail.concat(id);
+      if (matchesQuery(node, needle)) {
+        matches.add(id);
+        for (const step of here) visible.add(step);
+      }
+      const kids = Array.isArray(node.children) ? node.children : [];
+      for (const child of kids) walk(child, here);
+    };
+    walk(root, []);
+    return { matches: matches, visible: visible };
+  }
+
+  function setQuery(raw) {
+    const next = String(raw === null || raw === undefined ? '' : raw).trim();
+    if (next === query) return;
+
+    if (!query && next) {
+      // Entering a filter: remember the shape of the tree so clearing can put
+      // it back exactly, including collapses made minutes earlier.
+      snapshot = { expanded: new Set(expanded || []), seeded: seeded };
+    } else if (query && !next && snapshot) {
+      expanded = new Set(snapshot.expanded);
+      seeded = snapshot.seeded;
+      snapshot = null;
+      saveExpanded();
+    }
+
+    query = next;
+    searchFresh = true;
+    clearSearch.hidden = query === '';
+    if (search.value.trim() !== query) search.value = query;
+    render();
+  }
+
+  /* ---- rendering ---------------------------------------------------------- */
+
+  function isEtaDocument() {
+    try {
+      return String(store.metadata().mode || '').toUpperCase() === 'ETA';
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  /** The chip of a node that combines inputs: "AND", "OR", "2/3", "TRANSFER"... */
+  function gateLabel(node, isBranch) {
+    const type = String(node.gateType || '').toUpperCase();
+    if (type === 'TRANSFER') return 'TRANSFER';
+    if (!isBranch) return null;
+    if (type === 'KOFN') {
+      const n = node.children.filter(Boolean).length;
+      return (node.k === undefined || node.k === null ? '?' : String(node.k)) + '/' + n;
+    }
+    if (type) return type;
+    return String(node.logicGate || 'OR').toUpperCase() === 'AND' ? 'AND' : 'OR';
+  }
+
+  /** {text, key}: the number a row shows and the tooltip that says which it is. */
+  function rowProbability(node, isBranch, eta) {
+    const calc = node.calculatedProbability;
+    const own = node.probability;
+    const useCalc = isBranch || eta || String(node.gateType || '').toUpperCase() === 'TRANSFER';
+    const value = useCalc && calc !== undefined && calc !== null ? calc : own;
+    if (value === undefined || value === null || value === '' || !Number.isFinite(Number(value))) return null;
+    return {
+      text: formatProb(Number(value), getSigFigs()),
+      key: useCalc ? 'tree.probCalcTitle' : 'tree.probOwnTitle',
+    };
+  }
+
+  /**
+   * Tell the shell how many rows are selected (`fta:selection` {ids, lead}),
+   * whenever that set changes: the header of the bottom panel says "3
+   * selected" instead of naming one node as if it were the only one.
+   */
+  let announced = '';
+  function announceSelection() {
+    const ids = Array.from(selection);
+    const key = ids.join('\u0001');
+    if (key === announced) return;
+    announced = key;
+    window.dispatchEvent(new CustomEvent('fta:selection', {
+      detail: { ids: ids, lead: store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId) },
+    }));
+  }
+
+  /** The label, with the matched run wrapped so it can be highlighted. */
+  function labelContent(name) {
+    if (!query) return [name];
+    // Only the free text is marked; a `tag:` term matched a field, not the name.
+    const needle = parsedQuery().text;
+    const hay = name.toLowerCase();
+    const at = hay.indexOf(needle);
+    if (at === -1 || !needle) return [name];
+    return [
+      name.slice(0, at),
+      el('span', { class: 'fta-tree-hit', text: name.slice(at, at + needle.length) }),
+      name.slice(at + needle.length),
+    ];
+  }
+
+  /**
+   * The CCF badges of a node (F2): one per group that holds it, `CCF: <name>`,
+   * `CCF: <name> (off)` for a group that is not applied. Empty for a document
+   * without groups, so such a tree gets no extra element.
+   */
+  function ccfBadgesOf(id, ctx) {
+    if (!ctx.ccf) return [];
+    const groups = ctx.ccf.members.get(id);
+    if (!groups) return [];
+    return groups.map((g) => {
+      const pending = !ctx.ccf.state;
+      const off = pending ? false : ctx.ccf.state.notApplied.some((n) => n.id === g.id);
+      const lang = window.ftaShell && window.ftaShell.language === 'ja' ? 'ja' : 'en';
+      const known = off ? ctx.ccf.state.notApplied.find((n) => n.id === g.id) : null;
+      const reason = known && known.reason ? known.reason[lang] || known.reason.en || '' : '';
+      const status = off ? t('ccf.status.notApplied', { reason }) : t('ccf.status.applied');
+      const key = off ? 'ccf.badgeOff' : 'ccf.label.event';
+      const label = t(key, { name: g.name });
+      // The words around the name ("CCF: " and " (off)") stay whole when the badge is
+      // cut; only the name is ellipsized. The textContent is the label unchanged.
+      const marker = t(key, { name: '\u0001' }).split('\u0001');
+      const parts = marker.length === 2 && marker[0] + g.name + marker[1] === label ? { pre: marker[0], post: marker[1] } : null;
+      return {
+        id: g.id,
+        off,
+        pending,
+        label,
+        parts,
+        title: ctx.ccf.state ? t('ccf.badgeTitle', { group: g.name, status }) : g.name,
+      };
+    });
+  }
+
+  /**
+   * A gate above a CCF member shows the cut-set value including CCF, `n/a (CCF)`
+   * or a dash while that is loading -- never its tree-walk value, which is far
+   * too low for such a gate (F2, FN-66). A leaf with links is such a gate too.
+   */
+  function ccfRowProbability(id, node, isBranch, ctx) {
+    const hasLinks = Array.isArray(node.links) && node.links.length > 0;
+    if (!ctx.ccf || !(isBranch || hasLinks)) return null;
+    const shell = window.ftaShell;
+    if (!shell || typeof shell.ccfGate !== 'function') return null;
+    const gate = shell.ccfGate(id);
+    if (gate) {
+      const text = gate.method === 'mcub' ? formatProb(gate.value, getSigFigs()) : t('details.ccfNa');
+      return { text, key: 'tree.ccfMcub' };
+    }
+    if (typeof shell.ccfGatePending === 'function' && shell.ccfGatePending(id)) {
+      return { text: '—', key: 'tree.ccfMcub' };
+    }
+    return null;
+  }
+
+  function buildItem(node, depth, ctx) {
+    const id = String(node.id);
+    if (ctx.filter && !ctx.filter.visible.has(id)) return null;
+
+    const level = ctx.depths.has(id) ? ctx.depths.get(id) : depth;
+    let children = Array.isArray(node.children) ? node.children.filter(Boolean) : [];
+    if (ctx.filter) children = children.filter((child) => ctx.filter.visible.has(String(child.id)));
+    const hasChildren = children.length > 0;
+    const open = hasChildren && isExpanded(id);
+    const isZero = ctx.zeros.has(id);
+    // `probability` is the *base* value; calculatedProbability is not consulted
+    // here, exactly as in _apply_zero_marks. Only for an event: a gate's base
+    // probability is not used, and in an event tree a branch point of 1.0
+    // (the initiating event, a path taken for certain) is ordinary.
+    const isBranch = Array.isArray(node.children) && node.children.some(Boolean);
+    const isFull = Number(node.probability) === 1 && !isBranch;
+    const name = sanitizeName(node.name);
+    const gateChip = ctx.eta ? null : gateLabel(node, isBranch);
+    const shown = ccfRowProbability(id, node, isBranch, ctx) || rowProbability(node, isBranch, ctx.eta);
+    const ccfBadges = ccfBadgesOf(id, ctx);
+    const isSelected = selection.has(id);
+    const isLead = id === ctx.selectedId;
+    const isEditing = Boolean(editing && editing.id === id);
+
+    // The zero mark sits on the <li> so "Hide Zero" removes the whole item
+    // (row and children) as the diagram does, not just the header row.
+    const isHighlighted = highlighted.has(id);
+    const fvBar = overlayBar(id);
+    const item = el('li', {
+      class: 'fta-tree-item' + (isZero ? ' is-zero' : '') + (isHighlighted ? ' is-highlighted' : ''),
+      role: 'treeitem',
+      tabindex: '-1',
+      draggable: isEditing || id === ctx.rootId ? 'false' : 'true',
+      'aria-level': String(level + 1),
+      'aria-selected': isSelected ? 'true' : 'false',
+      'aria-label': name + (isZero ? t('tree.zeroAria') : '') + ccfBadges.map((b) => ', ' + b.label).join(''),
+      dataset: {
+        id: id,
+        depth: String(((level % DEPTH_LEVELS) + DEPTH_LEVELS) % DEPTH_LEVELS),
+        lead: isLead ? '1' : '0',
+      },
+    });
+    item.style.setProperty('--fta-level', String(Math.max(0, level)));
+    if (hasChildren) item.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+    const rowClass =
+      'fta-tree-row' +
+      (id === revealedId ? ' is-new' : '') +
+      (isFull ? ' is-full' : '') +
+      (isZero ? ' is-zero' : '') +
+      (isHighlighted ? ' is-highlighted' : '');
+    const label = isEditing
+      ? el('input', {
+          type: 'text',
+          class: 'fta-tree-rename',
+          value: editing.value,
+          'aria-label': t('tree.renameLabel', { name: name }),
+          autocomplete: 'off',
+          spellcheck: 'false',
+        })
+      : el('span', { class: 'fta-tree-label' + (ccfBadges.length ? ' has-ccf' : '') }, labelContent(name));
+
+    item.appendChild(
+      el('div', { class: rowClass }, [
+        el('span', {
+          class: 'fta-tree-twisty',
+          'aria-hidden': 'true',
+          text: hasChildren ? (open ? '▾' : '▸') : '',
+        }),
+        label,
+        gateChip
+          ? el('span', { class: 'fta-tree-gate', title: t('tree.gateTitle', { gate: gateChip }), text: gateChip })
+          : null,
+        ...ccfBadges.map((b) =>
+          el('span', {
+            class: 'fta-tree-ccf' + (b.off ? ' is-off' : '') + (b.pending ? ' is-pending' : '') + (b.parts ? ' has-parts' : ''),
+            title: b.label + (b.title && b.title !== b.label ? ' - ' + b.title : ''),
+            dataset: { group: b.id },
+            ...(b.parts ? {} : { text: b.label }),
+          }, b.parts ? [
+            el('span', { class: 'fta-tree-ccf-pre', text: b.parts.pre }),
+            el('span', { class: 'fta-tree-ccf-name', text: b.label.slice(b.parts.pre.length, b.label.length - b.parts.post.length) }),
+            el('span', { class: 'fta-tree-ccf-post', text: b.parts.post }),
+          ] : undefined)
+        ),
+        fvBar,
+        shown
+          ? el('span', { class: 'fta-tree-prob', title: t(shown.key, { value: shown.text }), text: shown.text })
+          : null,
+        el('span', {
+          class: 'fta-tree-mark',
+          'aria-hidden': 'true',
+          title: isZero ? t('tree.zeroTitle') : null,
+          text: isZero ? MARK : '',
+        }),
+      ])
+    );
+
+    if (open) {
+      const group = el('ul', { role: 'group' });
+      for (const child of children) {
+        const built = buildItem(child, level + 1, ctx);
+        if (built) group.appendChild(built);
+      }
+      item.appendChild(group);
+    }
+    return item;
+  }
+
+  /** The CCF context of one render: members by node id and the group status, or null without groups. */
+  let ccfPainted = false;
+  function ccfContext() {
+    const members = memberMap(store.state && store.state.analysis);
+    if (!members.size) return null;
+    const shell = window.ftaShell;
+    const state = shell && typeof shell.ccfState === 'function' ? shell.ccfState() : null;
+    return { members, state };
+  }
+
+  function hasCcfGroups() {
+    return memberMap(store.state && store.state.analysis).size > 0;
+  }
+
+  function render() {
+    if (destroyed) return;
+    const root = treeRoot();
+    const scrollTop = host.scrollTop;
+    const active = document.activeElement;
+    const focusedId =
+      active && host.contains(active) && active.dataset ? active.dataset.id || null : null;
+
+    // Capture the caret before the input is thrown away, so a re-render landing
+    // mid-rename (a diagram refresh, another panel's update) does not move it.
+    const liveInput = host.querySelector('.fta-tree-rename');
+    if (editing && liveInput) {
+      editing.value = liveInput.value;
+      editing.selStart = liveInput.selectionStart;
+      editing.selEnd = liveInput.selectionEnd;
+    }
+
+    clear(host);
+
+    if (!root) {
+      status.textContent = '';
+      host.appendChild(el('p', { class: 'fta-tree-empty', text: t('tree.empty') }));
+      return;
+    }
+
+    // A node that has gone away -- deleted here, or undone elsewhere -- must not
+    // linger in the selection and re-appear the next time an id is reused.
+    if (selection.size) {
+      const alive = new Set();
+      for (const id of selection) if (store.findNode(id)) alive.add(id);
+      selection = alive;
+    }
+    const selectedId =
+      store.selectedId === null || store.selectedId === undefined
+        ? null
+        : String(store.selectedId);
+    if (selectedId) selection.add(selectedId);
+    if (editing && !store.findNode(editing.id)) editing = null;
+
+    const branches = branchIds(root, new Set());
+    if (!seeded) {
+      // First run in this browser: start with every branch open rather than a
+      // single collapsed root, then persist whatever the user does next.
+      expanded = new Set(branches);
+      seeded = true;
+      if (!keyInDoubt) saveExpanded();
+    } else if (knownBranches) {
+      let changed = false;
+      for (const id of branches) {
+        if (!knownBranches.has(id) && !expanded.has(id)) {
+          expanded.add(id);
+          changed = true;
+        }
+      }
+      if (changed && !query && !keyInDoubt) saveExpanded();
+    }
+    knownBranches = branches;
+
+    const filter = computeFilter(root);
+    if (filter) {
+      // Ancestors of a hit are force-opened so the hit is actually on screen.
+      // Not persisted: setExpanded() skips the write while a filter is on, and
+      // clearing the box restores the snapshot over all of it.
+      if (!expanded) expanded = new Set();
+      for (const id of filter.visible) if (!filter.matches.has(id)) expanded.add(id);
+    }
+
+    const ctx = {
+      depths: depthMap(),
+      zeros: zeroNodeSet(),
+      selectedId: selectedId,
+      rootId: String(root.id),
+      filter: filter,
+      eta: isEtaDocument(),
+      ccf: ccfContext(),
+    };
+    ccfPainted = Boolean(ctx.ccf);
+    announceSelection();
+
+    if (filter && !filter.matches.size) {
+      // An empty list under a search box is a shrug. Say what happened.
+      renderStatus(filter);
+      host.appendChild(el('p', { class: 'fta-tree-empty', text: t('tree.searchNone', { q: query }) }));
+      return;
+    }
+
+    const list = el('ul', { role: 'none' });
+    const built = buildItem(root, 0, ctx);
+    if (built) list.appendChild(built);
+    host.appendChild(list);
+
+    renderStatus(filter);
+
+    // Roving tabindex: the lead row is the panel's single tab stop.
+    const items = itemNodes();
+    let stop = items.find((item) => item.dataset.lead === '1');
+    if (!stop) stop = items[0];
+    if (stop) stop.tabIndex = 0;
+
+    host.scrollTop = scrollTop;
+
+    if (editing) {
+      const input = host.querySelector('.fta-tree-rename');
+      if (input) {
+        input.focus();
+        const at = editing.selStart === undefined ? input.value.length : editing.selStart;
+        const to = editing.selEnd === undefined ? input.value.length : editing.selEnd;
+        try {
+          input.setSelectionRange(at, to);
+        } catch (_err) {
+          /* a browser that refuses the range still has the text and the focus */
+        }
+        host.scrollTop = scrollTop;
+      }
+    } else if (focusedId) {
+      const restored = itemById(focusedId) || stop;
+      if (restored) {
+        restored.tabIndex = 0;
+        restored.focus({ preventScroll: true });
+        host.scrollTop = scrollTop;
+      }
+    }
+
+    // A drag survives a re-render (a spring-loaded branch opening under the
+    // pointer is exactly that), so the indicator is repainted onto the new rows.
+    host.classList.toggle('is-dragging', Boolean(dragging));
+    if (dragging) {
+      for (const one of dragging.ids) {
+        const source = itemById(one);
+        if (source) source.classList.add('is-drag-source');
+      }
+      paintDrop();
+    }
+  }
+
+  /** The line beside the search box: match count, or how many rows are selected. */
+  function renderStatus(filter) {
+    if (filter) {
+      // Announced through aria-live, so it carries the count even when the
+      // panel below is showing the "nothing matches" message.
+      status.textContent = t('tree.searchMatches', {
+        n: filter.matches.size,
+        total: store.flat().length,
+      });
+      return;
+    }
+    status.textContent = selection.size > 1 ? t('tree.selected', { n: selection.size }) : '';
+  }
+
+  function hideZeroOn() {
+    return Boolean(window.ftaShell && window.ftaShell.hideZero);
+  }
+
+  /**
+   * The rows a user can see, in document order. Under "Hide Zero" the hidden
+   * items are left out, so arrows, Home/End and Shift-ranges never land on or
+   * silently include a row that is not on screen.
+   */
+  function itemNodes() {
+    const items = Array.from(host.querySelectorAll('.fta-tree-item'));
+    if (!hideZeroOn()) return items;
+    return items.filter((item) => !item.closest('.fta-tree-item.is-zero'));
+  }
+
+  function itemById(id) {
+    // Compared, not spliced into a selector: ids come from the file, and a
+    // backslash in one made the selector miss the row (focus fell to <body>
+    // after a rename) while a newline made querySelector throw on every render.
+    const wanted = String(id);
+    for (const item of host.querySelectorAll('.fta-tree-item')) {
+      if (item.dataset.id === wanted) return item;
+    }
+    return null;
+  }
+
+  function rowOf(item) {
+    return item ? item.querySelector(':scope > .fta-tree-row') : null;
+  }
+
+  function focusItem(item, alsoSelect) {
+    if (!item) return;
+    for (const other of itemNodes()) other.tabIndex = -1;
+    item.tabIndex = 0;
+    item.focus();
+    if (alsoSelect) setSelection([item.dataset.id], item.dataset.id);
+  }
+
+  function focusById(id) {
+    const item = itemById(id);
+    if (item) focusItem(item, false);
+  }
+
+  /* ---- inline rename ------------------------------------------------------ */
+
+  function startRename(id) {
+    const node = store.findNode(String(id));
+    if (!node) return;
+    editing = { id: String(id), value: sanitizeName(node.name), selStart: 0, selEnd: undefined };
+    render();
+    const input = host.querySelector('.fta-tree-rename');
+    if (input) input.select();
+  }
+
+  function cancelRename() {
+    if (!editing) return;
+    const id = editing.id;
+    editing = null;
+    render();
+    focusById(id);
+  }
+
+  /**
+   * Commit the editor's text.
+   *
+   * An empty name is refused *here*: PATCH /api/nodes/<id> runs the value
+   * through the core's sanitize_name, which happily turns "   " into "", and a
+   * nameless row is unusable -- it cannot be read in the tree, picked in a link
+   * dropdown, or found by search. So the client does not send it.
+   *
+   * @param {boolean} keepOpen true from Enter (the user is still typing and can
+   *   fix an empty name in place, and the focus belongs back on the row), false
+   *   from a blur -- the editor is going away, an empty value silently reverts
+   *   rather than trapping the focus, and the focus is left wherever the click
+   *   that caused the blur put it.
+   */
+  async function commitRename(keepOpen) {
+    if (!editing) return;
+    const input = host.querySelector('.fta-tree-rename');
+    const raw = input ? input.value : editing.value;
+    const id = editing.id;
+    const name = sanitizeName(raw);
+    const node = store.findNode(id);
+
+    if (!name) {
+      say(t('tree.renameEmpty'), 'warn');
+      if (keepOpen && input) {
+        editing.value = raw;
+        input.focus();
+        return;
+      }
+      cancelRename();
+      return;
+    }
+
+    editing = null;
+    if (node && sanitizeName(node.name) === name) {
+      // Nothing changed: sending it would cost an undo step for no edit.
+      render();
+      if (keepOpen) focusById(id);
+      return;
+    }
+
+    const commit = (async () => {
+      try {
+        const result = await api.patch('/nodes/' + encodeURIComponent(id), { name: name });
+        store.applyMutation(result);
+        say(t('tree.renamed', { name: name }), 'ok');
+      } catch (err) {
+        fail(err);
+      }
+    })();
+    pending = commit;
+    await commit;
+    if (pending === commit) pending = null;
+    render();
+    // Only Enter takes the focus back to the row. A blur means the user is
+    // already somewhere else, and yanking the focus back after the round trip
+    // would land in whatever they had just clicked on.
+    if (keepOpen) focusById(id);
+  }
+
+  /* ---- moving ------------------------------------------------------------- */
+
+  /**
+   * The client-side mirror of tree_ops.would_create_cycle: a node may not land
+   * inside its own subtree. Checked here so an illegal drop reads as illegal
+   * *during* the drag; the server checks it again and its CYCLE_REJECTED is
+   * surfaced verbatim if the two ever disagree.
+   */
+  function movable(nodeId, newParentId) {
+    if (!nodeId || !newParentId) return false;
+    if (String(nodeId) === String(newParentId)) return false;
+    return !subtreeIds(nodeId).has(String(newParentId));
+  }
+
+  /**
+   * POST the move. `index` is the position in the new parent's child list
+   * *after* the node has been detached (tree_ops.move_node), which is what the
+   * callers below compute; null appends.
+   */
+  async function requestMove(id, newParentId, index, sameParent) {
+    if (!expanded) expanded = new Set();
+    expanded.add(String(newParentId)); // land somewhere the user can see
+    if (!query) saveExpanded();
+
+    // A leaf that gets its first child this way stops using its own
+    // probability, exactly as with Add (main.js firstChildWarning). Asked
+    // before the move, while the new parent is still a leaf.
+    const shell = window.ftaShell;
+    const warn =
+      !sameParent && shell && typeof shell.firstChildWarning === 'function'
+        ? shell.firstChildWarning(String(newParentId))
+        : null;
+
+    const commit = (async () => {
+      try {
+        const result = await api.post('/nodes/' + encodeURIComponent(id) + '/move', {
+          newParentId: String(newParentId),
+          index: index === null || index === undefined ? null : index,
+        });
+        store.applyMutation(result);
+        setSelection([id], id);
+        if (warn) warn();
+        say(
+          sameParent
+            ? t('tree.reordered', { name: nameOf(id), parent: nameOf(newParentId) })
+            : t('tree.moved', { name: nameOf(id), parent: nameOf(newParentId) }),
+          'ok'
+        );
+      } catch (err) {
+        fail(err);
+      }
+    })();
+    pending = commit;
+    await commit;
+    if (pending === commit) pending = null;
+    render();
+    focusById(id);
+  }
+
+  /**
+   * The keyboard equivalent of a drag: the outline-editor moves, on the focused
+   * row. Every refusal explains itself instead of doing nothing.
+   */
+  function moveByKeyboard(id, direction) {
+    const nodeId = String(id);
+    if (!nodeId || nodeId === rootId()) {
+      say(t('tree.moveRootRefused'), 'warn');
+      return;
+    }
+    const parent = parentIdOf(nodeId);
+    if (!parent) {
+      say(t('tree.moveRootRefused'), 'warn');
+      return;
+    }
+    const siblings = childIdsOf(parent);
+    const at = siblings.indexOf(nodeId);
+
+    if (direction === 'up' || direction === 'down') {
+      const to = direction === 'up' ? at - 1 : at + 1;
+      if (to < 0 || to >= siblings.length) {
+        // Up on the first child said "already at the end", which read as a
+        // refusal to move down. Each end has its own sentence.
+        say(t(direction === 'up' ? 'tree.moveNoRoomUp' : 'tree.moveNoRoomDown'), 'info');
+        return;
+      }
+      // Post-detach indices: moving up inserts before the previous sibling
+      // (at - 1); moving down inserts after the next one, which has shifted
+      // into this node's old slot, so it is at + 1 either way.
+      return requestMove(nodeId, parent, to, true);
+    }
+
+    if (direction === 'in') {
+      if (at <= 0) {
+        say(t('tree.moveNoIndent'), 'info');
+        return;
+      }
+      const newParent = siblings[at - 1];
+      if (!movable(nodeId, newParent)) {
+        say(t('tree.moveInvalid'), 'warn');
+        return;
+      }
+      return requestMove(nodeId, newParent, null, false);
+    }
+
+    // 'out': become the parent's next sibling.
+    const grandparent = parentIdOf(parent);
+    if (!grandparent) {
+      say(t('tree.moveNoOutdent'), 'info');
+      return;
+    }
+    const parentAt = childIdsOf(grandparent).indexOf(parent);
+    return requestMove(nodeId, grandparent, parentAt < 0 ? null : parentAt + 1, false);
+  }
+
+  /**
+   * Keyboard moves run one after another, each worked out from the tree the
+   * previous one left. Computed on the spot, quick presses (or a held key)
+   * all started from the same not-yet-updated tree: three Ctrl+Shift+Down
+   * moved the node two places, and the lost press still cost an undo step.
+   * Save and export wait for the whole queue through fta:flush.
+   */
+  let keyboardMoves = Promise.resolve();
+
+  function queueKeyboardMove(id, direction) {
+    keyboardMoves = keyboardMoves
+      .then(() => {
+        if (destroyed) return undefined;
+        // A wider selection that holds the focused row moves as one block.
+        return selection.size > 1 && selection.has(String(id))
+          ? moveSelectionByKeyboard(direction)
+          : moveByKeyboard(id, direction);
+      })
+      .catch((err) => fail(err));
+    return keyboardMoves;
+  }
+
+  /* ---- moving several nodes at once ---------------------------------------
+     Delete was the only thing that honoured a multi-selection: a drag or a
+     Ctrl+Shift+Arrow took one row and silently left the rest. Both now take
+     the selection, through POST /api/batch/move, which is one undo step. */
+
+  /**
+   * What a move of the selection would move: the root left out, and a node
+   * inside another selected node left out (it travels with that node), in
+   * the order the tree shows them.
+   */
+  function movableSelection() {
+    const root = rootId();
+    const order = new Map(store.flat().map((entry, at) => [String(entry.id), at]));
+    const ids = Array.from(selection).filter((id) => id !== root && store.findNode(id));
+    const chosen = new Set(ids);
+    return ids
+      .filter((id) => !ancestorsOf(id).some((parent) => chosen.has(parent)))
+      .sort((a, b) => (order.get(a) || 0) - (order.get(b) || 0));
+  }
+
+  /**
+   * POST the move of several nodes. `index` is the position in the new
+   * parent's children once all of them are detached; null appends.
+   */
+  async function requestMoveMany(ids, newParentId, index, focusId) {
+    if (!expanded) expanded = new Set();
+    expanded.add(String(newParentId));
+    if (!query) saveExpanded();
+
+    const shell = window.ftaShell;
+    const arriving = ids.some((id) => parentIdOf(id) !== String(newParentId));
+    const warn =
+      arriving && shell && typeof shell.firstChildWarning === 'function'
+        ? shell.firstChildWarning(String(newParentId))
+        : null;
+    const lead = focusId && ids.includes(String(focusId)) ? String(focusId) : ids[0];
+
+    const commit = (async () => {
+      try {
+        const result = await api.post('/batch/move', {
+          ids: ids,
+          newParentId: String(newParentId),
+          index: index === null || index === undefined ? null : index,
+        });
+        store.applyMutation(result);
+        setSelection(ids, lead);
+        if (warn) warn();
+        say(t('tree.movedMany', { n: ids.length, parent: nameOf(newParentId) }), 'ok');
+      } catch (err) {
+        fail(err);
+      }
+    })();
+    pending = commit;
+    await commit;
+    if (pending === commit) pending = null;
+    render();
+    focusById(lead);
+  }
+
+  /** Ctrl+Shift+Arrow with several rows selected: the block moves together. */
+  function moveSelectionByKeyboard(direction) {
+    const ids = movableSelection();
+    if (!ids.length) {
+      say(t('tree.moveRootRefused'), 'warn');
+      return undefined;
+    }
+    const focus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
+    if (ids.length === 1) return moveByKeyboard(ids[0], direction);
+    const parent = parentIdOf(ids[0]);
+    if (!parent || ids.some((id) => parentIdOf(id) !== parent)) {
+      // Rows under different parents have no one "up" or "in" in common.
+      say(t('tree.moveManyMixed'), 'info');
+      return undefined;
+    }
+    const chosen = new Set(ids);
+    const siblings = childIdsOf(parent);
+    const first = siblings.indexOf(ids[0]);
+    const last = siblings.indexOf(ids[ids.length - 1]);
+    const restBefore = (limit) => siblings.slice(0, limit).filter((id) => !chosen.has(id));
+
+    if (direction === 'up') {
+      const before = restBefore(first).length;
+      if (!before) {
+        say(t('tree.moveNoRoomUp'), 'info');
+        return undefined;
+      }
+      return requestMoveMany(ids, parent, before - 1, focus);
+    }
+    if (direction === 'down') {
+      const after = siblings.slice(last + 1).filter((id) => !chosen.has(id)).length;
+      if (!after) {
+        say(t('tree.moveNoRoomDown'), 'info');
+        return undefined;
+      }
+      return requestMoveMany(ids, parent, restBefore(last).length + 1, focus);
+    }
+    if (direction === 'in') {
+      const above = restBefore(first);
+      if (!above.length) {
+        say(t('tree.moveNoIndent'), 'info');
+        return undefined;
+      }
+      return requestMoveMany(ids, above[above.length - 1], null, focus);
+    }
+    // 'out': the block becomes the parent's next siblings.
+    const grandparent = parentIdOf(parent);
+    if (!grandparent) {
+      say(t('tree.moveNoOutdent'), 'info');
+      return undefined;
+    }
+    const parentAt = childIdsOf(grandparent).indexOf(parent);
+    return requestMoveMany(ids, grandparent, parentAt < 0 ? null : parentAt + 1, focus);
+  }
+
+  /* ---- drag and drop ------------------------------------------------------ */
+
+  function clearHoverTimer() {
+    if (hoverTimer) window.clearTimeout(hoverTimer);
+    hoverTimer = 0;
+    hoverId = null;
+  }
+
+  function clearDropPaint() {
+    for (const row of host.querySelectorAll('.fta-tree-row')) {
+      row.classList.remove('is-drop-into', 'is-drop-before', 'is-drop-after', 'is-drop-bad');
+    }
+  }
+
+  function paintDrop() {
+    clearDropPaint();
+    if (!dropAt) return;
+    const row = rowOf(itemById(dropAt.id));
+    if (!row) return;
+    row.classList.add('is-drop-' + dropAt.mode);
+    if (!dropAt.valid) row.classList.add('is-drop-bad');
+  }
+
+  function endDrag() {
+    clearHoverTimer();
+    clearDropPaint();
+    dropAt = null;
+    if (dragging) {
+      for (const source of host.querySelectorAll('.is-drag-source')) source.classList.remove('is-drag-source');
+    }
+    dragging = null;
+    host.classList.remove('is-dragging');
+  }
+
+  /** Where in the row the pointer is: between siblings, or onto the node. */
+  function dropModeFor(row, event) {
+    const rect = row.getBoundingClientRect();
+    const height = rect.height || 1;
+    const offset = (event.clientY - rect.top) / height;
+    if (offset < EDGE_ZONE) return 'before';
+    if (offset > 1 - EDGE_ZONE) return 'after';
+    return 'into';
+  }
+
+  /**
+   * Is this drop legal? Answered locally so the indicator can say so during the
+   * drag rather than the server saying so after it.
+   */
+  function dropIsValid(targetId, mode) {
+    if (!dragging) return false;
+    if (targetId === dragging.id) return false;
+    // Dropping a block beside one of its own rows has no position to mean.
+    if (dragging.ids.length > 1 && dragging.ids.includes(String(targetId))) return false;
+    // Between siblings means "into the target's parent". The root has none, so
+    // there is no position beside it to drop into.
+    const parent = mode === 'into' ? targetId : parentIdOf(targetId);
+    if (!parent) return false;
+    // `blocked` is the dragged subtree, cached at dragstart: dragover fires
+    // continuously and re-walking the subtree on each one would be wasteful.
+    return !dragging.blocked.has(String(parent));
+  }
+
+  /** The post-detach index a between-siblings drop resolves to. */
+  function dropIndex(targetId, mode) {
+    const parent = parentIdOf(targetId);
+    const siblings = childIdsOf(parent);
+    let insertAt = siblings.indexOf(targetId) + (mode === 'after' ? 1 : 0);
+    const from = siblings.indexOf(dragging.id);
+    // move_node detaches before it inserts, so every position after the node's
+    // own slot shifts down by one.
+    if (from !== -1 && from < insertAt) insertAt -= 1;
+    return { parent: parent, index: insertAt, from: from };
+  }
+
+  host.addEventListener('dragstart', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const item = target.closest('.fta-tree-item');
+    if (!item || !host.contains(item)) return;
+    const id = item.dataset.id;
+    if (editing || id === rootId()) {
+      event.preventDefault();
+      return;
+    }
+    // A row of a wider selection drags the whole selection; any other row
+    // drags itself (and the selection collapses to it on the drop).
+    const many = selection.size > 1 && selection.has(String(id)) ? movableSelection() : [];
+    const ids = many.length > 1 ? many : [String(id)];
+    const blocked = new Set();
+    for (const one of ids) for (const sub of subtreeIds(one)) blocked.add(sub);
+    dragging = { id: id, ids: ids, blocked: blocked };
+    host.classList.add('is-dragging');
+    item.classList.add('is-drag-source');
+    if (ids.length > 1) {
+      for (const one of ids) {
+        const other = itemById(one);
+        if (other) other.classList.add('is-drag-source');
+      }
+    }
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      // Firefox starts no drag at all without payload.
+      try {
+        event.dataTransfer.setData('text/plain', id);
+      } catch (_err) {
+        /* a browser that refuses the payload still fires the drag events */
+      }
+      const row = rowOf(item);
+      if (row && typeof event.dataTransfer.setDragImage === 'function') {
+        // Just the row: the default image would be the whole subtree.
+        event.dataTransfer.setDragImage(row, 12, row.offsetHeight / 2);
+      }
+    }
+  });
+
+  host.addEventListener('dragover', (event) => {
+    if (!dragging) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const item = target.closest('.fta-tree-item');
+    if (!item || !host.contains(item)) return;
+    const row = rowOf(item);
+    if (!row) return;
+
+    const id = item.dataset.id;
+    const mode = dropModeFor(row, event);
+    const valid = dropIsValid(id, mode);
+
+    if (valid) {
+      // Only a legal drop gets preventDefault, so an illegal one shows the
+      // browser's own "no drop" cursor and cannot be released at all.
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    } else if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'none';
+    }
+
+    if (!dropAt || dropAt.id !== id || dropAt.mode !== mode || dropAt.valid !== valid) {
+      dropAt = { id: id, mode: mode, valid: valid };
+      paintDrop();
+    }
+
+    // Spring-loaded folders: hovering a collapsed branch opens it, so a drop
+    // deep inside a closed subtree is reachable without letting go first.
+    const canSpring = valid && mode === 'into' && item.getAttribute('aria-expanded') === 'false';
+    if (!canSpring) {
+      clearHoverTimer();
+      return;
+    }
+    if (hoverId === id) return;
+    clearHoverTimer();
+    hoverId = id;
+    hoverTimer = window.setTimeout(() => {
+      hoverTimer = 0;
+      if (dragging) setExpanded(id, true);
+    }, HOVER_EXPAND_MS);
+  });
+
+  host.addEventListener('dragleave', (event) => {
+    if (!dragging) return;
+    const to = event.relatedTarget;
+    if (to instanceof Node && host.contains(to)) return;
+    clearHoverTimer();
+    dropAt = null;
+    clearDropPaint();
+  });
+
+  host.addEventListener('drop', (event) => {
+    if (!dragging || !dropAt || !dropAt.valid) {
+      endDrag();
+      return;
+    }
+    event.preventDefault();
+    const id = dragging.id;
+    const target = dropAt.id;
+    const mode = dropAt.mode;
+    const block = dragging.ids.length > 1 ? dragging.ids.slice() : null;
+    // Resolved before endDrag(), which clears the drag state these read.
+    const wasParent = parentIdOf(id);
+    const spot = mode === 'into' || block ? null : dropIndex(target, mode);
+    endDrag();
+
+    if (block) {
+      // Several rows: under the target, or beside it among the rows that stay.
+      if (mode === 'into') {
+        requestMoveMany(block, target, null, id);
+        return;
+      }
+      const parent = parentIdOf(target);
+      const chosen = new Set(block);
+      const staying = childIdsOf(parent).filter((one) => !chosen.has(one));
+      requestMoveMany(block, parent, staying.indexOf(String(target)) + (mode === 'after' ? 1 : 0), id);
+      return;
+    }
+
+    if (mode === 'into') {
+      const siblings = childIdsOf(target);
+      if (wasParent === target && siblings[siblings.length - 1] === id) return; // no-op
+      requestMove(id, target, null, wasParent === target);
+      return;
+    }
+    if (spot.from !== -1 && spot.from === spot.index) return; // dropped where it already is
+    requestMove(id, spot.parent, spot.index, spot.from !== -1);
+  });
+
+  host.addEventListener('dragend', endDrag);
+
+  /* ---- multi-node delete --------------------------------------------------
+     Claimed from the shell through its cancelable `fta:action` event, so the
+     button bar, Ctrl+D and the Delete key all end up here without this module
+     having to re-implement any of them. */
+
+  /**
+   * What a delete of the current selection would actually remove: the root
+   * filtered out (DELETE /api/nodes/root is a 400 ROOT_PROTECTED and refusing
+   * it here is friendlier than showing the user that error), and any node whose
+   * ancestor is also selected dropped, because deleting the ancestor takes the
+   * whole subtree with it and the second request would 404.
+   */
+  function deletableSelection() {
+    const root = rootId();
+    const ids = Array.from(selection).filter((id) => id !== root && store.findNode(id));
+    const chosen = new Set(ids);
+    return ids.filter((id) => !ancestorsOf(id).some((parent) => chosen.has(parent)));
+  }
+
+  async function deleteMany(ids) {
+    const parent = parentIdOf(ids[0]) || rootId();
+    const only = ids.length === 1 ? nameOf(ids[0]) : null;
+    // The count is of everything that goes: each chosen node and all beneath
+    // it. Cancel has the focus, as in the shell's single delete.
+    let total = 0;
+    for (const id of ids) total += subtreeIds(id).size;
+    let question;
+    if (only) question = total > 1 ? t('confirm.deleteTree', { name: only, n: total }) : t('confirm.deleteLeaf', { name: only });
+    else if (total > ids.length) question = t('tree.confirmDeleteManyTree', { n: ids.length, total: total });
+    else question = t('tree.confirmDeleteManyLeaves', { n: ids.length });
+    const proceed = await confirmDialog(question, {
+      title: t('btn.delete'),
+      confirmLabel: t('btn.delete'),
+      focusCancel: true,
+    });
+    if (!proceed) return;
+
+    // One request for all of them (POST /api/batch/delete): all or nothing,
+    // and one undo step. It was one request per node, so three nodes took
+    // three Ctrl+Z to bring back.
+    let removedLinks = 0;
+    try {
+      const result = await api.post('/batch/delete', { ids: ids });
+      store.applyMutation(result);
+      if (result && Array.isArray(result.removedLinks)) removedLinks = result.removedLinks.length;
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    selection = new Set();
+    setSelection([parent], parent);
+    if (only) say(t('msg.deleted', { name: only }), 'ok');
+    else say(t('tree.deletedMany', { n: ids.length }), 'ok');
+    // Links from surviving nodes into the deleted subtrees went with them.
+    if (removedLinks) sayShowValidation(t('msg.removedLinks', { n: removedLinks }));
+  }
+
+  function onAction(event) {
+    const detail = (event && event.detail) || {};
+    if (detail.action === 'add' || detail.action === 'delete') {
+      refocusAfterMutation = host.contains(document.activeElement);
+    }
+    if (detail.action !== 'delete') return;
+    // One selected node stays with the shell: it already confirms, reports and
+    // re-selects, and two code paths for the same delete is one too many.
+    if (selection.size <= 1) return;
+
+    // A multi-selection is this panel's, even when it prunes down to a single
+    // node -- otherwise a selection whose lead happens to be the root would be
+    // refused wholesale by the shell's root guard with the rest still selected.
+    event.preventDefault();
+    const ids = deletableSelection();
+    if (!ids.length) {
+      say(t('tree.rootKept'), 'warn');
+      return;
+    }
+    deleteMany(ids);
+  }
+
+  /* ---- interaction -------------------------------------------------------- */
+
+  host.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('.fta-tree-rename')) return;
+    const item = target.closest('.fta-tree-item');
+    if (!item || !host.contains(item)) return;
+    if (target.closest('.fta-tree-twisty') && item.hasAttribute('aria-expanded')) {
+      toggle(item.dataset.id);
+      return;
+    }
+    const id = item.dataset.id;
+
+    // The second click of a double-click. There is no `dblclick` listener:
+    // the first click selects, which re-renders the list, so the two clicks
+    // land on two different elements and the browser never reports them as
+    // one double-click. `detail` still counts them. On the *label* it
+    // renames; anywhere else on the row it keeps its P1 meaning of
+    // expand/collapse.
+    if (event.detail === 2 && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      if (target.closest('.fta-tree-label')) startRename(id);
+      else if (item.hasAttribute('aria-expanded')) toggle(id);
+      return;
+    }
+
+    focusItem(item, false);
+
+    if (event.ctrlKey || event.metaKey) {
+      toggleSelected(id);
+      return;
+    }
+    if (event.shiftKey) {
+      setSelection(rangeIds(anchorId || store.selectedId || id, id), id);
+      // The anchor stays put so a second Shift-click re-ranges from the same
+      // place, which is what every list in every file manager does.
+      anchorId = String(anchorId || store.selectedId || id);
+      return;
+    }
+    setSelection([id], id);
+  });
+
+  host.addEventListener('keydown', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    if (target.closest('.fta-tree-rename')) {
+      if (isImeKey(event)) return; // confirming/cancelling a conversion
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        commitRename(true);
+      } else if (event.key === 'Escape') {
+        // Stopped here so the shell's Escape handler does not also fire and
+        // dismiss a toast the user was reading.
+        event.preventDefault();
+        event.stopPropagation();
+        cancelRename();
+      }
+      return;
+    }
+
+    const item = target.closest('.fta-tree-item');
+    if (!item) return;
+    const items = itemNodes();
+    const index = items.indexOf(item);
+    const id = item.dataset.id;
+    const expandedNow = item.getAttribute('aria-expanded');
+    const ctrl = event.ctrlKey || event.metaKey;
+
+    // The keyboard equivalent of a drag. Checked before the selection keys so
+    // Ctrl+Shift+Arrow is a move, not a range extension.
+    if (ctrl && event.shiftKey) {
+      const moves = {
+        ArrowUp: 'up',
+        ArrowDown: 'down',
+        ArrowRight: 'in',
+        ArrowLeft: 'out',
+      };
+      const direction = moves[event.key];
+      if (direction) {
+        event.preventDefault();
+        queueKeyboardMove(id, direction);
+        return;
+      }
+    }
+
+    switch (event.key) {
+      case 'F2':
+        event.preventDefault();
+        startRename(id);
+        break;
+      case 'ArrowDown':
+      case 'ArrowUp': {
+        event.preventDefault();
+        const next =
+          event.key === 'ArrowDown'
+            ? items[Math.min(index + 1, items.length - 1)]
+            : items[Math.max(index - 1, 0)];
+        if (!next) break;
+        if (event.shiftKey) {
+          const from = anchorId || id;
+          focusItem(next, false);
+          setSelection(rangeIds(from, next.dataset.id), next.dataset.id);
+          anchorId = String(from);
+        } else if (ctrl) {
+          focusItem(next, false); // move the focus, leave the selection alone
+        } else {
+          focusItem(next, true);
+        }
+        break;
+      }
+      case 'ArrowRight':
+        event.preventDefault();
+        if (expandedNow === 'false') toggle(id);
+        else if (expandedNow === 'true') focusItem(items[index + 1], true);
+        break;
+      case 'ArrowLeft': {
+        event.preventDefault();
+        if (expandedNow === 'true') {
+          toggle(id);
+          break;
+        }
+        const parent = item.parentElement ? item.parentElement.closest('.fta-tree-item') : null;
+        if (parent) focusItem(parent, true);
+        break;
+      }
+      case 'Home':
+        event.preventDefault();
+        focusItem(items[0], true);
+        break;
+      case 'End':
+        event.preventDefault();
+        focusItem(items[items.length - 1], true);
+        break;
+      case 'Enter':
+        event.preventDefault();
+        setSelection([id], id);
+        break;
+      case ' ':
+        event.preventDefault();
+        if (ctrl) toggleSelected(id);
+        else setSelection([id], id);
+        break;
+      default:
+        break;
+    }
+  });
+
+  host.addEventListener(
+    'blur',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.classList.contains('fta-tree-rename')) return;
+      // Clicking away commits, the way every other field in this app does --
+      // except an empty name, which reverts rather than trapping the focus.
+      if (editing) commitRename(false);
+    },
+    true
+  );
+
+  /* ---- search wiring ------------------------------------------------------ */
+
+  search.addEventListener('input', () => {
+    if (searchTimer) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      searchTimer = 0;
+      setQuery(search.value);
+    }, SEARCH_DEBOUNCE_MS);
+  });
+
+  search.addEventListener('search', () => setQuery(search.value));
+
+  search.addEventListener('keydown', (event) => {
+    if (isImeKey(event)) return; // confirming/cancelling a conversion
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (search.value) {
+        search.value = '';
+        setQuery('');
+      } else {
+        const stop = itemNodes().find((item) => item.dataset.lead === '1') || itemNodes()[0];
+        focusItem(stop, false);
+      }
+      return;
+    }
+    if (event.key === 'Enter') {
+      // Enter goes to the first match, and again to the next (Shift+Enter
+      // back), with the caret left in the box. It used to move the focus to
+      // the first ROW, which under a filter is the top event, not a match.
+      event.preventDefault();
+      if (searchTimer) {
+        window.clearTimeout(searchTimer);
+        searchTimer = 0;
+      }
+      setQuery(search.value); // the debounce may still hold the last keystrokes
+      stepToMatch(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      // Straight from the box into the results, without reaching for the mouse.
+      const first = itemNodes()[0];
+      if (first) {
+        event.preventDefault();
+        focusItem(first, false);
+      }
+    }
+  });
+
+  /**
+   * Select the next (step 1) or previous (step -1) match of the search, in
+   * tree order, wrapping round. The first step after the query changed goes
+   * to the first match, wherever the selection is.
+   */
+  function stepToMatch(step) {
+    const filter = computeFilter(treeRoot());
+    if (!filter || !filter.matches.size) return;
+    const ids = store.flat().map((entry) => String(entry.id)).filter((id) => filter.matches.has(id));
+    if (!ids.length) return;
+    const at = ids.indexOf(String(store.selectedId));
+    let next;
+    if (searchFresh || at === -1) next = step > 0 ? 0 : ids.length - 1;
+    else next = (at + step + ids.length) % ids.length;
+    searchFresh = false;
+    const id = ids[next];
+    // A match under a collapsed match is not drawn yet; open the way first.
+    if (revealAll([id])) render();
+    setSelection([id], id);
+    scrollToRow(id);
+  }
+
+  /** Bring a row into view inside the list, moving as little as possible. */
+  function scrollToRow(id) {
+    const row = rowOf(itemById(id));
+    if (row && typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  clearSearch.addEventListener('click', () => {
+    search.value = '';
+    setQuery('');
+    search.focus();
+  });
+
+  /** Ctrl+F, routed from the shell. */
+  function onFind(event) {
+    if (event && event.cancelable) event.preventDefault();
+    search.focus();
+    search.select();
+  }
+
+  function onLanguage() {
+    applyStrings();
+    render();
+  }
+
+  /* ---- store wiring ---- */
+
+  const unsubscribe = store.subscribe(() => {
+    const selectedId =
+      store.selectedId === null || store.selectedId === undefined
+        ? null
+        : String(store.selectedId);
+    const moved = Boolean(selectedId) && selectedId !== lastSelected;
+
+    // Another file path. An Open announces itself with fta:document later in
+    // this same tick (onDocument then loads that file's own state); if none
+    // came by the next microtask it was a Save As, and the state on screen is
+    // kept under the new name.
+    if (documentKey() !== docKey && !keyInDoubt) {
+      keyInDoubt = true;
+      Promise.resolve().then(() => {
+        if (!keyInDoubt || destroyed) return;
+        keyInDoubt = false;
+        docKey = documentKey();
+        if (expanded && !query) saveExpanded();
+      });
+    }
+
+    if (selectedId && selectedId !== lastSelected) {
+      // A selection made elsewhere -- details.js, an undo, a freshly added
+      // child -- is a single-node selection: a wider one this panel never told
+      // anybody about must not silently survive it.
+      if (!selection.has(selectedId)) {
+        selection = new Set([selectedId]);
+        anchorId = selectedId;
+      }
+      // Reveal it.
+      let changed = false;
+      if (!expanded) expanded = new Set();
+      for (const ancestor of ancestorsOf(selectedId)) {
+        if (!expanded.has(ancestor)) {
+          expanded.add(ancestor);
+          changed = true;
+        }
+      }
+      if (changed && !query && !keyInDoubt) saveExpanded();
+    }
+    lastSelected = selectedId;
+    render();
+    // A selection made anywhere (a click in the diagram, a row of a tab) is
+    // brought into view here. Its ancestors were opened above, but the row
+    // could still be far outside the scrolled part of a long list.
+    if (moved && !editing) scrollToRow(selectedId);
+
+    if (refocusAfterMutation) {
+      refocusAfterMutation = false;
+      const active = document.activeElement;
+      // Only reclaim a focus that has nowhere else to be; a caret in another
+      // panel is never stolen.
+      if (!active || active === document.body || !active.isConnected) {
+        const items = itemNodes();
+        const lead = items.find((item) => item.dataset.lead === '1') || items[0];
+        if (lead) focusItem(lead, false);
+      }
+    }
+  });
+
+  /**
+   * New / Open replaced the document (main.js `fta:document`). A wider
+   * selection made in the old one names nothing chosen in this one -- ids such
+   * as root_0, root_1 recur from file to file, so it survived whenever its
+   * lead was the root, and Delete then offered to remove those nodes of the
+   * newly opened tree. Collapse it to the store's lead.
+   */
+  function onDocument() {
+    const lead =
+      store.selectedId === null || store.selectedId === undefined ? null : String(store.selectedId);
+    selection = new Set(lead ? [lead] : []);
+    anchorId = lead;
+    // The expansion state is per document. A file comes back as it was left;
+    // a new, unsaved document starts fully open, and so does a file not seen
+    // before (unseeded: the next render opens every branch).
+    keyInDoubt = false;
+    docKey = documentKey();
+    if (docKey === '') writeExpanded(docKey, null);
+    expanded = readExpanded(docKey);
+    seeded = expanded !== null;
+    knownBranches = null;
+    // A search carried over from the old document goes on filtering this one;
+    // clearing it later must restore this document's shape, not the old one's.
+    if (snapshot) snapshot = { expanded: new Set(expanded || []), seeded: seeded };
+    revealedId = null;
+    render();
+  }
+
+  /**
+   * `fta:reveal` {id}: a node was just made (main.js actionAdd) and the
+   * selection stayed on its parent. Open the way to the new row, tint it for
+   * a moment and bring it into view.
+   */
+  function onReveal(event) {
+    const id = event && event.detail && event.detail.id;
+    if (id === null || id === undefined || id === '') return;
+    const wanted = String(id);
+    if (!store.findNode(wanted)) return;
+    revealAll([wanted]);
+    revealedId = wanted;
+    if (revealTimer) window.clearTimeout(revealTimer);
+    revealTimer = window.setTimeout(() => {
+      revealTimer = 0;
+      revealedId = null;
+      render();
+    }, REVEAL_MS);
+    render();
+    scrollToRow(wanted);
+  }
+
+  /** Hand the shell whatever rename/move is still on the wire (see `pending`). */
+  function onFlush(event) {
+    const detail = event && event.detail;
+    if (!detail || !Array.isArray(detail.promises)) return;
+    if (pending) detail.promises.push(pending);
+    detail.promises.push(keyboardMoves);
+  }
+
+  /** Open every ancestor of `ids`. @returns {boolean} whether anything opened. */
+  function revealAll(ids) {
+    let changed = false;
+    if (!expanded) expanded = new Set();
+    for (const id of ids) {
+      for (const ancestor of ancestorsOf(id)) {
+        if (!expanded.has(ancestor)) {
+          expanded.add(ancestor);
+          changed = true;
+        }
+      }
+    }
+    if (changed && !query && !keyInDoubt) saveExpanded();
+    return changed;
+  }
+
+  /* ---- highlight bus + jump (1.7) ---- */
+
+  function overlayBar(id) {
+    const values = overlayState && overlayState.values;
+    if (!values) return null;
+    const v = Number(values[id]);
+    if (!Number.isFinite(v)) return null;
+    const fraction = overlayPeak > 0 ? v / overlayPeak : 0;
+    const kind = String(overlayState.kind || '').toUpperCase();
+    const text = kind + ' ' + formatProb(v, getSigFigs());
+    return el('span', { class: 'fta-tree-fv', title: text, 'aria-label': text, role: 'img' }, [
+      el('span', {
+        style: 'width:' + Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%;background:' +
+          scaleColor(fraction),
+      }),
+    ]);
+  }
+  let overlayPrimed = false;
+  const unOverlay =
+    typeof store.onOverlay === 'function'
+      ? store.onOverlay((next) => {
+          overlayState = next && next.values ? next : null;
+          overlayPeak = overlayState ? overlayMax(overlayState.values) : 0;
+          if (overlayPrimed) render();
+        })
+      : null;
+  overlayPrimed = true;
+
+  let busPrimed = false;
+  const unHighlight =
+    typeof store.onHighlight === 'function'
+      ? store.onHighlight((current) => {
+          const ids = current && Array.isArray(current.ids) ? current.ids.map(String) : [];
+          highlighted = new Set(ids);
+          revealAll(ids);
+          // onHighlight fires once immediately; the first render below covers it.
+          if (busPrimed) render();
+        })
+      : null;
+  busPrimed = true;
+
+  function onJump(event) {
+    const id = event && event.detail && event.detail.id;
+    if (id === null || id === undefined || id === '') return;
+    const wanted = String(id);
+    if (!store.findNode(wanted)) return;
+    if (editing) return; // never yank the caret out of a rename
+    revealAll([wanted]);
+    // A search that hides the target would make the jump land nowhere.
+    if (query) {
+      const filter = computeFilter(treeRoot());
+      if (filter && !filter.visible.has(wanted)) {
+        search.value = '';
+        setQuery('');
+      }
+    }
+    render();
+    const item = itemById(wanted);
+    if (!item) return;
+    const row = rowOf(item) || item;
+    if (typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    for (const other of itemNodes()) other.tabIndex = -1;
+    item.tabIndex = 0;
+    item.focus({ preventScroll: true });
+  }
+
+  window.addEventListener('fta:action', onAction);
+  window.addEventListener('fta:find', onFind);
+  window.addEventListener('fta:language', onLanguage);
+  window.addEventListener('fta:flush', onFlush);
+  window.addEventListener('fta:jump', onJump);
+  window.addEventListener('fta:document', onDocument);
+  window.addEventListener('fta:reveal', onReveal);
+  // CCF groups (F2): which groups are applied, and the gate values, arrive
+  // after the tree does. Nothing to redraw for a document that never had a group.
+  const onCcf = () => {
+    if (hasCcfGroups() || ccfPainted) render();
+  };
+  window.addEventListener('fta:ccf', onCcf);
+  window.addEventListener('fta:headline', onCcf);
+
+  render();
+
+  return {
+    refresh: render,
+    destroy() {
+      destroyed = true;
+      if (typeof unsubscribe === 'function') unsubscribe();
+      window.removeEventListener('fta:action', onAction);
+      window.removeEventListener('fta:find', onFind);
+      window.removeEventListener('fta:language', onLanguage);
+      window.removeEventListener('fta:flush', onFlush);
+      window.removeEventListener('fta:jump', onJump);
+      window.removeEventListener('fta:document', onDocument);
+      window.removeEventListener('fta:reveal', onReveal);
+      window.removeEventListener('fta:ccf', onCcf);
+      window.removeEventListener('fta:headline', onCcf);
+      if (revealTimer) window.clearTimeout(revealTimer);
+      if (typeof unHighlight === 'function') unHighlight();
+      if (typeof unOverlay === 'function') unOverlay();
+      if (searchTimer) window.clearTimeout(searchTimer);
+      clearHoverTimer();
+      clear(panel);
+      if (panel.parentNode === container) container.removeChild(panel);
+    },
+  };
+}

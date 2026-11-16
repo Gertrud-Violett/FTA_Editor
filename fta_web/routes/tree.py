@@ -1,0 +1,1145 @@
+"""
+Tree and document endpoints -- the ``/api`` blueprint the editor talks to.
+
+Contract every mutating endpoint honours:
+
+1. take ``state.lock`` for the whole read-modify-write,
+2. ``state.push_undo()`` **before** touching the tree,
+3. mutate,
+4. ``core.recalculate_probabilities()``,
+5. ``state.mark_dirty()``,
+6. return the full post-mutation view -- ``tree``, ``zeroNodes``, ``dirty``,
+   ``canUndo``, ``canRedo`` -- so the client never needs a follow-up GET.
+
+``POST /api/new`` is the documented exception: it resets the document, so it
+clears the history instead of pushing to it and lands on ``dirty: false``.
+An edit that would change nothing (the values already there, a move to where
+the node is) skips 2-5: no undo step, the redo history kept, not dirtied.
+
+Validation rules that are not obvious:
+
+* ``logicGate`` accepts only ``AND`` and ``OR``. ``NOT`` is **rejected**, not
+  silently accepted: the engine branches on ``gate == "AND"`` and treats every
+  other value as OR, so a NOT gate would produce a plausible-looking wrong
+  number with no warning anywhere. See divergence D5 in
+  ``fta_web/core/DIVERGENCE.md``. An empty/missing/None gate means OR, matching
+  ``FTACore._normalize_node``.
+* ``links`` are never checked for reachability or cycles. A link to a missing
+  or self-referential target is legal -- the engine skips unresolvable targets
+  and its ``visiting`` set breaks cycles -- and rejecting them here would
+  refuse trees the desktop editor happily loads.
+* Node ids are assigned by the server (``next_child_id``), never by the client,
+  so the ids stay in the desktop editor's format.
+
+The ``ApiError`` handler is registered on the blueprint (not the app), so the
+blueprint is self-contained: it returns the documented error envelope whether
+or not ``create_app`` also installs a global handler. Both go through
+``errors.api_error_response`` so the message is localized either way.
+"""
+from __future__ import annotations
+
+import copy
+import math
+from typing import Any, Dict, List, Optional
+
+from flask import Blueprint, request
+
+try:  # normal package import: ``import fta_web.routes.tree``
+    from ..errors import (
+        CYCLE_REJECTED,
+        INVALID_FIELD,
+        INVALID_JSON,
+        MODE_UNSUPPORTED,
+        NODE_NOT_FOUND,
+        NOTHING_TO_REDO,
+        NOTHING_TO_UNDO,
+        PARENT_NOT_FOUND,
+        ROOT_PROTECTED,
+        UNSAVED_CHANGES,
+        ApiError,
+        api_error_response,
+        ok_response,
+    )
+    from .. import ccf, node_schema, user_prefs
+    from ..config import MAX_TREE_DEPTH
+    from ..engine import derive_quant
+    from ..state import get_state, removed_link_issues
+    from ..tree_ops import (
+        ROOT_ID,
+        collect_flat,
+        depth_of,
+        detach_nodes,
+        find_parent_id,
+        index_tree,
+        move_node,
+        next_child_id,
+        strip_references_to,
+        subtree_ids,
+        top_level_id,
+        tree_height,
+        would_create_cycle,
+    )
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    from errors import (  # type: ignore[no-redef]
+        CYCLE_REJECTED,
+        INVALID_FIELD,
+        INVALID_JSON,
+        MODE_UNSUPPORTED,
+        NODE_NOT_FOUND,
+        NOTHING_TO_REDO,
+        NOTHING_TO_UNDO,
+        PARENT_NOT_FOUND,
+        ROOT_PROTECTED,
+        UNSAVED_CHANGES,
+        ApiError,
+        api_error_response,
+        ok_response,
+    )
+    import ccf  # type: ignore[no-redef]
+    import node_schema  # type: ignore[no-redef]
+    import user_prefs  # type: ignore[no-redef]
+    from config import MAX_TREE_DEPTH  # type: ignore[no-redef]
+    from engine import derive_quant  # type: ignore[no-redef]
+    from state import get_state, removed_link_issues  # type: ignore[no-redef]
+    from tree_ops import (  # type: ignore[no-redef]
+        ROOT_ID,
+        collect_flat,
+        depth_of,
+        detach_nodes,
+        find_parent_id,
+        index_tree,
+        move_node,
+        next_child_id,
+        strip_references_to,
+        subtree_ids,
+        top_level_id,
+        tree_height,
+        would_create_cycle,
+    )
+
+# Both import paths above have already put fta_web/core on sys.path.
+from FTA_Editor_core import sanitize_name  # noqa: E402
+
+tree_bp = Blueprint("tree", __name__, url_prefix="/api")
+
+VALID_GATES = ("AND", "OR")
+VALID_MODES = ("FTA", "ETA")
+VALID_RELATIONS = node_schema.VALID_RELATIONS
+#: The 1.6 fields, then the 1.7 keys (see node_schema for their meaning).
+NODE_FIELDS = (
+    "name", "type", "probability", "logicGate", "notes", "links",
+) + node_schema.NODE_KEYS
+
+
+@tree_bp.errorhandler(ApiError)
+def _handle_api_error(exc: ApiError):
+    return api_error_response(exc)
+
+
+# ---- request helpers -----------------------------------------------------
+
+
+def _body() -> Dict[str, Any]:
+    """The request's JSON object. An absent body is an empty object."""
+    data = request.get_json(silent=True)
+    if data is None:
+        if not request.get_data():
+            return {}
+        raise ApiError(INVALID_JSON, "Request body must be a JSON object.", 400)
+    if not isinstance(data, dict):
+        raise ApiError(INVALID_JSON, "Request body must be a JSON object.", 400)
+    return data
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
+    """Best-effort float, for reading values that came off disk."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _validate_name(value: Any, field: str = "name") -> str:
+    """Names go through the core's sanitizer, exactly as the desktop editor does."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        raise ApiError(
+            INVALID_FIELD,
+            f"'{field}' must be a string.",
+            400,
+            {"field": field},
+        )
+    return node_schema.refuse_unsavable_text(sanitize_name(value), field)
+
+
+def _validate_type(value: Any) -> str:
+    """A node's ``type``: a non-empty string, stored stripped."""
+    if not isinstance(value, str) or not value.strip():
+        raise ApiError(
+            INVALID_FIELD, "'type' must be a non-empty string.", 400, {"field": "type"}
+        )
+    return node_schema.refuse_unsavable_text(value.strip(), "type")
+
+
+def _validate_probability(value: Any) -> float:
+    """A real number in [0.0, 1.0]. Booleans and NaN/inf are not numbers here."""
+    if isinstance(value, bool) or value is None:
+        raise ApiError(
+            INVALID_FIELD,
+            "'probability' must be a number between 0.0 and 1.0.",
+            400,
+            {"field": "probability", "value": value},
+        )
+    try:
+        prob = float(value)
+    except (TypeError, ValueError, OverflowError):  # OverflowError: a huge int
+        raise ApiError(
+            INVALID_FIELD,
+            "'probability' must be a number between 0.0 and 1.0.",
+            400,
+            {"field": "probability", "value": value},
+        )
+    if math.isnan(prob) or math.isinf(prob) or not (0.0 <= prob <= 1.0):
+        raise ApiError(
+            INVALID_FIELD,
+            "'probability' must be a number between 0.0 and 1.0.",
+            400,
+            {"field": "probability", "value": value},
+        )
+    return prob
+
+
+def _validate_gate(value: Any) -> str:
+    """AND or OR. Empty/None means OR; NOT is refused (divergence D5)."""
+    if value is None or value == "":
+        return "OR"
+    if not isinstance(value, str):
+        raise ApiError(
+            INVALID_FIELD,
+            "'logicGate' must be 'AND' or 'OR'.",
+            400,
+            {"field": "logicGate", "value": value},
+        )
+    gate = value.strip().upper()
+    if not gate:
+        return "OR"
+    if gate == "NOT":
+        raise ApiError(
+            INVALID_FIELD,
+            "NOT gates are not supported: the probability engine has no NOT "
+            "semantics and would score the node as OR. Use 'AND' or 'OR'.",
+            400,
+            {"field": "logicGate", "value": value},
+        )
+    if gate not in VALID_GATES:
+        raise ApiError(
+            INVALID_FIELD,
+            "'logicGate' must be 'AND' or 'OR'.",
+            400,
+            {"field": "logicGate", "value": value},
+        )
+    return gate
+
+
+def _validate_notes(value: Any) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ApiError(
+            INVALID_FIELD, "'notes' must be a string.", 400, {"field": "notes"}
+        )
+    return node_schema.refuse_unsavable_text(value, "notes")
+
+
+def _validate_links(value: Any) -> List[Dict[str, Any]]:
+    """``node_schema.validate_links``: the links of a node, normalised."""
+    return node_schema.validate_links(value)
+
+
+def _validate_index(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ApiError(
+            INVALID_FIELD, "'index' must be an integer.", 400, {"field": "index"}
+        )
+    return value
+
+
+def _schema_changes(
+    payload: Dict[str, Any], existing: Optional[Dict[str, Any]]
+) -> "tuple[Dict[str, Any], List[str]]":
+    """Validate the 1.7 keys in ``payload`` against the node they will land on.
+
+    Returns ``(updates, removals)``. ``existing`` is the current node (None on
+    create). Rules:
+
+    * a ``None`` value removes the key;
+    * ``quant``/``trace``/``fmea`` merge partially (node_schema.merge_partial),
+      and a sub-object emptied by removals disappears;
+    * setting ``gateType`` rewrites ``logicGate`` to its AND/OR projection; an
+      explicit ``logicGate`` in the same request that contradicts it is a 400;
+    * setting only ``logicGate`` on a node that has a ``gateType`` sets the
+      ``gateType`` to the same AND/OR, so the two can never disagree.
+    """
+    updates: Dict[str, Any] = {}
+    removals: List[str] = []
+    existing = existing or {}
+
+    for key in node_schema.NODE_KEYS:
+        if key not in payload:
+            continue
+        value = node_schema.VALIDATORS[key](payload[key])
+        if value is None:
+            removals.append(key)
+        elif key in node_schema.PARTIAL_KEYS:
+            merged = node_schema.merge_partial(existing.get(key), value)
+            if merged:
+                updates[key] = merged
+            else:
+                removals.append(key)
+        else:
+            updates[key] = value
+
+    if "gateType" in updates:
+        projected = node_schema.project_logic_gate(updates["gateType"])
+        if "logicGate" in payload and _validate_gate(payload["logicGate"]) != projected:
+            raise ApiError(
+                INVALID_FIELD,
+                "'logicGate' must be '%s' for gateType '%s'."
+                % (projected, updates["gateType"]),
+                400,
+                {"field": "logicGate", "value": payload["logicGate"]},
+            )
+        updates["logicGate"] = projected
+    elif "logicGate" in payload and "gateType" not in payload and existing.get("gateType"):
+        updates["gateType"] = _validate_gate(payload["logicGate"])
+    return updates, removals
+
+
+def _require_node(
+    core, node_id: str, code: str = NODE_NOT_FOUND, label: str = "Node"
+) -> Dict[str, Any]:
+    node = core.find_node_by_id(node_id)
+    if node is None:
+        key = "parentId" if code == PARENT_NOT_FOUND else "nodeId"
+        raise ApiError(
+            code,
+            f"{label} '{node_id}' was not found.",
+            404,
+            {key: str(node_id)},
+        )
+    return node
+
+
+# ---- response helpers ----------------------------------------------------
+
+
+def _mutation_payload(state) -> Dict[str, Any]:
+    """The post-mutation view every mutating endpoint returns."""
+    core = state.core
+    return {
+        "tree": copy.deepcopy(core.get_data()),
+        "zeroNodes": core.get_zero_probability_nodes(),
+        "dirty": state.dirty,
+        "canUndo": state.can_undo,
+        "canRedo": state.can_redo,
+        "analysis": ccf.public_analysis(getattr(core, "analysis", None)),
+        "sessionWarnings": copy.deepcopy(state.session_warnings),
+        **state.revision_fields(),
+    }
+
+
+def _node_view(core, node: Dict[str, Any]) -> Dict[str, Any]:
+    """One node as the detail pane wants it, with link targets resolved."""
+    links = []
+    for raw in node.get("links") or []:
+        target_id = raw.get("target_id")
+        target = core.find_node_by_id(target_id) if target_id else None
+        links.append(
+            {
+                "target_id": str(target_id) if target_id is not None else None,
+                "relation": (raw.get("relation") or "OR").upper(),
+                # None means the link dangles; the client shows the raw id.
+                "targetName": target.get("name") if target else None,
+            }
+        )
+
+    base_probability = _as_float(node.get("probability"), 0.0)
+    view = {
+        "id": str(node.get("id")),
+        "name": node.get("name", ""),
+        "type": node.get("type", "Event"),
+        "probability": base_probability,
+        "logicGate": node.get("logicGate", ""),
+        "notes": node.get("notes", "") or "",
+        "calculatedProbability": _as_float(
+            node.get("calculatedProbability", base_probability), base_probability
+        ),
+        "links": links,
+        "childIds": [str(c.get("id")) for c in node.get("children") or []],
+    }
+    # The 1.7 keys, raw (null when absent), plus what the quant model and the
+    # last recalculation made of this node.
+    for key in node_schema.NODE_KEYS:
+        view[key] = copy.deepcopy(node.get(key))
+    derived = derive_quant(node, getattr(core, "analysis", None))
+    node_id = str(node.get("id"))
+    # quant_warnings come from the last *FTA* recalculation; an event tree
+    # evaluates no gates, so in ETA mode they would be stale.
+    eta = str(getattr(core, "mode", "") or "").upper() == "ETA"
+    extra = [] if eta else [
+        w for w in getattr(core, "quant_warnings", None) or []
+        if w.get("nodeId") == node_id and w not in derived["warnings"]
+    ]
+    view["quantDerived"] = {
+        "q": derived["q"],
+        "model": derived["model"],
+        "formula": derived["formula"],
+        "formulaKey": derived["formulaKey"],
+        "params": derived["params"],
+        "warnings": copy.deepcopy(derived["warnings"] + extra),
+    }
+    return view
+
+
+# ---- document ------------------------------------------------------------
+
+
+@tree_bp.get("/state")
+def get_full_state():
+    """Everything the client needs to render from cold."""
+    return ok_response(**get_state().to_dict())
+
+
+@tree_bp.get("/revision")
+def get_revision():
+    """Which document this is and how often it has changed, without the tree.
+
+    Two uses, both cheap enough to ask often. A tab that comes back to the
+    foreground compares ``revision`` with its own and reads ``/api/state``
+    again only when another tab has changed the document
+    (``AppState.revision_fields``). And the page asks every few seconds while
+    it is visible: when the answer stops coming the server has been closed,
+    and the page offers to download the work it still holds.
+    """
+    state = get_state()
+    with state.lock:
+        return ok_response(
+            dirty=state.dirty,
+            currentPath=str(state.current_path) if state.current_path else None,
+            **state.revision_fields(),
+        )
+
+
+@tree_bp.post("/prefs")
+def set_prefs():
+    """Remember a display preference between launches. Body: any of
+    ``{aiPanelCollapsed: bool}``. Answers all of them (``prefs``).
+
+    Not part of the document: no undo step, no revision, not saved in a file.
+    """
+    payload = _body()
+    try:
+        prefs = user_prefs.set_client_prefs(payload)
+    except ValueError as exc:
+        raise ApiError(
+            INVALID_FIELD,
+            "'%s' is not a preference this editor stores, or has the wrong type." % exc,
+            400,
+            {"field": str(exc)},
+        )
+    return ok_response(prefs=prefs)
+
+
+@tree_bp.post("/metadata")
+def update_metadata():
+    """Update title/date/mode. A mode change re-runs the whole calculation."""
+    payload = _body()
+    state = get_state()
+
+    title = _validate_name(payload["title"], "title") if "title" in payload else None
+
+    date = None
+    if "date" in payload:
+        if payload["date"] is None or not isinstance(payload["date"], str):
+            raise ApiError(
+                INVALID_FIELD, "'date' must be a string.", 400, {"field": "date"}
+            )
+        date = node_schema.refuse_unsavable_text(payload["date"].strip(), "date")
+
+    mode = None
+    if "mode" in payload:
+        mode = payload["mode"]
+        if not isinstance(mode, str) or mode.strip().upper() not in VALID_MODES:
+            raise ApiError(
+                INVALID_FIELD,
+                "'mode' must be 'FTA' or 'ETA'.",
+                400,
+                {"field": "mode", "value": payload["mode"]},
+            )
+        mode = mode.strip().upper()
+
+    if title is None and date is None and mode is None:
+        raise ApiError(
+            INVALID_FIELD,
+            "Provide at least one of 'title', 'date' or 'mode'.",
+            400,
+        )
+
+    with state.lock:
+        core = state.core
+        if all(new is None or new == old for new, old in
+               ((title, core.title), (date, core.date), (mode, core.mode))):
+            # Nothing changes: no undo step, redo kept, not marked modified.
+            return ok_response(metadata=core.get_metadata(), **_mutation_payload(state))
+        state.push_undo()
+        # Fields passed as None are left untouched, including `date` (D18).
+        state.core.set_metadata(title=title, date=date, mode=mode)
+        state.core.recalculate_probabilities()
+        state.mark_dirty()
+        return ok_response(metadata=state.core.get_metadata(), **_mutation_payload(state))
+
+
+@tree_bp.post("/new")
+def new_document():
+    """Start an empty document. Refuses to discard unsaved work unless forced."""
+    payload = _body()
+    force = payload.get("force")
+    # A real boolean only: bool("false") is True, and this flag is the one
+    # thing between the user's unsaved work and the bin.
+    if force is not None and not isinstance(force, bool):
+        raise ApiError(
+            INVALID_FIELD, "'force' must be true or false.", 400,
+            {"field": "force", "value": force},
+        )
+    force = bool(force)
+    state = get_state()
+
+    with state.lock:
+        if state.dirty and not force:
+            raise ApiError(
+                UNSAVED_CHANGES,
+                "The current analysis has unsaved changes. "
+                "Save it, or resend with {\"force\": true} to discard them.",
+                409,
+            )
+        # reset() clears the history, so there is nothing to push an undo onto
+        # and nothing to be dirty about: this endpoint is the documented
+        # exception to the push_undo/mark_dirty rule.
+        state.reset()
+        return ok_response(
+            metadata=state.core.get_metadata(),
+            currentPath=None,
+            **_mutation_payload(state),
+        )
+
+
+# ---- nodes ---------------------------------------------------------------
+
+
+@tree_bp.get("/nodes")
+def list_nodes():
+    """Flat pre-order listing, for pickers and link target dropdowns."""
+    state = get_state()
+    with state.lock:
+        return ok_response(nodes=collect_flat(state.core))
+
+
+# ``path:`` on every ``/nodes/<id>`` route: an id from a file may contain
+# '/', which the client percent-encodes and the server decodes before
+# routing, so the default converter (which stops at '/') answered 404 for
+# such a node on every call. ``/nodes/<id>/move`` still matches first for a
+# POST that ends in ``/move``; an id that itself ends in ``/move`` arrives as
+# ``.../x%2Fmove/move`` and resolves to ``x/move``.
+@tree_bp.get("/nodes/<path:node_id>")
+def get_node(node_id: str):
+    """One node in detail, with its computed probability and link target names."""
+    state = get_state()
+    with state.lock:
+        node = _require_node(state.core, node_id)
+        view = _node_view(state.core, node)
+        view["parentId"] = find_parent_id(state.core, node_id)
+        view["depth"] = depth_of(state.core, node_id)
+        return ok_response(node=view)
+
+
+@tree_bp.post("/nodes")
+def create_node():
+    """Add a child under ``parentId``. The server assigns the id."""
+    payload = _body()
+    state = get_state()
+
+    parent_id = payload.get("parentId")
+    if parent_id is None or not str(parent_id).strip():
+        raise ApiError(
+            INVALID_FIELD, "'parentId' is required.", 400, {"field": "parentId"}
+        )
+    parent_id = str(parent_id)
+
+    if "name" not in payload:
+        raise ApiError(INVALID_FIELD, "'name' is required.", 400, {"field": "name"})
+
+    name = _validate_name(payload["name"])
+    node_type = _validate_type(payload.get("type", "Event"))
+    # Desktop default for a new node is 1.0 (desktop/src/FTA_Editor_UI.py:1431).
+    probability = _validate_probability(payload.get("probability", 1.0))
+    gate = _validate_gate(payload.get("logicGate", "OR"))
+    notes = _validate_notes(payload.get("notes", ""))
+    links = _validate_links(payload.get("links", []))
+    extra, _removed = _schema_changes(payload, None)
+    gate = extra.pop("logicGate", gate)
+
+    with state.lock:
+        core = state.core
+        _require_node(core, parent_id, PARENT_NOT_FOUND, "Parent node")
+        _refuse_too_deep(depth_of(core, parent_id) + 1, "parentId")
+
+        # next_child_id scans the whole tree, so the id is free by construction.
+        new_id = next_child_id(core, parent_id)
+
+        new_node = {
+            "id": new_id,
+            "name": name,
+            "type": node_type,
+            "probability": probability,
+            "logicGate": gate,
+            "notes": notes,
+            "links": links,
+            "children": [],
+        }
+        new_node.update(extra)
+
+        state.push_undo()
+        core.add_node_to_data(parent_id, new_node)
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        created = core.find_node_by_id(new_id)
+        return ok_response(
+            nodeId=new_id,
+            node=_node_view(core, created),
+            **_mutation_payload(state),
+        )
+
+
+#: "This key is not on the node" -- distinct from a stored None.
+_ABSENT = object()
+
+
+def _move_is_a_no_op(core, node_id: str, new_parent_id: str, index: Optional[int]) -> bool:
+    """Whether moving ``node_id`` to ``new_parent_id`` at ``index`` would
+    leave it where it is. ``index`` counts after the node is detached and is
+    clamped, None appends -- exactly as ``tree_ops.move_node`` places it."""
+    if find_parent_id(core, node_id) != new_parent_id:
+        return False
+    siblings = [str(child.get("id")) for child in
+                core.find_node_by_id(new_parent_id).get("children") or []]
+    last = len(siblings) - 1  # the highest position once the node is detached
+    target = last if index is None else max(0, min(index, last))
+    return siblings.index(str(node_id)) == target
+
+
+def _refuse_too_deep(deepest: int, field: str) -> None:
+    """400 when an edit would put a node ``deepest`` levels below the root,
+    past ``config.MAX_TREE_DEPTH`` (every payload deep-copies the tree and
+    fails with RecursionError a little beyond it -- after the edit applied)."""
+    if deepest > MAX_TREE_DEPTH:
+        raise ApiError(
+            INVALID_FIELD,
+            "A node can be at most %d levels below the root; this would put one "
+            "%d levels down." % (MAX_TREE_DEPTH, deepest),
+            400,
+            {"field": field, "limit": MAX_TREE_DEPTH},
+        )
+
+
+def _refuse_root(core, node_id: str, verb: str) -> None:
+    """``ROOT_PROTECTED`` if ``node_id`` is the top-level node.
+
+    Compared against the loaded tree's own top-level id, not only the literal
+    ``ROOT_ID``, so the guard cannot drift from whatever a file was loaded
+    with. Call with ``state.lock`` held.
+    """
+    node_id = str(node_id)
+    if node_id == ROOT_ID or node_id == top_level_id(core):
+        raise ApiError(
+            ROOT_PROTECTED,
+            f"The root node cannot be {verb}.",
+            400,
+            {"nodeId": node_id},
+        )
+
+
+@tree_bp.patch("/nodes/<path:node_id>")
+def update_node(node_id: str):
+    """Partial update of the editable node fields (``NODE_FIELDS``).
+
+    ``quant``/``trace``/``fmea`` merge partially; ``null`` removes a key or
+    sub-key. See :func:`_schema_changes` for the gateType/logicGate rules.
+    """
+    payload = _body()
+    state = get_state()
+
+    unknown = [key for key in payload if key not in NODE_FIELDS]
+    if unknown:
+        raise ApiError(
+            INVALID_FIELD,
+            "Unsupported field(s): "
+            + ", ".join(sorted(unknown))
+            + ". Node ids are server-assigned and children are changed with "
+            "the move and delete endpoints.",
+            400,
+            {"fields": sorted(unknown)},
+        )
+    if not payload:
+        raise ApiError(INVALID_FIELD, "No fields to update.", 400)
+
+    updates: Dict[str, Any] = {}
+    if "name" in payload:
+        updates["name"] = _validate_name(payload["name"])
+    if "type" in payload:
+        updates["type"] = _validate_type(payload["type"])
+    if "probability" in payload:
+        updates["probability"] = _validate_probability(payload["probability"])
+    if "logicGate" in payload:
+        updates["logicGate"] = _validate_gate(payload["logicGate"])
+    if "notes" in payload:
+        updates["notes"] = _validate_notes(payload["notes"])
+    if "links" in payload:
+        updates["links"] = _validate_links(payload["links"])
+
+    with state.lock:
+        core = state.core
+        existing = _require_node(core, node_id)
+        extra, removals = _schema_changes(payload, existing)
+        updates.update(extra)
+
+        if (all(existing.get(key, _ABSENT) == value for key, value in updates.items())
+                and not any(key in existing for key in removals)):
+            # Every value is already there: no undo step, redo kept, not
+            # marked modified.
+            return ok_response(node=_node_view(core, existing), **_mutation_payload(state))
+        state.push_undo()
+        core.update_node(node_id, updates)
+        node = core.find_node_by_id(node_id)
+        for key in removals:
+            node.pop(key, None)
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(
+            node=_node_view(core, core.find_node_by_id(node_id)),
+            **_mutation_payload(state),
+        )
+
+
+@tree_bp.delete("/nodes/<path:node_id>")
+def delete_node(node_id: str):
+    """Delete a node and its subtree. The root is not deletable.
+
+    Every link anywhere in the tree that targets the deleted subtree is
+    removed too and reported as ``removedLinks`` -- and so is every
+    ``transferTo`` naming a deleted node (``relation: "TRANSFER"``; the node
+    stays a dangling TRANSFER). The desktop editor leaves
+    such links dangling; here that is unsafe because a later Add under the
+    same parent can be given the deleted id back (see ``next_child_id``), and
+    a dangling link would then silently re-target the new, unrelated node.
+    """
+    state = get_state()
+
+    with state.lock:
+        core = state.core
+        _refuse_root(core, node_id, "deleted")
+        _require_node(core, node_id)
+
+        state.push_undo()
+        doomed = subtree_ids(core, node_id)
+        core.delete_node_from_data(node_id)
+        removed_links = strip_references_to(core, doomed)
+        ccf.remove_members(core, doomed)  # FN-38 (a): same undo step
+        # An edit notice, like the AI gate-type reset: undoing the delete
+        # (which restores the links) removes it, redo brings it back.
+        state.add_edit_warnings(removed_link_issues(removed_links, node_id))
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(
+            deletedId=str(node_id),
+            removedLinks=removed_links,
+            **_mutation_payload(state),
+        )
+
+
+@tree_bp.post("/nodes/<path:node_id>/move")
+def move_node_endpoint(node_id: str):
+    """Re-parent a node, optionally at a specific position among its new siblings."""
+    payload = _body()
+    state = get_state()
+
+    new_parent_id = payload.get("newParentId")
+    if new_parent_id is None or not str(new_parent_id).strip():
+        raise ApiError(
+            INVALID_FIELD, "'newParentId' is required.", 400, {"field": "newParentId"}
+        )
+    new_parent_id = str(new_parent_id)
+    index = _validate_index(payload.get("index"))
+
+    with state.lock:
+        core = state.core
+        # Pre-checked here rather than relying on move_node's message so each
+        # failure gets its own stable error code.
+        _refuse_root(core, node_id, "moved")
+        _require_node(core, node_id)
+        _require_node(core, new_parent_id, PARENT_NOT_FOUND, "New parent node")
+        if would_create_cycle(core, node_id, new_parent_id):
+            raise ApiError(
+                CYCLE_REJECTED,
+                f"Cannot move '{node_id}' into itself or one of its descendants.",
+                400,
+                {"nodeId": str(node_id), "newParentId": new_parent_id},
+            )
+        _refuse_too_deep(
+            depth_of(core, new_parent_id) + 1 + tree_height(core.find_node_by_id(node_id)),
+            "newParentId",
+        )
+        if _move_is_a_no_op(core, node_id, new_parent_id, index):
+            # Dropped where it already is: no undo step, redo kept, not
+            # marked modified.
+            return ok_response(nodeId=str(node_id), parentId=new_parent_id,
+                               **_mutation_payload(state))
+
+        state.push_undo()
+        moved, reason = move_node(core, node_id, new_parent_id, index)
+        if not moved:  # pragma: no cover - every cause is pre-checked above
+            # move_node only ever returns False before it touches the tree, so
+            # the document is unchanged here and the undo entry just pushed is
+            # a harmless no-op.
+            raise ApiError(INVALID_FIELD, reason or "Move rejected.", 400)
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(
+            nodeId=str(node_id),
+            parentId=find_parent_id(core, node_id),
+            **_mutation_payload(state),
+        )
+
+
+# ---- several nodes in one step -------------------------------------------
+#
+# The tree panel's multi-selection, and "give every basic event a default
+# uncertainty". One request, one undo step: N requests were N steps, so a
+# three-node delete took three Ctrl+Z to take back. Each of these checks every
+# id before it touches the tree, so a refusal leaves the document as it was.
+# They live under ``/api/batch/`` and not ``/api/nodes/``, where a node whose
+# id is "batch" would shadow them.
+
+#: The most ids one batch request may name.
+BATCH_MAX_IDS = 5000
+
+
+def _batch_ids(payload: Dict[str, Any]) -> List[str]:
+    """``payload["ids"]`` as a list of distinct, non-empty strings, in order."""
+    ids = payload.get("ids")
+    if not isinstance(ids, list) or not ids:
+        raise ApiError(INVALID_FIELD, "'ids' must be a non-empty list of node ids.", 400,
+                       {"field": "ids"})
+    if len(ids) > BATCH_MAX_IDS:
+        raise ApiError(INVALID_FIELD, "'ids' may name at most %d nodes." % BATCH_MAX_IDS, 400,
+                       {"field": "ids", "limit": BATCH_MAX_IDS})
+    out: List[str] = []
+    seen = set()
+    for value in ids:
+        if not isinstance(value, str) or not value.strip():
+            raise ApiError(INVALID_FIELD, "'ids' must be a non-empty list of node ids.", 400,
+                           {"field": "ids"})
+        if value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def _require_listed(core, lookup, node_id: str, code: str = NODE_NOT_FOUND,
+                    label: str = "Node") -> Dict[str, Any]:
+    """:func:`_require_node` for a batch: read from ``lookup`` when there is
+    one, with the same refusal for an id that is not in the tree."""
+    if lookup is None or node_id not in lookup.nodes:
+        return _require_node(core, node_id, code, label)
+    return lookup.nodes[node_id]
+
+
+def _document_order(core) -> Dict[str, int]:
+    """Every node id -> its position reading the tree top to bottom."""
+    order: Dict[str, int] = {}
+    stack = [core.get_data()] if isinstance(core.get_data(), dict) else []
+    while stack:
+        node = stack.pop()
+        order.setdefault(str(node.get("id")), len(order))
+        stack.extend(c for c in reversed(node.get("children") or []) if isinstance(c, dict))
+    return order
+
+
+def _top_most(core, ids: List[str]) -> List[str]:
+    """``ids`` without those inside another listed node's subtree (they go
+    wherever that node goes), in the order the tree shows them."""
+    covered = set()
+    for node_id in ids:
+        covered |= subtree_ids(core, node_id) - {str(node_id)}
+    order = _document_order(core)
+    kept = [node_id for node_id in ids if node_id not in covered]
+    return sorted(kept, key=lambda node_id: order.get(node_id, len(order)))
+
+
+@tree_bp.post("/batch/delete")
+def delete_nodes():
+    """Delete several nodes, each with its subtree, as one undo step.
+
+    Body: ``{ids: [...]}``. The root and an unknown id are refused before
+    anything is deleted. A listed node that sits inside another listed node
+    goes with it. ``deletedIds`` are the nodes deleted directly;
+    ``removedLinks`` as for ``DELETE /api/nodes/<id>``.
+    """
+    ids = _batch_ids(_body())
+    state = get_state()
+
+    with state.lock:
+        core = state.core
+        # One walk for every id (tree_ops.TreeIndex); None for a tree that is
+        # not in the editor's own shape, which keeps the walk per id.
+        lookup = index_tree(core)
+        for node_id in ids:
+            _refuse_root(core, node_id, "deleted")
+            _require_listed(core, lookup, node_id)
+        targets = lookup.top_most(ids) if lookup else _top_most(core, ids)
+
+        state.push_undo()
+        doomed: set = set()
+        if lookup:
+            for node_id in targets:
+                doomed |= lookup.subtree_ids(node_id)
+            detach_nodes(lookup, targets)
+        else:
+            for node_id in targets:
+                doomed |= subtree_ids(core, node_id)
+                core.delete_node_from_data(node_id)
+        removed_links = strip_references_to(core, doomed)
+        ccf.remove_members(core, doomed)  # FN-38 (a): same undo step
+        issues: List[Dict[str, Any]] = []
+        for entry in removed_links:
+            issues.extend(removed_link_issues([entry], entry.get("targetId")))
+        state.add_edit_warnings(issues)
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(
+            deletedIds=targets,
+            removedLinks=removed_links,
+            **_mutation_payload(state),
+        )
+
+
+@tree_bp.post("/batch/move")
+def move_nodes():
+    """Move several nodes under one parent, side by side, as one undo step.
+
+    Body: ``{ids: [...], newParentId, index}``. ``index`` is the position
+    among the new parent's children once every moved node has been detached
+    (clamped; null appends). The nodes keep the order the tree showed them
+    in. A listed node inside another listed node is not moved on its own: it
+    travels with that node. Every node is checked (root, unknown id, a move
+    into its own subtree, depth) before any is moved.
+    """
+    payload = _body()
+    ids = _batch_ids(payload)
+    state = get_state()
+
+    new_parent_id = payload.get("newParentId")
+    if new_parent_id is None or not str(new_parent_id).strip():
+        raise ApiError(
+            INVALID_FIELD, "'newParentId' is required.", 400, {"field": "newParentId"}
+        )
+    new_parent_id = str(new_parent_id)
+    index = _validate_index(payload.get("index"))
+
+    with state.lock:
+        core = state.core
+        lookup = index_tree(core)  # as in delete_nodes
+        for node_id in ids:
+            _refuse_root(core, node_id, "moved")
+            _require_listed(core, lookup, node_id)
+        parent = _require_listed(core, lookup, new_parent_id, PARENT_NOT_FOUND,
+                                 "New parent node")
+        if lookup:
+            targets = lookup.top_most(ids)
+            above_parent = lookup.ancestors(new_parent_id)
+            parent_depth = len(above_parent)
+            # A move into its own subtree: the node is the new parent or one
+            # of the nodes above it.
+            looping = set(above_parent) | {new_parent_id}
+            heights = lookup.heights()
+        else:
+            targets = _top_most(core, ids)
+            parent_depth = depth_of(core, new_parent_id)
+        for node_id in targets:
+            if (node_id in looping if lookup
+                    else would_create_cycle(core, node_id, new_parent_id)):
+                raise ApiError(
+                    CYCLE_REJECTED,
+                    f"Cannot move '{node_id}' into itself or one of its descendants.",
+                    400,
+                    {"nodeId": str(node_id), "newParentId": new_parent_id},
+                )
+            _refuse_too_deep(
+                parent_depth + 1 + (heights[node_id] if lookup
+                                    else tree_height(core.find_node_by_id(node_id))),
+                "newParentId",
+            )
+
+        chosen = set(targets)
+        before = [str(child.get("id")) for child in parent.get("children") or []]
+        rest = [child_id for child_id in before if child_id not in chosen]
+        position = len(rest) if index is None else max(0, min(index, len(rest)))
+        if rest[:position] + targets + rest[position:] == before:
+            # Dropped where they already are: no undo step, redo kept.
+            return ok_response(movedIds=targets, parentId=new_parent_id,
+                               **_mutation_payload(state))
+
+        state.push_undo()
+        if lookup:
+            # Out of their parents, then into the new one as one block.
+            block = [lookup.nodes[node_id] for node_id in targets]
+            detach_nodes(lookup, targets)
+            others = parent["children"]
+            parent["children"] = others[:position] + block + others[position:]
+        else:
+            for node_id in targets:
+                moved, reason = move_node(core, node_id, new_parent_id, None)
+                if not moved:  # pragma: no cover - every cause is pre-checked above
+                    raise ApiError(INVALID_FIELD, reason or "Move rejected.", 400)
+            # move_node appended them in order; put the block where it was asked.
+            # Re-read: delete_node_from_data rebinds every `children` list.
+            parent = core.find_node_by_id(new_parent_id)
+            children = list(parent.get("children") or [])
+            block = [child for child in children if str(child.get("id")) in chosen]
+            others = [child for child in children if str(child.get("id")) not in chosen]
+            parent["children"] = others[:position] + block + others[position:]
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(movedIds=targets, parentId=new_parent_id,
+                           **_mutation_payload(state))
+
+
+#: The error factor "Apply to all" uses when the request names none.
+DEFAULT_ERROR_FACTOR = 3
+
+
+def _lacks_uncertainty(node: Dict[str, Any]) -> bool:
+    """A basic event (a leaf that is not a house event or a transfer) with no
+    uncertainty distribution of its own."""
+    if node.get("children"):
+        return False
+    if str(node.get("gateType") or "").upper() == "TRANSFER":
+        return False
+    if str(node.get("eventKind") or "basic").lower() != "basic":
+        return False
+    quant = node.get("quant")
+    unc = quant.get("unc") if isinstance(quant, dict) else None
+    return not (isinstance(unc, dict) and unc.get("dist"))
+
+
+@tree_bp.post("/batch/uncertainty")
+def apply_default_uncertainty():
+    """Give every basic event without an uncertainty distribution a lognormal
+    one with error factor ``ef`` (default 3), as one undo step.
+
+    Body: ``{ef}`` (optional). Events that already have a distribution, house
+    events, undeveloped and conditioning events and transfers are left alone,
+    and so is the root. ``updatedIds`` lists the events changed; when there
+    are none nothing is changed and no undo step is made.
+    """
+    payload = _body()
+    unknown = [key for key in payload if key != "ef"]
+    if unknown:
+        raise ApiError(INVALID_FIELD, "Unsupported field(s): " + ", ".join(sorted(unknown)) + ".",
+                       400, {"fields": sorted(unknown)})
+    ef = payload.get("ef")
+    if ef is None:  # an explicit null means "the default", not "no error factor"
+        ef = DEFAULT_ERROR_FACTOR
+    patch = node_schema.validate_quant({"unc": {"dist": "lognormal", "ef": ef}})
+    state = get_state()
+
+    with state.lock:
+        core = state.core
+        # Uncertainty is a fault-tree analysis (/api/analysis/uncertainty
+        # refuses an event tree), so nothing is written into one either.
+        if str(core.mode).upper() == "ETA":
+            raise ApiError(
+                MODE_UNSUPPORTED,
+                "Uncertainty is only available for fault trees (FTA mode); "
+                "the document is an event tree (ETA mode).",
+                409,
+                {"mode": "ETA"},
+            )
+        root = core.get_data()
+        targets: List[Dict[str, Any]] = []
+        stack = [root] if isinstance(root, dict) else []
+        while stack:
+            node = stack.pop()
+            if node is not root and _lacks_uncertainty(node):
+                targets.append(node)
+            stack.extend(c for c in reversed(node.get("children") or []) if isinstance(c, dict))
+        if not targets:
+            return ok_response(updatedIds=[], **_mutation_payload(state))
+
+        updated = [str(node.get("id")) for node in targets]
+        state.push_undo()
+        for node in targets:
+            quant = node.get("quant")
+            unc = quant.get("unc") if isinstance(quant, dict) else None
+            own = dict(patch)
+            if isinstance(unc, dict) and unc.get("ef") is not None:
+                # An error factor typed for this event is kept; only the
+                # distribution is added.
+                own["unc"] = {k: v for k, v in patch["unc"].items() if k != "ef"}
+            node["quant"] = node_schema.merge_partial(quant, own)
+        core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(updatedIds=updated, **_mutation_payload(state))
+
+
+# ---- history -------------------------------------------------------------
+
+
+@tree_bp.post("/undo")
+def undo():
+    """Step back one edit.
+
+    The document stays dirty afterwards: undoing back to the last saved state
+    is not tracked, and claiming "saved" when it might not be would risk
+    losing work at the next New/Open.
+    """
+    state = get_state()
+    with state.lock:
+        if not state.undo():
+            raise ApiError(NOTHING_TO_UNDO, "There is nothing to undo.", 400)
+        state.core.recalculate_probabilities()
+        state.mark_dirty()
+        return ok_response(
+            metadata=state.core.get_metadata(), **_mutation_payload(state)
+        )
+
+
+@tree_bp.post("/redo")
+def redo():
+    """Step forward one undone edit."""
+    state = get_state()
+    with state.lock:
+        if not state.redo():
+            raise ApiError(NOTHING_TO_REDO, "There is nothing to redo.", 400)
+        state.core.recalculate_probabilities()
+        state.mark_dirty()
+        return ok_response(
+            metadata=state.core.get_metadata(), **_mutation_payload(state)
+        )

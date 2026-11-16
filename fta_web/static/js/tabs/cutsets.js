@@ -1,0 +1,588 @@
+/**
+ * tabs/cutsets.js -- the Cut Sets tab (1.7, workstream A).
+ *
+ * POST /api/analysis/cutsets with optional per-run limits. The limit inputs
+ * start from the document's `analysis.cutsets` (blank also means the document
+ * value); "Save as document defaults" writes them back through POST
+ * /api/analysis/settings (undoable), which Importance and the headline use.
+ * A limit typed here and not saved applies to the runs of this tab only: the
+ * toolbar says so ("This run only") and Reset goes back to the document's.
+ * Runs on first show and again, debounced,
+ * whenever the tree changes while the tab is visible. A row click lights its
+ * events up in the tree and the diagram through ctx.highlight(ids,
+ * 'cutsets'); leaving the tab clears that highlight.
+ */
+import cat from '../i18n/cutsets.js';
+import { eventLabel, membersOfEvent } from '../ccf_util.js';
+import {
+  clear,
+  copyText,
+  csvCell,
+  debounce,
+  el,
+  ensureStyles,
+  etaNotice,
+  isEta,
+  parseNumber,
+  renderWarnings,
+  reportError,
+  translator,
+} from './analysis_common.js';
+
+window.ftaShell?.registerStrings?.(cat);
+
+export const id = 'cutsets';
+export const advanced = true;
+
+const SOURCE = 'cutsets';
+const STALE_DELAY_MS = 700;
+
+/**
+ * The empty-table message: not run yet, or no cut sets at all. Null when the
+ * result has cut sets, even if "Show" lists none of them (the summary then
+ * reads "0 of N"): "the top event cannot occur" would be false.
+ *
+ * It would be just as false when a limit cut every set away. With Max order
+ * 1 on a tree whose smallest cut set has two events the search finds nothing
+ * and says it was truncated; that is "none within these limits", not "the
+ * top event cannot occur".
+ */
+export function emptyMessageKey(result) {
+  if (!result) return 'cutsets.notRun';
+  const listed = Array.isArray(result.cutSets) ? result.cutSets.length : 0;
+  if (listed > 0 || result.total > 0) return null;
+  return result.truncated ? 'cutsets.noneWithinLimits' : 'cutsets.none';
+}
+
+/** True when the limits left no cut set at all: the totals then mean nothing. */
+export function nothingWithinLimits(result) {
+  return emptyMessageKey(result) === 'cutsets.noneWithinLimits';
+}
+
+/** A cut set's identity across runs (ranks shift when the tree changes): its event ids. */
+export function cutSetKey(row) {
+  const events = row && Array.isArray(row.events) ? row.events : [];
+  return events.map((e) => String(e.id)).sort().join('\u0001');
+}
+
+export function mount(panel, ctx) {
+  ensureStyles();
+  const t = translator(ctx);
+  const fmt = (v) => ctx.fmt.prob(v);
+
+  let active = false;
+  let result = null;
+  let selectedRank = null;
+  let selectedKey = null; // cutSetKey of the selected row
+  let running = false;
+  let seq = 0;
+  let hasRun = false;
+  let stale = false;
+  let justActivated = false;
+
+  // ---- skeleton ---------------------------------------------------------
+  const root = el('div', { class: 'anl anl-cutsets', dataset: { tab: 'cutsets' } });
+  const runBtn = el('button', { type: 'button', class: 'btn btn--primary', dataset: { role: 'run' } });
+  const inOrder = el('input', { type: 'text', inputmode: 'numeric', dataset: { limit: 'maxOrder' } });
+  const inCount = el('input', { type: 'text', inputmode: 'numeric', dataset: { limit: 'maxCount' } });
+  const inCutoff = el('input', { type: 'text', inputmode: 'decimal', dataset: { limit: 'cutoff' } });
+  const inLimit = el('input', { type: 'text', inputmode: 'numeric', value: '500', dataset: { limit: 'limit' } });
+  const lblOrder = el('label', null, [el('span'), inOrder]);
+  const lblCount = el('label', null, [el('span'), inCount]);
+  const lblCutoff = el('label', null, [el('span'), inCutoff]);
+  const lblLimit = el('label', null, [el('span'), inLimit]);
+  const copyBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'copy' } });
+  const saveBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'save-defaults' } });
+  // Inputs the user has typed in since they were last filled from the document.
+  const edited = new Set();
+  // Shown while a typed limit differs from the document's: it is used by
+  // this tab's runs and by nothing else (the headline, Importance and the
+  // report keep the document's limits) until it is saved.
+  const runOnly = el('span', { class: 'anl-badge anl-badge--info', dataset: { role: 'run-only' }, hidden: true });
+  const resetBtn = el('button', { type: 'button', class: 'btn', dataset: { role: 'reset-limits' }, hidden: true });
+  const status = el('span', { class: 'anl-note', 'aria-live': 'polite' });
+  const toolbar = el('div', { class: 'anl-toolbar' }, [
+    runBtn, lblOrder, lblCount, lblCutoff, runOnly, resetBtn, saveBtn, lblLimit,
+    el('span', { class: 'anl-grow' }), status, copyBtn,
+  ]);
+  const summary = el('div', { class: 'anl-summary', 'aria-live': 'polite' });
+  const warnings = el('ul', { class: 'anl-warnings' });
+  const message = el('p', { class: 'anl-empty' });
+  const tableWrap = el('div', { class: 'anl-tablewrap' });
+  const hint = el('p', { class: 'anl-note' });
+  const body = el('div', { class: 'anl', style: 'padding:0;overflow:visible;height:auto;flex:1 1 auto' }, [
+    toolbar, summary, warnings, message, tableWrap, hint,
+  ]);
+  panel.appendChild(root);
+
+  // Same bounds as the server (engine.merge_analysis / routes/analysis.py), so
+  // a bad value is flagged here in the user's language instead of coming back
+  // as an English 400.
+  const BOUNDS = {
+    maxOrder: { min: 1, max: 20, int: true },
+    maxCount: { min: 1, max: 1000000, int: true },
+    cutoff: { min: 0, max: 1, int: false, maxExclusive: true },
+    limit: { min: 0, max: 100000, int: true },
+  };
+
+  function limitsBody() {
+    const out = {};
+    const pairs = [
+      ['maxOrder', inOrder],
+      ['maxCount', inCount],
+      ['cutoff', inCutoff],
+      ['limit', inLimit],
+    ];
+    let firstBad = null;
+    for (const [key, input] of pairs) {
+      const value = parseNumber(input.value);
+      const b = BOUNDS[key];
+      const bad = Number.isNaN(value) || (value !== null && (
+        (b.int && !Number.isInteger(value)) || value < b.min
+        || (b.maxExclusive ? value >= b.max : value > b.max)));
+      input.classList.toggle('anl-invalid', bad);
+      if (bad) {
+        input.setAttribute('aria-invalid', 'true');
+        const reason = t(b.int ? 'cutsets.invalidInt' : 'cutsets.invalidCutoff', { min: b.min, max: b.max });
+        input.title = reason;
+        if (!firstBad) firstBad = reason;
+      } else {
+        input.removeAttribute('aria-invalid');
+        if (value !== null) out[key] = value;
+      }
+    }
+    if (firstBad) {
+      ctx.toast(firstBad, 'warn');
+      return null;
+    }
+    return out;
+  }
+
+  // ---- running ----------------------------------------------------------
+  async function run() {
+    if (isEta(ctx)) {
+      paint();
+      return;
+    }
+    const payload = limitsBody();
+    if (!payload) return;
+    const mine = ++seq;
+    running = true;
+    paintToolbar();
+    const asked = ctx.store.state || {}; // the tree this answer describes
+    try {
+      const res = await ctx.api.post('/analysis/cutsets', payload);
+      if (mine !== seq) return;
+      result = res;
+      hasRun = true;
+      // An edit made while the request was in flight leaves the answer stale
+      // (onStale has scheduled the re-run that replaces it, which may fail).
+      const now = ctx.store.state || {};
+      stale = now.tree !== asked.tree || now.analysis !== asked.analysis;
+      // Keep the selection if the same cut set is still there (at any rank).
+      if (selectedKey !== null) {
+        const row = result.cutSets.find((cs) => cutSetKey(cs) === selectedKey);
+        if (row) highlightRow(row);
+        else unselect();
+      }
+    } catch (err) {
+      if (mine !== seq) return;
+      reportError(ctx, err);
+    } finally {
+      if (mine === seq) {
+        running = false;
+        paint();
+      }
+    }
+  }
+  const runSoon = debounce(run, STALE_DELAY_MS);
+
+  function highlightRow(row) {
+    selectedRank = row.rank;
+    selectedKey = cutSetKey(row);
+    // A CCF event stands for every member of its group (F2).
+    ctx.highlight(row.events.flatMap((e) => membersOfEvent(e)), SOURCE);
+  }
+
+  function unselect() {
+    selectedRank = null;
+    selectedKey = null;
+    ctx.clearHighlight(SOURCE);
+  }
+
+  // ---- painting -----------------------------------------------------------
+  function docLimits() {
+    const analysis = ctx.store.state && ctx.store.state.analysis;
+    return (analysis && analysis.cutsets) || {};
+  }
+
+  /** Save the three limit inputs as `analysis.cutsets` (undoable). */
+  async function saveDefaults() {
+    const payload = limitsBody();
+    if (!payload) return;
+    const cut = {};
+    for (const key of ['maxOrder', 'maxCount', 'cutoff']) {
+      if (payload[key] !== undefined) cut[key] = payload[key];
+    }
+    if (!Object.keys(cut).length) return;
+    saveBtn.disabled = true;
+    try {
+      const res = await ctx.api.post('/analysis/settings', { cutsets: cut });
+      ctx.store.applyMutation(res);
+      edited.clear();
+      ctx.toast(t('cutsets.savedDefaults'), 'ok');
+    } catch (err) {
+      reportError(ctx, err);
+    } finally {
+      saveBtn.disabled = false;
+      paintToolbar();
+    }
+  }
+
+  function paintToolbar() {
+    runBtn.textContent = running ? t('anl.running') : t('anl.run');
+    runBtn.disabled = running;
+    saveBtn.textContent = t('cutsets.saveDefaults');
+    saveBtn.title = t('cutsets.saveDefaultsTitle');
+    copyBtn.textContent = t('cutsets.copyCsv');
+    copyBtn.disabled = !result || !result.cutSets || !result.cutSets.length;
+    const doc = docLimits();
+    const labels = [
+      [lblOrder, 'cutsets.maxOrder', inOrder, doc.maxOrder],
+      [lblCount, 'cutsets.maxCount', inCount, doc.maxCount],
+      [lblCutoff, 'cutsets.cutoff', inCutoff, doc.cutoff],
+    ];
+    for (const [label, key, input, value] of labels) {
+      label.firstChild.textContent = t(key);
+      const shown = value === undefined ? '' : String(value);
+      input.placeholder = shown;
+      // Prefilled from the document until the user types (and again after an
+      // undo or a save changes the document value).
+      if (!edited.has(input) && document.activeElement !== input) {
+        input.value = shown;
+        input.classList.remove('anl-invalid');
+        input.removeAttribute('aria-invalid');
+      }
+      if (!input.classList.contains('anl-invalid')) input.title = t('cutsets.docDefault', { value: shown });
+    }
+    lblLimit.firstChild.textContent = t('cutsets.limit');
+    lblLimit.title = t('cutsets.limitTitle');
+    status.textContent = result && !running ? t('anl.elapsed', { ms: Math.round(result.elapsedMs) }) : '';
+    paintRunOnly();
+  }
+
+  /** The limit inputs that hold something other than the document's value. */
+  function overridden() {
+    const doc = docLimits();
+    return [[inOrder, doc.maxOrder], [inCount, doc.maxCount], [inCutoff, doc.cutoff]].filter(([input, value]) => {
+      const typed = input.value.trim();
+      if (!edited.has(input) || typed === '') return false;
+      const number = parseNumber(typed);
+      return value === undefined || Number.isNaN(number) || number !== Number(value);
+    }).map(([input]) => input);
+  }
+
+  function paintRunOnly() {
+    const inputs = overridden();
+    for (const input of [inOrder, inCount, inCutoff]) {
+      input.classList.toggle('anl-override', inputs.includes(input));
+    }
+    runOnly.hidden = inputs.length === 0;
+    resetBtn.hidden = inputs.length === 0;
+    runOnly.textContent = t('cutsets.runOnly');
+    runOnly.title = t('cutsets.runOnlyTitle');
+    resetBtn.textContent = t('cutsets.resetLimits');
+    resetBtn.title = t('cutsets.resetLimitsTitle');
+  }
+
+  /** Back to the document's limits, and run with them. */
+  function resetLimits() {
+    edited.clear();
+    for (const input of [inOrder, inCount, inCutoff]) {
+      input.classList.remove('anl-invalid');
+      input.removeAttribute('aria-invalid');
+    }
+    paintToolbar();
+    runSoon.cancel();
+    run();
+  }
+
+  function badge(text, kind, title) {
+    return el('span', { class: 'anl-badge' + (kind ? ' anl-badge--' + kind : ''), text, title: title || null });
+  }
+
+  function stat(label, value) {
+    return el('span', { class: 'anl-stat' }, [label + ' ', el('b', { text: value })]);
+  }
+
+  /**
+   * The rare-event figure is the SUM of the cut-set probabilities. It is an
+   * upper bound and not a probability: "Rare-event 2.90" stood in a row of
+   * probabilities with nothing to say so. The tooltip says what it is, and
+   * above 1 a note says it outright.
+   */
+  function rareStat() {
+    const node = stat(t('cutsets.rare'), fmt(result.rareEvent));
+    node.title = t('cutsets.rareTitle');
+    node.dataset.stat = 'rare';
+    if (Number(result.rareEvent) > 1) {
+      node.appendChild(el('span', { class: 'anl-stat__note', dataset: { role: 'rare-over' }, text: ' ' + t('cutsets.rareOver') }));
+    }
+    return node;
+  }
+
+  function paintSummary() {
+    clear(summary);
+    if (!result) return;
+    if (nothingWithinLimits(result)) {
+      // No cut set survived the limits, so the bound and the rare-event sum
+      // are 0 by construction ("Min-cut upper bound 0" read as a result).
+      // The tree walk does not depend on the limits and stays.
+      summary.append(stat(t('cutsets.treeWalk'), fmt(result.treeWalk)));
+    } else {
+      summary.append(
+        stat(t('cutsets.mcub'), fmt(result.mcub)),
+        rareStat(),
+        stat(t('cutsets.treeWalk'), fmt(result.treeWalk)),
+        el('span', { class: 'anl-stat', text: t('cutsets.count', { shown: result.returned, total: result.total }) })
+      );
+    }
+    if (result.truncated) {
+      const by = (result.truncatedBy || []).map((b) => t('anl.by.' + b)).join(', ');
+      summary.appendChild(badge(t('cutsets.truncated'), 'warn', t('cutsets.truncatedTitle', { by })));
+    }
+    const repeated = result.repeatedEvents || [];
+    if (repeated.length) {
+      const names = repeated.map((e) => eventLabel(e, t)).join(', ');
+      summary.appendChild(badge(t('cutsets.repeated', { n: repeated.length }), 'info',
+        t('cutsets.repeatedTitle', { names })));
+    }
+    if (result.nonCoherent) summary.appendChild(badge(t('cutsets.nonCoherent'), 'warn'));
+    const approx = result.approximations || [];
+    if (approx.length) summary.appendChild(badge(t('cutsets.approx', { n: approx.length }), 'warn'));
+    if (approx.some((a) => a && a.code === 'PAND_APPROX')) {
+      // Cut sets expand PAND as plain AND (no 1/n!): conservative, and it is
+      // what the MCUB headline then uses.
+      summary.appendChild(badge(t('cutsets.pandAsAnd'), 'warn', t('cutsets.pandAsAndTitle')));
+    }
+    if (stale) summary.appendChild(badge(t('anl.staleNote'), null));
+  }
+
+  function paintTable() {
+    clear(tableWrap);
+    const rows = (result && result.cutSets) || [];
+    tableWrap.hidden = rows.length === 0;
+    if (!rows.length) return;
+    const table = el('table', { class: 'anl-table' });
+    const head = el('tr', null, [
+      el('th', { class: 'num', text: t('cutsets.col.rank') }),
+      el('th', { class: 'num', text: t('cutsets.col.order') }),
+      el('th', { text: t('cutsets.col.events') }),
+      el('th', { class: 'num', text: t('cutsets.col.prob') }),
+      el('th', { text: t('cutsets.col.share') }),
+    ]);
+    table.appendChild(el('thead', null, [head]));
+    const tbody = el('tbody');
+    const maxShare = rows.reduce((m, r) => Math.max(m, r.share || 0), 0) || 1;
+    for (const row of rows) {
+      const events = el('div', { class: 'anl-events' });
+      if (!row.events.length) events.appendChild(el('span', { class: 'anl-note', text: t('cutsets.emptySet') }));
+      for (const ev of row.events) {
+        const ccf = ev.ccf && typeof ev.ccf === 'object' ? ev.ccf : null;
+        events.appendChild(el('span', {
+          class: 'anl-event' + (ccf ? ' anl-event--ccf' : ''),
+          text: eventLabel(ev, t),
+          title: ev.id + '  q=' + fmt(ev.q),
+          dataset: ccf ? { ccfGroup: String(ccf.groupId), ccfRole: String(ccf.role) } : null,
+        }));
+      }
+      const pct = (row.share || 0) * 100;
+      const fill = el('span', { class: 'anl-bar__fill', style: 'width:' + ((row.share || 0) / maxShare) * 100 + '%' });
+      const tr = el('tr', {
+        tabindex: '0',
+        class: row.rank === selectedRank ? 'is-selected' : null,
+        dataset: { rank: String(row.rank) },
+        'aria-selected': row.rank === selectedRank ? 'true' : 'false',
+      }, [
+        el('td', { class: 'num', text: String(row.rank) }),
+        el('td', { class: 'num', text: String(row.order) }),
+        el('td', null, [events]),
+        el('td', { class: 'num', text: fmt(row.probability) }),
+        el('td', { class: 'anl-bar' }, [fill, el('span', { class: 'anl-bar__text', text: pct.toFixed(pct >= 10 ? 1 : 2) + '%' })]),
+      ]);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+  }
+
+  function paint() {
+    clear(root);
+    if (isEta(ctx)) {
+      root.appendChild(etaNotice(ctx));
+      return;
+    }
+    root.appendChild(body);
+    paintToolbar();
+    paintSummary();
+    renderWarnings(ctx, warnings, result ? result.warnings : []);
+    const rows = (result && result.cutSets) || [];
+    const empty = emptyMessageKey(result);
+    message.hidden = !empty;
+    const by = result ? (result.truncatedBy || []).map((b) => t('anl.by.' + b)).join(', ') : '';
+    message.textContent = empty ? t(empty, { by }) : '';
+    hint.hidden = rows.length === 0;
+    hint.textContent = t('cutsets.hint');
+    paintTable();
+  }
+
+  // ---- events -----------------------------------------------------------
+  function rowFrom(event) {
+    const tr = event.target instanceof Element ? event.target.closest('tr[data-rank]') : null;
+    if (!tr || !result) return null;
+    return result.cutSets.find((cs) => String(cs.rank) === tr.dataset.rank) || null;
+  }
+
+  function choose(row) {
+    if (!row) return;
+    if (selectedRank === row.rank) unselect();
+    else highlightRow(row);
+    for (const tr of tableWrap.querySelectorAll('tr[data-rank]')) {
+      const on = tr.dataset.rank === String(selectedRank);
+      tr.classList.toggle('is-selected', on);
+      tr.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+  }
+
+  tableWrap.addEventListener('click', (event) => choose(rowFrom(event)));
+  tableWrap.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return; // IME composition
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = rowFrom(event);
+    if (!row) return;
+    event.preventDefault();
+    choose(row);
+  });
+  runBtn.addEventListener('click', () => {
+    runSoon.cancel();
+    run();
+  });
+  saveBtn.addEventListener('click', () => saveDefaults());
+  resetBtn.addEventListener('click', () => resetLimits());
+  for (const input of [inOrder, inCount, inCutoff]) {
+    input.addEventListener('input', () => {
+      edited.add(input);
+      paintRunOnly();
+    });
+  }
+  for (const input of [inOrder, inCount, inCutoff, inLimit]) {
+    // Escape discards what was typed since the field was focused (as in the
+    // Details and Quantification forms) instead of reaching the shell.
+    let before = null;
+    input.addEventListener('focus', () => {
+      before = { value: input.value, edited: edited.has(input) };
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.isComposing || event.keyCode === 229) return; // IME composition
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        run();
+      } else if (event.key === 'Escape' && before && input.value !== before.value) {
+        event.preventDefault();
+        event.stopPropagation();
+        input.value = before.value;
+        if (!before.edited) edited.delete(input);
+        input.classList.remove('anl-invalid');
+        input.removeAttribute('aria-invalid');
+        paintRunOnly();
+      }
+    });
+  }
+  copyBtn.addEventListener('click', async () => {
+    if (!result || !result.cutSets) return;
+    const lines = [
+      [t('cutsets.col.rank'), t('cutsets.col.order'), t('cutsets.col.prob'), t('cutsets.col.share'), t('cutsets.col.events')]
+        .map(csvCell).join(','),
+    ];
+    for (const row of result.cutSets) {
+      lines.push([
+        row.rank,
+        row.order,
+        row.probability,
+        row.share,
+        row.events.map((e) => eventLabel(e, t)).join(' ; '),
+      ].map(csvCell).join(','));
+    }
+    const ok = await copyText(lines.join('\r\n') + '\r\n');
+    if (ok) ctx.toast(t('cutsets.copied', { n: result.cutSets.length }), 'info');
+    else ctx.toast(t('cutsets.copyFailed'), 'error');
+  });
+
+  const repaint = () => paint();
+  window.addEventListener('fta:language', repaint);
+  // New / Open: the old document's cut sets and typed limits do not apply.
+  const onDocument = () => {
+    runSoon.cancel();
+    seq += 1; // drop an in-flight answer for the old document
+    running = false;
+    result = null;
+    hasRun = false;
+    stale = false;
+    edited.clear();
+    unselect();
+    // Refill the limit inputs from the new document first: run() reads them,
+    // and the typed values belonged to the old one.
+    paint();
+    if (active) run();
+  };
+  window.addEventListener('fta:document', onDocument);
+  const unSig = ctx.onSigFigs(repaint);
+
+  paint();
+
+  return {
+    activate() {
+      active = true;
+      // host.js calls onStale() synchronously right after activate() for a
+      // tab that went stale in the background: re-run at once then, rather
+      // than showing the old (possibly previous-document) results for the
+      // debounce delay.
+      justActivated = true;
+      Promise.resolve().then(() => { justActivated = false; });
+      if (!hasRun && !running) run();
+      else paint();
+    },
+    deactivate() {
+      active = false;
+      runSoon.cancel();
+      unselect();
+      for (const tr of tableWrap.querySelectorAll('tr.is-selected')) tr.classList.remove('is-selected');
+    },
+    onStale() {
+      // Not run yet AND nothing in flight: only the document limits may have
+      // changed. With the first run still in flight its answer describes the
+      // tree before this change, so fall through and run again (1.7.0 returned
+      // here and kept showing that stale first answer).
+      if (!hasRun && !running) {
+        if (!isEta(ctx) && root.contains(toolbar)) paintToolbar(); // document limits may have changed
+        return;
+      }
+      stale = true;
+      paint();
+      if (active && justActivated) {
+        runSoon.cancel();
+        run();
+      } else if (active) runSoon();
+    },
+    dispose() {
+      runSoon.cancel();
+      window.removeEventListener('fta:language', repaint);
+      window.removeEventListener('fta:document', onDocument);
+      if (typeof unSig === 'function') unSig();
+      unselect();
+      root.remove();
+    },
+  };
+}
+
+export default mount;

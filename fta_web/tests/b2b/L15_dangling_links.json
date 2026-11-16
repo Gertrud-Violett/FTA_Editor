@@ -1,0 +1,73 @@
+{
+  "title": "L15 dangling links",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Dangling",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "g",
+        "name": "g",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "a",
+            "name": "a",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [
+          {
+            "target_id": "nowhere",
+            "relation": "AND"
+          },
+          {
+            "target_id": "",
+            "relation": "OR"
+          },
+          {
+            "relation": "OR"
+          },
+          {
+            "target_id": "c",
+            "relation": null
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": "c",
+        "name": "c",
+        "type": "Event",
+        "probability": 0.1,
+        "logicGate": "OR",
+        "children": [],
+        "links": [],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

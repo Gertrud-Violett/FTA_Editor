@@ -1,0 +1,92 @@
+{
+  "title": "L14 gate spellings",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Spellings",
+    "type": "Root",
+    "logicGate": "or",
+    "probability": 1.0,
+    "children": [
+      {
+        "id": "lc_and",
+        "name": "lower-case and",
+        "logicGate": "and",
+        "children": [
+          {
+            "id": "p1",
+            "name": "p1",
+            "probability": "0.5"
+          },
+          {
+            "id": "p2",
+            "name": "p2",
+            "probability": 0.5
+          },
+          {
+            "id": "p7",
+            "name": "p7 (no probability: 1.0)"
+          }
+        ]
+      },
+      {
+        "id": "empty",
+        "name": "empty gate",
+        "logicGate": "",
+        "children": [
+          {
+            "id": "p3",
+            "name": "p3",
+            "probability": 0.1
+          },
+          {
+            "id": "p4",
+            "name": "p4",
+            "probability": 0.1
+          }
+        ]
+      },
+      {
+        "id": "none_gate",
+        "name": "None gate",
+        "logicGate": null,
+        "children": [
+          {
+            "id": "p5",
+            "name": "p5",
+            "probability": 0.1
+          }
+        ]
+      },
+      {
+        "id": "missing",
+        "name": "missing gate",
+        "children": [
+          {
+            "id": "p6",
+            "name": "p6",
+            "probability": 0.2
+          },
+          {
+            "id": "p6b",
+            "name": "p6b",
+            "probability": 0.1
+          }
+        ]
+      },
+      {
+        "id": "not_gate",
+        "name": "NOT gate",
+        "logicGate": "NOT",
+        "children": [
+          {
+            "id": "p8",
+            "name": "p8",
+            "probability": 0.3
+          }
+        ]
+      }
+    ]
+  }
+}

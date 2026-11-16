@@ -1,0 +1,1111 @@
+"""
+AI assistant endpoints -- the ``/api/ai`` blueprint.
+
+============================================  ==============================
+``GET    /api/ai/providers``                  provider names and defaults
+``GET    /api/ai/models``                     model list for one provider
+``GET    /api/ai/credentials``                masked credential status
+``POST   /api/ai/credentials``                test a key, save it if it works
+``DELETE /api/ai/credentials``                forget the saved key
+``POST   /api/ai/chat``                       one turn of conversation
+``POST   /api/ai/analyze``                    one-shot analysis, read-only
+``POST   /api/ai/update``                     full-JSON rewrite of the tree
+``POST   /api/ai/update/apply``               install a previewed rewrite
+``POST   /api/ai/update/discard``             drop a previewed rewrite
+``POST   /api/ai/cancel``                     abandon the request in flight
+``POST   /api/ai/changes/apply``              apply selected proposals
+``GET    /api/ai/conversation``               the chat so far, for a reload
+``DELETE /api/ai/conversation``               forget the chat history
+============================================  ==============================
+
+This module is HTTP and nothing else. The AI logic is the vendored
+``AI_agent_handler``'s, and ``fta_web/ai_bridge.py`` is the seam -- read its
+docstring first: it owns the worker-thread/timeout model, the redaction rules
+and the update diagnostics that the routes below merely shape into envelopes.
+
+Decisions a reviewer should know about
+--------------------------------------
+**The API key is never in a response, and this is enforced twice.** No payload
+built here has a place to put it -- ``ai_bridge.credentials_status()`` is the
+only credential view and it returns a mask -- and every string that came from a
+provider is passed through ``ai_bridge.scrub``/``scrub_deep`` on the way out,
+because SDK error messages quote request URLs and Gemini puts the key in one.
+``keyPreview`` (``sk-...AB12``) exists so the settings page can show *which*
+key is saved without being able to show the key.
+
+**The document lock is never held across a provider call.** Each route reads a
+deep copy of the tree under ``state.lock``, releases it, calls the provider on
+a worker thread with a deadline, then takes the lock again to apply the result.
+A provider that hangs costs one AI request, not the whole editor.
+
+**Everything that mutates goes through the normal mutation contract**
+(``routes/tree.py``): ``push_undo()`` first, then mutate, then
+``recalculate_probabilities()``, then ``mark_dirty()``, then return the full
+post-mutation view. An AI edit is undoable in exactly one Ctrl-Z, like any
+other edit -- which is what makes accepting a suggestion a safe thing to try.
+
+**Changes are applied by the vendored handler**, never by re-implementing
+add/edit/delete/move here. ``AIAgentHandler.apply_change_to_fta`` is the same
+code path the desktop editor uses, including its refusals (root deletion,
+duplicate ids, circular moves). One thing is added on top of it, in
+``ai_bridge.apply_change``: a suggestion's ``links``, which the handler's
+add and edit ignore.
+
+**``/analyze`` cannot write.** It hands the handler a deep copy and never
+touches ``state.core``; the tree is byte-identical afterwards, and
+``test_api_ai.py`` pins that.
+
+Which endpoints require a key
+-----------------------------
+``chat``, ``analyze``, ``update``, ``changes/apply`` and ``conversation``
+answer 400 ``AI_NOT_CONFIGURED`` when nothing is saved -- they cannot do
+anything without a provider. ``providers``, ``models`` and the ``credentials``
+endpoints must work *un*configured: they are what the AI settings dialog is
+built from, and a first-time user has no key yet by definition. ``models``
+degrades to the provider's built-in list with a ``warning`` instead of
+failing, for the same reason.
+
+NOT gates are absent from this file on purpose: they are rejected by the
+vendored validator and by ``routes/tree.py`` (divergence D5), so an AI answer
+containing one is refused with the validator's own message rather than
+quietly scored as OR.
+"""
+from __future__ import annotations
+
+import contextlib
+import copy
+import logging
+import secrets
+import threading
+from typing import Any, Dict, List, Optional, Tuple
+
+from flask import Blueprint, request
+
+try:  # normal package import: ``import fta_web.routes.ai``
+    from .. import ai_bridge, ccf
+    from ..errors import (
+        AI_NOT_CONFIGURED,
+        INVALID_FIELD,
+        INVALID_JSON,
+        ApiError,
+        api_error_response,
+        ok_response,
+    )
+    from ..engine import WebCore
+    from ..node_schema import merge_back_node_keys, reconcile_gate_types
+    from ..state import get_state, load_warning_issues, removed_link_issues
+    from ..tree_ops import all_ids, strip_references_to
+except ImportError:  # fallback: ``fta_web/`` itself is on sys.path
+    import ai_bridge  # type: ignore[no-redef]
+    import ccf  # type: ignore[no-redef]
+    from errors import (  # type: ignore[no-redef]
+        AI_NOT_CONFIGURED,
+        INVALID_FIELD,
+        INVALID_JSON,
+        ApiError,
+        api_error_response,
+        ok_response,
+    )
+    from engine import WebCore  # type: ignore[no-redef]
+    from node_schema import merge_back_node_keys, reconcile_gate_types  # type: ignore[no-redef]
+    from state import get_state, load_warning_issues, removed_link_issues  # type: ignore[no-redef]
+    from tree_ops import all_ids, strip_references_to  # type: ignore[no-redef]
+
+log = logging.getLogger(__name__)
+
+ai_bp = Blueprint("ai", __name__, url_prefix="/api/ai")
+
+# ---------------------------------------------------------------------------
+# Error codes owned by this blueprint.
+#
+# errors.py holds the shared vocabulary and already owns AI_NOT_CONFIGURED,
+# which the frontend branches on. These are local for the same reason
+# routes/files.py keeps EXPORT_UNAVAILABLE local -- promote any of them into
+# errors.py the day something else needs to raise it.
+# ---------------------------------------------------------------------------
+AI_BUSY = "AI_BUSY"
+AI_TIMEOUT = "AI_TIMEOUT"
+AI_CANCELLED = "AI_CANCELLED"
+AI_CALL_FAILED = "AI_CALL_FAILED"
+AI_CONNECTION_FAILED = "AI_CONNECTION_FAILED"
+AI_INVALID_JSON = "AI_INVALID_JSON"
+AI_UPDATE_REJECTED = "AI_UPDATE_REJECTED"
+AI_CHANGE_REJECTED = "AI_CHANGE_REJECTED"
+AI_DOCUMENT_CHANGED = "AI_DOCUMENT_CHANGED"
+AI_UPDATE_EXPIRED = "AI_UPDATE_EXPIRED"
+
+#: Says where to go, not just what is wrong. This is the one error a new user
+#: is guaranteed to hit, so it is the one that has to teach.
+NOT_CONFIGURED_MESSAGE = (
+    "The AI assistant is not configured. Open AI settings, choose a provider "
+    "and paste its API key -- the key is tested before it is saved and is "
+    "stored only on this machine, in ~/.fta_editor/ai_credentials.json."
+)
+
+
+@ai_bp.errorhandler(ApiError)
+def _handle_api_error(exc: ApiError):
+    # Registered on the blueprint as well as the app (see routes/tree.py) so
+    # the blueprint returns the documented envelope wherever it is mounted.
+    return api_error_response(exc)
+
+
+# ---- request helpers -----------------------------------------------------
+
+
+def _body() -> Dict[str, Any]:
+    """The request's JSON object. An absent body is an empty object."""
+    data = request.get_json(silent=True)
+    if data is None:
+        if not request.get_data():
+            return {}
+        raise ApiError(INVALID_JSON, "Request body must be a JSON object.", 400)
+    if not isinstance(data, dict):
+        raise ApiError(INVALID_JSON, "Request body must be a JSON object.", 400)
+    return data
+
+
+#: The longest ``requestId`` taken (the page sends about 20 characters).
+REQUEST_ID_MAX = 64
+
+
+def _request_id(payload: Dict[str, Any]) -> Optional[str]:
+    """The optional ``requestId`` of a provider request or of a cancel: an
+    opaque name the page made up, so that Stop abandons the request it was
+    pressed for and no other."""
+    value = payload.get("requestId")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value or len(value) > REQUEST_ID_MAX:
+        raise ApiError(
+            INVALID_FIELD,
+            "'requestId' must be a string of 1 to %d characters." % REQUEST_ID_MAX,
+            400,
+            {"field": "requestId"},
+        )
+    return value
+
+
+def _require_configured() -> None:
+    """400 ``AI_NOT_CONFIGURED`` unless a key is saved."""
+    if not ai_bridge.is_configured():
+        raise ApiError(AI_NOT_CONFIGURED, NOT_CONFIGURED_MESSAGE, 400)
+
+
+def _required_text(payload: Dict[str, Any], field: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ApiError(
+            INVALID_FIELD,
+            "'%s' is required and must be a non-empty string." % field,
+            400,
+            {"field": field},
+        )
+    return value
+
+
+@contextlib.contextmanager
+def _ai_failures(secret: Optional[str] = None):
+    """Translate ``ai_bridge`` failures into the error envelope.
+
+    ``secret`` is the key currently in hand -- the one being tested, which is
+    not on disk yet -- so a provider error quoting it is scrubbed here too.
+
+    A timeout is 504 and a provider exception is 502: both say "the request was
+    fine, the upstream was not", which is the distinction that tells a user to
+    retry rather than to change what they typed.
+    """
+    try:
+        yield
+    except ai_bridge.AiBusy as exc:
+        raise ApiError(AI_BUSY, str(exc), 409)
+    except ai_bridge.AiCancelled as exc:
+        # The tab that pressed Stop has usually stopped listening; a client
+        # that still is gets a refusal it can tell from every other one.
+        raise ApiError(AI_CANCELLED, str(exc), 409)
+    except ai_bridge.AiTimeout as exc:
+        raise ApiError(
+            AI_TIMEOUT,
+            str(exc),
+            504,
+            {"timeoutSeconds": ai_bridge.config.AI_TIMEOUT_SECONDS},
+        )
+    except ai_bridge.UnknownProvider as exc:
+        raise ApiError(
+            INVALID_FIELD,
+            str(exc),
+            400,
+            {"field": "provider", "supported": ai_bridge.provider_names()},
+        )
+    except ai_bridge.AiCallFailed as exc:
+        # The provider layer normally reports failure by return value; reaching
+        # here means it raised, which is a bug or an SDK surprise. The detail
+        # goes to the log, the scrubbed summary to the client.
+        log.warning("AI provider call raised: %s", ai_bridge.scrub(str(exc), secret))
+        raise ApiError(AI_CALL_FAILED, ai_bridge.scrub(str(exc), secret), 502)
+
+
+# ---- state helpers -------------------------------------------------------
+
+
+def _document_snapshot() -> Tuple[Dict[str, Any], str, str, Any, Any]:
+    """``(tree, mode, title, document, analysis)``, deep-copied under the lock.
+
+    A copy, not the live tree: it is about to be walked and formatted on a
+    worker thread that will outlive this request if the provider hangs, and
+    that walk must not be able to see a half-applied edit -- or to be handed a
+    structure another request is mutating.
+
+    ``document`` is the live ``state.core`` the copy was taken from. New, Open
+    and Import replace that object, so it says which document the model's
+    answer is about -- see :func:`_unchanged_since`.
+
+    ``analysis`` is the document's settings block (mission time, cut-set
+    limits), which the "Analysis results" the model is shown are computed
+    with -- see :func:`_with_results`.
+    """
+    state = get_state()
+    with state.lock:
+        return (
+            copy.deepcopy(state.core.get_data()),
+            state.core.mode,
+            state.core.title,
+            state.core,
+            copy.deepcopy(getattr(state.core, "analysis", None)),
+        )
+
+
+def _with_results(handler, tree: Any, mode: str, analysis: Any, func):
+    """``func`` (a handler call that builds the model's context), with the
+    editor's own results for this snapshot added to that context.
+
+    The context the vendored handler writes carries each node's tree-walk
+    value and nothing else, so for a tree with repeated events the model was
+    never told the headline (the MCUB) and reported the double counting the
+    tool already corrects. ``ai_bridge.analysis_section`` is computed here,
+    on the request thread and from the snapshot -- not under the document
+    lock, and at most the summary's 2 s -- and is empty in ETA mode or when
+    the cut sets fail, which leaves the context exactly as it was.
+    """
+    section = ai_bridge.analysis_section(tree, mode, analysis)
+    return ai_bridge.with_analysis(handler, section, func)
+
+
+def _unchanged_since(state, tree: Any, mode: str, document: Any) -> bool:
+    """Whether the live document is still the one ``_document_snapshot`` saw.
+
+    The lock is not held across a provider call, so the user can edit, undo,
+    or open another file while the model is working. Caller holds the lock.
+    """
+    return (
+        state.core is document
+        and state.core.mode == mode
+        and state.core.get_data() == tree
+    )
+
+
+class _TreeHolder:
+    """The ``get_data()`` a tree_ops helper wants, over a bare tree."""
+
+    def __init__(self, tree: Any):
+        self._tree = tree
+
+    def get_data(self) -> Any:
+        return self._tree
+
+
+def _strip_references_to_removed(state, old_tree: Any) -> None:
+    """Links/transfers into ids that ``old_tree`` had and the live tree has
+    lost, removed and reported as ``LINKS_REMOVED`` notices of this edit (as
+    DELETE /api/nodes does): undoing the edit removes them. Caller holds the
+    lock, after ``push_undo``."""
+    gone = all_ids(_TreeHolder(old_tree)) - all_ids(state.core)
+    if not gone:
+        return
+    ccf.remove_members(state.core, gone)  # FN-38 (a): same undo step
+    removed = strip_references_to(state.core, gone)
+    if removed:
+        issues = []
+        for entry in removed:
+            issues.extend(removed_link_issues([entry], entry["targetId"]))
+        state.add_edit_warnings(issues)
+
+
+def _mutation_payload(state) -> Dict[str, Any]:
+    """The post-mutation view every mutating endpoint returns.
+
+    Mirrors ``routes/tree.py``'s payload of the same name -- deliberately
+    duplicated rather than imported across blueprints, for the same reason each
+    blueprint registers its own ``ApiError`` handler: neither has to be mounted
+    for the other to answer correctly.
+    """
+    core = state.core
+    return {
+        "tree": copy.deepcopy(core.get_data()),
+        "zeroNodes": core.get_zero_probability_nodes(),
+        "dirty": state.dirty,
+        "canUndo": state.can_undo,
+        "canRedo": state.can_redo,
+        "analysis": ccf.public_analysis(getattr(core, "analysis", None)),
+        "sessionWarnings": copy.deepcopy(state.session_warnings),
+        **state.revision_fields(),
+    }
+
+
+# ---- providers and models ------------------------------------------------
+
+
+@ai_bp.get("/providers")
+def get_providers():
+    """The providers this build supports, with their defaults.
+
+    Works without a key: this is what the settings dialog is populated from.
+    ``defaultModels`` is a fallback list, not a promise -- prefer
+    ``GET /api/ai/models``, and let the user type a name that is on neither
+    list, since a model released after this build shipped is still valid.
+    """
+    return ok_response(providers=ai_bridge.provider_catalog())
+
+
+@ai_bp.get("/models")
+def get_models():
+    """Model names for one provider, live where a saved key allows it.
+
+    Query: ``?provider=<name>&endpoint=<url>``. ``endpoint`` is optional and
+    defaults to the provider's own. Never fails for a known provider: a fetch
+    that cannot happen comes back as the built-in list with ``source:
+    "fallback"`` and a ``warning`` saying why, because a settings dialog with
+    an empty model list is one the user cannot finish.
+    """
+    provider = request.args.get("provider")
+    if not provider or not provider.strip():
+        # Fall back to whatever is configured, so a page that just wants "the
+        # models for my current setup" does not have to ask twice.
+        provider = (ai_bridge.credentials_status() or {}).get("provider")
+    if not provider:
+        raise ApiError(
+            INVALID_FIELD,
+            "'provider' is required when no AI credentials are saved.",
+            400,
+            {"field": "provider", "supported": ai_bridge.provider_names()},
+        )
+
+    with _ai_failures():
+        result = ai_bridge.list_models(provider, request.args.get("endpoint"))
+    return ok_response(**result)
+
+
+# ---- credentials ---------------------------------------------------------
+
+
+@ai_bp.get("/credentials")
+def get_credentials():
+    """Whether a key is saved, and which -- masked.
+
+    ``keyPreview`` is ``sk-...AB12``: enough to recognise which key is in
+    place, never enough to use it. There is no endpoint, parameter or debug
+    flag anywhere in this app that returns the key itself.
+    """
+    status = ai_bridge.credentials_status()
+    return ok_response(aiConfigured=status["configured"], **status)
+
+
+@ai_bp.post("/credentials")
+def post_credentials():
+    """Test a key against its provider, and save it only if the test passes.
+
+    Body: ``{provider, apiKey, endpoint?, model?}``. ``endpoint`` and ``model``
+    default to the provider's own.
+
+    The test is not a formality. Saving first and discovering later would
+    replace a working configuration with a broken one because of a typo, and
+    the failure would surface at the next chat message instead of here, where
+    the user is looking at the field they got wrong. On failure the provider's
+    own message is returned -- scrubbed -- because "401 Incorrect API key"
+    is actionable and "could not connect" is not.
+
+    Written to ``~/.fta_editor/ai_credentials.json``: the same file the desktop
+    editor reads, so a key configured in either tool works in both.
+    """
+    payload = _body()
+    api_key = _required_text(payload, "apiKey")
+    provider = payload.get("provider")
+    if not isinstance(provider, str) or not provider.strip():
+        raise ApiError(
+            INVALID_FIELD,
+            "'provider' is required.",
+            400,
+            {"field": "provider", "supported": ai_bridge.provider_names()},
+        )
+
+    with _ai_failures(secret=api_key):
+        saved, message, resolved = ai_bridge.test_and_save_credentials(
+            provider, api_key, payload.get("endpoint"), payload.get("model")
+        )
+
+    if not saved:
+        # Unsaved: whatever was configured before is still configured.
+        raise ApiError(
+            AI_CONNECTION_FAILED,
+            message,
+            400,
+            {
+                "provider": resolved["provider"],
+                "endpoint": resolved["endpoint"],
+                "model": resolved["model"],
+                "saved": False,
+            },
+        )
+
+    status = ai_bridge.credentials_status()
+    return ok_response(
+        aiConfigured=status["configured"], message=message, **status
+    )
+
+
+@ai_bp.delete("/credentials")
+def delete_credentials():
+    """Forget the saved key. Succeeds when there was nothing to forget."""
+    ok, error = ai_bridge.delete_credentials()
+    if not ok:
+        raise ApiError(
+            AI_CALL_FAILED, ai_bridge.scrub(str(error or "Could not delete credentials.")), 500
+        )
+    status = ai_bridge.credentials_status()
+    return ok_response(aiConfigured=status["configured"], **status)
+
+
+# ---- conversation --------------------------------------------------------
+
+
+@ai_bp.post("/chat")
+def post_chat():
+    """One turn of conversation. Body: ``{message}``.
+
+    Returns ``{reply, changes}``. ``changes`` are the proposals parsed out of
+    this reply, each carrying its ``index`` into the pending list --
+    ``POST /api/ai/changes/apply`` takes those indices. Nothing is applied
+    here; a chat message can never move the tree on its own.
+
+    A provider failure arrives as a normal reply beginning "AI Error:":
+    ``AIAgentHandler.send_message`` catches everything and reports in-band
+    (AI_agent_handler.py:483). That is what the desktop chat shows too, so it
+    is passed through rather than re-raised -- the alternative is sniffing the
+    handler's error strings, which would break the first time the wording
+    changed.
+    """
+    _require_configured()
+    payload = _body()
+    message = _required_text(payload, "message")
+    request_id = _request_id(payload)
+
+    handler = ai_bridge.get_handler()
+    tree, mode, title, document, analysis = _document_snapshot()
+    secret = ai_bridge.call_secret()
+
+    with _ai_failures(secret):
+        ai_bridge.tag_next_call(request_id)
+        # set_fta_context is pure formatting, but it writes to the handler, so
+        # it runs inside the same single-call slot as send_message -- see
+        # ai_bridge.run_ai_call.
+        def _send():
+            handler.set_fta_context(tree, mode, title)
+            return handler.send_message(message, include_fta_context=True)
+
+        reply, changes = ai_bridge.run_ai_call(
+            "chat",
+            _with_results(handler, tree, mode, analysis,
+                          ai_bridge.proposing(handler, document, _send)),
+        )
+
+    return ok_response(
+        reply=ai_bridge.scrub(reply, secret),
+        # With the tree they were proposed for: a change that sets links says
+        # which it adds and removes (``linkChanges``), for the review card.
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes, tree), secret),
+    )
+
+
+@ai_bp.post("/analyze")
+def post_analyze():
+    """A one-shot review of the current tree. Read-only, always.
+
+    The handler is given a deep copy and ``state.core`` is never touched, so
+    the document is byte-identical when this returns -- including its undo
+    stack and dirty flag. Suggestions come back as ``changes`` for the user to
+    apply deliberately through ``POST /api/ai/changes/apply``; the point of a
+    separate analyze endpoint is that asking the AI what it thinks is not the
+    same as letting it edit.
+    """
+    _require_configured()
+    request_id = _request_id(_body())
+
+    handler = ai_bridge.get_handler()
+    tree, mode, title, document, analysis = _document_snapshot()
+    secret = ai_bridge.call_secret()
+
+    with _ai_failures(secret):
+        ai_bridge.tag_next_call(request_id)
+        reply, changes = ai_bridge.run_ai_call(
+            "analyze",
+            _with_results(handler, tree, mode, analysis,
+                          ai_bridge.proposing(handler, document, handler.get_quick_analysis)),
+            tree,
+            mode,
+            title,
+        )
+
+    return ok_response(
+        reply=ai_bridge.scrub(reply, secret),
+        changes=ai_bridge.scrub_deep(ai_bridge.changes_view(handler, changes, tree), secret),
+    )
+
+
+#: How the vendored handler's two built-in prompts begin (AI_agent_handler
+#: ``get_quick_analysis`` and ``generate_full_fta_update``). If the core's
+#: wording ever changes these stop matching and the turns are shown as typed
+#: text, which is ugly but not wrong; ``test_ux_batch_3.py`` pins both.
+_ANALYZE_PROMPT_START = "Please analyze this FTA/ETA and provide:"
+_UPDATE_PROMPT_START = "You are to generate a complete, updated FTA JSON object"
+
+
+@ai_bp.get("/conversation")
+def get_conversation():
+    """What a reloaded page repaints: this conversation, and what in it still
+    waits for an answer.
+
+    Returns ``{messages, changes, pendingUpdate}``. ``messages`` are the turns
+    the handler keeps, ``[{role: "user"|"assistant", kind, content}]`` -- what
+    the user typed and what the model answered, never the system prompt or
+    the tree that was sent with a message (the handler does not keep those in
+    its history). ``kind`` is ``"chat"``, ``"analyze"`` or ``"update"``; the
+    built-in request of an Analyze and both turns of an Update FTA carry no
+    ``content``. ``changes`` are the proposals still pending for the open
+    document, with their indices, as ``POST /api/ai/chat`` returns them.
+    ``pendingUpdate`` is the Update FTA preview still waiting for Apply or
+    Discard (``{updateId, updateSummary}``), or null.
+
+    Read-only, and it works unconfigured (everything empty): a page asks for
+    this on every load. No credential is in it -- there is no field for one,
+    and the text is scrubbed of the stored key like every other reply.
+    """
+    handler = ai_bridge.existing_handler()
+    if handler is None:
+        return ok_response(messages=[], changes=[], pendingUpdate=None)
+    secret = ai_bridge.call_secret()
+
+    messages = []
+    kind = "chat"
+    for entry in list(handler.conversation_history):
+        role = entry.get("role") if isinstance(entry, dict) else None
+        content = entry.get("content") if isinstance(entry, dict) else None
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        if role == "user":
+            # The two built-in requests are the handler's own long prompts,
+            # and the answer to the second is the whole tree as JSON. The
+            # page shows each in its own words, so they are named here and
+            # their text left out.
+            if content.startswith(_ANALYZE_PROMPT_START):
+                kind = "analyze"
+            elif content.startswith(_UPDATE_PROMPT_START):
+                kind = "update"
+            else:
+                kind = "chat"
+        message = {"role": role, "kind": kind}
+        if kind == "chat" or (kind == "analyze" and role == "assistant"):
+            message["content"] = ai_bridge.scrub(content, secret)
+        messages.append(message)
+
+    state = get_state()
+    with state.lock:
+        document = state.core
+        tree = copy.deepcopy(state.core.get_data())
+    # Only what was proposed for the open document: the rest cannot be applied.
+    pending = [change for change in list(handler.pending_changes)
+               if ai_bridge.made_for(change, document)]
+    changes = ai_bridge.scrub_deep(ai_bridge.changes_view(handler, pending, tree), secret)
+
+    with _pending_update_lock:
+        waiting = _pending_update
+    pending_update = None
+    if waiting is not None and waiting.get("document") is document:
+        pending_update = {
+            "updateId": waiting["id"],
+            "updateSummary": ai_bridge.scrub_deep(waiting.get("summary") or {}, secret),
+        }
+    return ok_response(messages=messages, changes=changes, pendingUpdate=pending_update)
+
+
+@ai_bp.delete("/conversation")
+def delete_conversation():
+    """Forget the chat history and every pending proposal.
+
+    Both, because they are one thing: the indices in ``changes`` only mean
+    anything against the pending list they were issued from, and keeping stale
+    proposals alive after their conversation was dropped would let a client
+    apply a change whose reasoning no longer exists anywhere.
+    """
+    _require_configured()
+    ai_bridge.get_handler().clear_conversation()
+    # A rewrite waiting for Apply belongs to the conversation that made it.
+    _drop_pending_update()
+    return ok_response(cleared=True, changes=[])
+
+
+# ---- applying proposals --------------------------------------------------
+
+
+@ai_bp.post("/changes/apply")
+def post_apply_changes():
+    """Apply selected proposals. Body: ``{indices: [0, 2, ...]}``.
+
+    Indices address the handler's pending list, which accumulates across the
+    conversation -- so a proposal from three messages ago is still applicable,
+    and the ``index`` returned with every change is stable until the
+    conversation is cleared.
+
+    They are applied **in the order given**, not sorted: the system prompt
+    tells the model to sequence a parent before its children
+    (AI_agent_handler.py:297), and re-ordering them here would break exactly
+    the nested additions that instruction exists to make work.
+
+    Partial success is reported, not hidden: each index lands in ``applied`` or
+    in ``rejected`` with the handler's own message. If every one is rejected
+    the tree is untouched and the whole request is a 400.
+
+    **One suggestion is applied as a whole or not at all.** An add or edit
+    may carry ``links`` -- the node's complete new list, validated as
+    ``PATCH /api/nodes`` validates links and, beyond it, every target must
+    exist and none may be the node itself. A suggestion with a link that
+    fails this is ``rejected`` with the reason and nothing of it is written
+    (not its new name either): it is never reported applied with its links
+    dropped. What a suggestion can never change -- ``children`` on an added
+    node, the 1.7 keys -- is listed per applied change in ``ignored`` (see
+    ``ai_bridge.apply_change``).
+
+    A proposal made for another document -- one that New, Open or Import has
+    replaced since (``ai_bridge.made_for``) -- is always rejected: its node
+    ids may name unrelated nodes in the document open now. So is one carrying
+    what ``PATCH /api/nodes`` would refuse and the vendored parser lets
+    through (``ai_bridge.change_problem``: a NaN probability, non-text notes),
+    and an edit of a probability the engine derives (a quantification model,
+    a house event, a transfer gate), which it would silently overrule.
+    """
+    _require_configured()
+    payload = _body()
+    handler = ai_bridge.get_handler()
+    pending = handler.pending_changes
+
+    raw = payload.get("indices")
+    if not isinstance(raw, list) or not raw:
+        raise ApiError(
+            INVALID_FIELD,
+            "'indices' must be a non-empty list of pending-change indices.",
+            400,
+            {"field": "indices", "pendingCount": len(pending)},
+        )
+
+    indices: List[int] = []
+    for position, value in enumerate(raw):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ApiError(
+                INVALID_FIELD,
+                "Each entry of 'indices' must be an integer.",
+                400,
+                {"field": "indices", "position": position, "value": value},
+            )
+        if not 0 <= value < len(pending):
+            raise ApiError(
+                INVALID_FIELD,
+                "No pending change at index %d; there %s %d."
+                % (value, "is" if len(pending) == 1 else "are", len(pending)),
+                400,
+                {"field": "indices", "index": value, "pendingCount": len(pending)},
+            )
+        if value in indices:
+            # Applying the same proposal twice is never what was meant, and
+            # the second attempt would fail confusingly ("id already exists").
+            raise ApiError(
+                INVALID_FIELD,
+                "Index %d is listed more than once." % value,
+                400,
+                {"field": "indices", "index": value},
+            )
+        indices.append(value)
+
+    state = get_state()
+    applied: List[Dict[str, Any]] = []
+    rejected: List[Dict[str, Any]] = []
+
+    with state.lock:
+        # Snapshot first, push only once something was applied: an all-rejected
+        # batch must not cost the user an undo step or wipe the redo stack.
+        before = state.snapshot()
+
+        for index in indices:
+            change = pending[index]
+            refusal = (
+                ai_bridge.change_problem(change, state.core)
+                if ai_bridge.made_for(change, state.core)
+                else ai_bridge.OTHER_DOCUMENT_MESSAGE
+            )
+            if refusal:
+                ok, message, ignored = False, refusal, []
+            else:
+                # The handler's own apply, plus the suggestion's links, which
+                # it ignores; all of the suggestion or none of it.
+                ok, message, ignored = ai_bridge.apply_change(handler, state.core, change)
+            record = ai_bridge.change_view(change, index)
+            record["message"] = ai_bridge.scrub(message)
+            if ok:
+                # Keys of the suggestion that applying it never writes
+                # (children, 1.7 keys): named, so "applied" does not claim them.
+                record["ignored"] = ignored
+            (applied if ok else rejected).append(record)
+
+        if not applied:
+            # The handler refuses before touching the tree, but restoring the
+            # snapshot makes "unchanged" a guarantee rather than a belief.
+            state.restore(before)
+            raise ApiError(
+                AI_CHANGE_REJECTED,
+                "None of the selected changes could be applied; the analysis "
+                "is unchanged.",
+                400,
+                {"rejected": ai_bridge.scrub_deep(rejected)},
+            )
+
+        # One entry for the whole batch, so one Ctrl-Z reverses all of it.
+        state.push_undo(before)
+        # The handler's 'edit' writes only logicGate. On a node with a
+        # gateType that no longer projects to it (a KOFN the AI made an AND)
+        # the engine would follow the stale gateType and silently ignore the
+        # applied edit -- so the AI's logicGate wins, as on /update and load.
+        resets = reconcile_gate_types(state.core.get_data(), cause="ai")
+        if resets:
+            state.add_edit_warnings(load_warning_issues(resets))
+        # The handler's 'delete' removes the node and nothing else. As for
+        # DELETE /api/nodes, links and transfers into the removed ids go too:
+        # the next Add may be handed one of those ids back.
+        _strip_references_to_removed(state, before.get("tree"))
+        state.core.recalculate_probabilities()
+        state.mark_dirty()
+
+        return ok_response(
+            applied=ai_bridge.scrub_deep(applied),
+            rejected=ai_bridge.scrub_deep(rejected),
+            **_mutation_payload(state),
+        )
+
+
+# ---- full-JSON update ----------------------------------------------------
+
+
+#: The one rewrite that has been previewed and not yet applied or discarded:
+#: ``{id, updated, tree, mode, document}``. One slot, because one AI call runs
+#: at a time and a second preview replaces the first. Its own lock: it is
+#: read and written outside the document lock.
+_pending_update: Optional[Dict[str, Any]] = None
+_pending_update_lock = threading.Lock()
+
+
+def _set_pending_update(entry: Optional[Dict[str, Any]]) -> None:
+    global _pending_update
+    with _pending_update_lock:
+        _pending_update = entry
+
+
+def _drop_pending_update(update_id: Optional[str] = None) -> bool:
+    """Forget the waiting rewrite (only the one named, when an id is given).
+    True when one was dropped."""
+    global _pending_update
+    with _pending_update_lock:
+        if _pending_update is None:
+            return False
+        if update_id is not None and _pending_update["id"] != update_id:
+            return False
+        _pending_update = None
+        return True
+
+
+def _take_pending_update(update_id: Any) -> Dict[str, Any]:
+    """Remove and return the waiting rewrite ``update_id`` names; 409
+    ``AI_UPDATE_EXPIRED`` when it is not the one waiting."""
+    global _pending_update
+    with _pending_update_lock:
+        entry = _pending_update
+        if entry is None or not isinstance(update_id, str) or entry["id"] != update_id:
+            raise ApiError(
+                AI_UPDATE_EXPIRED,
+                "That update is no longer waiting: it was applied, discarded "
+                "or replaced by a newer one. Nothing was changed. Run Update "
+                "FTA again.",
+                409,
+            )
+        _pending_update = None
+        return entry
+
+
+class _Scratch:
+    """What :func:`_install_update` needs of the app state, around a core
+    that is not the live document: a preview is worked out on one."""
+
+    def __init__(self, core: Any):
+        self.core = core
+
+    def add_edit_warnings(self, issues: Any) -> None:
+        """A preview raises no notices; the real install will."""
+
+
+def _install_update(target, old_tree: Any, updated: Any) -> Tuple[Any, Dict[str, Any]]:
+    """Put the model's rewrite into ``target.core`` and say what it did.
+
+    ``target`` is the app state (caller holds the lock and has pushed the undo
+    step) or a :class:`_Scratch` for a preview: one function, so the summary a
+    preview shows is worked out exactly as the install it is a preview of.
+    Returns ``(mergedFields, updateSummary)``.
+    """
+    core = target.core
+    # Deep-copied on the way in: set_data stores the reference it is given
+    # (FTA_Editor_core.py:53), and the parsed object is also about to be
+    # walked for the response payload. Normalised exactly as a loaded file
+    # is: the validator accepts anything float() accepts, so a model that
+    # writes "probability": "0.5" would otherwise leave a string in the
+    # tree and node_label's numeric formatting would 500 on /api/dot.
+    new_tree = core._normalize_node(copy.deepcopy(updated))
+    # The model is shown (and returns) only the fields the AI validator
+    # knows, so a rewrite would silently drop every 1.7 key. Restore them
+    # by node id from the tree being replaced, and say how many.
+    merged = merge_back_node_keys(old_tree, new_tree)
+    # A gateType the model kept while changing logicGate is stale: the
+    # AND/OR the model wrote wins (as on load), and the Validation tab
+    # says so.
+    resets = reconcile_gate_types(new_tree, cause="ai")
+    core.set_data(new_tree)
+    if resets:
+        # An edit notice, not a session one: undoing the update removes it.
+        target.add_edit_warnings(load_warning_issues(resets))
+    _strip_references_to_removed(target, old_tree)
+    core.recalculate_probabilities()
+    # Both trees recalculated: a value the engine derives is not a change.
+    summary = ai_bridge.update_summary(old_tree, core.get_data())
+    return merged, summary
+
+
+def _document_changed() -> ApiError:
+    return ApiError(
+        AI_DOCUMENT_CHANGED,
+        "The analysis changed while the AI was writing its update (an "
+        "edit, an undo, or another file opened), so the update was not "
+        "applied and nothing was changed. Run Update FTA again.",
+        409,
+    )
+
+
+@ai_bp.post("/update")
+def post_update():
+    """Ask the AI to rewrite the whole tree, then verify it and install it.
+
+    With ``{"preview": true}`` in the body the verified rewrite is **not**
+    installed. The answer says what it would do (``updateSummary``,
+    ``mergedFields``) and carries an ``updateId``; ``POST
+    /api/ai/update/apply`` with that id installs it, ``.../discard`` drops it.
+    The page uses this: one click used to replace the whole tree. Without
+    ``preview`` the call behaves as it always did.
+
+    Three outcomes, and the two failures are where the value is:
+
+    * **Unparseable.** 400 ``AI_INVALID_JSON`` carrying ``excerpt`` -- the
+      first 500 characters of what the model actually said. A model that
+      ignored "return only JSON" usually says why in its first sentence
+      ("I can't modify the root node, but here's what I'd suggest..."), and
+      that sentence is the entire diagnosis. Reducing this to "invalid JSON"
+      throws away the only evidence there is.
+    * **Structurally invalid.** 400 ``AI_UPDATE_REJECTED`` carrying the
+      validator's message *and* the offending node's own JSON, located by the
+      node id in that message. "Invalid type for node n_3: Condition" is a
+      shrug on its own; with n_3's JSON beside it the fix is obvious.
+
+    Both reproduce the desktop editor's Update FTA diagnostics
+    (``desktop/src/FTA_Editor_UI.py:855-895``). Nothing is applied in either case.
+
+    A third refusal, 409 ``AI_DOCUMENT_CHANGED``: the model rewrote the tree
+    it was shown, and the lock is not held while it works. If the user edited
+    meanwhile, or New/Open replaced the document, installing the rewrite would
+    silently undo those edits -- or put this analysis into the other file,
+    under its title and path, for the next Save to write there.
+
+    On success the tree is replaced wholesale under the lock, with an undo
+    entry pushed first -- so a rewrite that turns out to be wrong is one
+    Ctrl-Z away, which is what makes it reasonable to try at all. The model is
+    asked to keep every existing node, but nothing makes it, so the response's
+    ``updateSummary`` says what the rewrite did to them: ``added``, ``removed``
+    and ``changed`` nodes by id and name (see ``ai_bridge.update_summary``).
+    """
+    _require_configured()
+    payload = _body()
+    preview = payload.get("preview", False)
+    if not isinstance(preview, bool):
+        raise ApiError(
+            INVALID_FIELD, "'preview' must be true or false.", 400,
+            {"field": "preview", "value": preview},
+        )
+    request_id = _request_id(payload)
+
+    handler = ai_bridge.get_handler()
+    tree, mode, title, document, analysis = _document_snapshot()
+    secret = ai_bridge.call_secret()
+    # A new request replaces whatever was waiting from the one before.
+    _drop_pending_update()
+
+    with _ai_failures(secret):
+        ai_bridge.tag_next_call(request_id)
+        # The handler parses proposals out of this reply too; they are pending
+        # like any others, so they are recorded against this document as well.
+        assistant_text, updated = ai_bridge.run_ai_call(
+            "update",
+            _with_results(handler, tree, mode, analysis,
+                          ai_bridge.proposing(handler, document,
+                                              handler.generate_full_fta_update)),
+            tree,
+            mode,
+            title,
+        )
+
+    reply = ai_bridge.scrub(assistant_text, secret)
+
+    if updated is None:
+        raise ApiError(
+            AI_INVALID_JSON,
+            "The AI did not return valid JSON, so nothing was changed.",
+            400,
+            {
+                "excerpt": ai_bridge.scrub(ai_bridge.parse_excerpt(assistant_text), secret),
+                "excerptChars": ai_bridge.PARSE_EXCERPT_CHARS,
+            },
+        )
+
+    valid, validator_message = handler.verify_updated_fta_json(updated)
+    if valid:
+        # What the vendored validator lets through and the tree API refuses
+        # (a NaN probability, non-text notes, an invalid 1.7 key).
+        validator_message = ai_bridge.update_problem(updated)
+        valid = validator_message is None
+    if not valid:
+        raise ApiError(
+            AI_UPDATE_REJECTED,
+            "The updated analysis was rejected: %s"
+            % ai_bridge.scrub(validator_message or "unknown", secret),
+            400,
+            ai_bridge.scrub_deep(
+                ai_bridge.validation_diagnostics(updated, validator_message), secret
+            ),
+        )
+
+    state = get_state()
+    if preview:
+        with state.lock:
+            if not _unchanged_since(state, tree, mode, document):
+                raise _document_changed()
+        # Worked out on a core of its own, from the copy this request took:
+        # the live document is not touched, and no lock is needed for it.
+        scratch = WebCore()
+        scratch.mode = mode
+        scratch.analysis = copy.deepcopy(analysis)
+        merged, summary = _install_update(_Scratch(scratch), tree, updated)
+        update_id = secrets.token_urlsafe(9)
+        _set_pending_update({
+            "id": update_id, "updated": updated, "tree": tree, "mode": mode,
+            "document": document,
+            # For GET /api/ai/conversation: a reloaded page shows the card again.
+            "summary": summary,
+        })
+        return ok_response(
+            reply=reply,
+            preview=True,
+            updateId=update_id,
+            mergedFields=merged,
+            updateSummary=ai_bridge.scrub_deep(summary, secret),
+        )
+
+    with state.lock:
+        if not _unchanged_since(state, tree, mode, document):
+            raise _document_changed()
+        state.push_undo()
+        merged, summary = _install_update(state, state.core.get_data(), updated)
+        state.mark_dirty()
+
+        return ok_response(
+            reply=reply,
+            mergedFields=merged,
+            updateSummary=ai_bridge.scrub_deep(summary, secret),
+            **_mutation_payload(state),
+        )
+
+
+@ai_bp.post("/update/apply")
+def post_update_apply():
+    """Install the rewrite a preview showed. Body: ``{id}`` (the preview's
+    ``updateId``).
+
+    The same guard as the one-step update, applied again here: the user had
+    time to edit between the preview and the click, and installing the
+    rewrite of an older tree would undo those edits without a word. Then 409
+    ``AI_DOCUMENT_CHANGED``, nothing is changed and the rewrite is dropped.
+    An id that is not the one waiting is 409 ``AI_UPDATE_EXPIRED``.
+
+    One undo step, as before: Ctrl+Z puts the previous tree back.
+    """
+    _require_configured()
+    entry = _take_pending_update(_body().get("id"))
+    secret = ai_bridge.call_secret()
+    state = get_state()
+    with state.lock:
+        if not _unchanged_since(state, entry["tree"], entry["mode"], entry["document"]):
+            raise _document_changed()
+        state.push_undo()
+        merged, summary = _install_update(state, state.core.get_data(), entry["updated"])
+        state.mark_dirty()
+        return ok_response(
+            mergedFields=merged,
+            updateSummary=ai_bridge.scrub_deep(summary, secret),
+            **_mutation_payload(state),
+        )
+
+
+@ai_bp.post("/update/discard")
+def post_update_discard():
+    """Drop the rewrite a preview showed. Body: ``{id}``, or nothing for
+    whichever is waiting. Never an error: ``discarded`` says whether there
+    was one. Needs no provider, so it works unconfigured."""
+    update_id = _body().get("id")
+    if update_id is not None and not isinstance(update_id, str):
+        raise ApiError(INVALID_FIELD, "'id' must be a string.", 400, {"field": "id"})
+    return ok_response(discarded=_drop_pending_update(update_id))
+
+
+# ---- Stop ----------------------------------------------------------------
+
+
+@ai_bp.post("/cancel")
+def post_cancel():
+    """Abandon the provider request in flight. Body: ``{requestId?}``.
+
+    Stop in the chat only stopped the tab from waiting: the server's one AI
+    slot stayed taken until the provider answered (up to the two-minute
+    deadline), and every request in that time was refused as busy. This
+    frees the slot at once. The provider's HTTP call cannot be interrupted;
+    its answer, when it comes, is dropped -- not added to the conversation,
+    not offered as suggestions, and no Update FTA preview is made of it
+    (``ai_bridge.cancel_ai_call`` says how). The abandoned request itself is
+    answered 409 ``AI_CANCELLED``.
+
+    With ``requestId`` (the one the request was sent with) only that request
+    is abandoned, so a Stop that arrives late cannot abandon the next one.
+    Returns ``{cancelled}``: false when nothing was in flight (or the request
+    named had already finished), which is not an error. Needs no provider,
+    so it works unconfigured, and it never touches the document.
+    """
+    cancelled = ai_bridge.cancel_ai_call(_request_id(_body()))
+    return ok_response(cancelled=cancelled)

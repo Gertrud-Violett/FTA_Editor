@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest something FTA Editor should do, or do better.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the suggestion. **Issues are public**, so leave out confidential details of your own analyses.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Editing the tree or the diagram
+        - Calculation (FTA, ETA, cut sets, importance, uncertainty, CCF)
+        - Import and export (Excel, FMEA, report)
+        - AI assistant
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what stops you or slows you down today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: Describe how it could work. An example helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and workarounds
+      description: Other ways you considered, or what you do today.
+    validations:
+      required: false
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: A standard, handbook or paper that defines the method, if there is one.
+    validations:
+      required: false

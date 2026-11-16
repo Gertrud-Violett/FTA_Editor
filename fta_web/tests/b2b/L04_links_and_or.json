@@ -1,0 +1,124 @@
+{
+  "title": "L04 links",
+  "date": "2026-09-28",
+  "mode": "FTA",
+  "tree": {
+    "id": "root",
+    "name": "Links",
+    "type": "Root",
+    "probability": 1.0,
+    "logicGate": "OR",
+    "children": [
+      {
+        "id": "g1",
+        "name": "g1",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "a",
+            "name": "a",
+            "type": "Event",
+            "probability": 0.1,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "type": "Event",
+            "probability": 0.2,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [
+          {
+            "target_id": "c",
+            "relation": "AND"
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": "g2",
+        "name": "g2",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "OR",
+        "children": [
+          {
+            "id": "c",
+            "name": "c",
+            "type": "Event",
+            "probability": 0.3,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "d",
+            "name": "d",
+            "type": "Event",
+            "probability": 0.4,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [
+          {
+            "target_id": "g3",
+            "relation": "OR"
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": "g3",
+        "name": "g3",
+        "type": "Event",
+        "probability": 1.0,
+        "logicGate": "AND",
+        "children": [
+          {
+            "id": "e",
+            "name": "e",
+            "type": "Event",
+            "probability": 0.5,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          },
+          {
+            "id": "f",
+            "name": "f",
+            "type": "Event",
+            "probability": 0.6,
+            "logicGate": "OR",
+            "children": [],
+            "links": [],
+            "notes": ""
+          }
+        ],
+        "links": [
+          {
+            "target_id": "a",
+            "relation": "and"
+          }
+        ],
+        "notes": ""
+      }
+    ],
+    "links": [],
+    "notes": ""
+  }
+}

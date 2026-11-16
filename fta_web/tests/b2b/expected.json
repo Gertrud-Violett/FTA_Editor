@@ -1,0 +1,389 @@
+{
+  "F01_quant_models.json": {
+    "exact": true,
+    "q": {
+      "fixed": 0.01,
+      "rate_T": 0.009950166250831947,
+      "rate_fit": 0.0010944007062621732,
+      "rate_mission": 0.008721742991964444,
+      "rep_mttr": 0.009900990099009901,
+      "rep_mu": 0.0196078431372549,
+      "standby": 0.036000000000000004,
+      "standby_big": 0.25
+    },
+    "top": 0.3188715362984798,
+    "why": "rate 1-exp(-λT) (T defaults to missionTime 4380 h), standby λτ/2, repairable λ/(λ+μ), μ=1/MTTR unless μ given"
+  },
+  "F02_mission_default.json": {
+    "exact": true,
+    "q": {
+      "r1": 0.5835546339796199,
+      "r2": 0.3546742171427055
+    },
+    "top": 0.20697178296671973,
+    "why": "default missionTime = 8760 h"
+  },
+  "F03_kofn.json": {
+    "exact": true,
+    "nodes": {
+      "v1oo2": 0.43999999999999995,
+      "v2oo3": 0.028000000000000004,
+      "v2oo4": 0.0034007200000001625,
+      "v3oo3": 0.06
+    },
+    "top": 0.4900792151157761,
+    "why": "2oo3 equal p: 3p^2-2p^3; 1oo2 = OR; 3oo3 = AND; 2oo4 = 1-P(0)-P(1)"
+  },
+  "F04_xor.json": {
+    "exact": true,
+    "headlineMethod": "mcub",
+    "nodes": {
+      "x2": 0.26,
+      "x3": 0.404
+    },
+    "treeWalk": 0.55896,
+    "why": "XOR a+b-2ab; 3-input parity = P(exactly 1)+P(exactly 3)"
+  },
+  "F05_inhibit.json": {
+    "exact": true,
+    "nodes": {
+      "inh": 0.005,
+      "inh_bad": 0.006
+    },
+    "top": 0.010969999999999999,
+    "why": "INHIBIT = input x condition (0.01 x 0.5)"
+  },
+  "F06_pand.json": {
+    "nodes": {
+      "pand2": 0.01,
+      "pand3": 0.001
+    },
+    "treeWalk": 0.01099,
+    "why": "PAND = product / n!; cut sets treat it as AND"
+  },
+  "F07_transfer.json": {
+    "nodes": {
+      "loop1": 0.0,
+      "loop2": 0.0,
+      "xfer": 0.02,
+      "xfer_kids": 0.05,
+      "xfer_missing": 0.0
+    },
+    "why": "transfer = target value; missing/cycle = 0; its children are ignored"
+  },
+  "F08_house.json": {
+    "exact": true,
+    "nodes": {
+      "h_and_off": 0.0,
+      "h_and_on": 0.1,
+      "h_kids": 0.01,
+      "h_or_off": 0.05,
+      "hoff": 0.0,
+      "hon": 1.0
+    },
+    "top": 0.15355000000000002,
+    "why": "house ON = 1, OFF = 0; a house with children is an ordinary gate"
+  },
+  "F09_undeveloped.json": {
+    "exact": true,
+    "top": 0.058906,
+    "why": "undeveloped = basic"
+  },
+  "F10_repeated_links.json": {
+    "cutsets": [
+      [
+        "A"
+      ]
+    ],
+    "exact_top": 0.1,
+    "headlineMethod": "mcub",
+    "mcub": 0.1,
+    "rareEvent": 0.1,
+    "treeWalk": 0.027999999999999997,
+    "why": "A AND (A OR B) = A; tree walk double counts: pA*(pA+pB-pApB)"
+  },
+  "F11_repeated_transfer.json": {
+    "cutsets": [
+      [
+        "A",
+        "B"
+      ],
+      [
+        "A",
+        "C"
+      ]
+    ],
+    "exact_top": 0.044,
+    "headlineMethod": "mcub",
+    "mcub": 0.0494,
+    "rareEvent": 0.05,
+    "treeWalk": 0.0494,
+    "why": "OR(AND(A,B),AND(A,C)) -> cut sets {A,B},{A,C}; exact pA(pB+pC-pBpC)"
+  },
+  "F12_uncertainty.json": {
+    "mc_means": {
+      "A": 0.0012498348479696652,
+      "B": 0.002,
+      "C": 0.010928343925564948,
+      "D": 0.03227676619266692,
+      "parallel": 0.0003527316017585116,
+      "series": 0.0032473351782737257
+    },
+    "why": "lognormal mean = median*exp(σ²/2), σ = ln(EF)/1.645; OR/AND of independent events: E[a+b-ab] = Ea+Eb-EaEb, E[cd] = EcEd"
+  },
+  "F13_trace_fmea.json": {
+    "exact": true,
+    "q": {
+      "t1": 0.01,
+      "t2": 0.008721742991964444
+    },
+    "rpn": {
+      "t1": 84,
+      "t2": 21
+    },
+    "top": 0.0186345255620448,
+    "why": "RPN = S*O*D unless given"
+  },
+  "F15_stale_gate_type.json": {
+    "exact": true,
+    "nodes": {
+      "stale": 0.02
+    },
+    "top": 0.069,
+    "why": "gateType KOFN no longer projects to logicGate AND: dropped, AND used"
+  },
+  "F17_quant_missing.json": {
+    "exact": true,
+    "q": {
+      "no_lambda": 0.02,
+      "no_mu": 0.04,
+      "no_tau": 0.03
+    },
+    "top": 0.087424,
+    "why": "QUANT_PARAM_MISSING: previous probability kept"
+  },
+  "L01_and_or_basic.json": {
+    "exact": true,
+    "nodes": {
+      "g1": 0.020000000000000004,
+      "g2": 0.17235999999999999,
+      "g3": 0.12
+    },
+    "top": 0.18891279999999996,
+    "why": "OR(AND(.1,.2), OR(.05,.01,AND(.3,.4))) by hand"
+  },
+  "L02_bare_tree.json": {
+    "exact": true,
+    "top": 0.18891279999999996,
+    "why": "same numbers as L01"
+  },
+  "L03_fta_wrapper.json": {
+    "exact": true,
+    "top": 0.18891279999999996,
+    "why": "same numbers as L01"
+  },
+  "L04_links_and_or.json": {
+    "nodes": {
+      "g1": 0.006000000000000001,
+      "g2": 0.5926,
+      "g3": 0.03
+    },
+    "treeWalk": 0.607193068,
+    "why": "gate first, then AND-links (x), then OR-links (union); repeated a, c"
+  },
+  "L07_eta_mode.json": {
+    "nodes": {
+      "f1": 1e-06,
+      "f1a": 3e-07,
+      "f1b": 7e-07,
+      "root": 0.01,
+      "s1": 0.00999,
+      "s1a": 0.008991
+    },
+    "why": "ETA: child calc = parent calc x child base (desktop: 3e-7 -> 0, D14)"
+  },
+  "L08_prob_span.json": {
+    "exact": true,
+    "nodes": {
+      "mixed": 9.99999e-13,
+      "tiny_and": 1e-07,
+      "tiny_or": 6.9999988e-07
+    },
+    "top": 8.010008091982111e-07,
+    "why": "D14: 1e-7 must not flush to 0"
+  },
+  "L09_zero_one.json": {
+    "exact": true,
+    "nodes": {
+      "and0": 0.0,
+      "and1": 0.25,
+      "or1": 1.0
+    },
+    "top": 1.0,
+    "why": "AND with 0 is 0, OR with 1 is 1; '0.25' string and int 1 accepted"
+  },
+  "L10_duplicate_ids.json": {
+    "exact": true,
+    "top": 0.9325,
+    "why": "D15: second e1 is renamed e1_dup2 and keeps its own 0.9 (desktop: 0.19)"
+  },
+  "L11_unicode_names.json": {
+    "exact": true,
+    "top": 0.27235,
+    "why": "names never change numbers"
+  },
+  "L12_top_not_root.json": {
+    "treeWalk": 0.30000000000000004,
+    "why": "AND(a, OR(b)+OR-link a): a repeated"
+  },
+  "L13_minified.json": {
+    "exact": true,
+    "top": 0.02
+  },
+  "L14_gate_spellings.json": {
+    "exact": true,
+    "nodes": {
+      "empty": 0.19,
+      "lc_and": 0.25,
+      "missing": 0.27999999999999997,
+      "none_gate": 0.1,
+      "not_gate": 0.3
+    },
+    "top": 0.724438,
+    "why": "and->AND, ''/None/missing->OR, NOT->OR, missing probability->1.0"
+  },
+  "L15_dangling_links.json": {
+    "nodes": {
+      "g": 0.325
+    },
+    "treeWalk": 0.39250000000000007,
+    "why": "a missing / empty target is skipped; relation None -> OR"
+  },
+  "L16_tiny_or.json": {
+    "nodes": {
+      "t1": 2e-17,
+      "t2": 1e-18,
+      "t3": 1e-18,
+      "t4": 3.999999999999997e-15
+    },
+    "treeWalk": 7.021999999999985e-15,
+    "why": "OR of tiny values keeps every digit (1.6 gave t1 = 0)"
+  },
+  "T01_2oo3.json": {
+    "cutsets": [
+      [
+        "A",
+        "B"
+      ],
+      [
+        "A",
+        "C"
+      ],
+      [
+        "B",
+        "C"
+      ]
+    ],
+    "exact": true,
+    "exact_top": 0.028,
+    "mcub": 0.02970100000000001,
+    "rareEvent": 0.030000000000000006,
+    "top": 0.028000000000000004,
+    "why": "2oo3 equal p: 3p^2-2p^3 = 0.028"
+  },
+  "T02_2oo3_expanded.json": {
+    "cutsets": [
+      [
+        "A",
+        "B"
+      ],
+      [
+        "A",
+        "C"
+      ],
+      [
+        "B",
+        "C"
+      ]
+    ],
+    "exact_top": 0.028,
+    "headlineMethod": "mcub",
+    "mcub": 0.02970100000000001,
+    "rareEvent": 0.030000000000000006,
+    "treeWalk": 0.02970100000000001,
+    "why": "OR(AB, AC+link A, AND(xfer B, xfer C)): exact 0.028, MCUB 1-(1-p^2)^3"
+  },
+  "T03_standby_exp.json": {
+    "exact": true,
+    "q": {
+      "EXP": 0.009950166250831893,
+      "SB": 0.036000000000000004
+    },
+    "top": 0.045591960265801944,
+    "why": "standby λτ/2 = 0.036; rate 1-exp(-λT) = 1-e^-0.01"
+  },
+  "T04_series_parallel.json": {
+    "cutsets": [
+      [
+        "A",
+        "C"
+      ],
+      [
+        "A",
+        "D"
+      ],
+      [
+        "B",
+        "C"
+      ],
+      [
+        "B",
+        "D"
+      ]
+    ],
+    "exact": true,
+    "exact_top": 0.16240000000000002,
+    "mcub": 0.19469824,
+    "rareEvent": 0.21,
+    "top": 0.16240000000000002,
+    "why": "(1-0.9*0.8)(1-0.7*0.6) = 0.28*0.58 = 0.1624"
+  },
+  "T05_repairable.json": {
+    "exact": true,
+    "q": {
+      "R1": 0.009900990099009901,
+      "R2": 0.009900990099009901
+    },
+    "top": 9.80296049406921e-05,
+    "why": "λ/(λ+μ) with μ = 1/MTTR = 0.1"
+  },
+  "T06_importance.json": {
+    "cutsets": [
+      [
+        "A"
+      ],
+      [
+        "B",
+        "C"
+      ]
+    ],
+    "exact": true,
+    "importance": {
+      "A": {
+        "birnbaum": 0.98,
+        "fv": 0.32885906040268464,
+        "raw": 33.55704697986577,
+        "rrw": 1.4900000000000002
+      },
+      "B": {
+        "birnbaum": 0.198,
+        "fv": 0.6644295302013423,
+        "raw": 6.97986577181208,
+        "rrw": 2.9800000000000004
+      }
+    },
+    "mcub": 0.029800000000000004,
+    "top": 0.029800000000000004,
+    "why": "Q = 1-(1-qa)(1-qb qc); Birnbaum_A = 1-qbqc; Birnbaum_B = qc(1-qa)"
+  }
+}
