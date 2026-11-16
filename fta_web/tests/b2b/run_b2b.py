@@ -14,7 +14,10 @@ browser's number formatter (node), and -- when present -- the packaged
 build (``.venv314``, see README.md).
 
 Only processes this script starts are stopped. Exit code 1 when any row is a
-mismatch (documented divergences do not count).
+mismatch (documented divergences do not count). When the release commit
+(``b2b_lib.RELEASE_COMMIT``) is not in the checkout, the comparisons that need
+its source are skipped and reported in a SKIPPED block; with
+``FTA_B2B_REQUIRE_RELEASE=1`` that is an error instead.
 
 Options: ``--only PATTERN`` (fnmatch on tree names), ``--json PATH`` (write
 every row), ``--no-exe``, ``--no-server``, ``--details N`` (mismatch rows to
@@ -226,23 +229,46 @@ def main(argv=None) -> int:
     # The packaged exe is the release: it must compute exactly what its own
     # source (RELEASE_COMMIT) computes under the same Python version; and the
     # release's source must differ from this branch only by the branch's fixes.
-    src_run_py = B.export_commit(B.RELEASE_COMMIT, tmp / "release_src")
-    phase("release: %s source CLI under this Python" % B.RELEASE_COMMIT)
+    # The source is exported from this checkout's history; a checkout that does
+    # not have the commit (the public repository starts after it) skips every
+    # comparison that needs it, says so, and runs the rest.
+    have_release = B.commit_available(B.RELEASE_COMMIT)
+    skipped = []  # paths skipped for want of the release source
+    skip_note = "release commit %s is not in this checkout" % B.RELEASE_COMMIT
+    src_run_py = None
     or_trees = B.or_affected(names)
-    rel_cli = cli_batch_results(names, run_py=src_run_py)
-    for n in names:
-        got = rel_cli.get(n, {})
-        rows += B.classify_release(B.relabel_timing(
-            B.cli_rows(n, refs[n], got, "release->branch"), refs[n], got), or_trees)
+    if have_release:
+        src_run_py = B.export_commit(B.RELEASE_COMMIT, tmp / "release_src")
+        phase("release: %s source CLI under this Python" % B.RELEASE_COMMIT)
+        rel_cli = cli_batch_results(names, run_py=src_run_py)
+        for n in names:
+            got = rel_cli.get(n, {})
+            rows += B.classify_release(B.relabel_timing(
+                B.cli_rows(n, refs[n], got, "release->branch"), refs[n], got), or_trees)
+    else:
+        if os.environ.get("FTA_B2B_REQUIRE_RELEASE") == "1":
+            phase("release: MISSING (required), %s" % skip_note)
+            note = ("%s, and FTA_B2B_REQUIRE_RELEASE=1 says the comparison is required; "
+                    "run in a checkout that has the commit" % skip_note)
+            rows += [B.Row(n, "release->branch", "release source", "error", note=note)
+                     for n in names]
+            print("ERROR: " + note, flush=True)
+        else:
+            phase("release: SKIPPED, %s" % skip_note)
+            rows += skip_rows(names, "release->branch", skip_note)
+            skipped.append("release->branch")
     if exe is not None:
         phase("exe:cli (%s)" % exe)
         exe_cli = cli_batch_results(names, exe=exe)
-        if py2 is not None:
+        if py2 is not None and have_release:
             rel_py2 = cli_batch_results(names, python=py2, run_py=src_run_py)
             for n in names:
                 rows += B.relabel_timing(same(n, "exe:cli==src", rel_py2.get(n, {}),
                                               exe_cli.get(n, {})), rel_py2.get(n, {}),
                                          exe_cli.get(n, {}))
+        elif py2 is not None:
+            rows += skip_rows(names, "exe:cli==src", skip_note)
+            skipped.append("exe:cli==src")
         for n in names:  # and, loosely, against this branch
             got = exe_cli.get(n, {})
             rows += B.classify_release(cross(n, refs[n], got, lambda rel, n=n, got=got: B.cli_rows(
@@ -255,7 +281,10 @@ def main(argv=None) -> int:
                 exe_api = api_run(server, root, names, refs, large)
             finally:
                 server.close()
-            if py2 is not None:
+            if py2 is not None and not have_release:
+                rows += skip_rows(names, "exe:server==src", skip_note)
+                skipped.append("exe:server==src")
+            elif py2 is not None:
                 server = B.ServerTransport(B.source_server_command(py2, src_run_py), root)
                 try:
                     src_api = api_run(server, root, names, refs, large)
@@ -273,11 +302,31 @@ def main(argv=None) -> int:
     elapsed = time.perf_counter() - started
 
     report(rows, names, elapsed, args.details)
+    if skipped:
+        skipped_report(skipped, skip_note)
     if args.json:
         Path(args.json).write_text(json.dumps([row_dict(r) for r in rows], indent=1,
                                               ensure_ascii=False, default=str), encoding="utf-8")
         print("rows written to %s" % args.json)
     return 1 if any(r.status in ("mismatch", "error") for r in rows) else 0
+
+
+def skip_rows(names, path, note):
+    return [B.Row(n, path, "release source", "skip", note=note) for n in names]
+
+
+def skipped_report(paths, note):
+    """After the summary: the skipped comparisons, why, and how to run them."""
+    print()
+    print("SKIPPED  (not a failure, but these comparisons did not run)")
+    print("  paths : %s" % ", ".join(paths))
+    print("  reason: %s" % note)
+    print("  to run them: use a checkout whose history has the release commit, or set")
+    print("  FTA_B2B_EXE_COMMIT to a commit that is in this checkout (README.md);")
+    print("  FTA_B2B_REQUIRE_RELEASE=1 makes a missing commit fail the run.")
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print("::warning title=b2b release-source comparison skipped::%s; the %s comparison(s) "
+              "did not run." % (note, ", ".join(paths)))
 
 
 def row_dict(r):

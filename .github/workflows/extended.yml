@@ -8,9 +8,11 @@ name: extended
 #             corpus including the large random trees, through the engine, the
 #             create_app() test client, a real run.py server over HTTP, the CLI,
 #             the vendored and the frozen desktop cores, the release the exe was
-#             built from (git archive), and the browser's number formatter under
-#             Node. The packaged-exe and second-Python rows skip themselves here:
-#             there is no exe on Linux (b2b_lib.exe_path) and no .venv314.
+#             built from (git archive, when that commit is in this repository's
+#             history; the 1.7.0 commit is not, see below), and the browser's
+#             number formatter under Node. The packaged-exe and second-Python rows
+#             skip themselves here: there is no exe on Linux (b2b_lib.exe_path)
+#             and no .venv314.
 #   gui       The real-browser GUI suite (fta_web/tests/gui/): Playwright drives
 #             Chromium with real mouse and keyboard input and compares what the
 #             GUI shows with what the API computes, ~700 checks.
@@ -46,8 +48,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # run_b2b.py exports the release the exe was built from
-          # (b2b_lib.RELEASE_COMMIT) with `git archive`, so it needs history,
-          # not the default depth-1 clone.
+          # (b2b_lib.RELEASE_COMMIT) with `git archive` when that commit is in
+          # this repository's history, which needs the full history, not the
+          # default depth-1 clone. The 1.7.0 commit is not in it (the repository
+          # was restarted at 1.9.1), so the release->branch comparison is skipped
+          # here and reported as a warning; every other path still runs.
           fetch-depth: 0
 
       # Same reason as in tests.yml: the native `dot` render path.

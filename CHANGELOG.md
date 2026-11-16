@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The weekly back-to-back CI job no longer stops when the 1.7.0 release
+  commit is not in the checkout: the comparisons that need its source are
+  skipped and reported as a warning (`FTA_B2B_REQUIRE_RELEASE=1` makes it an
+  error). Test infrastructure only.
+
 ## [1.9.1] - 2026-11-15
 
 ### Added
