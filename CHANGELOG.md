@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Support policy.** Only the latest release of the web app is supported:
+  fixes, including security fixes, go into the next release. The legacy
+  desktop app in `desktop/` is not supported and gets no fixes of any kind;
+  it stays in the repository unchanged, for reference and for the tests that
+  compare the web engine with it.
 - The weekly back-to-back CI job no longer stops when the 1.7.0 release
   commit is not in the checkout: the comparisons that need its source are
   skipped and reported as a warning (`FTA_B2B_REQUIRE_RELEASE=1` makes it an

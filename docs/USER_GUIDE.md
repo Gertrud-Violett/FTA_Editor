@@ -61,9 +61,9 @@ uv run python fta_web/run.py
 includes it. Without it everything else works and the report controls explain
 what is missing.
 
-The original Tkinter desktop app is kept in `desktop/` as a **legacy backup /
-fallback**. It is frozen (no new features, no fixes) and needs Tk, Graphviz
-and Pillow:
+The original Tkinter desktop app is kept in `desktop/` as a **legacy app**.
+It is not supported: it is frozen (no new features, no fixes of any kind) and
+needs Tk, Graphviz and Pillow:
 
 ```bash
 uv sync --extra desktop --extra excel --extra ai

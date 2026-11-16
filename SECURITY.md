@@ -4,6 +4,8 @@
 
 Security fixes go into the latest release only. Please check that the problem is still present in the [latest release](https://github.com/Gertrud-Violett/FTA_Editor/releases/latest) before you report it.
 
+The legacy desktop app in `desktop/` is not supported and gets no security fixes.
+
 ## Reporting a problem
 
 Please do not open a public issue for a security problem.
