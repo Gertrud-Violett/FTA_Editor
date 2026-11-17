@@ -885,6 +885,17 @@ def source_server_command(python: Optional[Path] = None, run_py: Optional[Path] 
 RELEASE_COMMIT = os.environ.get("FTA_B2B_EXE_COMMIT", "544492b")
 
 
+def commit_available(commit: str) -> bool:
+    """Whether ``commit`` is in this checkout's history. False when git is
+    missing, ``REPO`` is not a checkout or the commit is absent; never raises."""
+    try:
+        probe = subprocess.run(["git", "-C", str(REPO), "cat-file", "-e", commit + "^{commit}"],
+                               capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return probe.returncode == 0
+
+
 def export_commit(commit: str, dest: Path) -> Path:
     """``fta_web/`` as it was at ``commit`` (``git archive``, read-only), for
     running the exe's own source side by side. Returns its ``run.py``."""

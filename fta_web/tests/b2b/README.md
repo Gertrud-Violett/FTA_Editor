@@ -30,6 +30,20 @@ find; it exits 1 on any mismatch.
   `544492b`, `FTA_B2B_EXE_COMMIT` overrides), so the runner exports that
   commit's `fta_web/` with `git archive` and compares the exe with its own
   source.
+- **A release commit that is not in the checkout.** The public repository
+  starts at 1.9.1, so `544492b` is not in its history (nor in the weekly CI
+  checkout). The runner then does not export anything: the `release->branch`
+  rows, and `exe:cli==src` / `exe:server==src` where they would have run, are
+  `skip` rows with the note `release commit 544492b is not in this checkout`;
+  every other path runs. A skip is not a failure (exit code 0), but it is
+  announced at that phase and in a `SKIPPED` block after the summary table
+  (paths, reason, how to run them), and under GitHub Actions also as a
+  `::warning title=b2b release-source comparison skipped::` annotation. Run
+  the comparison in a checkout that has the commit, or point
+  `FTA_B2B_EXE_COMMIT` at a commit that is there. On a machine that has the
+  history, set `FTA_B2B_REQUIRE_RELEASE=1` for release checks: a missing
+  commit is then an `error` row on `release->branch` and the run exits 1,
+  so the comparison cannot be lost silently.
 - **A second Python build** (the exe is CPython 3.14; the default uv venv is
   3.10) is used when `.venv314` exists (`FTA_B2B_PY2` overrides):
   `UV_PROJECT_ENVIRONMENT=.venv314 uv run --frozen --python 3.14 --extra all python -V`.
@@ -59,8 +73,8 @@ find; it exits 1 on any mismatch.
 | `roundtrip:engine` | load → save → load: identical values, keys, analysis; no load repair |
 | `numfmt:js` | `static/js/numfmt.js` `formatProb` (node) vs `numfmt.format_prob` at 1–6 s.f. on every number the corpus produces |
 | `cli:py2` | this branch's CLI under the second Python build |
-| `release->branch` | the release's source CLI (same Python) vs this branch: only the branch's fixes may differ |
-| `exe:cli==src`, `exe:server==src` | the exe vs its own source under the same Python version: bit-identical |
+| `release->branch` | the release's source CLI (same Python) vs this branch: only the branch's fixes may differ (skipped when the release commit is not in the checkout) |
+| `exe:cli==src`, `exe:server==src` | the exe vs its own source under the same Python version: bit-identical (skipped likewise) |
 | `exe:cli`, `exe:server` | the exe vs this branch's engine (differences classified as LIBM or FIXED) |
 
 Monte Carlo runs everywhere with n = 2000, seed 20260928 (the report uses

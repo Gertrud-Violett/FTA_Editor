@@ -16,6 +16,7 @@ import copy
 import errno
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.error
@@ -449,3 +450,70 @@ def test_exe_server_matches_engine(refs, root, or_trees):
     finally:
         server.close()
     assert_rows(rows)
+
+
+# ---- a release commit that is not in this checkout ---------------------------------------------
+
+MISSING_COMMIT = "0000000000000000000000000000000000000001"
+
+
+def test_commit_available_tells_a_present_commit_from_an_absent_one():
+    assert B.commit_available(MISSING_COMMIT) is False
+    if not shutil.which("git") or not (B.REPO / ".git").exists():
+        pytest.skip("not a git checkout")
+    assert B.commit_available("HEAD") is True
+
+
+def _run_without_release(tmp_path, monkeypatch, capsys, env=None):
+    """The runner on one small tree, without exe and server, as if the release
+    commit were missing. Returns (exit code, printed output, rows)."""
+    from fta_web.tests.b2b import run_b2b
+
+    monkeypatch.setattr(B, "RELEASE_COMMIT", MISSING_COMMIT)
+    monkeypatch.setenv("FTA_B2B_PY2", str(tmp_path / "no_such_python"))
+    monkeypatch.delenv("FTA_B2B_REQUIRE_RELEASE", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    for key, value in (env or {}).items():
+        monkeypatch.setenv(key, value)
+    out = tmp_path / "rows.json"
+    code = run_b2b.main(["--only", "L16*", "--no-exe", "--no-server", "--json", str(out)])
+    return code, capsys.readouterr().out, json.loads(out.read_text(encoding="utf-8"))
+
+
+def test_runner_skips_the_release_comparison_when_its_commit_is_missing(
+        tmp_path, monkeypatch, capsys):
+    code, printed, rows = _run_without_release(tmp_path, monkeypatch, capsys)
+
+    assert code == 0, "a skip is not a failure"
+    release = [r for r in rows if r["path"] == "release->branch"]
+    assert release and all(r["status"] == "skip" for r in release)
+    assert all("is not in this checkout" in r["note"] and "0000000" in r["note"] for r in release)
+    assert not [r for r in rows if r["status"] in ("error", "mismatch")]
+    for path in ("cli", "api:client"):  # the paths every tree has
+        ran = [r for r in rows if r["path"] == path]
+        assert ran and not [r for r in ran if r["status"] == "skip"], "%s still ran" % path
+    assert "SKIPPED" in printed and "release->branch" in printed
+    assert "FTA_B2B_EXE_COMMIT" in printed, "the block says how to run the comparison"
+    assert "::warning" not in printed, "the annotation is for GitHub Actions only"
+
+
+def test_runner_fails_on_a_missing_release_commit_when_it_is_required(
+        tmp_path, monkeypatch, capsys):
+    code, printed, rows = _run_without_release(
+        tmp_path, monkeypatch, capsys, {"FTA_B2B_REQUIRE_RELEASE": "1"})
+
+    assert code == 1
+    errors = [r for r in rows if r["status"] == "error"]
+    assert errors and all(r["path"] == "release->branch" for r in errors)
+    assert "FTA_B2B_REQUIRE_RELEASE" in errors[0]["note"]
+    assert not [r for r in rows if r["path"] == "release->branch" and r["status"] == "skip"]
+
+
+def test_runner_annotates_the_skip_in_github_actions(tmp_path, monkeypatch, capsys):
+    code, printed, _ = _run_without_release(
+        tmp_path, monkeypatch, capsys, {"GITHUB_ACTIONS": "true"})
+
+    assert code == 0
+    lines = [ln for ln in printed.splitlines()
+             if ln.startswith("::warning title=b2b release-source comparison skipped::")]
+    assert len(lines) == 1
