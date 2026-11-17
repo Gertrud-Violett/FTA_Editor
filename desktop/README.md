@@ -1,13 +1,9 @@
-# Legacy desktop app (not supported)
-
-> **This app is not supported.** It gets no fixes of any kind, security fixes
-> included, and the packages only it needs (Tk, Pillow, Graphviz) are not kept
-> up to date by this project. Run FTA Editor as the web app: see the
-> [main README](../README.md).
+# Legacy desktop app (backup / fallback)
 
 This folder holds the original **Tkinter desktop version** of the FTA/ETA
-Editor (v1.5.1 behaviour). It stays in the repository for reference and because
-the test suite compares the web app in [`../fta_web/`](../fta_web/) with it.
+Editor (v1.5.1 behaviour), kept as a backup and fallback for the web app in
+[`../fta_web/`](../fta_web/), which is the primary, actively developed version
+of the editor.
 
 ```
 desktop/
