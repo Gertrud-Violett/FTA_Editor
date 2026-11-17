@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-11-17
+
+### Security
+
+- Six locked packages were updated to versions that fix published security
+  advisories: certifi 2026.10.23, urllib3 2.8.0, pyasn1 0.6.5, Werkzeug 3.1.9,
+  setuptools 84.2.1 and Pillow 13.0.0. certifi, urllib3, pyasn1, Werkzeug and
+  setuptools are part of the Windows download. Pillow is used only by the
+  legacy desktop app, which is not supported; Pillow 13 needs Python 3.11 or
+  later, so an install on Python 3.10 keeps Pillow 12.3.0. Calculations and
+  files are unchanged.
+
 ### Changed
 
+- **Support policy.** Only the latest release of the web app is supported:
+  fixes, including security fixes, go into the next release. The legacy
+  desktop app in `desktop/` is not supported and gets no fixes of any kind;
+  it stays in the repository unchanged, for reference and for the tests that
+  compare the web engine with it.
 - The weekly back-to-back CI job no longer stops when the 1.7.0 release
   commit is not in the checkout: the comparisons that need its source are
   skipped and reported as a warning (`FTA_B2B_REQUIRE_RELEASE=1` makes it an

@@ -56,11 +56,12 @@ uv run pytest fta_web/tests/ desktop/tests/   # or: python -m pytest (pytest.ini
 
 # Run an application
 uv run python fta_web/run.py                  # web app -- the primary path
-uv run python desktop/src/FTA_Editor_UI.py    # legacy desktop app -- backup/fallback, frozen
+uv run python desktop/src/FTA_Editor_UI.py    # legacy desktop app -- not supported, frozen
 ```
 
 The web app (`fta_web/`) is where all new work goes. `desktop/` holds the
-original Tkinter application and its test suite as a fallback; its `src/` is
+original Tkinter application and its test suite, kept for reference; it is not
+supported and gets no fixes. Its `src/` is
 hash-pinned by `fta_web/tests/test_vendor_integrity.py` and must not be edited
 (see `fta_web/core/DIVERGENCE.md`).
 

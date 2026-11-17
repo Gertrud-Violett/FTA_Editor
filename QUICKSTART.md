@@ -2,11 +2,11 @@
 
 Get up and running with FTA/ETA Editor in 3 steps.
 
-**Version**: 1.9.1 (Updated: November 15, 2026)
+**Version**: 1.9.2 (Updated: November 17, 2026)
 
 The editor runs in your **browser**, with no Graphviz to install — that is the
-primary way to run it. The original Tkinter desktop app is kept in `desktop/`
-as a frozen backup/fallback; its instructions are below.
+way to run it. The original Tkinter desktop app in `desktop/` is not supported
+and gets no fixes; its instructions are below for reference.
 
 ## 1. Install
 
@@ -44,7 +44,7 @@ port, `--no-browser` to only print the URL, `--root ~/trees` to confine the
 file browser to one directory.
 
 <details>
-<summary><b>Legacy desktop app instead (Tkinter, v1.5.1 behaviour, frozen fallback)</b></summary>
+<summary><b>Legacy desktop app instead (Tkinter, v1.5.1 behaviour, not supported)</b></summary>
 
 **Extra prerequisites:** Tk and [Graphviz](https://graphviz.org/download/).
 
@@ -54,7 +54,7 @@ uv run python desktop/src/FTA_Editor_UI.py         # or: python desktop/src/FTA_
 ```
 
 See [desktop/README.md](desktop/README.md) for the defects that are fixed in
-the web app but not in this fallback.
+the web app but not in the desktop app.
 
 Or run `python install.py`, which asks which app to set up (web, desktop or
 both), detects `uv` and uses it automatically, falling back to pip if `uv`
@@ -161,7 +161,7 @@ See [README.md](README.md#ai-assistant-setup) for detailed setup instructions.
 - ✅ **Nothing fails silently**: a missing optional dependency shows up as a disabled control with an explanation, not a button that errors when pressed.
 - ✅ **Standalone executable**: a build that needs neither Python nor Graphviz on the target machine — see [build/README.md](build/README.md).
 - ✅ **Five defect fixes** in the web app's copy of the core, each written up in [`fta_web/core/DIVERGENCE.md`](fta_web/core/DIVERGENCE.md) — notably `NOT` gates that were silently computed as `OR`, a move guard that permitted exactly the moves that corrupt the tree, and minified JSON files that failed to open with a misleading "encoding" error.
-- ✅ **Desktop app unchanged** and still supported.
+- ✅ **Desktop app unchanged**, but not supported: it gets no fixes.
 - ✅ **Installation via `pyproject.toml`**: `uv sync --extra <name>` is the
   recommended path (fast, exact versions pinned in `uv.lock`); plain
   `pip install -r requirements.txt` still works if you don't have uv.

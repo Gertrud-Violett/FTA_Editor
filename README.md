@@ -5,18 +5,17 @@ A comprehensive Fault Tree Analysis (FTA) and Event Tree Analysis (ETA) editor w
 [![tests](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml/badge.svg)](https://github.com/Gertrud-Violett/FTA_Editor/actions/workflows/tests.yml)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD2-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.9.1-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.9.2-green.svg)](CHANGELOG.md)
 
-There are two ways to run it:
+Run FTA Editor as the web app. The legacy desktop app is not supported:
 
 | | Runs in | Needs | Status |
 |---|---|---|---|
-| **Web app** (`fta_web/`) — **the primary path** | your browser, served from `127.0.0.1` | Python 3.10+ and Flask — **no Graphviz** | actively developed; all new features land here |
-| **Legacy desktop app** (`desktop/`) — backup / fallback | a Tkinter window | Python 3.10+, Tk, **Graphviz**, Pillow | frozen at 1.5.1 behaviour; kept as a fallback, not maintained |
+| **Web app** (`fta_web/`) | your browser, served from `127.0.0.1` | Python 3.10+ and Flask — **no Graphviz** | supported; actively developed; all new features land here |
+| **Legacy desktop app** (`desktop/`) | a Tkinter window | Python 3.10+, Tk, **Graphviz**, Pillow | **not supported**; frozen at 1.5.1 behaviour; kept for reference only |
 
-Both edit the same files, keep AI credentials in the same place, and produce the
-same diagrams. Use the web app unless you specifically need the old Tk window;
-see [desktop/README.md](desktop/README.md) for what the fallback does not fix.
+Both read the same files and keep AI credentials in the same place. See
+[desktop/README.md](desktop/README.md) for what the desktop app does not fix.
 
 **1.7 files in the desktop app.** The 1.7 file format is additive. The desktop
 app still opens 1.7 files, but it reads only `logicGate` (AND/OR) and
@@ -178,9 +177,10 @@ Ship the whole `build/dist/fta_editor/` folder — the executable needs its
 `_internal/` sibling. See [build/README.md](build/README.md) for prerequisites,
 per-OS notes and how to verify a build.
 
-### Legacy desktop app (fallback)
+### Legacy desktop app (not supported)
 
-The original Tkinter application, moved to `desktop/` and frozen:
+The original Tkinter application, moved to `desktop/` and frozen. It is not
+supported and gets no fixes:
 
 ```bash
 # with uv
@@ -272,7 +272,7 @@ itself is never changed.
 The files are in `fta_web/examples/` in a source checkout and in
 `fta_editor\_internal\examples\` in the standalone build.
 
-### Legacy desktop application (fallback)
+### Legacy desktop application (not supported)
 
 ```bash
 python desktop/src/FTA_Editor_UI.py
@@ -325,7 +325,7 @@ FTA_Editor/
 │   ├── examples/                # Worked examples (Challenger FTA, TMI-2 ETA; EN and JA) and sampleFTA.json
 │   ├── static/, templates/      # Frontend, incl. WebAssembly Graphviz
 │   └── tests/                   # Web app test suite + vendor freeze guard
-├── desktop/                      # Legacy Tkinter app -- BACKUP / FALLBACK, frozen
+├── desktop/                      # Legacy Tkinter app -- NOT SUPPORTED, frozen
 │   ├── src/                     # FTA_Editor_UI.py, FTA_Editor_core.py, json_viewer.py, AI_*
 │   ├── tests/                   # Its original test suite
 │   ├── data/examples/           # Its copy of the sample data
@@ -386,7 +386,7 @@ python -m pytest desktop/tests/    # the frozen legacy suite
 - [Code Review 2026-09](docs/CODE_REVIEW_2026-09.md) - Known defects, ranked, with fix order
 - [Code Review 2026-10](docs/CODE_REVIEW_2026-10.md) - October 2026 review: what was fixed, what is left open, feature status
 - [Roadmap for mechanical engineers](docs/ROADMAP_MECHANICAL_ENGINEERS.md) - Proposed features and UI changes
-- [Legacy desktop app](desktop/README.md) - The frozen Tkinter fallback and what it does not fix
+- [Legacy desktop app](desktop/README.md) - The frozen Tkinter app (not supported) and what it does not fix
 
 ## Troubleshooting
 
@@ -440,6 +440,9 @@ BSD-2 License - Copyright (c) makkiblog.com
 
 ## Support
 
+- Supported: the latest release of the web app. Fixes, including security fixes,
+  go into the next release; older releases are not updated. The legacy desktop
+  app in `desktop/` is not supported and gets no fixes of any kind.
 - Issues: [GitHub Issues](https://github.com/Gertrud-Violett/FTA_Editor/issues)
 - Examples: [fta_web/examples/](fta_web/examples/), described under
   [Example analyses](#example-analyses)
